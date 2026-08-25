@@ -216,6 +216,57 @@ test("build.sh valida candidatos antes da troca e oferece rollback do stack sem 
   assert.ok(switchStack < versionCheck);
 });
 
+test("deploy/compose.sh detecta o project-name real do stack em execução (Coolify usa o UUID, não o nome do diretório)", async () => {
+  const binDir = await mkdtemp(join(tmpdir(), "atendon-fake-docker-"));
+  const logFile = join(binDir, "compose-calls.log");
+  const fakeDocker = `#!/bin/sh
+set -eu
+if [ "$1" = "ps" ]; then
+  printf '%s\\n' "\${FAKE_DOCKER_PS_OUTPUT:-}"
+  exit 0
+fi
+if [ "$1" = "compose" ]; then
+  shift
+  printf '%s\\n' "$*" >> "${logFile}"
+  exit 0
+fi
+echo "unexpected docker invocation: $*" >&2
+exit 1
+`;
+  await writeFile(join(binDir, "docker"), fakeDocker, { mode: 0o755 });
+  const runCompose = (env) => spawnSync(join(rootDirectory, "deploy/compose.sh"), ["ps"], {
+    encoding: "utf8",
+    env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, ...env }
+  });
+
+  try {
+    const detected = runCompose({ FAKE_DOCKER_PS_OUTPUT: "luaj67tqgrdsjlvdjrt9x3ot" });
+    assert.equal(detected.status, 0, detected.stderr);
+    const detectedLog = await readFile(logFile, "utf8");
+    assert.match(detectedLog, /--project-name luaj67tqgrdsjlvdjrt9x3ot/, "deve usar o project-name do stack detectado em execução");
+    await rm(logFile);
+
+    const ambiguous = runCompose({ FAKE_DOCKER_PS_OUTPUT: "atendon\nluaj67tqgrdsjlvdjrt9x3ot" });
+    assert.equal(ambiguous.status, 0, ambiguous.stderr);
+    const ambiguousLog = await readFile(logFile, "utf8");
+    assert.doesNotMatch(ambiguousLog, /--project-name/, "não deve adivinhar quando há mais de um projeto ativo");
+    await rm(logFile);
+
+    const none = runCompose({ FAKE_DOCKER_PS_OUTPUT: "" });
+    assert.equal(none.status, 0, none.stderr);
+    const noneLog = await readFile(logFile, "utf8");
+    assert.doesNotMatch(noneLog, /--project-name/, "sem stack rodando, usa o comportamento padrão do Compose");
+    await rm(logFile);
+
+    const explicit = runCompose({ FAKE_DOCKER_PS_OUTPUT: "should-not-be-used", COMPOSE_PROJECT_NAME: "explicit-override" });
+    assert.equal(explicit.status, 0, explicit.stderr);
+    const explicitLog = await readFile(logFile, "utf8");
+    assert.doesNotMatch(explicitLog, /--project-name/, "uma COMPOSE_PROJECT_NAME explícita não deve ser sobrescrita nem gerar detecção");
+  } finally {
+    await rm(binDir, { recursive: true, force: true });
+  }
+});
+
 test("rollback retagueia as imagens anteriores e recria o stack anterior", async () => {
   const directory = await mkdtemp(join(tmpdir(), "atendon-stack-rollback-"));
   const stackFile = join(directory, "stack-before.tsv");
