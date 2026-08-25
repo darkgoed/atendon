@@ -78,10 +78,15 @@ test("Compose define o stack completo, redes internas e volumes legados estávei
   assert.equal(config.services["atendon-worker"].depends_on.redis.condition, "service_healthy");
   assert.match(config.services["atendon-worker"].healthcheck.test.join(" "), /p!==self/);
 
-  assert.equal(config.volumes.atendon_postgres.name, "atendon_atendon_postgres");
-  assert.equal(config.volumes.atendon_redis.name, "atendon_atendon_redis");
-  assert.equal(config.volumes.atendon_evolution_postgres.name, "atendon_atendon_evolution_postgres");
-  assert.equal(config.volumes.atendon_evolution_instances.name, "atendon_atendon_evolution_instances");
+  for (const [logicalName, physicalName] of Object.entries({
+    atendon_postgres: "atendon_atendon_postgres",
+    atendon_redis: "atendon_atendon_redis",
+    atendon_evolution_postgres: "atendon_atendon_evolution_postgres",
+    atendon_evolution_instances: "atendon_atendon_evolution_instances"
+  })) {
+    assert.equal(config.volumes[logicalName].name, physicalName);
+    assert.equal(config.volumes[logicalName].external, true, `${logicalName} deve adotar o volume legado e nunca criar um volume vazio prefixado pelo Coolify`);
+  }
 });
 
 test("Compose exige segredos em runtime e não contém credenciais padrão", async () => {

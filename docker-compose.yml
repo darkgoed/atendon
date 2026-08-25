@@ -264,9 +264,13 @@ services:
 volumes:
   atendon_postgres:
     name: atendon_atendon_postgres
+    external: true
   atendon_redis:
     name: atendon_atendon_redis
+    external: true
   atendon_evolution_postgres:
     name: atendon_atendon_evolution_postgres
+    external: true
   atendon_evolution_instances:
     name: atendon_atendon_evolution_instances
+    external: true
