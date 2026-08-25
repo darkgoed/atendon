@@ -63,6 +63,8 @@ test("Compose define o stack completo, redes internas e volumes legados estávei
   assert.match(config.services["atendon-api"].environment.DATABASE_URL, /@postgres:5432\/atendon$/);
   assert.equal(config.services["atendon-api"].environment.REDIS_URL, "redis://redis:6379");
   assert.equal(config.services["atendon-api"].environment.EVOLUTION_API_URL, "http://evolution-api:8080");
+  assert.equal(config.services["atendon-api"].environment.MEET_JWT_SECRET, undefined);
+  assert.equal(config.services["atendon-worker"].environment.MEET_JWT_SECRET, undefined);
   for (const privilegedName of ["POSTGRES_PASSWORD", "MIGRATION_DATABASE_URL", "ATENDON_MIGRATION_DB_PASSWORD"]) {
     assert.equal(config.services["atendon-api"].environment[privilegedName], undefined);
     assert.equal(config.services["atendon-worker"].environment[privilegedName], undefined);
