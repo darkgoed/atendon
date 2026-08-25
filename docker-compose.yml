@@ -103,6 +103,51 @@ services:
       retries: 10
       start_period: 10s
 
+  database-provision:
+    image: postgres:16-alpine
+    restart: "no"
+    security_opt: ["no-new-privileges:true"]
+    logging: *default-logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-atendon}
+      POSTGRES_USER: ${POSTGRES_USER:-atendon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD}
+      ATENDON_OWNER_DB_ROLE: ${ATENDON_OWNER_DB_ROLE:-atendon_owner}
+      ATENDON_MIGRATION_DB_USER: ${ATENDON_MIGRATION_DB_USER:-atendon_migration}
+      ATENDON_MIGRATION_DB_PASSWORD: ${ATENDON_MIGRATION_DB_PASSWORD:?Configure ATENDON_MIGRATION_DB_PASSWORD}
+      ATENDON_RUNTIME_DB_USER: ${ATENDON_RUNTIME_DB_USER:-atendon_app}
+      ATENDON_RUNTIME_DB_PASSWORD: ${ATENDON_RUNTIME_DB_PASSWORD:?Configure ATENDON_RUNTIME_DB_PASSWORD}
+    volumes:
+      - ./deploy/postgres/provision-roles.sh:/usr/local/bin/provision-atendon-roles.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/provision-atendon-roles.sh"]
+
+  database-migrate:
+    image: ${ATENDON_IMAGE_PREFIX:-atendon}/api:${DEPLOY_VERSION:?Configure DEPLOY_VERSION com uma tag imutável}
+    build:
+      context: .
+      dockerfile: deploy/docker/api.Dockerfile
+    restart: "no"
+    init: true
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    logging: *default-logging
+    depends_on:
+      database-provision:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      APP_VERSION: ${APP_VERSION:?Configure APP_VERSION}
+      DEPLOY_VERSION: ${DEPLOY_VERSION:?Configure DEPLOY_VERSION com uma tag imutável}
+      DATABASE_URL: postgresql://${ATENDON_RUNTIME_DB_USER:-atendon_app}:${ATENDON_RUNTIME_DB_PASSWORD:?Configure ATENDON_RUNTIME_DB_PASSWORD URL-encoded}@postgres:5432/${POSTGRES_DB:-atendon}
+      MIGRATION_DATABASE_URL: postgresql://${ATENDON_MIGRATION_DB_USER:-atendon_migration}:${ATENDON_MIGRATION_DB_PASSWORD:?Configure ATENDON_MIGRATION_DB_PASSWORD URL-encoded}@postgres:5432/${POSTGRES_DB:-atendon}
+      DATABASE_OWNER_ROLE: ${ATENDON_OWNER_DB_ROLE:-atendon_owner}
+    command: ["node", "--enable-source-maps", "apps/backend/dist/db/migrate.js"]
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -186,6 +231,8 @@ services:
     logging: *default-logging
     environment: *atendon-runtime-environment
     depends_on:
+      database-migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -215,6 +262,8 @@ services:
     logging: *default-logging
     environment: *atendon-runtime-environment
     depends_on:
+      database-migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:

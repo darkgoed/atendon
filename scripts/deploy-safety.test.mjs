@@ -41,6 +41,8 @@ test("Compose define o stack completo, redes internas e volumes legados estávei
   const config = composeConfig();
   const expectedServices = [
     "postgres",
+    "database-provision",
+    "database-migrate",
     "redis",
     "evolution-postgres",
     "evolution-api",
@@ -50,9 +52,12 @@ test("Compose define o stack completo, redes internas e volumes legados estávei
   ];
   assert.deepEqual(Object.keys(config.services).sort(), expectedServices.sort());
 
-  for (const name of expectedServices) {
+  for (const name of expectedServices.filter((service) => !service.startsWith("database-"))) {
     assert.equal(config.services[name].restart, "unless-stopped", `${name} sem restart`);
     assert.ok(config.services[name].healthcheck, `${name} sem healthcheck`);
+  }
+  for (const name of ["database-provision", "database-migrate"]) {
+    assert.equal(config.services[name].restart, "no", `${name} deve ser um job one-shot`);
   }
   for (const name of ["atendon-api", "atendon-worker", "atendon-panel"]) {
     assert.equal(config.services[name].init, true, `${name} sem init`);
@@ -74,7 +79,10 @@ test("Compose define o stack completo, redes internas e volumes legados estávei
   assert.match(config.services["evolution-api"].environment.DATABASE_CONNECTION_URI, /@evolution-postgres:5432\/evolution$/);
 
   assert.equal(config.services["atendon-panel"].depends_on["atendon-api"].condition, "service_healthy");
-  assert.equal(config.services["atendon-api"].depends_on.postgres.condition, "service_healthy");
+  assert.equal(config.services["database-provision"].depends_on.postgres.condition, "service_healthy");
+  assert.equal(config.services["database-migrate"].depends_on["database-provision"].condition, "service_completed_successfully");
+  assert.equal(config.services["atendon-api"].depends_on["database-migrate"].condition, "service_completed_successfully");
+  assert.equal(config.services["atendon-worker"].depends_on["database-migrate"].condition, "service_completed_successfully");
   assert.equal(config.services["atendon-worker"].depends_on.redis.condition, "service_healthy");
   assert.match(config.services["atendon-worker"].healthcheck.test.join(" "), /p!==self/);
 
@@ -147,6 +155,7 @@ test("Dockerfiles de produção usam Node 22, npm 12, usuário não-root e coman
     assert.match(source, /USER node/, `${name} não usa usuário node`);
   }
   assert.match(files.api, /dist\/server\.js/);
+  assert.match(files.api, /src\/db\/migrations/);
   assert.match(files.worker, /dist\/worker\.js/);
   assert.match(files.panel, /standalone/);
   assert.match(files.panel, /server\.js/);

@@ -22,6 +22,7 @@ COPY --chown=node:node package.json package-lock.json changelog.json ./
 COPY --chown=node:node apps/backend/package.json apps/backend/package.json
 COPY --chown=node:node --from=build /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/apps/backend/dist apps/backend/dist
+COPY --chown=node:node apps/backend/src/db/migrations apps/backend/dist/db/migrations
 USER node
 EXPOSE 3110
 CMD ["node", "--enable-source-maps", "apps/backend/dist/server.js"]
