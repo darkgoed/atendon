@@ -23,7 +23,7 @@ APP_VERSION=""
 DEPLOY_VERSION=""
 
 compose() {
-  docker compose -f "${COMPOSE_FILE}" "$@"
+  "${ROOT_DIR}/deploy/compose.sh" "$@"
 }
 
 require_command() {

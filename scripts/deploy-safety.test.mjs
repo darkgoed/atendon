@@ -112,6 +112,22 @@ test("@atendon/panel declara dotenv como dependência própria (next.config.ts o
   );
 });
 
+test("comandos operacionais do Compose carregam os arquivos privados de runtime e migration", async () => {
+  const [helper, build, dump, restore, migrationExample] = await Promise.all([
+    readFile(join(rootDirectory, "deploy/compose.sh"), "utf8"),
+    readFile(join(rootDirectory, "build.sh"), "utf8"),
+    readFile(join(rootDirectory, "deploy/postgres/pg-dump-compose.sh"), "utf8"),
+    readFile(join(rootDirectory, "deploy/postgres/pg-restore-compose.sh"), "utf8"),
+    readFile(join(rootDirectory, ".env.migration.example"), "utf8")
+  ]);
+  assert.match(helper, /--env-file[^\n]*\.env/);
+  assert.match(helper, /--env-file[^\n]*\.env\.migration/);
+  assert.match(build, /deploy\/compose\.sh/);
+  assert.match(dump, /deploy\/compose\.sh/);
+  assert.match(restore, /deploy\/compose\.sh/);
+  assert.match(migrationExample, /^EVOLUTION_DB_PASSWORD=/m);
+});
+
 test("Dockerfiles de produção usam Node 22, npm 12, usuário não-root e comandos distintos", async () => {
   const files = {
     api: await readFile(join(rootDirectory, "deploy/docker/api.Dockerfile"), "utf8"),

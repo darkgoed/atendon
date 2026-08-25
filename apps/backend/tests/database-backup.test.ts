@@ -3,6 +3,7 @@ import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { config } from "../src/config.js";
@@ -136,8 +137,8 @@ describe("database backup and real restore verification", () => {
 
   beforeAll(async () => {
     const containerId = execFileSync(
-      "docker",
-      ["compose", "ps", "-q", "postgres"],
+      fileURLToPath(new URL("../../../deploy/compose.sh", import.meta.url)),
+      ["ps", "-q", "postgres"],
       { cwd: new URL("../../..", import.meta.url), encoding: "utf8" }
     ).trim();
     if (!/^[0-9a-f]{12,64}$/.test(containerId)) {
