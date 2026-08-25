@@ -104,6 +104,14 @@ test("Compose exige segredos em runtime e não contém credenciais padrão", asy
   assert.match(dockerIgnore, /^\.env\.\*$/m);
 });
 
+test("@atendon/panel declara dotenv como dependência própria (next.config.ts o importa diretamente)", async () => {
+  const panelPackageJson = JSON.parse(await readFile(join(rootDirectory, "apps/panel/package.json"), "utf8"));
+  assert.ok(
+    panelPackageJson.dependencies?.dotenv,
+    "apps/panel/package.json deve declarar dotenv; o build da imagem instala somente o workspace do painel e não herda a dependência do backend"
+  );
+});
+
 test("Dockerfiles de produção usam Node 22, npm 12, usuário não-root e comandos distintos", async () => {
   const files = {
     api: await readFile(join(rootDirectory, "deploy/docker/api.Dockerfile"), "utf8"),
