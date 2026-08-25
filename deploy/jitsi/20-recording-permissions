@@ -1,0 +1,9 @@
+#!/usr/bin/with-contenv sh
+set -eu
+
+recordings_dir="${JIBRI_RECORDING_DIR:-/config/recordings}"
+host_gid="${MEET_RECORDINGS_HOST_GID:?Configure MEET_RECORDINGS_HOST_GID with the PM2 user's primary group id}"
+
+chgrp -R "$host_gid" "$recordings_dir"
+find "$recordings_dir" -type d -exec chmod 2770 {} +
+find "$recordings_dir" -type f -exec chmod 0660 {} +

@@ -1,0 +1,49 @@
+{
+  "name": "atendon",
+  "version": "1.21.0",
+  "private": true,
+  "packageManager": "npm@12.0.1",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "version:bump": "node scripts/changelog-bump.mjs",
+    "version:sync-lock": "node scripts/sync-package-lock-version.mjs",
+    "dev": "concurrently --kill-others --names api,panel,worker --prefix-colors blue,green,yellow \"npm run dev:api\" \"npm run dev:panel\" \"npm run dev:worker\"",
+    "dev:api": "npm run dev -w @atendon/backend",
+    "dev:panel": "npm run dev -w @atendon/panel",
+    "dev:worker": "npm run worker -w @atendon/backend",
+    "lint": "eslint apps/backend apps/panel --max-warnings=0",
+    "test": "npm run test:changelog && npm run test:deploy && npm run test --workspaces --if-present",
+    "test:changelog": "node --test scripts/changelog-bump.test.mjs",
+    "test:deploy": "node --test scripts/deploy-safety.test.mjs",
+    "test:e2e": "npm run test:e2e -w @atendon/panel",
+    "web-push:configure": "node scripts/configure-web-push.mjs",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=22",
+    "npm": ">=12"
+  },
+  "overrides": {
+    "postcss": "$postcss",
+    "sharp": "0.35.3"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@eslint/eslintrc": "^3.3.6",
+    "@playwright/test": "^1.61.1",
+    "concurrently": "^9.2.4",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.21",
+    "globals": "^17.7.0",
+    "postcss": "^8.5.16",
+    "typescript-eslint": "^8.65.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "unrs-resolver@1.12.2": true,
+    "msgpackr-extract": false
+  }
+}

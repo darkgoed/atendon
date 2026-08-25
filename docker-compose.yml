@@ -1,0 +1,272 @@
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-atendon-runtime-environment: &atendon-runtime-environment
+  NODE_ENV: production
+  APP_VERSION: ${APP_VERSION:?Configure APP_VERSION}
+  DEPLOY_VERSION: ${DEPLOY_VERSION:?Configure DEPLOY_VERSION com uma tag imutável}
+  CONTAINER_RUNTIME: "true"
+  HOST: 0.0.0.0
+  PORT: "3110"
+  DATABASE_RUNTIME_ROLE: ${ATENDON_RUNTIME_DB_USER:-atendon_app}
+  DATABASE_URL: postgresql://${ATENDON_RUNTIME_DB_USER:-atendon_app}:${ATENDON_RUNTIME_DB_PASSWORD:?Configure ATENDON_RUNTIME_DB_PASSWORD URL-encoded}@postgres:5432/${POSTGRES_DB:-atendon}
+  REDIS_URL: redis://redis:6379
+  EVOLUTION_API_URL: http://evolution-api:8080
+  EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:?Configure EVOLUTION_API_KEY}
+  EVOLUTION_WEBHOOK_URL: http://atendon-api:3110
+  EVOLUTION_WEBHOOK_SECRET: ${EVOLUTION_WEBHOOK_SECRET:?Configure EVOLUTION_WEBHOOK_SECRET}
+  JWT_SECRET: ${JWT_SECRET:?Configure JWT_SECRET}
+  DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?Configure DATA_ENCRYPTION_KEY}
+  DATA_ENCRYPTION_KEY_PREVIOUS: ${DATA_ENCRYPTION_KEY_PREVIOUS:-}
+  TENANT_API_KEY: ${TENANT_API_KEY:?Configure TENANT_API_KEY}
+  PANEL_SEED_EMAIL: ${PANEL_SEED_EMAIL:-admin@atendon.local}
+  PANEL_SEED_PASSWORD: ${PANEL_SEED_PASSWORD:?Configure PANEL_SEED_PASSWORD}
+  ROOT_SEED_EMAIL: ${ROOT_SEED_EMAIL:-}
+  ROOT_SEED_PASSWORD: ${ROOT_SEED_PASSWORD:-}
+  PANEL_ORIGIN: ${PANEL_ORIGIN:?Configure PANEL_ORIGIN com HTTPS}
+  PANEL_PUBLIC_URL: ${PANEL_PUBLIC_URL:?Configure PANEL_PUBLIC_URL com HTTPS}
+  OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+  OPENROUTER_APP_URL: ${OPENROUTER_APP_URL:-${PANEL_PUBLIC_URL:?Configure PANEL_PUBLIC_URL com HTTPS}}
+  OPENROUTER_APP_NAME: ${OPENROUTER_APP_NAME:-AtendON}
+  OPENROUTER_MANAGEMENT_API_KEY: ${OPENROUTER_MANAGEMENT_API_KEY:-}
+  CHANGELOG_OPENROUTER_API_KEY: ${CHANGELOG_OPENROUTER_API_KEY:-}
+  CHANGELOG_OPENROUTER_MODEL: ${CHANGELOG_OPENROUTER_MODEL:-google/gemma-4-26b-a4b-it:free}
+  DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-openai/gpt-oss-20b:free}
+  AI_EVALUATOR_ENABLED: ${AI_EVALUATOR_ENABLED:-true}
+  WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-true}
+  TRIPZ_AI_OPENROUTER_API_KEY: ${TRIPZ_AI_OPENROUTER_API_KEY:-}
+  TRIPZ_AI_MODEL: ${TRIPZ_AI_MODEL:-anthropic/claude-sonnet-4.6}
+  TRIPZ_AI_ALLOWED_MODELS: ${TRIPZ_AI_ALLOWED_MODELS:-openai/gpt-5.6-luna-pro,anthropic/claude-sonnet-4.6}
+  TRIPZ_AI_PROVIDER: ${TRIPZ_AI_PROVIDER:-}
+  TRIPZ_AI_REQUIRE_ZDR: ${TRIPZ_AI_REQUIRE_ZDR:-true}
+  TRIPZ_TENANT_SLUG: ${TRIPZ_TENANT_SLUG:-tripzturismo-a44ab4}
+  TRIPZ_OFFERS_GROUP_LINK: ${TRIPZ_OFFERS_GROUP_LINK:-https://chat.whatsapp.com/F2XZvKQaToNFf6cDFYKPDL}
+  WEB_PUSH_PUBLIC_KEY: ${WEB_PUSH_PUBLIC_KEY:-}
+  WEB_PUSH_PRIVATE_KEY: ${WEB_PUSH_PRIVATE_KEY:-}
+  WEB_PUSH_SUBJECT: ${WEB_PUSH_SUBJECT:-}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_SECURE: ${SMTP_SECURE:-false}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM: ${SMTP_FROM:-}
+  TRANSFER_NOTIFICATION_WEBHOOK_URL: ${TRANSFER_NOTIFICATION_WEBHOOK_URL:-}
+  TRANSFER_NOTIFICATION_CHANNEL: ${TRANSFER_NOTIFICATION_CHANNEL:-webhook}
+  GOOGLE_MEET_OAUTH_CLIENT_ID: ${GOOGLE_MEET_OAUTH_CLIENT_ID:-}
+  GOOGLE_MEET_OAUTH_CLIENT_SECRET: ${GOOGLE_MEET_OAUTH_CLIENT_SECRET:-}
+  GOOGLE_MEET_OAUTH_REDIRECT_URI: ${GOOGLE_MEET_OAUTH_REDIRECT_URI:-}
+  MEET_ENABLED: ${MEET_ENABLED:-false}
+  MEET_JWT_SECRET:
+  MEET_JWT_APP_ID: ${MEET_JWT_APP_ID:-atendon}
+  MEET_JWT_ACCEPTED_ISSUERS: ${MEET_JWT_ACCEPTED_ISSUERS:-atendon}
+  MEET_JWT_ACCEPTED_AUDIENCES: ${MEET_JWT_ACCEPTED_AUDIENCES:-atendon}
+  MEET_PUBLIC_URL: ${MEET_PUBLIC_URL:-http://localhost:8444}
+  MEET_RECORDINGS_DIR: /app/data/meet-recordings
+  MEET_RECORDING_RETENTION_DAYS: ${MEET_RECORDING_RETENTION_DAYS:-30}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    logging: *default-logging
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - track_io_timing=on
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-atendon}
+      POSTGRES_USER: ${POSTGRES_USER:-atendon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD}
+      ATENDON_OWNER_DB_ROLE: ${ATENDON_OWNER_DB_ROLE:-atendon_owner}
+      ATENDON_MIGRATION_DB_USER: ${ATENDON_MIGRATION_DB_USER:-atendon_migration}
+      ATENDON_MIGRATION_DB_PASSWORD: ${ATENDON_MIGRATION_DB_PASSWORD:?Configure ATENDON_MIGRATION_DB_PASSWORD}
+      ATENDON_RUNTIME_DB_USER: ${ATENDON_RUNTIME_DB_USER:-atendon_app}
+      ATENDON_RUNTIME_DB_PASSWORD: ${ATENDON_RUNTIME_DB_PASSWORD:?Configure ATENDON_RUNTIME_DB_PASSWORD}
+    ports: ["${ATENDON_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5436}:5432"]
+    volumes:
+      - atendon_postgres:/var/lib/postgresql/data
+      - ./deploy/postgres/init-test-database.sql:/docker-entrypoint-initdb.d/10-init-test-database.sql:ro
+      - ./deploy/postgres/enable-observability.sql:/docker-entrypoint-initdb.d/15-enable-observability.sql:ro
+      - ./deploy/postgres/provision-roles.sh:/docker-entrypoint-initdb.d/20-provision-atendon-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    logging: *default-logging
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    ports: ["${ATENDON_BIND_ADDRESS:-127.0.0.1}:${REDIS_PORT:-6382}:6379"]
+    volumes: ["atendon_redis:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  evolution-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: evolution
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${EVOLUTION_DB_PASSWORD:?Configure EVOLUTION_DB_PASSWORD}
+    volumes: ["atendon_evolution_postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution -d evolution"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  evolution-api:
+    image: atendon/evolution-api:v2.3.7-baileys-rc13
+    build:
+      context: .
+      dockerfile: deploy/evolution/Dockerfile
+    restart: unless-stopped
+    init: true
+    security_opt: ["no-new-privileges:true"]
+    logging: *default-logging
+    depends_on:
+      evolution-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports: ["${ATENDON_BIND_ADDRESS:-127.0.0.1}:${EVOLUTION_PORT:-8088}:8080"]
+    environment:
+      SERVER_URL: ${EVOLUTION_PUBLIC_URL:-http://localhost:8088}
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?Configure EVOLUTION_API_KEY}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_DB_PASSWORD:?Configure EVOLUTION_DB_PASSWORD URL-encoded}@evolution-postgres:5432/evolution
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/1
+      CACHE_REDIS_SAVE_INSTANCES: "false"
+      CACHE_LOCAL_ENABLED: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      WEBHOOK_EVENTS_QRCODE_UPDATED: "true"
+      WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
+      WEBHOOK_EVENTS_MESSAGES_UPDATE: "true"
+      WEBHOOK_EVENTS_SEND_MESSAGE: "true"
+      WEBHOOK_EVENTS_CONNECTION_UPDATE: "true"
+    volumes: ["atendon_evolution_instances:/evolution/instances"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  atendon-api:
+    image: ${ATENDON_IMAGE_PREFIX:-atendon}/api:${DEPLOY_VERSION:?Configure DEPLOY_VERSION com uma tag imutável}
+    build:
+      context: .
+      dockerfile: deploy/docker/api.Dockerfile
+    restart: unless-stopped
+    init: true
+    security_opt: ["no-new-privileges:true"]
+    logging: *default-logging
+    environment: *atendon-runtime-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      evolution-api:
+        condition: service_healthy
+    ports: ["${ATENDON_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-3110}:3110"]
+    expose: ["3110"]
+    volumes:
+      - ${MEET_RECORDINGS_DIR:-./data/meet-recordings}:/app/data/meet-recordings:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3110/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    stop_grace_period: 30s
+
+  atendon-worker:
+    image: ${ATENDON_IMAGE_PREFIX:-atendon}/worker:${DEPLOY_VERSION:?Configure DEPLOY_VERSION com uma tag imutável}
+    build:
+      context: .
+      dockerfile: deploy/docker/worker.Dockerfile
+    restart: unless-stopped
+    init: true
+    security_opt: ["no-new-privileges:true"]
+    logging: *default-logging
+    environment: *atendon-runtime-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      evolution-api:
+        condition: service_healthy
+    volumes:
+      - ${MEET_RECORDINGS_DIR:-./data/meet-recordings}:/app/data/meet-recordings
+    healthcheck:
+      test: ["CMD", "node", "-e", "const f=require('fs');const self=String(process.pid);const ok=f.readdirSync('/proc').filter(p=>p!==self&&/^\\d+$/.test(p)).some(p=>{try{return f.readFileSync('/proc/'+p+'/cmdline','utf8').replaceAll('\\0',' ').includes('apps/backend/dist/worker.js')}catch{return false}});process.exit(ok?0:1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    stop_grace_period: 90s
+
+  atendon-panel:
+    image: ${ATENDON_IMAGE_PREFIX:-atendon}/panel:${DEPLOY_VERSION:?Configure DEPLOY_VERSION com uma tag imutável}
+    build:
+      context: .
+      dockerfile: deploy/docker/panel.Dockerfile
+      args:
+        BACKEND_URL: http://atendon-api:3110
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
+    restart: unless-stopped
+    init: true
+    security_opt: ["no-new-privileges:true"]
+    logging: *default-logging
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3200"
+      BACKEND_URL: http://atendon-api:3110
+    depends_on:
+      atendon-api:
+        condition: service_healthy
+    ports: ["${ATENDON_BIND_ADDRESS:-127.0.0.1}:${PANEL_PORT:-3200}:3200"]
+    expose: ["3200"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3200/login').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    stop_grace_period: 30s
+
+volumes:
+  atendon_postgres:
+    name: atendon_atendon_postgres
+  atendon_redis:
+    name: atendon_atendon_redis
+  atendon_evolution_postgres:
+    name: atendon_atendon_evolution_postgres
+  atendon_evolution_instances:
+    name: atendon_atendon_evolution_instances

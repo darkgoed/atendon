@@ -1,0 +1,304 @@
+"use client";
+
+import { ArrowBendUpLeft, File, Microphone, Paperclip, PaperPlaneRight, X } from "@phosphor-icons/react";
+import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { VoiceInput, VoiceMessagePlayer } from "@/components/ui/voice-input";
+import { api } from "@/lib/api";
+import { audioDisplayName } from "@/lib/audio-waveform";
+import { confirmedFailedSend, definitiveProviderRejection } from "@/lib/conversation-send";
+
+type MediaType = "audio" | "image" | "document";
+type Attachment = { file: globalThis.File; mediaType: MediaType };
+export type ReplyTarget = { id: string; content: string; sender: "contact" | "agent" | "human" };
+
+const ACCEPTED_FILES = "image/jpeg,image/png,image/webp,image/gif,audio/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.rtf";
+const MAX_BYTES: Record<MediaType, number> = {
+  audio: 16 * 1024 * 1024,
+  image: 16 * 1024 * 1024,
+  document: 32 * 1024 * 1024
+};
+
+function attachmentType(file: globalThis.File): MediaType {
+  if (file.type.startsWith("audio/")) return "audio";
+  if (file.type.startsWith("image/")) return "image";
+  return "document";
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function fileBase64(file: globalThis.File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("Falha ao ler o arquivo"));
+    reader.onload = () => resolve(String(reader.result ?? "").replace(/^data:[^,]*;base64,/i, ""));
+    reader.readAsDataURL(file);
+  });
+}
+
+export function ConversationComposer({
+  conversationId,
+  replyTo,
+  onCancelReply,
+  onSent,
+  onError
+}: {
+  conversationId: string;
+  replyTo?: ReplyTarget | null;
+  onCancelReply?: () => void;
+  onSent: () => Promise<void> | void;
+  onError: (message: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const [attachment, setAttachment] = useState<Attachment | null>(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [sending, setSending] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const discardRecordingRef = useRef(false);
+  const recordingTimerRef = useRef<number | null>(null);
+  const sendAttemptRef = useRef<{ signature: string; key: string } | null>(null);
+
+  useEffect(() => {
+    if (!attachment) {
+      setPreviewUrl("");
+      return;
+    }
+    const url = URL.createObjectURL(attachment.file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [attachment]);
+
+  useEffect(() => () => {
+    discardRecordingRef.current = true;
+    if (mediaRecorderRef.current?.state !== "inactive") mediaRecorderRef.current?.stop();
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current);
+  }, []);
+
+  function clearRecordingResources() {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    mediaRecorderRef.current = null;
+    if (recordingTimerRef.current !== null) window.clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+    setRecording(false);
+  }
+
+  function selectFile(file: globalThis.File) {
+    const mediaType = attachmentType(file);
+    const limit = MAX_BYTES[mediaType];
+    if (!file.size) return onError("O arquivo selecionado está vazio");
+    if (file.size > limit) return onError(`O limite para este anexo é ${Math.round(limit / 1024 / 1024)} MB`);
+    onError("");
+    setAttachment({ file, mediaType });
+    if (mediaType === "audio") setDraft("");
+  }
+
+  async function startRecording() {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      return onError("Este navegador não oferece gravação de áudio");
+    }
+    try {
+      onError("");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferredMimeType = ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm"]
+        .find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, preferredMimeType ? { mimeType: preferredMimeType } : undefined);
+      streamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      discardRecordingRef.current = false;
+      chunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) chunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const chunks = chunksRef.current;
+        const mimeType = recorder.mimeType || preferredMimeType || "audio/webm";
+        clearRecordingResources();
+        if (discardRecordingRef.current || !chunks.length) return;
+        const extension = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "m4a" : "webm";
+        const file = new globalThis.File(chunks, `audio-${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`, { type: mimeType });
+        selectFile(file);
+      };
+      recorder.start(250);
+      setAttachment(null);
+      setRecordingSeconds(0);
+      setRecording(true);
+      recordingTimerRef.current = window.setInterval(() => setRecordingSeconds((current) => current + 1), 1_000);
+    } catch (error) {
+      clearRecordingResources();
+      onError(error instanceof DOMException && error.name === "NotAllowedError"
+        ? "Permita o acesso ao microfone para gravar um áudio"
+        : "Não foi possível iniciar a gravação");
+    }
+  }
+
+  function stopRecording(discard = false) {
+    discardRecordingRef.current = discard;
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+  }
+
+  async function send(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const text = draft.trim();
+    if (recording || (!text && !attachment)) return;
+    const signature = `${conversationId}:${text}:${attachment?.mediaType ?? "text"}:${attachment?.file.name ?? ""}:${attachment?.file.size ?? 0}:${attachment?.file.lastModified ?? 0}:${replyTo?.id ?? ""}`;
+    const previous = sendAttemptRef.current;
+    let attempt = previous?.signature === signature ? previous : { signature, key: globalThis.crypto.randomUUID() };
+    sendAttemptRef.current = attempt;
+    setSending(true);
+    onError("");
+    try {
+      const body = attachment ? {
+        mediaType: attachment.mediaType,
+        mimeType: attachment.file.type || "application/octet-stream",
+        fileName: attachment.file.name,
+        dataBase64: await fileBase64(attachment.file),
+        ...(text ? { caption: text } : {}),
+        ...(replyTo ? { replyToMessageId: replyTo.id } : {})
+      } : { text, ...(replyTo ? { replyToMessageId: replyTo.id } : {}) };
+      const post = (key: string) => api(`/conversations/${conversationId}/messages`, {
+        method: "POST",
+        headers: { "Idempotency-Key": key },
+        body: JSON.stringify(body)
+      });
+      try {
+        await post(attempt.key);
+      } catch (error) {
+        if (!confirmedFailedSend(error)) throw error;
+        attempt = { signature, key: globalThis.crypto.randomUUID() };
+        sendAttemptRef.current = attempt;
+        await post(attempt.key);
+      }
+      sendAttemptRef.current = null;
+      setDraft("");
+      setAttachment(null);
+      onCancelReply?.();
+      await onSent();
+    } catch (error) {
+      if (definitiveProviderRejection(error)) sendAttemptRef.current = null;
+      onError(error instanceof Error ? error.message : "Falha ao enviar a mensagem");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      formRef.current?.requestSubmit();
+    }
+  }
+
+  return (
+    <form ref={formRef} onSubmit={send} className="conversation-composer shrink-0 border-t border-[var(--border)] bg-transparent p-3 sm:p-4" aria-busy={sending}>
+      <div className="conversation-composer__tabs" role="tablist" aria-label="Tipo de mensagem">
+        <span className="is-active" role="tab" aria-selected="true">Responder</span>
+        <span role="tab" aria-selected="false" aria-disabled="true">Nota interna</span>
+      </div>
+      {replyTo ? (
+        <div className="composer-reply-chip mb-3">
+          <span className="min-w-0 flex-1">
+            <strong>
+              <ArrowBendUpLeft size={11} className="mr-1 inline" aria-hidden="true" />
+              {replyTo.sender === "contact" ? "Contato" : replyTo.sender === "agent" ? "IA" : "Você"}
+            </strong>
+            <span className="line-clamp-2">{replyTo.content}</span>
+          </span>
+          <button type="button" onClick={onCancelReply} className="btn shrink-0 p-1.5" aria-label="Cancelar resposta" disabled={sending}>
+            <X size={14} />
+          </button>
+        </div>
+      ) : null}
+      {attachment ? (
+        <div className="mb-3 flex items-center gap-3 rounded-[10px] border border-[var(--border)] px-3 py-2.5">
+          {attachment.mediaType === "image" && previewUrl ? (
+            <>
+              {/* Blob previews are local, short-lived URLs and cannot be handled by the Next image optimizer. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={previewUrl} alt="Prévia do anexo" className="h-14 w-14 rounded-lg object-cover" />
+            </>
+          ) : null}
+          {attachment.mediaType === "audio" && previewUrl ? (
+            <VoiceMessagePlayer src={previewUrl} label={audioDisplayName(attachment.file.name)} />
+          ) : null}
+          {attachment.mediaType === "document" ? <File size={24} className="shrink-0 text-[var(--accent-soft)]" /> : null}
+          <div className={attachment.mediaType === "audio" ? "w-28 min-w-0 shrink-0" : "min-w-0 flex-1"}>
+            <strong className="block truncate text-xs text-[var(--text)]">
+              {attachment.mediaType === "audio" ? audioDisplayName(attachment.file.name) : attachment.file.name}
+            </strong>
+            <span className="mono mt-1 block text-[10px] uppercase tracking-[0.08em] text-[var(--faint)]">{attachment.mediaType} · {formatBytes(attachment.file.size)}</span>
+          </div>
+          <button type="button" onClick={() => setAttachment(null)} className="btn p-2 active:scale-[.98]" aria-label="Remover anexo" disabled={sending}>
+            <X size={16} />
+          </button>
+        </div>
+      ) : null}
+
+      {recording ? (
+        <VoiceInput
+          stream={streamRef.current}
+          elapsedSeconds={recordingSeconds}
+          onCancel={() => stopRecording(true)}
+          onStop={() => stopRecording()}
+        />
+      ) : null}
+
+      <div className="conversation-composer__controls grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-end gap-2">
+        <input
+          ref={fileInputRef}
+          className="sr-only"
+          type="file"
+          tabIndex={-1}
+          aria-label="Selecionar arquivo para anexar"
+          accept={ACCEPTED_FILES}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) selectFile(file);
+            event.target.value = "";
+          }}
+        />
+        <button type="button" className="btn h-11 w-11 p-0 active:scale-[.98]" onClick={() => fileInputRef.current?.click()} aria-label="Anexar arquivo" disabled={sending || recording}>
+          <Paperclip size={19} />
+        </button>
+        <button type="button" className="btn h-11 w-11 p-0 active:scale-[.98]" onClick={startRecording} aria-label="Gravar áudio" disabled={sending || recording}>
+          <Microphone size={19} />
+        </button>
+        <label className="field gap-0">
+          <span className="sr-only">Mensagem</span>
+          <textarea
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={handleComposerKeyDown}
+            className="conversation-composer__textarea input min-h-11 max-h-32 resize-y py-3 leading-5"
+            placeholder={attachment?.mediaType === "audio" ? "Áudio pronto para enviar" : attachment ? "Adicionar uma legenda" : "Responder pelo WhatsApp conectado"}
+            autoComplete="off"
+            disabled={sending || recording || attachment?.mediaType === "audio"}
+          />
+        </label>
+        <button className="conversation-composer__send btn primary h-11 active:scale-[.98]" aria-label={sending ? "Enviando mensagem" : "Enviar mensagem"} disabled={sending || recording || (!draft.trim() && !attachment)}>
+          {sending ? <span className="h-4 w-4 animate-pulse rounded-full border border-current" aria-hidden="true" /> : <PaperPlaneRight size={16} aria-hidden="true" />}
+          <span>{sending ? "Enviando…" : "Enviar"}</span>
+        </button>
+      </div>
+      <div className="conversation-composer__footer">
+        <div className="conversation-composer__quick-replies" aria-label="Respostas rápidas">
+          <span>Enviar proposta</span>
+          <span>Confirmar horário</span>
+          <span>Pedir CNPJ</span>
+        </div>
+        <p className="mono">Enter envia · Shift + Enter quebra a linha</p>
+      </div>
+    </form>
+  );
+}

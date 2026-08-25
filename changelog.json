@@ -1,0 +1,1177 @@
+{
+  "current": "1.21.0",
+  "history": [
+    {
+      "version": "1.21.0",
+      "date": "2026-08-25",
+      "changes": [
+        {
+          "text": "Melhorias internas e correções de estabilidade",
+          "tenant_slugs": []
+        }
+      ],
+      "commit": "2c766cf4cface6537100d823f95d852b76ee2c3a"
+    },
+    {
+      "version": "1.20.1",
+      "date": "2026-08-23",
+      "changes": [
+        {
+          "text": "Melhorias internas e correções de estabilidade",
+          "tenant_slugs": []
+        }
+      ],
+      "commit": "e4e86b8b74646112094761a05fbef534feb5695e"
+    },
+    {
+      "version": "1.20.0",
+      "date": "2026-08-21",
+      "changes": [
+        {
+          "text": "Melhorias internas e correções de estabilidade",
+          "tenant_slugs": []
+        }
+      ],
+      "commit": "14280a537ea70b228ff85e3cd571629122dd70d6"
+    },
+    {
+      "version": "1.19.0",
+      "date": "2026-08-21",
+      "changes": [
+        {
+          "text": "Melhorias internas e correções de estabilidade",
+          "tenant_slugs": []
+        }
+      ],
+      "commit": "104ce59dbcf915af76db88160a9193c8613d56e8"
+    },
+    {
+      "version": "1.18.3",
+      "date": "2026-08-21",
+      "changes": [
+        {
+          "text": "Melhorias internas e correções de estabilidade",
+          "tenant_slugs": []
+        }
+      ],
+      "commit": "afd64d73f656ee2944cb9e7e3781916009e0a0f5"
+    },
+    {
+      "version": "1.18.2",
+      "date": "2026-08-20",
+      "changes": [
+        {
+          "text": "Melhorias internas e correções de estabilidade",
+          "tenant_slugs": []
+        }
+      ],
+      "commit": "e1f06516216e93ccc13335609d0c61794295ebe3"
+    },
+    {
+      "version": "1.18.1",
+      "date": "2026-08-20",
+      "changes": [
+        {
+          "text": "Melhorias internas e correções de estabilidade",
+          "tenant_slugs": []
+        }
+      ],
+      "commit": "debb181e483a9a7b19cfbad21c35de93595523d6"
+    },
+    {
+      "version": "1.18.0",
+      "date": "2026-08-20",
+      "changes": [
+        {
+          "text": "Melhorias internas e correções de estabilidade",
+          "tenant_slugs": []
+        }
+      ],
+      "commit": "d804a6460fe71ea86eb758d941fdefe02b9e36da"
+    },
+    {
+      "version": "1.17.2",
+      "date": "2026-08-20",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "9726e2bee2ed68822851dc53360127ac94ceb3fe"
+    },
+    {
+      "version": "1.17.1",
+      "date": "2026-08-20",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "908dba2056b24058e948676a64df80d8d18f6dd5"
+    },
+    {
+      "version": "1.17.0",
+      "date": "2026-08-20",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "4ca75f473e229d33c74e7f794c5a3a6e96bfd495"
+    },
+    {
+      "version": "1.16.11",
+      "date": "2026-08-20",
+      "changes": [
+        "Transferência automática para humano se o cliente já mencionar o nome do proprietário no primeiro contato.",
+        "Novas diretrizes para o agente Zulu lidar com pós-venda, vagas, parcerias e concorrência.",
+        "Melhoria na gestão de conversas retomadas após longos períodos.",
+        "Suporte para resposta em diferentes idiomas e identificação de troca de interlocutor no mesmo número."
+      ],
+      "commit": "e4192bee7531a5416db46fa95c994ba5960d2051"
+    },
+    {
+      "version": "1.16.10",
+      "date": "2026-08-19",
+      "changes": [
+        "Melhoria na coleta de informações sobre o número de passageiros e idade de crianças."
+      ],
+      "commit": "232c00dfa4222e791152a9368a05823356f024e2"
+    },
+    {
+      "version": "1.16.9",
+      "date": "2026-08-19",
+      "changes": [
+        "Melhoria na lógica de agendamento para evitar instruções de ferramentas inexistentes."
+      ],
+      "commit": "ae0957444cc0635a3d5b003ce732a9c1054389eb"
+    },
+    {
+      "version": "1.16.8",
+      "date": "2026-08-19",
+      "changes": [
+        "O Zulu agora tem um tom de conversa mais natural e humano, evitando parecer um robô ou formulário."
+      ],
+      "commit": "96bdadebb6a46e9e2c5773d7a0afcae037e91adb"
+    },
+    {
+      "version": "1.16.7",
+      "date": "2026-08-19",
+      "changes": [
+        "Atualização nas diretrizes de comportamento e personalidade da IA Zulu no WhatsApp.",
+        "Novas regras para coleta de informações e condução da conversa.",
+        "Instruções detalhadas para classificação interna de leads e uso de ferramentas.",
+        "Novas diretrizes para lidar com buscas por preço e convite para grupo de ofertas.",
+        "Melhorias na estrutura de mensagens e formato de resposta da IA."
+      ],
+      "commit": "8cf2e688fa566367de8fc1aaab0299eb3b995ce9"
+    },
+    {
+      "version": "1.16.6",
+      "date": "2026-08-19",
+      "changes": [
+        "Melhoria no processamento de dados de clientes e passageiros via IA"
+      ],
+      "commit": "e7ab7ac0bb52d71da2b437ccb6e0f74421609ed4"
+    },
+    {
+      "version": "1.16.5",
+      "date": "2026-08-19",
+      "changes": [
+        "Novo link de acesso assistido ROOT na barra superior."
+      ],
+      "commit": "63f73f46b8942aa4eba3a62331f0fd5bd2b107a2"
+    },
+    {
+      "version": "1.16.4",
+      "date": "2026-08-19",
+      "changes": [
+        "Nova página de cobrança para gestão de dívidas pós-venda",
+        "Filtros de busca por loja e status de pagamento",
+        "Resumo de valores abertos e recuperados",
+        "Listagem de dívidas com busca por cliente ou telefone"
+      ],
+      "commit": "e2c8730fead4e13cc388527394da0a3033d63b92"
+    },
+    {
+      "version": "1.16.3",
+      "date": "2026-08-19",
+      "changes": [
+        "Melhoria no tratamento de erros de resposta da IA"
+      ],
+      "commit": "068ac28ab29a7ce076c325c4ab25fa21d670e058"
+    },
+    {
+      "version": "1.16.2",
+      "date": "2026-08-19",
+      "changes": [
+        "Ajustes de layout na página de pós-venda"
+      ],
+      "commit": "506999bb1331b1c6281842602844f1d58a7aaca8"
+    },
+    {
+      "version": "1.16.1",
+      "date": "2026-08-19",
+      "changes": [
+        "Melhoria na navegação e clique nos itens da agenda",
+        "Novo foco automático no campo de nome ao criar novo contato",
+        "Substituição de interessou de confirmação nativo por modais personalizados",
+        "Adição de botão 'nteressar novamente' em erros de carregamento de conversas"
+      ],
+      "commit": "57af32b797f6eee91990bf7ce96d77c88f50fbc8"
+    },
+    {
+      "version": "1.16.0",
+      "date": "2026-08-19",
+      "changes": [
+        "Implementação do módulo de pós-venda",
+        "Nova funcionalidade de carteira de pós-venda",
+        "Novo sistema de checklist de pós-venda",
+        "Integração automática de vendas fechadas na carteira de pós-venda",
+        "Novas permissões de acesso para pós-venda"
+      ],
+      "commit": "6dbae5347f69b476157ccb30bfe8f50d30a48bcc"
+    },
+    {
+      "version": "1.15.5",
+      "date": "2026-08-18",
+      "changes": [
+        "Novos widgets no dashboard: Funil de conversão, Performance por closer e Operação."
+      ],
+      "commit": "d8a8ef5737646c88ceaa35185d9a59334cab30fb"
+    },
+    {
+      "version": "1.15.4",
+      "date": "2026-08-18",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "d592403362d648e998aa3ecd98ce130f8b1d3a7c"
+    },
+    {
+      "version": "1.15.3",
+      "date": "2026-08-18",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "9351982b0b07993b07b8697572bb6709b2351686"
+    },
+    {
+      "version": "1.15.2",
+      "date": "2026-08-17",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "dc869f292cbdbc3fcec69d6dcace8c07832f6eba"
+    },
+    {
+      "version": "1.15.1",
+      "date": "2026-08-17",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "c39a612266f3514be35244e8a74fc4d047ad39b7"
+    },
+    {
+      "version": "1.15.0",
+      "date": "2026-08-17",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "f728308900fa375431fcd96fb0bd7c5eb4e73564"
+    },
+    {
+      "version": "1.14.2",
+      "date": "2026-08-15",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "0ca4b53807ac5ff923ea02071ad4f0cbcfe37fff"
+    },
+    {
+      "version": "1.14.1",
+      "date": "2026-08-14",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "b551711a90b93fb4734027a6bb5ff13690015b64"
+    },
+    {
+      "version": "1.14.0",
+      "date": "2026-08-14",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "1dcff790ffafbecf28f45ab13a836c4535d7f521"
+    },
+    {
+      "version": "1.13.0",
+      "date": "2026-08-14",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "66febb94cd4c67debc61fda2bfbae01df93e362d"
+    },
+    {
+      "version": "1.12.0",
+      "date": "2026-08-13",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "cd3a225e9fe56bfcc2514b2658ce76dde297ae95"
+    },
+    {
+      "version": "1.11.19",
+      "date": "2026-08-13",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "2197e18a321419b9e0364bf0c8826f0906b031dc"
+    },
+    {
+      "version": "1.11.18",
+      "date": "2026-08-11",
+      "changes": [
+        "Ao atingir o limite de tentativas de truncamento, o OpenRouter agora gera uma resposta curta de síntese final em vez de lançar erro, garantindo que a conversa continue sem interrupções",
+        "As ferramentas de verificação de horários de reunião passaram a incluir os campos \"vagas\" e \"capacidade\", indicando quantos closers ainda estão livres em cada horário",
+        "A descrição da ferramenta \"verificar_horarios_reuniao\" foi atualizada para explicar o novo campo de vagas, ajudando o assistente a informar o usuário sobre disponibilidade de múltiplas reuniões",
+        "Mensagens de erro de truncamento agora são tratadas automaticamente pelo mecanismo de recuperação de IA, evitando falhas inesperadas",
+        "A API de busca de disponibilidade (AvailabilitySearch) agora devolve informações de vagas e capacidade nos horários retornados, permitindo que o usuário veja quantas vagas ainda restam",
+        "Instruções adicionais sobre capacidade de reunião (MEETING_CAPACITY_INSTRUCTION) são incluídas nas respostas das ferramentas, orientando o assistente a usar corretamente os novos campos"
+      ],
+      "commit": "3f8feb266bba00d0228b10b529d2599a2e70a266"
+    },
+    {
+      "version": "1.11.17",
+      "date": "2026-08-11",
+      "changes": [
+        "O sistema agora ignora períodos (manhã/tarde) sugeridos pela IA quando o contato não os escolheu, garantindo que todas as vagas disponíveis sejam consideradas",
+        "A ferramenta verificar_horarios_reuniao aceita o parâmetro periodo apenas quando o usuário realmente pediu manhã ou tarde, evitando filtragens indevidas",
+        "O processador de mensagens passa a usar a preferência de período determinada pelo classificador, tornando a escolha de horário mais precisa",
+        "A busca de disponibilidade foi ajustada para não excluir vagas de hoje por causa de períodos inventados pela IA",
+        "Novos testes garantem que a funcionalidade de seleção de horário continue correta e confiável"
+      ],
+      "commit": "43b577bf48044e0bd60ef054900127fa5da2284a"
+    },
+    {
+      "version": "1.11.16",
+      "date": "2026-08-11",
+      "changes": [
+        "Solicitações explícitas do usuário para falar com um atendente agora são processadas silenciosamente pelo sistema, sem exibir mensagens de transferência ou marcar handoff.",
+        "O assistente evita interromper a conversa ou usar o marcador [[HANDOFF]] em situações de dúvida, frustração, mudança de assunto ou informações inesperadas, mantendo o diálogo fluindo naturalmente.",
+        "Novos casos de teste (identidade_transparency e continue_conversation) foram adicionados, melhorando a resposta a perguntas sobre a identidade do assistente e a continuidade da conversa em diversos contextos.",
+        "A mensagem de erro ao tentar usar a ferramenta de transferência humana foi reforçada, impedindo transferências não solicitadas pelo usuário.",
+        "Quando não há parceiros cadastrados, o assistente agora informa a ausência e continua a conversa sem prometer links ou iniciar handoff.",
+        "Atualizações nas instruções internas garantem que o assistente não mencione ferramentas, limites ou processos internos ao responder ao usuário."
+      ],
+      "commit": "228a274b39aa76356365f352bd723886d5115c43"
+    },
+    {
+      "version": "1.11.15",
+      "date": "2026-08-10",
+      "changes": [
+        "Adicionado um preview efêmero dos turnos de IA durante a geração de respostas, exibindo mensagens como \"Lendo a conversa…\", \"Analisando o áudio…\" e \"Prévia · ainda não enviada\" para melhorar a transparência ao usuário.",
+        "Incluído novo recurso de visibilidade de turnos de IA controlado por um feature flag \"ai_turn_visibility_v1\", permitindo ativar ou desativar a exibição do andamento operacional da IA.",
+        "Atualizadas as APIs de mensagens para incluir dados de \"ai_turn\", possibilitando que a interface do painel mostre o progresso da IA em tempo real.",
+        "Melhoradas as mensagens de fallback de agendamento, oferecendo respostas mais claras quando o horário solicitado não está mais disponível.",
+        "Ajustada a lógica de verificação de disponibilidade de horários, agora revalida ofertas de reunião de forma mais robusta e utiliza fontes de capacidade atualizadas.",
+        "Novos componentes de UI no painel (bolha de IA) para exibir o preview e o status da resposta da IA, proporcionando uma experiência mais informativa ao usuário."
+      ],
+      "commit": "0500ebadce36732363f9c12167ee058dfa4414c0"
+    },
+    {
+      "version": "1.11.14",
+      "date": "2026-08-10",
+      "changes": [
+        "O assistente agora oferece os horários disponíveis mais próximos do dia atual, sem limitar a faixa de 12h a 18h",
+        "A lógica de oferta proativa foi alterada para priorizar qualquer horário futuro disponível hoje, seguindo a ordem cronológica completa",
+        "A prioridade absoluta da data e hora solicitadas pelo contato foi mantida, mesmo que estejam fora da faixa anterior",
+        "Removida a restrição fixa de 12h‑18h ao escolher opções de agendamento, favorecendo sempre o horário mais próximo",
+        "Testes foram atualizados para refletir a nova regra de priorização de horários"
+      ],
+      "commit": "7bb4a64cc0f96f49a89fed9c514f2234d912f1f0"
+    },
+    {
+      "version": "1.11.13",
+      "date": "2026-08-10",
+      "changes": [
+        "Respostas mais naturais a saudações adicionais, sem reiniciar a conversa nem repetir perguntas anteriores",
+        "Pergunta o nome do usuário de forma simples e humana (\"como posso te chamar?\") e não insiste se não houver resposta",
+        "Prioriza a oferta de horários de reunião entre 12h e 18h no mesmo dia, apresentando a opção mais próxima antes de sugerir datas futuras",
+        "Respeita a data e horário exatos solicitados pelo contato, dando prioridade absoluta a eles",
+        "Linguagem do assistente mais próxima de uma conversa real, eliminando frases de processo/central e usando perguntas cotidianas",
+        "Novos testes foram adicionados para garantir que as mudanças de saudação, coleta de nome e oferta de horários funcionem corretamente"
+      ],
+      "commit": "7be2334cfb4a52c53d07c6a076cfcc6427e8d56a"
+    },
+    {
+      "version": "1.11.12",
+      "date": "2026-08-10",
+      "changes": [
+        "Ao agendar ou reagendar reuniões, o sistema agora verifica se há um closer (atendente) disponível para o horário solicitado, retornando erro claro quando nenhum está livre",
+        "A disponibilidade de horários considera a agenda do lead ativo, evitando que o próprio compromisso do lead bloqueie o slot desejado",
+        "A busca de disponibilidade passa a usar apenas atendentes com status \"available\", proporcionando resultados mais realistas",
+        "Ao criar reuniões qualificadas, a exigência de um atendente disponível foi adicionada, garantindo que a reunião só seja marcada se houver recurso",
+        "Novas mensagens de erro foram incluídas, como \"Não há closer ativo disponível para este horário\", melhorando a comunicação ao usuário"
+      ],
+      "commit": "4f8c99f7ffcd8d3951c7e5795035cb8118560d86"
+    },
+    {
+      "version": "1.11.11",
+      "date": "2026-08-10",
+      "changes": [
+        "O assistente agora reconhece quando o cliente indica que um horário específico não está mais disponível e não o oferece novamente",
+        "Quando a geração de disponibilidade de reunião falha, o bot fornece um fallback amigável com até três horários formatados",
+        "A classificação de turnos foi aprimorada para diferenciar conversas sociais de perguntas comerciais, permitindo respostas mais adequadas antes de sugerir agendamentos",
+        "O conjunto de ferramentas de agendamento proativo foi simplificado, focando apenas em agendar visitas e reuniões, sem reagendamentos ou cancelamentos automáticos",
+        "As expressões regulares de rejeição de horário foram ampliadas, melhorando a detecção de frases como \"não está mais disponível\""
+      ],
+      "commit": "838a95b4928bac8b784b7d9faaa204ebe9b2142c"
+    },
+    {
+      "version": "1.11.10",
+      "date": "2026-08-08",
+      "changes": [
+        "Adicionado cabeçalho Strict-Transport-Security (HSTS) para forçar uso de HTTPS por 1 ano em todos os subdomínios.",
+        "Atualizada a política Content-Security-Policy para permitir carregamento de fontes do Google (fonts.googleapis.com e fonts.gstatic.com).",
+        "Ajustada a política CSP para incluir URLs HTTPS em style-src, melhorando compatibilidade com recursos externos.",
+        "Mantidas as demais proteções de segurança (X-Content-Type-Options, X-Frame-Options, Referrer-Policy) garantindo a mesma proteção anterior."
+      ],
+      "commit": "dbea5afa8b543f0c51f8c306a6dd122f892d17c5"
+    },
+    {
+      "version": "1.11.9",
+      "date": "2026-08-08",
+      "changes": [
+        "Implementado um kill‑switch global para desativar avaliações de IA via configuração, fazendo com que avaliações sejam ignoradas e não marcadas como concluídas quando desativadas",
+        "O processador de eventos de avaliação agora retorna \"disabled\" quando a avaliação está desativada, preservando eventos pendentes",
+        "Logs de reconciliação agora utilizam níveis dinâmicos (debug, info ou warn) de acordo com erros ou atividade, reduzindo ruído e melhorando a observabilidade",
+        "A reconciliação de notificações de agendamento passou a registrar apenas logs informativos quando há atividade, usando debug quando não há"
+      ],
+      "commit": "adde1cc4269887c6fb13b6c594c137f41919874b"
+    },
+    {
+      "version": "1.11.8",
+      "date": "2026-08-08",
+      "changes": [
+        "Agora o validador de texto final pode retornar um objeto indicando correção “cosmética”, permitindo que respostas que apenas não seguem a formatação sejam enviadas ao usuário em vez de gerar pausa técnica",
+        "Em caso de deadlock por regras de apresentação, o sistema aceita a resposta candidata após as tentativas, reduzindo interrupções na conversa",
+        "Melhorias nos regex de convite de reunião: aceita sinônimos como “papo”, “bate‑papo”, “call”, etc., e reconhece variações de “rápida” permitindo mais flexibilidade na validação de duração de 15 minutos",
+        "Atualizações internas propagam o novo tipo de correção para todos os módulos que validam texto final, garantindo comportamento consistente",
+        "Testes ampliados confirmam que a nova lógica de correção cosmética funciona corretamente, reforçando a estabilidade da experiência do usuário"
+      ],
+      "commit": "7b1bcd21de20a430ffae88cdcf466fb17e0fcf7c"
+    },
+    {
+      "version": "1.11.7",
+      "date": "2026-08-07",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "f00861de4a2ae9a55ab6dbc1623da3ce0a864e77"
+    },
+    {
+      "version": "1.11.6",
+      "date": "2026-08-07",
+      "changes": [
+        "Agora cada horário retornado pela ferramenta de disponibilidade inclui a hora local (campo \"hora\"), garantindo que agendamentos respeitem o fuso horário correto.",
+        "A IA reconhece agradecimentos curtos como \"ok vlw\" após confirmação de reunião e permanece silenciosa, evitando reabrir opções de horário desnecessariamente.",
+        "Ferramentas de consulta de agenda e disponibilidade são ocultadas quando já existe um agendamento ativo e o usuário não solicita mudança, reduzindo consultas redundantes.",
+        "Melhoria no reconhecimento de mensagens de agradecimento combinadas, ampliando a compreensão de variações como \"ok vlw\", \"beleza obrigado\" etc.",
+        "No prompt Newave, a coleta de ticket médio passa a ser opcional e nunca obrigatória, limitando perguntas de qualificação a no máximo quatro durante a conversa.",
+        "Função `localHourMinute` passou a ser exportada, permitindo seu uso em outros módulos para exibir horários locais corretamente."
+      ],
+      "commit": "bdda9ac0c4c6b3703012108f4a388b9ff1e9fb1c"
+    },
+    {
+      "version": "1.11.5",
+      "date": "2026-08-07",
+      "changes": [
+        "O assistente agora reconhece quando já iniciou o agendamento e não repete a oferta de horário, evitando mensagens redundantes e falhas técnicas.",
+        "Adicionado registro detalhado quando a política de IA rejeita uma resposta, facilitando a identificação da regra que causou o bloqueio."
+      ],
+      "commit": "509b74d2ad3ae7c5693fc6b24110cfefefa16829"
+    },
+    {
+      "version": "1.11.4",
+      "date": "2026-08-07",
+      "changes": [
+        "Falhas de chamadas de ferramentas agora são removidas do cache, permitindo nova tentativa ao invés de bloquear o fluxo",
+        "Cada geração de resposta recebe um ID de turno exclusivo e determinístico, evitando colisões de ordinais no journal de ferramentas",
+        "Regenerações de respostas mantêm idempotência, garantindo que reprocessamentos não repitam ações já concluídas",
+        "Maior estabilidade nas interações de agendamento, reduzindo transferências indesejadas devido a erros de ferramenta"
+      ],
+      "commit": "26cdf75d3f097bfd5f84a91a0f3c9fd6aee2607b"
+    },
+    {
+      "version": "1.11.3",
+      "date": "2026-08-07",
+      "changes": [
+        "O assistente agora entende e respeita a preferência de período (manhã ou tarde) ao buscar disponibilidade, oferecendo apenas horários do período solicitado.",
+        "Quando não há vagas no período pedido, a IA informa claramente que só há opções de outro período, sem prometer nova consulta.",
+        "A IA deixa de dizer que vai consultar a agenda ou que enviará opções depois; ela oferece imediatamente os horários reais retornados.",
+        "Mensagens de disponibilidade agora indicam se o período solicitado foi atendido e mostram a data real disponível.",
+        "A ferramenta de verificação de horários foi atualizada com parâmetro opcional \"periodo\" e descrição aprimorada, melhorando a precisão das respostas."
+      ],
+      "commit": "7d4a0a72567c68fb8ad2b1aa825961b83e97f5e0"
+    },
+    {
+      "version": "1.11.2",
+      "date": "2026-08-07",
+      "changes": [
+        "O assistente agora reconhece quando o usuário pede novamente os horários após já ter indicado o período (manhã ou tarde) e interpreta isso como continuação do mesmo pedido",
+        "Ao receber esse pedido, a IA reconsulta a agenda no mesmo turno e devolve opções concretas de horário, evitando respostas genéricas como “vou consultar a agenda”",
+        "As mensagens do assistente deixam de prometer a consulta de horários antes de efetivamente realizá‑la, proporcionando respostas mais precisas e confiáveis",
+        "A documentação foi atualizada para orientar o tratamento desses pedidos de horários pendentes, reforçando que a IA deve consultar a agenda imediatamente e nunca afirmar que enviará opções sem ter os dados reais",
+        "Os testes foram ampliados para validar o novo comportamento de rechecagem de disponibilidade e a geração correta do contexto interno da IA"
+      ],
+      "commit": "46605af2863f6c1d5b02ee22c3fe28c7092b06a3"
+    },
+    {
+      "version": "1.11.1",
+      "date": "2026-08-07",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "dc8880c31730fc251678c4ff34a44435c09764d6"
+    },
+    {
+      "version": "1.11.0",
+      "date": "2026-08-06",
+      "changes": [
+        "Aumentado o limite de chamadas ao provedor de IA de 8 para 14 por turno, permitindo respostas mais elaboradas e uso de ferramentas adicionais antes de encerrar a conversa.",
+        "Ajustado o número máximo de palavras por bolha de mensagem do tenant Newave de 30 para 48, reduzindo quebras de frase e tornando as respostas mais fluidas.",
+        "Introduzidos novos cenários de teste (gold suite) que melhoram a qualificação de leads sem exigir chamadas e continuam o acompanhamento via WhatsApp, resultando em respostas mais adequadas a esses fluxos.",
+        "Adicionada validação de configuração para garantir que o número de requisições reservadas para a resposta final seja menor que o limite total, evitando erros de configuração.",
+        "Aprimorada a lógica de controle de orçamento de tokens e custos, garantindo que o sistema não exceda os limites definidos e mantenha a estabilidade das respostas."
+      ],
+      "commit": "35be8cfc19c8e83d4387a87a80caf8a0663d39b9"
+    },
+    {
+      "version": "1.10.0",
+      "date": "2026-08-06",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "7a900afe0db8e53e83087839eb97df6c3e5dca2f"
+    },
+    {
+      "version": "1.9.0",
+      "date": "2026-08-06",
+      "changes": [
+        "Reações em mensagens: agora é possível reagir a mensagens com emojis diretamente na interface.",
+        "Respostas citando mensagens: ao enviar uma mensagem, pode citar outra conversa anterior como resposta.",
+        "Edição e exclusão de mensagens: pode editar suas próprias mensagens ou excluí-las (inclusive para todos os participantes).",
+        "Contagem de mensagens não lidas: o painel agora exibe indicadores de conversas não lidas e permite marcar conversas como lidas.",
+        "Menu de ações em mensagens: novo menu com opções de reagir, editar, excluir e responder mensagens.",
+        "Permissão para excluir leads: adicionada nova permissão para excluir leads do pipeline."
+      ],
+      "commit": "e63dceb67d40059b301fb9f409e6264db5c7800b"
+    },
+    {
+      "version": "1.8.9",
+      "date": "2026-08-06",
+      "changes": [
+        "Ao reagendar ou reservar um horário, o sistema agora ignora os próprios compromissos do lead, evitando conflitos falsos de disponibilidade.",
+        "A verificação de horários disponíveis passou a excluir automaticamente as consultas já vinculadas ao lead atual.",
+        "Melhoria na experiência de reagendamento: o horário existente do lead deixa de bloquear a seleção de novos horários."
+      ],
+      "commit": "c4ec7c8ba8f0d2b7febcc7f0d0d7de359092fafe"
+    },
+    {
+      "version": "1.8.8",
+      "date": "2026-08-06",
+      "changes": [
+        "Removido o limite de tokens de entrada por turno — o sistema agora permite entradas maiores sem bloquear por estouro de tokens de input",
+        "Mensagens de erro de orçamento atualizadas para refletir apenas os limites de tokens de saída e custo",
+        "Variável de ambiente AI_MAX_INPUT_TOKENS_PER_TURN removida da configuração e do arquivo .env.example",
+        "Teste adicionado para confirmar que chamadas com grande volume de tokens de entrada (ex.: 50.000) não são mais bloqueadas"
+      ],
+      "commit": "47dbebc890541a8497f4fc68f896b8cd90e0d70a"
+    },
+    {
+      "version": "1.8.7",
+      "date": "2026-08-06",
+      "changes": [
+        "Ao verificar disponibilidade de horário para agendamento direto, o sistema agora agenda ou remarca automaticamente a reunião sem precisar de uma etapa extra do usuário.",
+        "Respostas de recuperação após erros de IA agora são geradas de forma dinâmica pelo modelo, em vez de usar respostas genéricas e pré-definidas.",
+        "Confirmações de compromissos já existentes no banco agora são geradas pela IA de forma mais natural, mantendo os fatos obrigatórios do agendamento.",
+        "O modelo de IA correto da conversa passa a ser usado também nas confirmações de agendamento, em vez de um modelo determinístico separado.",
+        "A intenção de agendamento direto é inferida automaticamente a partir de turnos de confirmação de horário, melhorando o fluxo de agendamento."
+      ],
+      "commit": "54c01b9e0941afa852f7f9744fdc66cf101e0784"
+    },
+    {
+      "version": "1.8.6",
+      "date": "2026-08-06",
+      "changes": [
+        "Quando a IA falha com erros como orçamento de turno esgotado, o sistema agora responde automaticamente com uma mensagem contextual em vez de transferir para um atendente humano.",
+        "Mensagens de recuperação agora usam o primeiro nome do contato, quando disponível, para uma saudação mais pessoal.",
+        "Leads registrados recebem uma resposta de fallback que reconhece o contexto e oferece continuar o atendimento de forma proativa.",
+        "Para leads comerciais da Newave registrados, o sistema exibe uma mensagem específica sobre redução de vendas perdidas por falta de limite no cartão.",
+        "O atendimento não é interrompido com handoff técnico em falhas determinísticas de IA, mantendo a conversa fluindo para o cliente.",
+        "A recuperação de falhas de IA agora entrega respostas gravadas como respostas do agente, mantendo a consistência do histórico da conversa."
+      ],
+      "commit": "bdcfb1fec958d278aad7b589e450e3d35963dc42"
+    },
+    {
+      "version": "1.8.5",
+      "date": "2026-08-06",
+      "changes": [
+        "Quando o usuário confirma um horário já sugerido pelo assistente, o sistema responde automaticamente com a confirmação do agendamento, sem precisar consultar a IA.",
+        "A confirmação inclui o horário local do compromisso e o link do Google Meet, quando disponível.",
+        "O atendimento fica mais rápido porque pula a chamada ao modelo de IA para confirmações óbvias.",
+        "O histórico da conversa registra a resposta como gerada pelo sistema de estado do agendamento, mantendo a transparência.",
+        "Mensagens curtas como \"pode ser\" agora são reconhecidas como confirmação válida do horário sugerido anteriormente."
+      ],
+      "commit": "d4d9578171a91fc80c95c120f4891e32720e3224"
+    },
+    {
+      "version": "1.8.4",
+      "date": "2026-08-06",
+      "changes": [
+        "Journal de chamadas de ferramentas agora é registrado por turno de IA, evitando conflitos entre turnos diferentes da mesma conversa",
+        "Ferramentas de agendamento e qualificação passam a identificar o turno de IA, melhorando a idempotência das operações",
+        "Melhoria na rastreabilidade e isolamento de efeitos de ferramentas por turno de conversa com IA"
+      ],
+      "commit": "90437dff69380fcca6731beb1ff549f529908018"
+    },
+    {
+      "version": "1.8.3",
+      "date": "2026-08-06",
+      "changes": [
+        "Quando a IA falha após uma ação transacional confirmada (como agendamento), o sistema agora entrega o resultado ao usuário em vez de deixar a conversa sem resposta.",
+        "O usuário recebe uma mensagem determinística com os detalhes da ação (ex: link da reunião) mesmo quando a IA esgota as tentativas ou encontra erro irreversível.",
+        "Melhora a confiabilidade do atendimento em cenários de erro crítico da IA após operações como agendamentos, garantindo que o cliente receba a confirmação do que foi feito."
+      ],
+      "commit": "fbfc9823fa404cba0edb8eee966c8be716cc7993"
+    },
+    {
+      "version": "1.8.2",
+      "date": "2026-08-06",
+      "changes": [
+        "O comando de recuperação de handoffs técnicos agora aceita um ou dois --external-message-id (antes exigia exatamente dois).",
+        "O assistente agora reconhece mais saudações casuais como 'oi td bem', 'olá tudo bem' e 'oie tudo certo', evitando interferir no agendamento nesses contextos.",
+        "O assistente passa a diferenciar corretamente saudações casuais de tentativas reais de agendamento, como 'Oi, quero marcar amanhã'."
+      ],
+      "commit": "c331a677eea7397d9c9323d98bd768c279575fd2"
+    },
+    {
+      "version": "1.8.1",
+      "date": "2026-08-06",
+      "changes": [
+        "A IA agora tenta mais uma vez antes de desistir em situações de restrição de política, melhorando a qualidade das respostas finais.",
+        "Agendamentos diretos agora usam o horário exato retornado pela disponibilidade, evitando erros de horário no agendamento.",
+        "Foi adicionada a possibilidade de recuperar atendimentos travados por falha técnica da IA no workspace Newave.",
+        "O campo de erro de handoff técnico é limpo automaticamente ao reativar a IA ou pausar manualmente, mantendo o estado do atendimento consistente.",
+        "O motivo de handoff 'falha técnica' agora é suportado oficialmente no sistema, permitindo melhor rastreamento de problemas."
+      ],
+      "commit": "4f7952acf49fc9db9cc53a522f66ec876322adff"
+    },
+    {
+      "version": "1.8.0",
+      "date": "2026-08-05",
+      "changes": [
+        "Novos limites de orçamento por turno de IA (requisições, tokens de entrada/saída, custo em USD) para evitar custos inesperados.",
+        "Notificações de agendamento agora podem ser editadas e reenviadas automaticamente, com controle de versões e tentativas de correção.",
+        "Melhoria na observabilidade das chamadas de IA, com rastreamento detalhado de uso por mensagem (tokens de raciocínio, cache, ferramentas usadas).",
+        "Acesso à página de alertas restrito a gestores com acesso total ao workspace.",
+        "As notificações de grupo de agendamento são atualizadas automaticamente quando uma conversa é reatribuída.",
+        "Melhorias no painel de agendamento e na integração com WhatsApp (gerenciamento de sessões e cliente Evolution)."
+      ],
+      "commit": "c4e27e995ea05c4b46f9d30310ed6e6da2684dce"
+    },
+    {
+      "version": "1.7.5",
+      "date": "2026-08-05",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "2888b18be33d6b8381567c5c9d6b547902ea7001"
+    },
+    {
+      "version": "1.7.4",
+      "date": "2026-08-05",
+      "changes": [
+        "Novo botão/ação 'Responder com IA' em conversas, permitindo solicitar uma resposta automática para a última mensagem do contato que ainda não foi respondida",
+        "Ao solicitar resposta manual da IA, a conversa é reativada e a mensagem do contato é reenfileirada para processamento imediato",
+        "Sistema evita duplicação de requisições de resposta da IA quando a mensagem já está em processamento",
+        "Nova integração com a fila de recuperação para reprocessar mensagens pendentes após reinício ou pausa do agente de IA"
+      ],
+      "commit": "69f880a5c5190ed53d22e6f59629d53bea9eb363"
+    },
+    {
+      "version": "1.7.3",
+      "date": "2026-08-05",
+      "changes": [
+        "Agendamentos manuais agora permitem sobreposição de horários entre leads, mesmo quando a capacidade está no limite",
+        "Nova funcionalidade de entrada por voz no compositor de conversas, com visualização de waveform de áudio em tempo real",
+        "Gestores podem agora consultar a disponibilidade filtrando por um closer específico, vendo os horários vagos individualmente",
+        "Interface do painel atualizada com novos componentes de agendamento e composição de conversas",
+        "Textos da agenda atualizados para refletir que horários manuais podem ser compartilhados por mais de um lead"
+      ],
+      "commit": "02c591384238f987cecfd5930394f7056e625d36"
+    },
+    {
+      "version": "1.7.2",
+      "date": "2026-08-04",
+      "changes": [
+        "Novo seletor de 'Closer responsável' na criação de agendamentos, com opções filtradas por disponibilidade e conflitos no horário escolhido",
+        "Exibição de closer sugerido e indicações de indisponibilidade ou conflito diretamente no dropdown de atribuição",
+        "Botão de criação de agendamento desabilitado enquanto os closers carregam ou quando não há seleção obrigatória",
+        "Transferência de conversas agora usa um menu popover ao invés do antigo dropdown com details/summary",
+        "Melhorias no seletor de tags de leads e nos controles de visualizações salvas",
+        "Feedback visual e de carregamento aprimorado nas ações de agendamento e transferência"
+      ],
+      "commit": "8d2855da12e5f9a185466a5f48270262c6fb12b7"
+    },
+    {
+      "version": "1.7.1",
+      "date": "2026-08-04",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "d3f8f5d15779025e6bed93e9236d13bcc938e737"
+    },
+    {
+      "version": "1.7.0",
+      "date": "2026-08-04",
+      "changes": [
+        "Novo suporte a notificações push (Web Push) no painel, com configuração de chaves VAPID, service worker para PWA e telas de configuração de push.",
+        "Widgets de dashboard com catálogo de componentes e layout personalizável por workspace.",
+        "Gestão de organizações com novas rotas, permissões RBAC e acesso root ao layout do dashboard.",
+        "Script de remediação para corrigir telefones legados fora do padrão E.164.",
+        "Melhorias na interface do painel: tag picker no pipeline, ações em lote para leads, configurações de tags e suporte a PWA.",
+        "Novo script para recriar banco de testes e correções no agendamento e WhatsApp."
+      ],
+      "commit": "f7a29ef05adf0d26d7e3cfad39196c88791706a4"
+    },
+    {
+      "version": "1.6.0",
+      "date": "2026-08-04",
+      "changes": [
+        "Novas preferências de notificação no painel: o usuário pode ativar/desativar notificações sonoras e visuais pela página de configurações.",
+        "Possibilidade de silenciar (mutar) conversas individuais, interrompendo notificações de mensagens específicas sem sair da conversa.",
+        "Normalização de números de telefone para o formato E.164 em todas as tabelas do sistema, garantindo consistência e validação de telefones brasileiros e internacionais.",
+        "Melhorias na presença em tempo real do painel, com acompanhamento mais preciso de usuários online e suas atividades.",
+        "Novas rotas de API para gerenciamento de preferências de notificação e muting de conversas, integradas ao fluxo existente do painel.",
+        "Correções e melhorias no agendamento e no processamento de mensagens, incluindo validação reforçada de telefones e tratamento de erros mais robusto."
+      ],
+      "commit": "dc291034711189aac3c6aac954b04289998914ee"
+    },
+    {
+      "version": "1.5.1",
+      "date": "2026-08-03",
+      "changes": [
+        "Quando a IA afirmava que uma ação foi concluída sem confirmação real (cadastro, agendamento, cancelamento etc.), agora ela reescreve a resposta de forma natural, sem fazer alegações não verificadas.",
+        "Receba notificações em formato de toast no topo da tela quando chegarem novas mensagens em conversas que você não está acompanhando no momento, com som de alerta.",
+        "Clique no toast para abrir diretamente a conversa com o contato que enviou a mensagem.",
+        "O centro de notificações agora fica oculto na página de conversas, onde os toasts assumem a função de alerta em tempo real."
+      ],
+      "commit": "ad60a139d7077ab7a49709de7d8f9decf14a6c08"
+    },
+    {
+      "version": "1.5.0",
+      "date": "2026-08-03",
+      "changes": [
+        "Adicionado filtro 'Agendadas' na lista de conversas para mostrar leads com compromissos confirmados ou reagendados.",
+        "Implementado botão 'Marcar todas como lidas' no centro de alertas do painel.",
+        "Adicionado suporte à interpretação de figurinhas do WhatsApp pela IA, com orientações emocionais e de contexto.",
+        "Implementadas notificações em tempo real para mudanças em agendamentos (criação, atualização, atribuição).",
+        "Adicionado centro de notificações no painel com alertas do sistema e melhorias na página de agenda e leads."
+      ],
+      "commit": "c54c1b4abc086b4b9f0bc4062412119419f14452"
+    },
+    {
+      "version": "1.4.5",
+      "date": "2026-08-03",
+      "changes": [
+        "Quando a conexão com a Evolution API cai durante o envio de mensagens, o sistema reinicia automaticamente a instância do WhatsApp e tenta novamente uma vez",
+        "O retry automático só é acionado para erros de conexão fechada; outros erros (como destino indisponível) são mantidos sem tentativa extra",
+        "Envio de texto, mídia e sticker agora possuem recuperação transparente de conexão sem necessidade de intervenção manual"
+      ],
+      "commit": "ab4f4bc3161c315fa11fa3373e4dafa7b75d816b"
+    },
+    {
+      "version": "1.4.4",
+      "date": "2026-08-03",
+      "changes": [
+        "Mensagens de erro da Evolution API agora incluem o motivo real da recusa (ex: 'destino temporariamente indisponível') em vez de uma mensagem genérica.",
+        "Quando o envio de uma mensagem falha por conflito (409), o sistema tenta automaticamente novamente com uma nova chave de idempotência.",
+        "Rejeições definitivas do provedor (Erro 502) agora limpam o estado de envio imediatamente, liberando o campo de digitação.",
+        "Erros internos do servidor (5xx) agora são corretamente registrados no log do backend."
+      ],
+      "commit": "0b57fe3750552233c9d2e1c60d070d723425113b"
+    },
+    {
+      "version": "1.4.3",
+      "date": "2026-08-01",
+      "changes": [
+        "Notificações de agendamento agora incluem automaticamente emoji de reação (✅ concluído, ❌ cancelado, ⚠️ no-show) baseado no status da consulta",
+        "Status de reação é rastreado junto com a notificação, permitindo saber se a reação foi enviada ou falhou",
+        "Falhas na notificação agora atualizam corretamente o status e o erro da reação associada, evitando inconsistências",
+        "Correção de condição de corrida: criação de notificação após conclusão do agendamento agora captura corretamente o emoji e status da reação"
+      ],
+      "commit": "1ce63a533317fc8df582aaab3bf6d8f08d7f9dbf"
+    },
+    {
+      "version": "1.4.2",
+      "date": "2026-08-01",
+      "changes": [
+        "Nova funcionalidade: abrir conversa do WhatsApp diretamente de um agendamento no painel",
+        "Reações automáticas com emoji (✅, ❌, ⚠️) são enviadas no WhatsApp ao alterar o status do agendamento",
+        "Melhoria na busca de conversas ao listar agendamentos, agora retorna a conversa mais recente",
+        "Comentários integrados à página de agenda do painel",
+        "Correção de restrições de status que impediam a abertura de conversa para agendamentos fora de estados específicos"
+      ],
+      "commit": "698960c6ec19095d99f6ddf886a4f0d1b90699e2"
+    },
+    {
+      "version": "1.4.1",
+      "date": "2026-07-30",
+      "changes": [
+        "Permite criar leads sem número de telefone ou com telefone inválido, sem bloquear a migração",
+        "Múltiplos leads sem telefone podem existir no mesmo tenant sem violar regras de unicidade",
+        "A regra de unicidade de telefone por tenant continua sendo aplicada normalmente para números válidos",
+        "Índice único agora ignora telefones vazios, evitando conflitos indevidos com dados legados sem dígitos"
+      ],
+      "commit": "9de4e1e6c376387cc585394cf592b79382a984a0"
+    },
+    {
+      "version": "1.4.0",
+      "date": "2026-07-30",
+      "changes": [
+        "Limite de requisições HTTP distribuído por Redis em rotas críticas (login, upload, exportação, webhooks), prevenindo abuso e ataques de força bruta.",
+        "Adição de headers de segurança (CSP, X-Frame-Options, X-Content-Type, Referrer-Policy, Permissions-Policy) e proteção contra envenenamento de protótipo/construtor.",
+        "Validação mais rigorosa em formulários: limite de 254 caracteres para e-mail, 200 para senhas e nomes, com e-mails automaticamente trimados.",
+        "Proteção contra injeção de fórmulas em exportações CSV: células que começam com `=`, `+`, `-`, `@` ou tabulação são prefixadas com apóstrofo.",
+        "Reutilização de uma única instância gerenciadora de sessões WhatsApp, eliminando a criação redundante a cada request e melhorando a performance."
+      ],
+      "commit": "4e37ac619df4e1bb4d68fada706cf88605481326"
+    },
+    {
+      "version": "1.3.2",
+      "date": "2026-07-29",
+      "changes": [
+        "A listagem de conversas agora exibe o primeiro nome do operador designado em cada conversa.",
+        "A criação de agendamentos foi simplificada: o horário de término agora é calculado automaticamente como 60 minutos após o início, removendo o campo manual de término.",
+        "O seletor de unidade da agenda foi removido da barra de visualização.",
+        "No formulário de novo contato, o campo de telefone agora aplica formatação automática no padrão brasileiro (DDD + número) e aceita preenchimento mais rápido com teclado numérico.",
+        "Os slots da agenda que estão ocupados mas sem disponibilidade de vagas agora exibem uma visualização mais compacta com indicação visual da disponibilidade.",
+        "O formulário de agendamento foi atualizado para exibir a duração padrão de 60 minutos no texto de ajuda e melhorar a disposição dos campos."
+      ],
+      "commit": "1445aee30d98c6f3bf50dd60e2a9837140643832"
+    },
+    {
+      "version": "1.3.1",
+      "date": "2026-07-29",
+      "changes": [
+        "Login agora exige alteração de senha para usuários com senha temporária, direcionando-os para a tela de troca de senha",
+        "Nova tela e fluxo de alteração de senha com confirmação, regras de comprimento mínimo (12 caracteres) e validação de não reutilização da senha temporária",
+        "Administradores e proprietários podem agora editar o perfil de membros (nome, e-mail, senha e exigir troca de senha) diretamente pela gestão de membros do workspace",
+        "Lista de membros do workspace agora exibe o nome do usuário",
+        "Sessão expira instantaneamente se a senha for alterada por outro dispositivo ou administrador"
+      ],
+      "commit": "88d77755cec34fc8062742e125d181993d05da96"
+    },
+    {
+      "version": "1.3.0",
+      "date": "2026-07-29",
+      "changes": [
+        "Novo papel de supervisor no controle de acesso (RBAC), ampliando permissões para gestão de equipes e agendamentos.",
+        "Funcionalidade de notas flexíveis e cores na agenda, permitindo personalização visual dos itens de agendamento.",
+        "Página da agenda reformulada com nova interface para gerenciamento de atendimentos e agendamentos.",
+        "Melhorias nas páginas de conversas e configurações do painel.",
+        "Atualizações no controle de escopo de acesso por caso na autenticação.",
+        "Navegação e estrutura do painel atualizadas com novo shell de layout."
+      ],
+      "commit": "cfeafdc01d6ea047e57df93e69f2d4cecc1638a4"
+    },
+    {
+      "version": "1.2.0",
+      "date": "2026-07-29",
+      "changes": [
+        "Nova tag de versão 'AG—01' exibida ao lado do título da agenda e 'CV—01' na página de conversas.",
+        "Botão 'Hoje' adicionado na agenda para navegar rapidamente para a data atual.",
+        "Filtros de conversa agora possuem indicador visual de ativo com fundo colorido e suporte a aria-pressed para acessibilidade.",
+        "Bolhas de mensagem agora têm fundo colorido, melhorando a distinção visual entre mensagens do contato, humano e IA.",
+        "Layout das conversas teve a barra lateral reduzida de 360px para 308px e remoção do gradiente de fundo, oferecendo mais espaço para a lista.",
+        " redesign visual global com border-radius consistente de 6px, nova tipografia IBM Plex Mono, grid de pontos de fundo e tokens de cor atualizados para tema claro e escuro."
+      ],
+      "commit": "c4812c3884b1d1ce90bd3d094692c66136b4bfe2"
+    },
+    {
+      "version": "1.1.4",
+      "date": "2026-07-29",
+      "changes": [
+        "Filtro de conversas agora abre por padrão em 'Abertas' (humano) em vez de todas as conversas",
+        "Removidos os filtros 'Minhas' e 'Sem responsável'; barra de filtros agora mostra apenas Abertas, IA e Resolvidas",
+        "Conversa selecionada agora tem fundo colorido de destaque para melhor identificação visual",
+        "Badge de status da IA agora exibe um indicador visual (ponto colorido) ao lado do texto 'IA ativa' ou 'IA pausada','Após reabrir uma conversa, a lista permanece no filtro de conversas humanas em vez de resetar para todas"
+      ],
+      "commit": "1fa95a920967f82d9f3ac89292f355bc6c261764"
+    },
+    {
+      "version": "1.1.3",
+      "date": "2026-07-29",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "1c90a5566411298d8d581b0c4d9148d61987d351"
+    },
+    {
+      "version": "1.1.2",
+      "date": "2026-07-29",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "1840d1f5c63f851e179b89d8693ed39f46244130"
+    },
+    {
+      "version": "1.1.1",
+      "date": "2026-07-29",
+      "changes": [
+        "Para usuários root, o workspace ativo agora é selecionado com base na vinculação real de membros do workspace, em vez de pegar o primeiro workspace disponível",
+        "Na criação do usuário root (seed), um workspace raiz é automaticamente criado e o root recebe a role OWNER, evitando falta de workspace ativo",
+        "A barra superior (topbar) mantém o tema escuro fixo, independentemente da opção de tema claro selecionada pelo usuário, impedindo herança de cores inadequadas"
+      ],
+      "commit": "3dc5214737a4eb6f85e68e96c40c5e6d9082c59d"
+    },
+    {
+      "version": "1.1.0",
+      "date": "2026-07-28",
+      "changes": [
+        "Exibe o saldo de créditos OpenRouter na página de uso, consultado via nova chave de gerenciamento.",
+        "Implementa distribuição round-robin de casos entre atendentes, substituindo a lógica anterior de escalonamento.",
+        "Conversas, leads e painel agora filtram pelo escopo do caso do atendente — cada um vê apenas os itens atribuídos ao seu caso.",
+        "Atribuição de conversas passa a considerar disponibilidade e escala de atendentes, refletindo quem está efetivamente disponível.",
+        "Páginas do painel (leads, agenda, dashboard, configurações e uso) recebem melhorias de layout, filtros e indicadores.",
+        "Permissões de assinatura de conversa passam a respeitar o escopo de caso, impedindo edições fora do caso atribuído."
+      ],
+      "commit": "3a51d290df5489ff6d929c80b80265e9521e3e01"
+    },
+    {
+      "version": "1.0.20",
+      "date": "2026-07-28",
+      "changes": [
+        "Removida a seção 'Preparar operação' (checklist de primeiros passos) da visão geral do painel"
+      ],
+      "commit": "1dbb44e19a777f0e7e9db5ca978387f8b53f1788"
+    },
+    {
+      "version": "1.0.19",
+      "date": "2026-07-27",
+      "changes": [
+        "O nível da versão (patch, minor ou major) é escolhido automaticamente pelo tamanho do diff desde o último release — menos de 100 KiB gera patch, 100 KiB a 1 MiB gera minor, acima de 1 MiB gera major.",
+        "Os limites de tamanho são configuráveis via VERSION_MINOR_MIN_KIB e VERSION_MAJOR_MIN_KIB sem precisar alterar o código do script.",
+        "VERSION_BUMP continua disponível como override explícito para casos em que o auto-bump não reflete a intenção do deploy.",
+        "O script agora inclui arquivos binários no diff (--binary), garantindo que mudanças em qualquer tipo de arquivo sejam consideradas no resumo do changelog.",
+        "O log do deploy exibe o tamanho do diff e o nível de bump escolhido, deixando o processo mais transparente."
+      ],
+      "commit": "e88018f92d2206c2b28d94c4da675754b8545005"
+    },
+    {
+      "version": "1.0.18",
+      "date": "2026-07-27",
+      "changes": [
+        "Avatares de contato são exibidos nas conversas e no painel de leads, sincronizados automaticamente via webhook do Evolution",
+        "Evita qualificar um lead que já foi qualificado anteriormente, retornando erro 409",
+        "Qualificação de leads agora inclui nota em estrelas (1-5) e justificativa gerada pela IA",
+        "Ao receber atualizações de contato do WhatsApp, o avatar do contato é atualizado automaticamente na conversa",
+        "Painel de leads e pipeline agora exibem o avatar do contato junto à lista de leads"
+      ],
+      "commit": "35311c68969cc4e3e4863f2012d04f53b48ed622"
+    },
+    {
+      "version": "1.0.17",
+      "date": "2026-07-27",
+      "changes": [
+        "Botão para entrar diretamente na chamada do Google Meet quando o atendimento tem link de vídeo disponível.",
+        "Novo botão de reagendar (ícone de calendário) para quem tem permissão de remarcar o atendimento.",
+        "Novo botão de marcar não comparecimento (ícone de usuário removido) para registrar quando o cliente não veio.",
+        "Itens de ação agora quebram para a linha de baixo quando não cabem na tela, evitando cortes ou sobreposição.",
+        "Ícones de reagendar e não comparecimento com cores e estados visualmente consistentes com os demais botões de ação do atendimento."
+      ],
+      "commit": "807a08aa89225567358c16fcbbb4b3bcc2caf9ff"
+    },
+    {
+      "version": "1.0.16",
+      "date": "2026-07-27",
+      "changes": [
+        "Leads são criados automaticamente a partir de conversas existentes (WhatsApp e Facebook) ao enviar mensagens ou registrar atendimento humano.",
+        "Qualificação contextual de leads com IA: análise do histórico da conversa gera avaliação com notas de 1 a 5 estrelas, resumo e justificativa para o próximo atendente.",
+        "Novo componente de agendamento de conversas no painel, com compositor e lógica de scheduling integrada à visualização de leads e agenda.",
+        "Correção no tratamento de mídia outbound: regex ajustado para URLs de dados Base64 com caracteres especiais no tipo MIME.",
+        "Página de leads e tela de agenda revisadas com melhor integração ao novo fluxo de qualificação e agendamento.",
+        "Melhoria na integração do painel com API de qualificação e agendamento de conversas."
+      ],
+      "commit": "81ec96a1cfa115327e6474bc149e4ae00915c347"
+    },
+    {
+      "version": "1.0.15",
+      "date": "2026-07-27",
+      "changes": [
+        "A duração do convite de reunião passou a ser apresentada de forma padronizada como 'reunião rápida de 15 minutinhos no Google Meet', em vez do termo genérico 'reunião rapidinha'.",
+        "O modelo agora é instruído explicitamente a sempre comunicar 15 minutinhos ao contato, independentemente da duração operacional interna da agenda.",
+        "A lógica de validação passou a verificar se o convite apresenta corretamente os '15 minutinhos' como duração comercial, rejeitando quaisquer outras durações expostas ao contato.",
+        "A correção de contexto agora reforça que a duração operacional interna nunca deve substituir os 15 minutinhos ao apresentar o convite ao contato."
+      ],
+      "commit": "9d9ceb76a0f40279ea3592b590187eefd9ad9637"
+    },
+    {
+      "version": "1.0.14",
+      "date": "2026-07-27",
+      "changes": [
+        "A reunião agora é apresentada apenas como uma 'reunião rapidinha', sem informar a duração de 15 minutos.",
+        "Se o contato perguntar sobre o tempo, a resposta será apenas 'É uma reunião rapidinha', sem revelar minutos.",
+        "Não é mais informado o horário de término nem a duração real agendada internamente.",
+        "Em reagendamentos e cancelamentos, a duração também não é exposta ao contato.",
+        "A verificação final inclui conferir que nenhum minuto ou duração real foi mencionado na resposta."
+      ],
+      "commit": "3379893de90f7264c912ba21cfdeeb608f6bc841"
+    },
+    {
+      "version": "1.0.13",
+      "date": "2026-07-27",
+      "changes": [
+        "As mensagens do assistente não incluem mais a duração da reunião nem horário final — agora orientam o contato de forma curta e natural dizendo apenas dia, horário e o link do Google Meet.",
+        "A conferência de agendamento ficou mais natural e direta, confirmando somente os fatos essenciais (dia, horário e link) sem mencionar detalhes operacionais internos.",
+        "O formato de data e hora em mensagens transacionais agora usa o dia da semana por extenso (ex.: \"segunda-feira\") para ficar mais legível e humano.",
+        "O prompt de convite para reunião passou a instruir o modelo a dizer explicitamente que o encontro é \"rapidinha\" no Google Meet, sem revelar a duração, fuso horário ou nome interno da agenda.",
+        "A descrição da ferramenta de agendamento foi atualizada para garantir que o modelo nunca compartilhe duração ou dados operacionais com o contato.",
+        "As regras de contexto prefilled e de correção de convite reforçam que o contato deve receber apenas informações essenciais e naturais sobre o horário, sem campos internos."
+      ],
+      "commit": "523baef22aecc7795e700a7c95dd8366d79ec2ef"
+    },
+    {
+      "version": "1.0.12",
+      "date": "2026-07-27",
+      "changes": [
+        "Novo interruptor AI_EVALUATOR_ENABLED (padrão true) permite desativar temporariamente a avaliação de IA por replay.",
+        "Quando o avaliador está desativado, publicação de templates e versões manuais do agente é imediata (sem fila de replay), retornando status publicado ao invés de em fila.",
+        "O avaliador de IA usa um modelo e chave dedicados (inclusionai/ling-3.0-flash:free) quando CHANGELOG_OPENROUTER_API_KEY está configurada, independente das credenciais do tenant.",
+        "Geração de propostas de melhoria exibe erro claro quando o avaliador está desativado temporariamente.",
+        "Endpoints de publicação agora retornam HTTP 201 quando publicado sem avaliação, diferenciando do 202 (aceito/na fila)."
+      ],
+      "commit": "2b41b61baad1b5361bd342cc6df70ea3944dde8a"
+    },
+    {
+      "version": "1.0.11",
+      "date": "2026-07-27",
+      "changes": [
+        "O executador de ferramentas simuladas agora retorna erros em vez de lançar exceções, evitando que uma falha em uma ferramenta descarte a resposta inteira do turno.",
+        "Chamadas inesperadas ou com argumentos divergentes são contadas e reportadas via `unexpectedToolCalls`, permitindo que o juiz/gates avaliem a resposta final mesmo em cenários com ferramentas fora do esperado.",
+        "A verificação `assertComplete()` foi removida, pois o replay agora tolera ferramentas faltantes no cenário sem zerar o resultado.",
+        "O agente de replay não perde mais o texto de resposta quando o simulador rejeita uma ferramenta, corrigindo um bug que travava o publish de melhorias de agente."
+      ],
+      "commit": "91a12a023878297a01d6394a8a6f20278f15f463"
+    },
+    {
+      "version": "1.0.10",
+      "date": "2026-07-27",
+      "changes": [
+        "Novo: configuração de assinatura de atendente com formatos (nome, nome em negrito, cargo, linha separada) e estilo de nome (completo ou primeiro nome), acessível nas configurações.",
+        "Novo: possibilidade de ativar ou desativar assinatura individualmente em cada conversa, com a assinatura incluída automaticamente nos textos de mensagem de saída.",
+        "Melhoria: o perfil do usuário agora permite atualizar o nome em conjunto com e-mail e senha.",
+        "Melhoria: o nome do remetente (nome ou e-mail) passa a aparecer nas mensagens para facilitar a identificação de quem enviou cada mensagem.",
+        "Novo: notificações de agendamento enviadas em grupo do WhatsApp, com permissões de leitura e gerenciamento exclusivas.",
+        "Novo: permissões de assinatura configuráveis por papel (operator pode ler), e configurações de assinatura visíveis na listagem de conversas."
+      ],
+      "commit": "df86c9f8bcc4720136c3c1207d7cbc0dbe83861c"
+    },
+    {
+      "version": "1.0.9",
+      "date": "2026-07-27",
+      "changes": [
+        "Horário comercial configurável por tenant: novas colunas business_hours_start e business_hours_end na tabela de tenants (padrão 07:00–20:00).",
+        "Mensagens de contato recebidas fora do horário comercial só são lidas e respondidas no próximo horário de expediente, com jitter de até 10 min para distribuir a carga no início do dia.",
+        "Sessões WhatsApp ficam offline automaticamente fora do horário comercial e voltam à disponibilidade quando o expediente inicia.",
+        "Links de reunião Google Meet agora usam entrada direta (OPEN), eliminando a sala de espera para os participantes.",
+        "ID da conversa associada agora é retornado nas consultas de agendamento.",
+        "Replay de melhoria de IA agora considera se há agendamento ativo no contexto ao validar evidências transacionais."
+      ],
+      "commit": "b3673fb756e9f35bfb868b0d46de0d68def88c12"
+    },
+    {
+      "version": "1.0.8",
+      "date": "2026-07-27",
+      "changes": [
+        "Quando o contato já tem um compromisso ativo, afirmações como reunião confirmada, visita agendada ou horário reservado não são mais tratadas como alegações não comprovadas, evitando respostas de recusa desnecessárias da ia ao continuar o atendimento.",
+        "Alegações de reagendamento ou cancelamento continuam sendo bloqueadas como antes, mesmo quando já existe um compromisso ativo — o sistema segue protegendo contra ações não comprovadas nesses casos.",
+        "O processamento de mensagens agora passa a considerar o contexto de compromisso ativo para decidir a resposta da ia, tornando o atendimento mais natural quando o contato menciona detalhes de um agendamento já existente.",
+        "Removido script temporário de diagnóstico que não impactava o atendimento ao usuário."
+      ],
+      "commit": "a14e5a101c700abeef7ebc11063d8979f0a0ad5a"
+    },
+    {
+      "version": "1.0.7",
+      "date": "2026-07-27",
+      "changes": [
+        "Cada resposta avaliada agora recebe um identificador único (UUID), melhorando o rastreamento de violações até a mensagem original.",
+        "As violações registradas sobre uma resposta devem obrigatoriamente citar o identificador dessa resposta, evitando evidências vazias ou identificadores inventados.",
+        "O prompt do avaliador por IA foi refinado para reforçar a vinculação precisa entre violações e a mensagem de resposta avaliada."
+      ],
+      "commit": "7751e9ade522d552c97495b9141cc3d53755cf0a"
+    },
+    {
+      "version": "1.0.6",
+      "date": "2026-07-27",
+      "changes": [
+        "O assistente agora sempre se refere à reunião como \"15 minutinhos\", independentemente da duração real agendada na agenda.",
+        "O assistente nunca revela a duração real da reunião ao cliente, escondendo valores como os vindos de slot_duration_min.",
+        "O prompt do avaliador de replay foi refinado para exigir um JSON estruturado com todas as sete dimensões de avaliação, tornando as avaliações de qualidade mais consistentes."
+      ],
+      "commit": "edd64f380c362d8bd548f305d92d1deaaaac097e"
+    },
+    {
+      "version": "1.0.5",
+      "date": "2026-07-26",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "f148ef8b6a1ac756a27e1a802d98d32318816a97"
+    },
+    {
+      "version": "1.0.4",
+      "date": "2026-07-26",
+      "changes": [
+        "Respostas após qualificação de lead agora continuam o fluxo natural da conversa em vez de sempre cair no acréscimo genérico 'Perfeito, registrei essas informações.'",
+        "O sistema passou a distinguir entre sucesso de agendamento e sucesso de cadastro/registro, reconhecendo mais situações de confirmação corretamente.",
+        "Quando a continuação do modelo contiver termos internos de avaliação (notas, estrelas, pontuação, classificação) ou alegar um agendamento não confirmado, a resposta volta para o acréscimo neutro como segurança.",
+        "Mantém a confirmação neutra quando a qualificação não tem continuação válida ou o texto vaza informação de avaliação interna do lead.",
+        "Respostas transacionais com desfecho para o cliente agora são mantidas em uma única bolha, evitando divisões desnecessárias no texto.",
+        "Correção de tratamento de texto vazio na composição da resposta, garantindo fallback para o texto reservado quando a composição não retorna conteúdo."
+      ],
+      "commit": "495bc97b7a06b5e1aa8e841eed78170ccf6b2c00"
+    },
+    {
+      "version": "1.0.3",
+      "date": "2026-07-26",
+      "changes": [
+        "A geração de changelogs agora é mais robusta e trata corretamente respostas inesperadas da IA",
+        "O script agora extrai automaticamente o JSON de respostas da IA, mesmo que venham envoltas em formatação adicional",
+        "Adicionado tratamento para respostas vazias da IA, evitando erros na geração do changelog"
+      ],
+      "commit": "6b4ff04a4d1337aa776403c560a69f4e75651388"
+    },
+    {
+      "version": "1.0.2",
+      "date": "2026-07-26",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "be4b29c5d4cb547443d5ada6a1907be134cdb896"
+    },
+    {
+      "version": "1.0.1",
+      "date": "2026-07-26",
+      "changes": [
+        "Melhorias internas e correções de estabilidade"
+      ],
+      "commit": "d5c69caa7806c28b028c8e269979197655852abd"
+    },
+    {
+      "version": "1.0.0",
+      "date": "2026-07-26",
+      "changes": [
+        "Sistema de versionamento SemVer e Changelog no painel",
+        "Modal de novidades ao atualizar a versão do sistema",
+        "Exibição da versão no rodapé da sidebar"
+      ]
+    }
+  ]
+}

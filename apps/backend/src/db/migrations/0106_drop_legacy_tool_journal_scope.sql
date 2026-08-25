@@ -1,0 +1,2 @@
+ALTER TABLE ai_tool_call_journal
+  DROP CONSTRAINT IF EXISTS ai_tool_call_journal_tenant_id_inbound_external_id_call_ord_key;

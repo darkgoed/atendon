@@ -1,0 +1,33 @@
+{
+  "name": "@atendon/panel",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 0.0.0.0 -p 3200",
+    "build": "eslint . --max-warnings=0 && next build",
+    "build:ci": "next build",
+    "start": "next start -p 3200",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "typecheck": "next typegen && tsc --noEmit"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.2",
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.3.2",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "next": "^15.5.21",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-window": "^2.2.7",
+    "sharp": "^0.35.3",
+    "swr": "^2.4.2"
+  }
+}

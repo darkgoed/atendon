@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="refresh" content="5" />
+<title>AtendON — Atualizando</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100dvh; display:grid; place-items:center; padding:32px 20px;
+    background:#0b0c0f; color:#e7e7ea; font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; }
+  .card { width:min(480px,100%); display:grid; gap:16px; padding:28px; border:1px solid #26272c; }
+  .brand { display:flex; align-items:center; gap:10px; font-size:16px; font-weight:700; }
+  .brand svg { width:26px; height:21px; color:#e7e7ea; }
+  .spinner { width:26px; height:26px; border:2px solid #26272c; border-top-color:#7c7cff; border-radius:50%; animation:spin 0.8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .eyebrow { text-transform:uppercase; letter-spacing:.1em; font-size:11px; font-weight:700; color:#9a9aa2; }
+  h1 { margin:0; font-size:26px; line-height:1.1; }
+  p { margin:0; color:#9a9aa2; }
+  .actions { display:flex; flex-wrap:wrap; gap:10px; padding-top:4px; }
+  .btn { display:inline-flex; align-items:center; gap:7px; border:1px solid #3a3b42; padding:9px 16px;
+    color:#e7e7ea; text-decoration:none; font-size:13px; font-weight:600; }
+  .btn.primary { background:#1f2937; border-color:#7c7cff; color:#c7c7ff; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <svg viewBox="0 0 40 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M14.5 3.5a12.5 12.5 0 1 0 0 25 12.5 12.5 0 0 0 0-25Zm0 5.25a7.25 7.25 0 1 1 0 14.5 7.25 7.25 0 0 1 0-14.5Z" fill="currentColor" fill-rule="evenodd" />
+        <path d="M26.5 5.25h13L33 16.5l-6.5-11.25Z" fill="#7c7cff" />
+      </svg>
+      <span>AtendON</span>
+    </div>
+    <div class="spinner"></div>
+    <div class="eyebrow">Atualizando o sistema</div>
+    <h1>Estamos implantando uma atualização.</h1>
+    <p>Isso costuma levar poucos minutos. Esta página verifica automaticamente e volta a carregar assim que o sistema estiver de volta.</p>
+    <div class="actions">
+      <a class="btn primary" id="wa-link" href="#" target="_blank" rel="noreferrer">Avisar no WhatsApp</a>
+    </div>
+  </div>
+  <script>
+    var phone = "5512996062155";
+    var msg = "Estou vendo a tela de manutenção do AtendON em " + location.href + " às " + new Date().toLocaleString("pt-BR");
+    document.getElementById("wa-link").href = "https://wa.me/" + phone + "?text=" + encodeURIComponent(msg);
+  </script>
+</body>
+</html>

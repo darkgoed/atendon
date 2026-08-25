@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-07-09T10:56:05.718Z",
+  "projectRoot": "/var/www/apps/atendon",
+  "structure": {
+    "hasPackageJson": true,
+    "hasTsConfig": false,
+    "hasClaudeConfig": true,
+    "hasClaudeFlow": true
+  },
+  "scannedAt": 1783594565718
+}

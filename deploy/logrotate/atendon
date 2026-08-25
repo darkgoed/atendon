@@ -1,0 +1,15 @@
+/var/www/apps/atendon/logs/*.log {
+    daily
+    maxsize 20M
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    su deploy deploy
+    sharedscripts
+    postrotate
+        chmod 0640 /var/www/apps/atendon/logs/*.log* 2>/dev/null || true
+    endscript
+}

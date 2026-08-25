@@ -1,0 +1,205 @@
+x-jitsi-logging: &jitsi-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-jitsi-common-environment: &jitsi-common-environment
+  TZ: ${TZ:-UTC}
+  PUBLIC_URL: ${MEET_PUBLIC_URL:-https://meet.atendon.alpdash.com.br}
+  XMPP_DOMAIN: meet.jitsi
+  XMPP_AUTH_DOMAIN: auth.meet.jitsi
+  XMPP_GUEST_DOMAIN: guest.meet.jitsi
+  XMPP_MUC_DOMAIN: muc.meet.jitsi
+  XMPP_INTERNAL_MUC_DOMAIN: internal-muc.meet.jitsi
+  XMPP_HIDDEN_DOMAIN: hidden.meet.jitsi
+  XMPP_RECORDER_DOMAIN: recorder.meet.jitsi
+  XMPP_SERVER: xmpp.meet.jitsi
+  XMPP_PORT: "5222"
+
+services:
+  jitsi-web:
+    image: jitsi/web:${JITSI_IMAGE_VERSION:-stable-11031}
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    logging: *jitsi-logging
+    ports:
+      - "127.0.0.1:${JITSI_HTTP_PORT:-8444}:80"
+    volumes:
+      - ./data/jitsi/web:/config
+      - ./data/jitsi/transcripts:/usr/share/jitsi-meet/transcripts
+    environment:
+      <<: *jitsi-common-environment
+      ENABLE_AUTH: "1"
+      ENABLE_GUESTS: "0"
+      ENABLE_RECORDING: "1"
+      ENABLE_XMPP_WEBSOCKET: "1"
+      DISABLE_HTTPS: "1"
+      ENABLE_HTTP_REDIRECT: "0"
+      ENABLE_LETSENCRYPT: "0"
+      ENABLE_WELCOME_PAGE: "0"
+    depends_on:
+      jitsi-prosody:
+        condition: service_healthy
+      jitsi-jvb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [atendon_jitsi]
+
+  jitsi-prosody:
+    image: jitsi/prosody:${JITSI_IMAGE_VERSION:-stable-11031}
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    logging: *jitsi-logging
+    expose:
+      - "5222"
+      - "5269"
+      - "5280"
+      - "5347"
+    volumes:
+      - ./data/jitsi/prosody/config:/config
+      - ./data/jitsi/prosody/prosody-plugins-custom:/prosody-plugins-custom
+    environment:
+      <<: *jitsi-common-environment
+      ENABLE_AUTH: "1"
+      AUTH_TYPE: jwt
+      ENABLE_GUESTS: "0"
+      ENABLE_RECORDING: "1"
+      ENABLE_XMPP_WEBSOCKET: "1"
+      JWT_APP_ID: ${MEET_JWT_APP_ID:-atendon}
+      JWT_APP_SECRET: ${MEET_JWT_SECRET:?Configure MEET_JWT_SECRET in .env}
+      JWT_ACCEPTED_ISSUERS: ${MEET_JWT_ACCEPTED_ISSUERS:-atendon}
+      JWT_ACCEPTED_AUDIENCES: ${MEET_JWT_ACCEPTED_AUDIENCES:-atendon}
+      JWT_ALLOW_EMPTY: "0"
+      JWT_AUTH_TYPE: token
+      JWT_TOKEN_AUTH_MODULE: token_verification
+      JICOFO_AUTH_PASSWORD: ${JICOFO_AUTH_PASSWORD:?Configure JICOFO_AUTH_PASSWORD in .env}
+      JVB_AUTH_USER: jvb
+      JVB_AUTH_PASSWORD: ${JVB_AUTH_PASSWORD:?Configure JVB_AUTH_PASSWORD in .env}
+      JIBRI_RECORDER_USER: recorder
+      JIBRI_RECORDER_PASSWORD: ${JIBRI_RECORDER_PASSWORD:?Configure JIBRI_RECORDER_PASSWORD in .env}
+      JIBRI_XMPP_USER: jibri
+      JIBRI_XMPP_PASSWORD: ${JIBRI_XMPP_PASSWORD:?Configure JIBRI_XMPP_PASSWORD in .env}
+      # Reads context.user.affiliation (owner/moderator/member) from signed JWTs.
+      XMPP_MUC_MODULES: token_affiliation
+    healthcheck:
+      test: ["CMD-SHELL", "prosodyctl status >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      atendon_jitsi:
+        aliases:
+          - xmpp.meet.jitsi
+
+  jitsi-jicofo:
+    image: jitsi/jicofo:${JITSI_IMAGE_VERSION:-stable-11031}
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    logging: *jitsi-logging
+    volumes:
+      - ./data/jitsi/jicofo:/config
+    environment:
+      <<: *jitsi-common-environment
+      ENABLE_AUTH: "1"
+      AUTH_TYPE: jwt
+      ENABLE_RECORDING: "1"
+      ENABLE_AUTO_OWNER: "0"
+      ENABLE_MODERATOR_CHECKS: "1"
+      JICOFO_ENABLE_REST: "1"
+      JICOFO_ENABLE_HEALTH_CHECKS: "1"
+      JICOFO_AUTH_PASSWORD: ${JICOFO_AUTH_PASSWORD:?Configure JICOFO_AUTH_PASSWORD in .env}
+      JIBRI_BREWERY_MUC: jibribrewery
+      JIBRI_PENDING_TIMEOUT: ${JIBRI_PENDING_TIMEOUT:-90}
+      JICOFO_MAX_MEMORY: ${JICOFO_MAX_MEMORY:-1024m}
+    depends_on:
+      jitsi-prosody:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8888/about/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+    networks: [atendon_jitsi]
+
+  jitsi-jvb:
+    image: jitsi/jvb:${JITSI_IMAGE_VERSION:-stable-11031}
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    logging: *jitsi-logging
+    ports:
+      - "${JVB_PORT:-10000}:${JVB_PORT:-10000}/udp"
+    volumes:
+      - ./data/jitsi/jvb:/config
+    environment:
+      <<: *jitsi-common-environment
+      JVB_AUTH_USER: jvb
+      JVB_AUTH_PASSWORD: ${JVB_AUTH_PASSWORD:?Configure JVB_AUTH_PASSWORD in .env}
+      # JVB_ADVERTISE_IPS is current; DOCKER_HOST_ADDRESS remains for compatibility.
+      JVB_ADVERTISE_IPS: ${JVB_ADVERTISE_IPS:?Configure JVB_ADVERTISE_IPS with the VPS public IP in .env}
+      DOCKER_HOST_ADDRESS: ${DOCKER_HOST_ADDRESS:?Configure DOCKER_HOST_ADDRESS with the VPS public IP in .env}
+      JVB_PORT: ${JVB_PORT:-10000}
+      COLIBRI_REST_ENABLED: "true"
+      VIDEOBRIDGE_MAX_MEMORY: ${VIDEOBRIDGE_MAX_MEMORY:-2048m}
+    depends_on:
+      jitsi-prosody:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/about/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+    networks: [atendon_jitsi]
+
+  jitsi-jibri:
+    image: jitsi/jibri:${JITSI_IMAGE_VERSION:-stable-11031}
+    restart: unless-stopped
+    cap_add:
+      - SYS_ADMIN
+    shm_size: "2gb"
+    cpus: ${JIBRI_CPUS:-2.0}
+    mem_limit: ${JIBRI_MEMORY_LIMIT:-4g}
+    logging: *jitsi-logging
+    volumes:
+      - ./data/jitsi/jibri:/config
+      - ${MEET_RECORDINGS_DIR:-./data/meet-recordings}:/config/recordings
+      - ./deploy/jitsi/20-recording-permissions:/etc/cont-init.d/20-recording-permissions:ro
+      - ./deploy/jitsi/finalize-recording.sh:/opt/atendon/finalize-recording.sh:ro
+    group_add:
+      - ${MEET_RECORDINGS_HOST_GID:?Configure MEET_RECORDINGS_HOST_GID with the PM2 user's primary group id}
+    environment:
+      <<: *jitsi-common-environment
+      DISPLAY: ":0"
+      JIBRI_BREWERY_MUC: jibribrewery
+      JIBRI_RECORDER_USER: recorder
+      JIBRI_RECORDER_PASSWORD: ${JIBRI_RECORDER_PASSWORD:?Configure JIBRI_RECORDER_PASSWORD in .env}
+      JIBRI_XMPP_USER: jibri
+      JIBRI_XMPP_PASSWORD: ${JIBRI_XMPP_PASSWORD:?Configure JIBRI_XMPP_PASSWORD in .env}
+      JIBRI_RECORDING_DIR: /config/recordings
+      JIBRI_FINALIZE_RECORDING_SCRIPT_PATH: /opt/atendon/finalize-recording.sh
+      JIBRI_HTTP_API_INTERNAL_PORT: "2222"
+      JIBRI_STRIP_DOMAIN_JID: muc
+      JIBRI_PENDING_TIMEOUT: ${JIBRI_PENDING_TIMEOUT:-90}
+      MEET_RECORDINGS_HOST_GID: ${MEET_RECORDINGS_HOST_GID:?Configure MEET_RECORDINGS_HOST_GID with the PM2 user's primary group id}
+    depends_on:
+      jitsi-jicofo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:2222/jibri/api/v1.0/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    networks: [atendon_jitsi]
+
+networks:
+  atendon_jitsi:
+    driver: bridge

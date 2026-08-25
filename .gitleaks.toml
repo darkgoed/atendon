@@ -1,0 +1,15 @@
+title = "AtendON secret scanning"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Generated and dependency artifacts are not repository-owned source"
+paths = [
+  '''(^|/)node_modules/''',
+  '''(^|/)\.next/''',
+  '''(^|/)graphify-out/''',
+  '''(^|/)coverage/''',
+  '''(^|/)playwright-report/''',
+  '''(^|/)test-results/'''
+]
