@@ -10,7 +10,7 @@ export type AgendaTimeGrid = {
   labels: string[];
 };
 
-export function AgendaCalendar({ days, today, timezone, failedDays, timeGrid, now, dragging, reschedulingId, pendingActionId, canReschedule, canCreate, onDrag, onDrop, onCreate, onOpen }: {
+export function AgendaCalendar({ days, today, timezone, failedDays, timeGrid, now, dragging, reschedulingId, pendingActionId, canReschedule, canCreate, onDrag, onDrop, onOpen, onSelectSlot }: {
   days: Date[];
   today: string;
   timezone: string;
@@ -24,8 +24,8 @@ export function AgendaCalendar({ days, today, timezone, failedDays, timeGrid, no
   canCreate: boolean;
   onDrag: (id: string) => void;
   onDrop: (start: string) => void;
-  onCreate: (slot: Slot) => void;
   onOpen: (appointment: Appointment) => void;
+  onSelectSlot?: (slot: Slot) => void;
 }) {
   return (
     <section className="agenda-grid" style={{ "--agenda-cols": days.length } as React.CSSProperties} aria-label="Disponibilidade da agenda">
@@ -75,8 +75,8 @@ export function AgendaCalendar({ days, today, timezone, failedDays, timeGrid, no
                 canCreate={canCreate && Boolean(configuredSlot)}
                 onDrag={onDrag}
                 onDrop={onDrop}
-                onCreate={onCreate}
                 onOpen={onOpen}
+                onSelectSlot={onSelectSlot}
               />
             );
           })}
@@ -86,7 +86,7 @@ export function AgendaCalendar({ days, today, timezone, failedDays, timeGrid, no
   );
 }
 
-function SlotCell({ slot, timezone, isToday, availabilityFailed, items, dragging, reschedulingId, pendingActionId, now, canReschedule, canCreate, onDrag, onDrop, onCreate, onOpen }: {
+function SlotCell({ slot, timezone, isToday, availabilityFailed, items, dragging, reschedulingId, pendingActionId, now, canReschedule, canCreate, onDrag, onDrop, onOpen, onSelectSlot }: {
   slot: Slot;
   timezone: string;
   isToday: boolean;
@@ -100,8 +100,8 @@ function SlotCell({ slot, timezone, isToday, availabilityFailed, items, dragging
   canCreate: boolean;
   onDrag: (id: string) => void;
   onDrop: (start: string) => void;
-  onCreate: (slot: Slot) => void;
   onOpen: (appointment: Appointment) => void;
+  onSelectSlot?: (slot: Slot) => void;
 }) {
   const acceptsDrop = !availabilityFailed && canReschedule && Boolean(dragging);
   const canSchedule = !availabilityFailed && canCreate;
@@ -115,13 +115,15 @@ function SlotCell({ slot, timezone, isToday, availabilityFailed, items, dragging
     <div
       onDragOver={(event) => { if (acceptsDrop) event.preventDefault(); }}
       onDrop={() => { if (acceptsDrop) void onDrop(slot.start); }}
-      onClick={(event) => { if (canSchedule && !(event.target as HTMLElement).closest("article,button,a")) onCreate(slot); }}
+      role="button" tabIndex={canSchedule ? 0 : -1}
+      onKeyDown={(event) => { if (canSchedule && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onSelectSlot?.(slot); } }}
+      onClick={(event) => { if (canSchedule && !(event.target as HTMLElement).closest("article,button,a")) onSelectSlot?.(slot); }}
       className={`agenda-cell agenda-cell--open ${slot.vagas > 0 ? "" : "agenda-cell--full"} ${canSchedule ? "agenda-cell--clickable" : ""} ${acceptsDrop ? "agenda-cell--drop" : ""} ${isToday ? "is-today" : ""}`}
     >
       {nowPosition !== null ? <span className="agenda-now-indicator" style={{ "--agenda-now": `${nowPosition}%` } as React.CSSProperties} aria-hidden="true" /> : null}
       <div className="agenda-cell__meta">
         <span className="mono agenda-cell__vagas" title={slot.vagas === 0 ? "A capacidade automática está preenchida, mas um agendamento manual pode compartilhar este horário." : undefined}>{availabilityLabel}</span>
-        {canSchedule ? <button type="button" className="agenda-cell__add" aria-label={`Agendar lead em ${formatSlot(slot, timezone)}`} onClick={() => onCreate(slot)}><Plus size={12} aria-hidden="true" />Agendar</button> : null}
+        {canSchedule ? <button type="button" className="agenda-cell__add" aria-label={`Opções para ${formatSlot(slot, timezone)}`} onClick={() => onSelectSlot?.(slot)}><Plus size={12} aria-hidden="true" />Agendar</button> : null}
       </div>
       <div className={`agenda-cell__appointments ${items.length > 1 ? "agenda-cell__appointments--shared" : ""}`} style={{ "--appointment-columns": Math.max(items.length, 1) } as React.CSSProperties}>
         {items.map((item) => (

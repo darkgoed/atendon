@@ -1,5 +1,4 @@
 import type { FastifyRequest } from "fastify";
-import { requireApiTenant, type ApiKeyScope } from "../auth/api-key.js";
 import { requireWorkspace } from "../auth/session.js";
 import { db } from "../db/client.js";
 import {
@@ -7,22 +6,19 @@ import {
   type CapabilityKey
 } from "../modules/operations/feature-flags.js";
 
-type ApiCapabilityGate = {
-  capability: CapabilityKey;
-  scope: ApiKeyScope;
-};
+type ApiCapabilityGate = { capability: CapabilityKey; };
 
 const API_CAPABILITY_GATES = new Map<string, ApiCapabilityGate>([
-  ["POST /leads", { capability: "leads_v1", scope: "scheduling.leads.upsert" }],
-  ["GET /categorias", { capability: "leads_v1", scope: "scheduling.categories.read" }],
-  ["GET /parceiros", { capability: "leads_v1", scope: "scheduling.partners.read" }],
-  ["POST /leads/:id/proposta-parceiro", { capability: "leads_v1", scope: "scheduling.leads.partner_proposal" }],
-  ["PATCH /leads/:id/status", { capability: "leads_v1", scope: "scheduling.leads.status" }],
-  ["POST /leads/:id/transferir", { capability: "leads_v1", scope: "scheduling.leads.transfer" }],
-  ["GET /unidades/:unidade_id/horarios", { capability: "appointments_v1", scope: "scheduling.availability.read" }],
-  ["POST /agendamentos", { capability: "appointments_v1", scope: "scheduling.appointments.create" }],
-  ["PATCH /agendamentos/:id/reagendar", { capability: "appointments_v1", scope: "scheduling.appointments.reschedule" }],
-  ["DELETE /agendamentos/:id", { capability: "appointments_v1", scope: "scheduling.appointments.cancel" }]
+  ["POST /leads", { capability: "leads_v1" }],
+  ["GET /categorias", { capability: "leads_v1" }],
+  ["GET /parceiros", { capability: "leads_v1" }],
+  ["POST /leads/:id/proposta-parceiro", { capability: "leads_v1" }],
+  ["PATCH /leads/:id/status", { capability: "leads_v1" }],
+  ["POST /leads/:id/transferir", { capability: "leads_v1" }],
+  ["GET /unidades/:unidade_id/horarios", { capability: "appointments_v1" }],
+  ["POST /agendamentos", { capability: "appointments_v1" }],
+  ["PATCH /agendamentos/:id/reagendar", { capability: "appointments_v1" }],
+  ["DELETE /agendamentos/:id", { capability: "appointments_v1" }]
 ]);
 
 function panelCapability(path: string, method: string): CapabilityKey | undefined {
@@ -59,7 +55,6 @@ function panelCapability(path: string, method: string): CapabilityKey | undefine
   if (path.startsWith("/workspaces/current/members")
     || path.startsWith("/workspaces/current/roles")
     || path.startsWith("/workspaces/current/member-roles")
-    || path.startsWith("/workspaces/current/api-keys")
     || path.startsWith("/workspaces/current/owner-transfer")
     || path.startsWith("/workspaces/current/audit-logs")) return "workspace_admin_v1";
   if (path === "/workspaces/current/timezone" && method !== "GET") return "workspace_admin_v1";
@@ -90,8 +85,8 @@ export async function enforceRequestCapability(request: FastifyRequest): Promise
   if (!path) return;
   const apiGate = API_CAPABILITY_GATES.get(`${request.method} ${path}`);
   if (apiGate) {
-    const identity = await requireApiTenant(request, apiGate.scope);
-    await assertCapability(identity.tenantId, apiGate.capability);
+    const session = await requireWorkspace(request);
+    await assertCapability(session.tenantId, apiGate.capability);
     return;
   }
   const capability = panelCapability(path, request.method);

@@ -5,7 +5,7 @@ import {
   PRIVILEGED_DATABASE_ENVIRONMENT_KEYS,
   removePrivilegedDatabaseSecrets
 } from "../src/config.js";
-import { dedicatedEvaluatorRuntime } from "../src/modules/agent-improvement/evaluator-runtime.js";
+
 
 function productionEnvironment(overrides: Record<string, string | undefined> = {}) {
   return {
@@ -19,7 +19,7 @@ function productionEnvironment(overrides: Record<string, string | undefined> = {
     MEET_JWT_APP_ID: "atendon",
     MEET_PUBLIC_URL: "https://meet.atendon.example",
     DATA_ENCRYPTION_KEY: "data-production-key-2026-with-strong-randomness",
-    TENANT_API_KEY: "tenant-production-key-2026-with-strong-randomness",
+
     PANEL_SEED_PASSWORD: "StrongSeedPass2026",
     PANEL_ORIGIN: "https://app.atendon.example",
     PANEL_PUBLIC_URL: "https://app.atendon.example",
@@ -40,7 +40,7 @@ describe("application configuration", () => {
     expect(parsed.CONTAINER_RUNTIME).toBe(false);
     expect(parsed.DEPLOY_VERSION).toBe("development");
     expect(parsed.PANEL_ORIGIN).toBe("http://localhost:3200");
-    expect(parsed.AI_EVALUATOR_ENABLED).toBe(true);
+
     expect(parsed.MEET_RECORDING_RETENTION_DAYS).toBe(30);
     expect(parsed.MEET_ENABLED).toBe(false);
     expect(parsed.MEET_PUBLIC_URL).toBe("http://localhost:8444");
@@ -91,15 +91,6 @@ describe("application configuration", () => {
     expect(parsed.AI_RESERVED_FINAL_REQUESTS).toBe(3);
   });
 
-  it("allows the evaluator to be disabled with one temporary master switch", () => {
-    const parsed = parseAppConfig({
-      DATABASE_URL: "postgresql://atendon:atendon@localhost:5436/atendon",
-      PANEL_SEED_PASSWORD: "local-only",
-      AI_EVALUATOR_ENABLED: "false"
-    });
-
-    expect(parsed.AI_EVALUATOR_ENABLED).toBe(false);
-  });
 
   it("loads the optional OpenRouter management key used by the usage balance", () => {
     const parsed = parseAppConfig({
@@ -126,18 +117,6 @@ describe("application configuration", () => {
       .toThrow(/configure juntos web_push/i);
   });
 
-  it("reuses the dedicated changelog OpenRouter runtime for evaluations", () => {
-    const parsed = parseAppConfig({
-      DATABASE_URL: "postgresql://atendon:atendon@localhost:5436/atendon",
-      PANEL_SEED_PASSWORD: "local-only",
-      CHANGELOG_OPENROUTER_API_KEY: "test-openrouter-key"
-    });
-
-    expect(dedicatedEvaluatorRuntime(parsed)).toEqual({
-      apiKey: "test-openrouter-key",
-      model: "google/gemma-4-26b-a4b-it:free"
-    });
-  });
 
   it("parses explicit conservative database timeouts and rejects disabled runtime limits", () => {
     const base = {
@@ -286,7 +265,7 @@ describe("application configuration", () => {
   it.each([
     ["JWT_SECRET", "change-this-to-at-least-32-random-characters"],
     ["DATA_ENCRYPTION_KEY", "change-this-data-key-to-at-least-32-random-characters"],
-    ["TENANT_API_KEY", "change-this-tenant-api-key"],
+
     ["PANEL_SEED_PASSWORD", "change-me-now"]
   ])("rejects the public %s placeholder in production", (name, placeholder) => {
     expect(() => parseAppConfig(productionEnvironment({ [name]: placeholder }))).toThrow(/exemplo|32 caracteres|12 caracteres/i);

@@ -1,0 +1,19 @@
+-- DESTRUCTIVE MIGRATION — APPLICATION BLOCKED PENDING EXPLICIT USER APPROVAL
+-- Do not register this file in the automatic migration runner or execute it in this
+-- round. Before approval, take an operational backup and inventory row counts and
+-- foreign-key dependencies. This file is intentionally staged only.
+--
+-- The statements below are deliberately not IF EXISTS: an unexpected schema state
+-- must abort rather than silently report success. Apply only after the approved
+-- backup/inventory and a reviewed maintenance window.
+
+BEGIN;
+
+DROP TABLE ai_evaluation_case_results;
+DROP TABLE ai_evaluation_runs;
+DROP TABLE ai_improvement_proposals;
+DROP TABLE ai_regression_cases;
+DROP TABLE ai_attendance_evaluations;
+DROP TABLE tenant_api_keys;
+
+COMMIT;

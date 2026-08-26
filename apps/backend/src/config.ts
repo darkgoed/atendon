@@ -167,7 +167,7 @@ const schema = z.object({
   DEFAULT_SYSTEM_PROMPT: z.string()
     .refine((value) => value.trim().length > 0, "DEFAULT_SYSTEM_PROMPT não pode conter somente espaços")
     .default(defaultSystemPrompt),
-  AI_EVALUATOR_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+
   WHATSAPP_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
   EVOLUTION_API_URL: z.string().url().default("http://localhost:8088"),
   EVOLUTION_API_KEY: z.string().min(16).default(ephemeralSecret()),
@@ -200,7 +200,6 @@ const schema = z.object({
   SMTP_USER: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
   SMTP_PASSWORD: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
   SMTP_FROM: z.preprocess((value) => value === "" ? undefined : value, z.string().email().optional()),
-  TENANT_API_KEY: z.string().min(16).default(ephemeralSecret()),
   TRANSFER_NOTIFICATION_WEBHOOK_URL: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
   TRANSFER_NOTIFICATION_CHANNEL: z.enum(["webhook", "slack", "email", "whatsapp"]).default("webhook"),
   TRANSFER_NOTIFICATION_TIMEOUT_MS: z.coerce.number().int().positive().max(120_000).default(15_000),
@@ -284,7 +283,7 @@ function validateConfig(value: AppConfig, context: z.RefinementCtx, environment:
         message: "HOST deve usar loopback em produção ou 0.0.0.0 com CONTAINER_RUNTIME=true"
       });
     }
-    for (const name of ["JWT_SECRET", "DATA_ENCRYPTION_KEY", "TENANT_API_KEY", "PANEL_SEED_PASSWORD"] as const) {
+    for (const name of ["JWT_SECRET", "DATA_ENCRYPTION_KEY", "PANEL_SEED_PASSWORD"] as const) {
       if (!environment[name]) context.addIssue({ code: "custom", path: [name], message: "Obrigatória em produção; não há credencial padrão" });
       else if (isKnownPlaceholder(value[name])) context.addIssue({ code: "custom", path: [name], message: "Substitua a credencial de exemplo antes de iniciar em produção" });
     }
@@ -306,13 +305,9 @@ function validateConfig(value: AppConfig, context: z.RefinementCtx, environment:
       }
     }
 
-    if (value.TENANT_API_KEY.length < 32) {
-      context.addIssue({ code: "custom", path: ["TENANT_API_KEY"], message: "TENANT_API_KEY deve ter ao menos 32 caracteres em produção" });
-    }
     const dedicatedSecrets = [
       value.JWT_SECRET,
       value.DATA_ENCRYPTION_KEY,
-      value.TENANT_API_KEY,
       ...(value.MEET_ENABLED ? [value.MEET_JWT_SECRET] : [])
     ];
     if (new Set(dedicatedSecrets).size !== dedicatedSecrets.length) {

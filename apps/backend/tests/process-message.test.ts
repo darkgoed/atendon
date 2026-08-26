@@ -118,7 +118,7 @@ function setup(contextOverrides = {}, aiTurnProgress?: ConstructorParameters<typ
     })),
     markHandoffNotificationSent: vi.fn().mockResolvedValue(undefined),
     createSystemAlertOnce: vi.fn().mockResolvedValue(undefined),
-    recordAiEvaluationSignal: vi.fn().mockResolvedValue(undefined),
+
     executeToolCallOnce: vi.fn().mockImplementation(async (_input, execute) => execute()),
     executeToolCallOnceDetailed: vi.fn().mockImplementation(async (_input, execute) => ({
       journalId: "00000000-0000-4000-8000-000000000001",
@@ -537,17 +537,11 @@ describe("MessageProcessor", () => {
     expect(repository.recordAiStickerSend).toHaveBeenCalledWith(expect.objectContaining({ stickerId: id, externalId: "sticker-sent-1" }));
   });
 
-  it("records a tenant-safe evaluation signal when the AI provider fails", async () => {
-    const { processor, repository, ai } = setup();
+  it("propagates an AI provider failure", async () => {
+    const { processor, ai } = setup();
     ai.complete.mockRejectedValueOnce(new Error("provider failed"));
 
     await expect(processor.process(message)).rejects.toThrow("provider failed");
-    expect(repository.recordAiEvaluationSignal).toHaveBeenCalledWith({
-      tenantId: message.tenantId,
-      conversationId: "conversation-1",
-      agentConfigVersionId: "version-1",
-      kind: "ai_error"
-    });
   });
 
   it("uses a compact AI call before considering an automatic job retry", async () => {
@@ -1134,8 +1128,8 @@ describe("MessageProcessor", () => {
       .toBeUndefined();
   });
 
-  it("records repeated-offer quality and sends nothing when policy regeneration remains repetitive", async () => {
-    const { processor, repository, gateway, ai } = setup({
+  it("sends nothing when policy regeneration remains repetitive", async () => {
+    const { processor, gateway, ai } = setup({
       history: [
         { role: "assistant", content: "Tenho 14h, 15h e 16h, qual fica melhor pra você?" },
         { role: "user", content: "vou olhar" }
@@ -1148,9 +1142,6 @@ describe("MessageProcessor", () => {
 
     await expect(processor.process({ ...message, text: "vou olhar" })).rejects.toThrow(/repeatedly returned/);
     expect(gateway.sendText).not.toHaveBeenCalled();
-    expect(repository.recordAiEvaluationSignal).toHaveBeenCalledWith(expect.objectContaining({
-      kind: "repeated_offer"
-    }));
   });
 
   it("forces the exact requested time and skips redundant confirmation for a direct counterproposal", async () => {

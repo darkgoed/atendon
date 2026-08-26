@@ -13,8 +13,6 @@ export const PERMISSIONS = [
   { key: "roles.update", module: "roles", action: "update", description: "Editar funcoes" },
   { key: "roles.delete", module: "roles", action: "delete", description: "Excluir funcoes" },
   { key: "audit.read", module: "audit", action: "read", description: "Visualizar auditoria" },
-  { key: "api_keys.read", module: "api_keys", action: "read", description: "Visualizar chaves de API" },
-  { key: "api_keys.manage", module: "api_keys", action: "manage", description: "Criar, rotacionar e revogar chaves de API" },
   { key: "connection.read", module: "connection", action: "read", description: "Visualizar conexao WhatsApp" },
   { key: "connection.manage", module: "connection", action: "manage", description: "Gerenciar conexao WhatsApp" },
   { key: "conversations.read", module: "conversations", action: "read", description: "Visualizar conversas" },

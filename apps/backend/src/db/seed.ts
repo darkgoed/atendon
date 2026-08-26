@@ -1,5 +1,4 @@
 import { hash } from "bcryptjs";
-import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import type { Pool } from "pg";
@@ -10,7 +9,7 @@ import { DEFAULT_MEDIA_FALLBACK } from "../modules/ai-router/defaults.js";
 import { DEFAULT_HUMANIZER_CONFIG } from "../modules/messages/humanizer.js";
 
 type SeedConfig = Pick<AppConfig,
-  "PANEL_SEED_EMAIL" | "PANEL_SEED_PASSWORD" | "DEFAULT_SYSTEM_PROMPT" | "DEFAULT_AI_MODEL" | "TENANT_API_KEY" | "ROOT_SEED_EMAIL" | "ROOT_SEED_PASSWORD"
+  "PANEL_SEED_EMAIL" | "PANEL_SEED_PASSWORD" | "DEFAULT_SYSTEM_PROMPT" | "DEFAULT_AI_MODEL" | "ROOT_SEED_EMAIL" | "ROOT_SEED_PASSWORD"
 >;
 
 export async function seedDatabase(pool: Pool, seedConfig: SeedConfig) {
@@ -85,13 +84,6 @@ export async function seedDatabase(pool: Pool, seedConfig: SeedConfig) {
       `INSERT INTO tenant_ai_settings (tenant_id, media_fallback_audio, media_fallback_image, media_fallback_document, humanizer_config)
        VALUES ($1,$2,$3,$4,$5) ON CONFLICT (tenant_id) DO NOTHING`,
       [tenantId, DEFAULT_MEDIA_FALLBACK.audio, DEFAULT_MEDIA_FALLBACK.image, DEFAULT_MEDIA_FALLBACK.document, DEFAULT_HUMANIZER_CONFIG]
-    );
-    const keyHash = createHash("sha256").update(seedConfig.TENANT_API_KEY).digest("hex");
-    await client.query(
-      `INSERT INTO tenant_api_keys(tenant_id,name,key_hash)
-       VALUES($1,'IA de atendimento',$2)
-       ON CONFLICT(key_hash) DO UPDATE SET tenant_id=EXCLUDED.tenant_id,active=true`,
-      [tenantId, keyHash]
     );
     if (seedConfig.ROOT_SEED_EMAIL && seedConfig.ROOT_SEED_PASSWORD) {
       const rootEmail = seedConfig.ROOT_SEED_EMAIL.toLocaleLowerCase("en-US");

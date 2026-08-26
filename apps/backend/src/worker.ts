@@ -21,20 +21,8 @@ import {
   WORKER_HEARTBEAT_TTL_MS
 } from "./readiness.js";
 import { AI_FOLLOW_UP_QUEUE, enqueueAiFollowUp, type AiFollowUpJob } from "./queue/ai-follow-up-queue.js";
-import {
-  AI_EVALUATION_QUEUE,
-  enqueueAiEvaluation,
-  enqueueAiEvaluationEvent,
-  isAiEvaluationEventJob,
-  type AiEvaluationJob
-} from "./queue/ai-evaluation-queue.js";
-import { AiAttendanceEvaluator, findAutomaticEvaluationJobs } from "./modules/agent-improvement/evaluator.js";
 import { OpenRouterClient } from "./modules/ai-router/openrouter.js";
 import { config } from "./config.js";
-import { AI_REPLAY_QUEUE, type AiReplayJob } from "./queue/ai-replay-queue.js";
-import { AiReplayRunner } from "./modules/agent-improvement/replay-runner.js";
-import { alertConsecutiveEvaluatorErrors, alertEvaluationQueueDelay, deleteExpiredAutomaticEvaluations } from "./modules/agent-improvement/operations.js";
-import { aiEvaluationQueue } from "./queue/ai-evaluation-queue.js";
 import {
   MEETING_PROVISIONING_QUEUE,
   enqueueMeetingProvisioning,
@@ -63,19 +51,12 @@ import {
   AppointmentStatusReactionProcessor,
   AppointmentStatusReactionRepository
 } from "./modules/scheduling/status-reaction.js";
-import { EvaluationEventRepository } from "./modules/agent-improvement/evaluation-events.js";
 import {
   reconcileAiFollowUps as reconcileAiFollowUpPages,
-  reconcileEvaluationEvents as reconcileEvaluationEventPages,
   reconcileHandoffNotifications as reconcileHandoffPages,
   reconciliationLogLevel,
   type ReconciliationResult
 } from "./modules/operations/event-reconciliation.js";
-import {
-  EvaluatorCircuitBreaker,
-  type CircuitBreakerRedis
-} from "./modules/agent-improvement/evaluator-circuit-breaker.js";
-import { EvaluationEventProcessor } from "./modules/agent-improvement/evaluation-event-processor.js";
 import { isWithinBusinessHours } from "./modules/whatsapp/business-hours.js";
 import { startWebPushRuntime } from "./modules/web-push/runtime.js";
 import { aiTurnProgressStore } from "./modules/realtime/ai-turn-progress.js";
@@ -202,33 +183,6 @@ const followUpWorker = new Worker<AiFollowUpJob>(AI_FOLLOW_UP_QUEUE, async (job)
   concurrency: 3,
   metrics: workerMetrics
 });
-const attendanceEvaluator = new AiAttendanceEvaluator(db, new OpenRouterClient(config), config);
-const evaluationEventRepository = new EvaluationEventRepository(db);
-const evaluatorCircuitBreaker = new EvaluatorCircuitBreaker(
-  async () => await aiEvaluationQueue.client as unknown as CircuitBreakerRedis
-);
-const evaluationEventProcessor = new EvaluationEventProcessor(
-  evaluationEventRepository,
-  attendanceEvaluator,
-  evaluatorCircuitBreaker,
-  (tenantId) => alertConsecutiveEvaluatorErrors(db, tenantId),
-  config.AI_EVALUATOR_ENABLED
-);
-const evaluationWorker = new Worker<AiEvaluationJob>(
-  AI_EVALUATION_QUEUE,
-  (job) => evaluationEventProcessor.process(job.data),
-  {
-  connection: redisConnection,
-  concurrency: 2,
-  metrics: workerMetrics
-  }
-);
-const replayRunner = new AiReplayRunner(db, new OpenRouterClient(config), config);
-const replayWorker = new Worker<AiReplayJob>(AI_REPLAY_QUEUE, (job) => replayRunner.process(job.data.runId), {
-  connection: redisConnection,
-  concurrency: 1,
-  metrics: workerMetrics
-});
 const meetingProvisioningRepository = new MeetingProvisioningRepository(db);
 const meetingProvisioningProcessor = new MeetingProvisioningProcessor(
   meetingProvisioningRepository,
@@ -341,19 +295,6 @@ followUpWorker.on("completed", (job, result) => logger.info({ jobId: job.id, res
 followUpWorker.on("failed", (job, error) => {
   logger.error({ jobId: job?.id, conversationId: job?.data.conversationId, err: error }, "AI follow-up failed");
 });
-evaluationWorker.on("completed", (job, result) => {
-  if (result === "disabled") {
-    logger.debug({ jobId: job.id, result }, "AI attendance evaluation skipped by global kill switch");
-    return;
-  }
-  logger.info({ jobId: job.id, result }, "AI attendance evaluation processed");
-});
-evaluationWorker.on("failed", (job, error) => {
-  const tenantId = job && !isAiEvaluationEventJob(job.data) ? job.data.tenantId : undefined;
-  logger.error({ jobId: job?.id, tenantId, err: error }, "AI attendance evaluation failed");
-});
-replayWorker.on("completed", (job, result) => logger.info({ jobId: job.id, result }, "AI improvement replay processed"));
-replayWorker.on("failed", (job, error) => logger.error({ jobId: job?.id, err: error }, "AI improvement replay failed"));
 meetingProvisioningWorker.on("completed", (job, result) => {
   logger.info({ jobId: job.id, outboxId: job.data.outboxId, result }, "Meeting provisioning processed");
 });
@@ -532,43 +473,6 @@ const pendingMeetingResultReconciler = setInterval(() => {
     })
     .catch((error) => logger.error({ error }, "Pending meeting result reconciliation failed"));
 }, 60_000);
-const reconcileAutomaticEvaluations = async (): Promise<void> => {
-  if (!config.AI_EVALUATOR_ENABLED) return;
-  const jobs = await findAutomaticEvaluationJobs(db);
-  await Promise.all(jobs.map((job) => enqueueAiEvaluation(job)));
-  const eventResult = await reconcileEvaluationEventPages(
-    evaluationEventRepository,
-    enqueueAiEvaluationEvent
-  );
-  const details = { legacyExamined: jobs.length, eventResult };
-  if (eventResult.errors > 0) {
-    logger.warn(details, "AI evaluation recovery reconciliation completed with enqueue errors");
-  } else if (jobs.length > 0 || eventResult.examined > 0) {
-    logger.info(details, "AI evaluation recovery reconciliation completed");
-  } else {
-    logger.debug(details, "AI evaluation recovery reconciliation completed");
-  }
-};
-const evaluationReconciler = setInterval(() => {
-  void Promise.all([
-    reconcileAutomaticEvaluations(),
-    aiEvaluationQueue.getJobs(["waiting", "delayed"]).then(async (jobs) => {
-      const waiting = await Promise.all(jobs.map(async (job) => {
-        if (!isAiEvaluationEventJob(job.data)) {
-          return { timestamp: job.timestamp, tenantId: job.data.tenantId };
-        }
-        const event = await evaluationEventRepository.getPending(job.data.eventId);
-        return event ? { timestamp: job.timestamp, tenantId: event.tenantId } : null;
-      }));
-      return alertEvaluationQueueDelay(db, waiting.filter((item) => item !== null));
-    })
-  ]).catch((error) => logger.error({ error }, "AI evaluation reconciliation failed"));
-}, 120_000);
-const evaluationRetentionTimer = setInterval(() => {
-  void deleteExpiredAutomaticEvaluations(db)
-    .then((count) => logger.info({ count }, "Expired AI evaluations removed"))
-    .catch((error) => logger.error({ error }, "AI evaluation retention failed"));
-}, 24 * 60 * 60_000);
 const recordHeartbeat = async (): Promise<void> => {
   const redis = await worker.client;
   const value = String(Date.now());
@@ -594,10 +498,6 @@ void reconcileAppointmentStatusReactions()
   .catch((error) => logger.error({ error }, "Initial appointment status reaction reconciliation failed"));
 void reconcilePendingMeetingResults()
   .catch((error) => logger.error({ error }, "Initial pending meeting result reconciliation failed"));
-void reconcileAutomaticEvaluations().catch((error) => logger.error({ error }, "Initial AI evaluation reconciliation failed"));
-void deleteExpiredAutomaticEvaluations(db)
-  .then((count) => logger.info({ count }, "Initial AI evaluation retention completed"))
-  .catch((error) => logger.error({ error }, "Initial AI evaluation retention failed"));
 void reconcileTripzAiTurns()
   .catch((error) => logger.error({ component: "TripzAI", error }, "[TripzAI] initial queued turn reconciliation failed"));
 if (config.MEET_ENABLED) {
@@ -616,8 +516,6 @@ async function shutdown(): Promise<void> {
   clearInterval(appointmentStatusReactionReconciler);
   clearInterval(pendingMeetingResultReconciler);
   clearInterval(heartbeatTimer);
-  clearInterval(evaluationReconciler);
-  clearInterval(evaluationRetentionTimer);
   clearInterval(tripzAiReconciler);
   try {
     const redis = await worker.client;
@@ -631,8 +529,6 @@ async function shutdown(): Promise<void> {
   await handoffWorker.close();
   await schedulingNotificationWorker.close();
   await followUpWorker.close();
-  await evaluationWorker.close();
-  await replayWorker.close();
   await meetingProvisioningWorker.close();
   await meetingContactDeliveryWorker.close();
   await appointmentStatusReactionWorker.close();

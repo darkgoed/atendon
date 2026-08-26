@@ -27,6 +27,7 @@ export function BulkLeadActions({ selected, onClear, onChanged }: { selected: Bu
   const canApplyTags = usePermission("tags.apply");
   const canMoveStage = usePermission("leads.update_status");
   const canAssign = usePermission("leads.transfer");
+  const [open, setOpen] = useState(false);
   const [action, setAction] = useState<BulkAction>("tags_add");
   const [targetId, setTargetId] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -105,6 +106,8 @@ export function BulkLeadActions({ selected, onClear, onChanged }: { selected: Bu
     catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao desfazer lote"); }
     finally { setPending(false); }
   }
+
+  if (!open && !applied) return <button type="button" className="btn" onClick={() => setOpen(true)} aria-expanded={false}>Ações em lote ({selected.length})</button>;
 
   if (applied) return <aside className="fixed bottom-4 left-1/2 z-20 flex w-[min(620px,calc(100vw-32px))] -translate-x-1/2 items-center gap-3 rounded border border-[var(--ok-border)] bg-[var(--dialog)] p-3 shadow-[0_18px_46px_color-mix(in_srgb,var(--app)_42%,transparent)]" role="status"><CheckSquare size={20} className="text-[var(--ok)]" aria-hidden="true" /><p className="min-w-0 flex-1 text-xs"><strong className="block">{applied.result.count} lead(s) atualizados</strong><span className="text-[var(--muted)]">Operação concluída de forma atômica.</span></p>{applied.result.undoable && undoSeconds > 0 ? <button type="button" className="btn" onClick={() => void undo()} disabled={pending}><ArrowCounterClockwise size={15} />Desfazer · {undoSeconds}s</button> : null}<button type="button" className="grid size-8 place-items-center rounded active:scale-[.94]" onClick={() => setApplied(null)} aria-label="Fechar confirmação"><X size={15} /></button>{error ? <p className="error" role="alert">{error}</p> : null}</aside>;
 

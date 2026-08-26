@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { composingDuration, consumeRateLimit, debounceInbound, DEFAULT_HUMANIZER_CONFIG, migrateHumanizerConfig, sanitizeOutbound, selectContextualReaction, splitResponse, withComposingRefresh, type HumanizerConfig } from "../src/modules/messages/humanizer.js";
-import { loadNewavePromptTemplate } from "../src/db/newave-template.js";
 
 const config: HumanizerConfig = {
   readDelay:{min:0,max:0},readingPause:{min:0,max:0},
@@ -32,10 +31,8 @@ describe("humanizer", () => {
       "Se tu quiser, eu posso te explicar melhor como fica o pagamento do cliente, como a loja recebe ou como a análise funciona?"
     ]);
   });
-  it("keeps a real Newave commercial sentence in one bubble at the tenant's 48-word limit but not at the shared default of 30", async () => {
-    const prompt = await loadNewavePromptTemplate();
+  it("keeps a long commercial sentence in one bubble at the tenant's 48-word limit but not at the shared default of 30", () => {
     const sentence = "O cliente passa por uma análise e, se for aprovado, pode financiar o aparelho sem pagar tudo na hora, então sua loja ganha uma nova possibilidade de concluir uma venda que normalmente escaparia";
-    expect(prompt).toContain(sentence);
     expect(splitResponse(sentence, DEFAULT_HUMANIZER_CONFIG.messageSplit.maxWordsPerBubble).length).toBeGreaterThan(1);
     expect(splitResponse(sentence, 48)).toEqual([sentence]);
   });

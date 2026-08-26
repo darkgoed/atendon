@@ -15,7 +15,6 @@ describe("capability route manifest", () => {
     ["/scheduling/availability", "GET", "appointments_v1"],
     ["/connection", "GET", "workspace_admin_v1"],
     ["/agent/versions", "GET", "workspace_admin_v1"],
-    ["/workspaces/current/api-keys", "GET", "workspace_admin_v1"],
     ["/workspaces/current/timezone", "PATCH", "workspace_admin_v1"]
   ] as const)("maps %s to %s", (path, method, expected) => {
     expect(capabilityForPanelRoute(path, method)).toBe(expected);

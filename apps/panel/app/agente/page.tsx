@@ -1,18 +1,8 @@
 "use client";
 
-import { Flask, Power } from "@phosphor-icons/react";
-import Link from "next/link";
+import { Power } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useState } from "react";
-import { ModalDialog } from "@/components/modal-dialog";
 import { Shell } from "@/components/shell";
-import {
-  directPublicationMessage,
-  pendingAgentReplay,
-  preserveActiveFormAfterQueue,
-  queuedCandidateMessage,
-  type AgentSaveResponse,
-  type PendingAgentReplay
-} from "@/lib/agent-candidates";
 import { api } from "@/lib/api";
 import { usePermission } from "@/lib/use-permission";
 
@@ -47,36 +37,25 @@ type AgentResponse = {
     enabled_tools?: string[];
   } | null;
   available_tools?: string[];
-  evaluator_enabled?: boolean;
-  template_status?: {
-    available: boolean;
-    diverged: boolean;
-    candidateVersionId: string | null;
-    templateCharacters: number;
-  } | null;
 };
 
 export default function Agent() {
   const canManage = usePermission("agent.manage");
   const [form, setForm] = useState<AgentForm>();
-  const [savedForm, setSavedForm] = useState<AgentForm>();
-  const [reviewSave, setReviewSave] = useState(false);
+
+
   const [availableTools, setAvailableTools] = useState<string[]>([]);
   const [dirtyState, setDirty] = useState(false);
   const dirty = dirtyState && canManage;
   const [state, setState] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
-  const [templateStatus, setTemplateStatus] = useState<NonNullable<AgentResponse["template_status"]>>();
-  const [templateAction, setTemplateAction] = useState("");
-  const [pendingReplay, setPendingReplay] = useState<PendingAgentReplay>();
-  const [savingCandidate, setSavingCandidate] = useState(false);
-  const [evaluatorEnabled, setEvaluatorEnabled] = useState(true);
+
   const [stateTone, setStateTone] = useState<"info" | "success" | "error">("info");
 
   useEffect(() => {
     api<AgentResponse>("/agent")
-      .then(({ agent, available_tools: tools, template_status: nextTemplateStatus, evaluator_enabled: nextEvaluatorEnabled }) => {
+      .then(({ agent, available_tools: tools }) => {
         if (!agent) throw new Error("Agente não configurado");
         setAvailableTools(tools ?? []);
         const loadedForm: AgentForm = {
@@ -96,9 +75,8 @@ export default function Agent() {
           enabledTools: agent.enabled_tools ?? []
         };
         setForm(loadedForm);
-        setSavedForm(loadedForm);
-        setTemplateStatus(nextTemplateStatus ?? undefined);
-        setEvaluatorEnabled(nextEvaluatorEnabled ?? true);
+
+
       })
       .catch((error: unknown) => {
         setStateTone("error");
@@ -116,38 +94,21 @@ export default function Agent() {
 
   async function save() {
     if (!form || !canManage) return;
-    setReviewSave(false);
-    setSavingCandidate(true);
     setStateTone("info");
-    setState(evaluatorEnabled ? "Criando candidata e iniciando replay…" : "Publicando sem avaliação…");
+    setState("Salvando…");
     try {
-      const response = await api<AgentSaveResponse>("/agent", {
+      await api("/agent", {
         method: "PUT",
         body: JSON.stringify(form)
       });
-      if (response.status === "published") {
-        setForm(form);
-        setSavedForm(form);
-        setPendingReplay(undefined);
-        setDirty(false);
-        setStateTone("success");
-        setState(directPublicationMessage("manual"));
-        return;
-      }
-      const activeForm = savedForm
-        ? preserveActiveFormAfterQueue(savedForm, form)
-        : form;
-      setForm(activeForm);
-      setSavedForm(activeForm);
-      setPendingReplay(pendingAgentReplay(response, "manual"));
+      setForm(form);
+
       setDirty(false);
       setStateTone("success");
-      setState(queuedCandidateMessage("manual"));
+      setState("Alterações salvas.");
     } catch (error) {
       setStateTone("error");
       setState(error instanceof Error ? error.message : "Erro ao salvar");
-    } finally {
-      setSavingCandidate(false);
     }
   }
 
@@ -160,7 +121,6 @@ export default function Agent() {
     try {
       await api("/agent/status", { method: "PATCH", body: JSON.stringify({ isActive: next }) });
       setForm((current) => current ? { ...current, isActive: next } : current);
-      setSavedForm((current) => current ? { ...current, isActive: next } : current);
       setStateTone("success");
       setState(next ? "IA ativada" : "IA totalmente desativada");
     } catch (error) {
@@ -180,34 +140,6 @@ export default function Agent() {
     });
   }
 
-  async function createTemplateCandidateVersion() {
-    if (!canManage || templateAction) return;
-    setTemplateAction(evaluatorEnabled ? "Criando versão candidata…" : "Publicando template…");
-    setState("");
-    try {
-      const response = await api<AgentSaveResponse>("/agent/template-candidate", { method: "POST" });
-      if (response.status === "published") {
-        setTemplateStatus((current) => current
-          ? { ...current, diverged: false, candidateVersionId: null }
-          : current);
-        setPendingReplay(undefined);
-        setStateTone("success");
-        setState(directPublicationMessage("template"));
-        return;
-      }
-      setTemplateStatus((current) => current
-        ? { ...current, candidateVersionId: response.candidateVersionId }
-        : current);
-      setPendingReplay(pendingAgentReplay(response, "template"));
-      setStateTone("success");
-      setState(queuedCandidateMessage("template"));
-    } catch (error) {
-      setStateTone("error");
-      setState(error instanceof Error ? error.message : "Erro ao criar a versão candidata");
-    } finally {
-      setTemplateAction("");
-    }
-  }
 
   return (
     <Shell>
@@ -217,7 +149,6 @@ export default function Agent() {
           <p>Defina o escopo, o provedor e as respostas automáticas.</p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-3">
-          <Link className="btn" href="/agente/melhorias"><Flask size={16} aria-hidden="true" />Melhoria contínua</Link>
           <span className={`mono rounded-full border px-3 py-2 text-[10px] font-semibold uppercase tracking-[.12em] ${form?.isActive ? "border-[var(--border-ai)] text-[var(--accent-soft)]" : "border-[var(--warn-border)] text-[var(--warn)]"}`}>
             {form?.isActive ? "IA ligada" : "IA desligada"}
           </span>
@@ -225,37 +156,14 @@ export default function Agent() {
             <Power size={16} aria-hidden="true" />
             {changingStatus ? "Alterando…" : form?.isActive ? "Desativar IA" : "Ativar IA"}
           </button>
-          <button type="button" className="btn primary active:scale-[.98]" disabled={!canManage || !dirty || !form || savingCandidate || form.enabledTools.length === 0} onClick={() => setReviewSave(true)}>
-            {savingCandidate
-              ? evaluatorEnabled ? "Criando candidata…" : "Publicando…"
-              : evaluatorEnabled ? "Salvar como candidata" : "Salvar e publicar"}
+          <button type="button" className="btn primary active:scale-[.98]" disabled={!canManage || !dirty || !form || form.enabledTools.length === 0} onClick={() => void save()}>
+            Salvar alterações
           </button>
         </div>
       </header>
 
       {loaded && form && !canManage ? <p className="sub mb-4" role="status">Acesso somente leitura. As configurações e o estado da IA não podem ser alterados.</p> : null}
-      {pendingReplay ? <PendingReplayNotice replay={pendingReplay} /> : null}
-      {loaded && form && templateStatus?.available && templateStatus.diverged ? (
-        <section className="mb-5 flex flex-wrap items-center justify-between gap-4 border border-[var(--warn-border)] bg-[var(--warn-bg)] p-4" role="status">
-          <div>
-            <strong className="block text-sm text-[var(--heading)]">O template versionado diverge do prompt ativo</strong>
-            <p className="sub mt-1 text-xs">
-              {evaluatorEnabled
-                ? `O template possui ${templateStatus.templateCharacters} caracteres. A ação cria uma candidata e inicia o replay; o prompt ativo permanece inalterado até os gates serem aprovados e a publicação ser confirmada.`
-                : `O template possui ${templateStatus.templateCharacters} caracteres e será publicado diretamente enquanto o avaliador estiver desativado.`}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {!templateStatus.candidateVersionId ? (
-              <button type="button" className="btn" disabled={!canManage || Boolean(templateAction)} onClick={() => void createTemplateCandidateVersion()}>
-                {templateAction || (evaluatorEnabled ? "Criar candidata e executar replay" : "Publicar template")}
-              </button>
-            ) : (
-              <Link className="btn primary" href="/agente/melhorias">Acompanhar replay</Link>
-            )}
-          </div>
-        </section>
-      ) : null}
+
       {!loaded ? (
         <div className="skeleton h-96" aria-hidden="true" />
       ) : !form ? (
@@ -330,61 +238,11 @@ export default function Agent() {
         </fieldset>
       )}
 
-      {reviewSave && form && savedForm ? (
-        <ModalDialog labelledBy="agent-save-review" describedBy="agent-save-description" onClose={() => setReviewSave(false)}>
-          <h2 id="agent-save-review">{evaluatorEnabled ? "Criar candidata para replay" : "Publicar sem avaliação"}</h2>
-          <p id="agent-save-description">
-            {evaluatorEnabled
-              ? "Revise o resumo. Ao confirmar, uma candidata imutável será criada e testada; a configuração ativa continuará inalterada até a aprovação e publicação."
-              : "Revise o resumo. Ao confirmar, a configuração será publicada diretamente porque o avaliador está temporariamente desativado."}
-          </p>
-          <div className="diff-output">
-            {agentChangeSummary(savedForm, form).map((item) => <div key={item}><strong>{item}</strong></div>)}
-          </div>
-          <div className="flex justify-end gap-2">
-            <button type="button" className="btn" onClick={() => setReviewSave(false)}>Voltar</button>
-            <button type="button" className="btn primary" onClick={() => void save()}>
-              {evaluatorEnabled ? "Criar candidata e iniciar replay" : "Publicar agora"}
-            </button>
-          </div>
-        </ModalDialog>
-      ) : null}
+
     </Shell>
   );
 }
 
-function PendingReplayNotice({ replay }: { replay: PendingAgentReplay }) {
-  return (
-    <section className="mb-5 grid gap-3 border border-[var(--border-ai)] bg-[var(--panel)] p-4 md:grid-cols-[1fr_auto] md:items-center" role="status" aria-live="polite">
-      <div>
-        <strong className="block text-sm text-[var(--heading)]">Candidata salva; replay pendente</strong>
-        <p className="sub mt-1 text-xs">
-          {replay.source === "template"
-            ? "O prompt ativo continua inalterado."
-            : "A configuração ativa continua inalterada."} A candidata só poderá ser publicada depois de passar pelos gates do replay.
-        </p>
-        <p className="mono mt-2 text-[10px] text-[var(--faint)]">
-          candidata {replay.candidateVersionId.slice(0, 8)} · run {replay.runId.slice(0, 8)}
-        </p>
-      </div>
-      <Link className="btn primary active:scale-[.98]" href="/agente/melhorias">Acompanhar replay</Link>
-    </section>
-  );
-}
-
-function agentChangeSummary(before: AgentForm, after: AgentForm): string[] {
-  const changes: string[] = [];
-  if (before.systemPrompt !== after.systemPrompt) changes.push(`Prompt: ${before.systemPrompt.length} → ${after.systemPrompt.length} caracteres`);
-  if (before.aiModel !== after.aiModel) changes.push(`Modelo: ${before.aiModel} → ${after.aiModel}`);
-  if (before.openRouterProvider !== after.openRouterProvider) changes.push("Roteamento do provider alterado");
-  if (before.temperature !== after.temperature) changes.push(`Temperatura: ${before.temperature} → ${after.temperature}`);
-  if (before.reasoningEffort !== after.reasoningEffort) changes.push(`Raciocínio: ${before.reasoningEffort} → ${after.reasoningEffort}`);
-  if (before.maxTokens !== after.maxTokens) changes.push(`Máximo de tokens: ${before.maxTokens} → ${after.maxTokens}`);
-  if (JSON.stringify([...before.enabledTools].sort()) !== JSON.stringify([...after.enabledTools].sort())) changes.push(`Ferramentas: ${before.enabledTools.length} → ${after.enabledTools.length}`);
-  if (before.mediaFallbackAudio !== after.mediaFallbackAudio || before.mediaFallbackImage !== after.mediaFallbackImage || before.mediaFallbackDocument !== after.mediaFallbackDocument) changes.push("Respostas de mídia alteradas");
-  if (after.openRouterApiKey || after.clearOpenRouterApiKey) changes.push(after.clearOpenRouterApiKey ? "Chave da API será removida" : "Chave da API será substituída");
-  return changes;
-}
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="field"><span className="label">{label}</span>{children}</label>;

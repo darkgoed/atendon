@@ -326,7 +326,12 @@ export class EvolutionClient {
     const result = media.mediaType === "audio"
       ? await this.request<{ key?: Json; id?: string | number }>(`/message/sendWhatsAppAudio/${encodeURIComponent(instanceName)}`, {
         method: "POST",
-        body: JSON.stringify({ number: number.split("@")[0], audio: media.dataBase64 })
+        body: JSON.stringify({
+          number: number.split("@")[0],
+          audio: media.dataBase64,
+          // Evolution API v2.3.7-baileys-rc13 requires this flag to emit a voice note.
+          ptt: true
+        })
       })
       : await this.request<{ key?: Json; id?: string | number }>(`/message/sendMedia/${encodeURIComponent(instanceName)}`, {
         method: "POST",

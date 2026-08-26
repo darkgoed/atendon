@@ -9,6 +9,7 @@ import { ContactAvatar } from "@/components/contact-avatar";
 import { Empty } from "@/components/page-state";
 import { LeadTagChips, LeadTagPicker, type LeadTag } from "@/components/lead-tag-picker";
 import { SavedViewsControl } from "@/components/saved-views-control";
+import { TagCatalogSettings } from "@/components/tag-catalog-settings";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { buildLeadFilterQuery, type LeadFilters } from "@/lib/lead-filters";
@@ -56,6 +57,7 @@ export default function LeadsPage() {
   const [qualifyingLeadId, setQualifyingLeadId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const { data: session } = useSWR<PanelSession>("/me", fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 10_000
@@ -130,38 +132,29 @@ export default function LeadsPage() {
     }
   }
 
-  return <Shell>
+  const activeFilterCount = Object.entries(filters).filter(([key, value]) => key !== "busca" ? Boolean(value) : Boolean(value.trim())).length;
+  const clearFilters = () => setFilters({ status: "", unidade_id: "", categoria_id: "", parceiro_id: "", busca: "", estrelas: "", fila_humana: "" });
+  return <Shell fitViewport>
     <div className="leads-page">
     <header className="leads-page__header">
-      <div>
-        <h1>{hasWorkspaceScope ? "Leads" : "Meus leads"}</h1>
-        <p>{hasWorkspaceScope
-          ? "Qualificação contextual, decisão humana e reuniões em um só fluxo."
-          : "Leads atribuídos a você, com qualificação, histórico e próximas ações."}</p>
-      </div>
-      <div className="flex items-center gap-2">
-        <SavedViewsControl
-          resource="leads"
-          filters={leadFiltersForSavedView(filters)}
-          onApply={applySavedFilters}
-        />
+      <div><h1>{hasWorkspaceScope ? "Leads" : "Meus leads"}</h1><p>{hasWorkspaceScope ? "Qualificação contextual, decisão humana e reuniões em um só fluxo." : "Leads atribuídos a você, com qualificação, histórico e próximas ações."}</p></div>
+      <div className="leads-page__actions">
+        <SavedViewsControl resource="leads" filters={leadFiltersForSavedView(filters)} onApply={applySavedFilters} />
+        <button type="button" className="btn" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>Filtros{activeFilterCount ? ` (${activeFilterCount})` : ""}</button>
+        <TagCatalogSettings />
+        <BulkLeadActions selected={selectedItems} onClear={() => setSelectedIds(new Set())} onChanged={mutate} />
         <span className="mono text-[10.5px] text-[var(--text-6)]" role="status" aria-live="polite">{loading ? "carregando…" : `${leads.length} resultado(s)`}</span>
       </div>
     </header>
-    <section className="leads-filters">
+    {filtersOpen ? <section className="leads-filters" aria-label="Filtros de leads">
       <label className="field"><span className="label">Busca</span><span className="search-field"><MagnifyingGlass aria-hidden="true" /><input className="input" value={filters.busca} onChange={(event) => change("busca", event.target.value)} placeholder="Nome ou telefone" /></span></label>
-      <Filter label="Status" value={filters.status} onChange={(value) => change("status", value)} options={statuses.map((id) => ({ id, nome: id ? leadStatusLabel(id) : "Todos" }))} />
-      <Filter label="Avaliação" value={filters.estrelas} onChange={(value) => change("estrelas", value)} options={[{ id: "", nome: "Todas" }, ...[1, 2, 3, 4, 5].map((stars) => ({ id: String(stars), nome: `${stars} ${stars === 1 ? "estrela" : "estrelas"}` }))]} />
-      <Filter label="Fila humana" value={filters.fila_humana} onChange={(value) => change("fila_humana", value)} options={[{ id: "", nome: "Todos" }, { id: "true", nome: "Requer decisão humana" }]} />
-      <Filter label="Agenda" value={filters.unidade_id} onChange={(value) => change("unidade_id", value)} options={[{ id: "", nome: "Todas" }, ...options.unidades]} />
-      <Filter label="Categoria" value={filters.categoria_id} onChange={(value) => change("categoria_id", value)} options={[{ id: "", nome: "Todas" }, ...options.categorias]} />
-      <Filter label="Parceiro" value={filters.parceiro_id} onChange={(value) => change("parceiro_id", value)} options={[{ id: "", nome: "Todos" }, ...options.parceiros]} />
-    </section>
+      <Filter label="Status" value={filters.status} onChange={(value) => change("status", value)} options={statuses.map((id) => ({ id, nome: id ? leadStatusLabel(id) : "Todos" }))} /><Filter label="Avaliação" value={filters.estrelas} onChange={(value) => change("estrelas", value)} options={[{ id: "", nome: "Todas" }, ...[1, 2, 3, 4, 5].map((stars) => ({ id: String(stars), nome: `${stars} ${stars === 1 ? "estrela" : "estrelas"}` }))]} /><Filter label="Fila humana" value={filters.fila_humana} onChange={(value) => change("fila_humana", value)} options={[{ id: "", nome: "Todos" }, { id: "true", nome: "Requer decisão humana" }]} /><Filter label="Agenda" value={filters.unidade_id} onChange={(value) => change("unidade_id", value)} options={[{ id: "", nome: "Todas" }, ...options.unidades]} /><Filter label="Categoria" value={filters.categoria_id} onChange={(value) => change("categoria_id", value)} options={[{ id: "", nome: "Todas" }, ...options.categorias]} /><Filter label="Parceiro" value={filters.parceiro_id} onChange={(value) => change("parceiro_id", value)} options={[{ id: "", nome: "Todos" }, ...options.parceiros]} /><button type="button" className="btn" onClick={clearFilters}>Limpar</button>
+    </section> : null}
     {error ? <p className="error mb-4" role="alert">{error}</p> : null}
     {feedback ? <p className="accent mb-4" role="status" aria-live="polite">{feedback}</p> : null}
     {accessNotice ? <p className="mb-4 rounded border border-[var(--border-ai)] p-3 text-sm text-[var(--accent-soft)]" role="status">{accessNotice}</p> : null}
     {swrError ? <p className="error mb-4" role="alert">{swrError.message}</p> : null}
-    <section className="leads-table-surface responsive-table-wrap">
+    <section className="leads-table-surface responsive-table-wrap overflow-y-auto">
       {loading ? <div className="grid gap-2 p-4" role="status" aria-label="Carregando leads">{[1, 2, 3, 4].map((item) => <div key={item} className="skeleton h-12" aria-hidden="true" />)}</div>
         : leads.length === 0 ? <Empty>Nenhum lead corresponde aos filtros.</Empty>
           : <table className={`responsive-table leads-table w-full whitespace-nowrap ${canReadFollowUp ? "min-w-[980px]" : "min-w-[780px]"} border-collapse text-left`}>
@@ -198,7 +191,6 @@ export default function LeadsPage() {
             </tr>)}</tbody>
           </table>}
     </section>
-    <BulkLeadActions selected={selectedItems} onClear={() => setSelectedIds(new Set())} onChanged={mutate} />
     </div>
   </Shell>;
 }

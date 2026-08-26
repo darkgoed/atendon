@@ -5,12 +5,12 @@ export function AgendaHeader({ canCreate, canBlock, unit, mode, view, pendingCou
   canCreate: boolean;
   canBlock: boolean;
   unit: string;
-  mode: "day" | "week";
+  mode: "day" | "week" | "month";
   view: AppointmentView;
   pendingCount: number;
   onCreate: () => void;
   onBlock: () => void;
-  onMode: (mode: "day" | "week") => void;
+  onMode: (mode: "day" | "week" | "month") => void;
   onView: (view: AppointmentView) => void;
 }) {
   return (
@@ -36,7 +36,7 @@ export function AgendaHeader({ canCreate, canBlock, unit, mode, view, pendingCou
           </button>
         ) : null}
         <div className="agenda-head__toggle" role="group" aria-label="Visualização da agenda">
-          {(["day", "week"] as const).map((option) => (
+          {(["day", "week", "month"] as const).map((option) => (
             <button
               type="button"
               key={option}
@@ -44,7 +44,7 @@ export function AgendaHeader({ canCreate, canBlock, unit, mode, view, pendingCou
               className={mode === option ? "is-active" : ""}
               onClick={() => onMode(option)}
             >
-              {option === "day" ? "Dia" : "Semana"}
+              {option === "day" ? "Dia" : option === "week" ? "Semana" : "Mês"}
             </button>
           ))}
         </div>

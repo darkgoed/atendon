@@ -409,6 +409,7 @@ export default function Conversations() {
   const [requestingAiReply, setRequestingAiReply] = useState(false);
   const [aiActionNotice, setAiActionNotice] = useState("");
   const [changingOwner, setChangingOwner] = useState(false);
+  const [followUpPending, setFollowUpPending] = useState(false);
   const [queueingEvaluation, setQueueingEvaluation] = useState(false);
   const [evaluationNotice, setEvaluationNotice] = useState("");
   const [schedulerOpen, setSchedulerOpen] = useState(false);
@@ -958,6 +959,23 @@ export default function Conversations() {
     }
   }
 
+  async function followUpConversation() {
+    if (!selected || followUpPending) return;
+    setError("");
+    setFollowUpPending(true);
+    try {
+      await api(`/conversations/${selectedRef.current}/follow-up`, {
+        method: "POST",
+        headers: { "Idempotency-Key": `conversation-follow-up-${selectedRef.current}-${Date.now()}` }
+      });
+      await Promise.all([mutateList(), mutateThread()]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao enviar follow-up");
+    } finally {
+      setFollowUpPending(false);
+    }
+  }
+
   function resolveConversation() {
     if (!selected) return;
     setPendingConfirm({
@@ -1418,7 +1436,10 @@ export default function Conversations() {
                       Agendar
                     </button>
                   ) : null}
-                  {canReply && thread.conversation.status === "open" ? <button className="btn primary shrink-0 active:scale-[.98]" onClick={resolveConversation} disabled={changingOwner}>
+                  {canReply && thread.conversation.status === "open" && thread.conversation.lead_id ? <button className="btn primary shrink-0 active:scale-[.98]" onClick={() => void followUpConversation()} disabled={followUpPending || changingOwner}>
+                    <ArrowClockwise size={14} aria-hidden="true" /> {followUpPending ? "Enviando…" : "Follow-up"}
+                  </button> : null}
+                  {canReply && thread.conversation.status === "open" ? <button className="btn primary shrink-0 active:scale-[.98]" onClick={resolveConversation} disabled={changingOwner || followUpPending}>
                     <CheckCircle size={14} aria-hidden="true" /> Resolver
                   </button> : null}
                   {canReply

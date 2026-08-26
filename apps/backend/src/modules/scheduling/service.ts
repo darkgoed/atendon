@@ -195,7 +195,7 @@ export const attendantCalendarColorBody = z.object({
 export const attendantTimeBlockBody = appointmentIntervalBody({
   start: instant,
   end: instant,
-  reason: z.string().trim().max(500).nullable().optional()
+  reason: z.string().trim().min(1).max(500)
 }).refine(
   (value) => new Date(value.end).getTime() - new Date(value.start).getTime() <= 7 * 24 * 60 * 60 * 1_000,
   { message: "O bloqueio não pode durar mais de 7 dias", path: ["end"] }
@@ -2038,6 +2038,10 @@ export async function createAppointment(
       : await loadEnabledGoogleMeetAutomation(client, tenantId);
     const meetRoomIdentity = atendonMeetAutomation ? createMeetRoomIdentity() : null;
     const atendonMeetUrl = meetRoomIdentity ? participantJoinUrl(meetRoomIdentity.publicCode) : null;
+    if (assignedAttendant) {
+      const recurring = await client.query<RecurringTimeBlockRow>(`SELECT * FROM scheduling_attendant_recurring_time_blocks WHERE tenant_id=$1 AND member_id=$2 AND active=true AND starts_on <= ($3 AT TIME ZONE timezone)::date AND (ends_on IS NULL OR ends_on >= ($3 AT TIME ZONE timezone)::date)`, [tenantId, assignedAttendant.memberId, start]);
+      if (recurring.rows.some(row => recurringOccurrences(row, start, end).length > 0)) throw httpError(409, "O horário está bloqueado");
+    }
     const result = await client.query(
       `INSERT INTO scheduling_appointments(
          lead_id,tenant_id,unit_id,start_at,end_at,status,
@@ -3088,6 +3092,8 @@ export async function verificarHorarios(
         [tenantId, blockMemberIds, opening, closing]
       );
       occupancy.rows.push(...blocks.rows);
+      const recurring = await client.query<RecurringTimeBlockRow>(`SELECT * FROM scheduling_attendant_recurring_time_blocks WHERE tenant_id=$1 AND member_id=ANY($2::uuid[]) AND active=true`, [tenantId, blockMemberIds]);
+      for (const row of recurring.rows) for (const occurrence of recurringOccurrences(row, opening, closing)) occupancy.rows.push({ assigned_member_id: row.member_id, start_at: new Date(String(occurrence.start)), end_at: new Date(String(occurrence.end)) });
     }
     const effectiveCapacity = capacityAttendantIds !== null
       ? capacityAttendantIds.length
@@ -3208,6 +3214,41 @@ export async function verificarHorarios(
     };
   } finally { client.release(); }
 }
+
+export type RecurringTimeBlockInput = {
+  start_local_time: string; end_local_time: string; weekdays: number[]; starts_on: string; ends_on?: string | null; timezone: string; reason: string; active?: boolean;
+};
+export const recurringTimeBlockBody = z.object({
+  start_local_time: time, end_local_time: time, weekdays: z.array(z.number().int().min(1).max(7)).min(1),
+  starts_on: date, ends_on: date.nullable().optional(), timezone: z.string().trim().min(1).max(100),
+  reason: z.string().trim().min(1).max(500), active: z.boolean().optional()
+}).strict().superRefine((v, c) => {
+  if (v.end_local_time <= v.start_local_time) c.addIssue({ code: z.ZodIssueCode.custom, path: ["end_local_time"], message: "O término deve ser posterior ao início" });
+  if (new Set(v.weekdays).size !== v.weekdays.length) c.addIssue({ code: z.ZodIssueCode.custom, path: ["weekdays"], message: "Dias duplicados" });
+  if (v.ends_on && v.ends_on < v.starts_on) c.addIssue({ code: z.ZodIssueCode.custom, path: ["ends_on"], message: "Data final inválida" });
+});
+export const recurringTimeBlockPatch = z.object({ start_local_time: time.optional(), end_local_time: time.optional(), weekdays: z.array(z.number().int().min(1).max(7)).min(1).optional(), starts_on: date.optional(), ends_on: date.nullable().optional(), timezone: z.string().trim().min(1).max(100).optional(), reason: z.string().trim().min(1).max(500).optional(), active: z.boolean().optional() }).strict().superRefine((v,c) => { if (v.start_local_time && v.end_local_time && v.end_local_time <= v.start_local_time) c.addIssue({code:z.ZodIssueCode.custom,path:["end_local_time"],message:"O término deve ser posterior ao início"}); if (v.weekdays && new Set(v.weekdays).size !== v.weekdays.length) c.addIssue({code:z.ZodIssueCode.custom,path:["weekdays"],message:"Dias duplicados"}); if (v.ends_on && v.starts_on && v.ends_on < v.starts_on) c.addIssue({code:z.ZodIssueCode.custom,path:["ends_on"],message:"Data final inválida"}); });
+type RecurringTimeBlockRow = RecurringTimeBlockInput & { id: string; tenant_id: string; member_id: string; active: boolean; created_at: Date; updated_at: Date };
+function mapRecurring(row: RecurringTimeBlockRow) { return { id: row.id, member_id: row.member_id, start_local_time: row.start_local_time, end_local_time: row.end_local_time, weekdays: row.weekdays, starts_on: row.starts_on, ends_on: row.ends_on, timezone: row.timezone, reason: row.reason, active: row.active, created_at: row.created_at.toISOString(), updated_at: row.updated_at.toISOString() }; }
+export function recurringOccurrences(row: RecurringTimeBlockRow, start: Date, end: Date) {
+  const out: Array<Record<string, unknown>> = [];
+  for (let cursor = new Date(start); cursor < end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    const key = localDateKey(cursor, row.timezone); const weekday = ((localWeekday(cursor, row.timezone) + 6) % 7) + 1;
+    if (!row.active || key < row.starts_on || (row.ends_on && key > row.ends_on) || !row.weekdays.includes(weekday)) continue;
+    const s = localDateTimeToUtc(key, row.start_local_time, row.timezone); const e = localDateTimeToUtc(key, row.end_local_time, row.timezone);
+    if (s < end && e > start) out.push({ ...mapRecurring(row), start: s.toISOString(), end: e.toISOString(), origin: "recorrente", rule_id: row.id });
+  } return out;
+}
+export async function listOwnRecurringAttendantTimeBlocks(tenantId: string, userId: string, interval: { start: Date; end: Date }) {
+  const r = await db.query<RecurringTimeBlockRow>(`SELECT block.* FROM scheduling_attendant_recurring_time_blocks block JOIN workspace_members m ON m.id=block.member_id AND m.workspace_id=block.tenant_id AND m.user_id=$2 WHERE block.tenant_id=$1 AND block.starts_on <= ($4 AT TIME ZONE block.timezone)::date AND (block.ends_on IS NULL OR block.ends_on >= ($3 AT TIME ZONE block.timezone)::date) ORDER BY block.starts_on,block.id`, [tenantId,userId,interval.start,interval.end]);
+  return r.rows.flatMap(row => recurringOccurrences(row, interval.start, interval.end));
+}
+export async function createOwnRecurringAttendantTimeBlock(tenantId: string, userId: string, input: z.infer<typeof recurringTimeBlockBody>, actor: FollowUpActor) {
+  const r = await db.query<RecurringTimeBlockRow>(`INSERT INTO scheduling_attendant_recurring_time_blocks(tenant_id,member_id,start_local_time,end_local_time,weekdays,starts_on,ends_on,timezone,reason,active,created_by_user_id) SELECT $1,m.id,$3,$4,$5,$6,$7,$8,$9,COALESCE($10,true),$11 FROM workspace_members m WHERE m.workspace_id=$1 AND m.user_id=$2 AND m.status='active' RETURNING *`, [tenantId,userId,input.start_local_time,input.end_local_time,input.weekdays,input.starts_on,input.ends_on??null,input.timezone,input.reason,input.active??true,actor.userId]);
+  if (!r.rows[0]) throw httpError(403, "Atendente ativo não encontrado"); return mapRecurring(r.rows[0]);
+}
+export async function updateOwnRecurringAttendantTimeBlock(tenantId: string,userId: string,id:string,input:z.infer<typeof recurringTimeBlockPatch>) { const keys=Object.keys(input); if(!keys.length) throw httpError(400,"Nenhum campo"); const vals=keys.map(k=>(input as any)[k]); const sets=keys.map((k,i)=>`${k}=$${i+3}`).join(","); const r=await db.query<RecurringTimeBlockRow>(`UPDATE scheduling_attendant_recurring_time_blocks b SET ${sets},updated_at=now() FROM workspace_members m WHERE b.id=$1 AND b.tenant_id=$2 AND m.id=b.member_id AND m.workspace_id=b.tenant_id AND m.user_id=$${keys.length+3} RETURNING b.*`,[id,tenantId,...vals,userId]); if(!r.rows[0]) throw httpError(404,"Bloqueio recorrente não encontrado"); return mapRecurring(r.rows[0]); }
+export async function deleteOwnRecurringAttendantTimeBlock(tenantId:string,userId:string,id:string){const r=await db.query<RecurringTimeBlockRow>(`DELETE FROM scheduling_attendant_recurring_time_blocks b USING workspace_members m WHERE b.id=$1 AND b.tenant_id=$2 AND m.id=b.member_id AND m.workspace_id=b.tenant_id AND m.user_id=$3 RETURNING b.*`,[id,tenantId,userId]);if(!r.rows[0])throw httpError(404,"Bloqueio recorrente não encontrado");return mapRecurring(r.rows[0]);}
 
 export type SchedulingPeriod = "manha" | "tarde";
 

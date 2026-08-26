@@ -1,5 +1,6 @@
 import {
   CalendarDots,
+  Clock,
   ChatsCircle,
   ClipboardText,
   Gauge,
@@ -44,7 +45,6 @@ const administrationPaths = [
   "/conexao",
   "/workspace/members",
   "/workspace/roles",
-  "/workspace/api-keys",
   "/workspace/audit",
   "/agente",
   "/humanizacao",
@@ -68,6 +68,7 @@ export const panelManifest: readonly PanelManifestItem[] = [
   { href: "/pos-venda/configurar", label: "Configurar checklist", group: "Pós-venda", Icon: ClipboardText, requiredPermissions: ["post_sales.manage"], capability: "post_sales_v1", menu: true, match: startsAt("/pos-venda/configurar") },
   { href: "/tripz-ai", label: "Tripz IA", group: "Copiloto", Icon: Sparkle, requiredPermissions: ["tripz_ai.use"], capability: "tripz_ai_v1", menu: true, match: startsAt("/tripz-ai") },
   { href: "/alertas", label: "Alertas", group: "Administração", Icon: Watch, capability: "workspace_admin_v1", rootOnly: true, match: startsAt("/alertas") },
+  { href: "/follow-ups", label: "Follow-ups", group: "Administração", Icon: Clock, rootWorkspaceOnly: true, menu: true, match: startsAt("/follow-ups") },
   { href: "/configuracoes", label: "Configurações", group: "Administração", Icon: GearSix, capability: "workspace_admin_v1", menu: true, match: (path) => administrationPaths.some((base) => startsAt(base)(path)) },
   { href: "/root/workspaces", label: "Empresas", group: "ROOT", Icon: Vault, rootOnly: true, menu: true, match: startsAt("/root/workspaces") },
   { href: "/root/audit", label: "Auditoria ROOT", group: "ROOT", Icon: Watch, rootOnly: true, menu: true, match: startsAt("/root/audit") },

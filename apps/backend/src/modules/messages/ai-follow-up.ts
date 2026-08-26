@@ -99,7 +99,7 @@ function selectedDelivery(value: unknown, index: number): FollowUpDelivery {
   const selected = value[index];
   if (!selected || typeof selected !== "object") return { type: "text" };
   const record = selected as Record<string, unknown>;
-  if ((record.type === "image" || record.type === "sticker")
+  if ((record.type === "image" || record.type === "sticker" || record.type === "audio" || record.type === "video")
     && typeof record.assetId === "string"
     && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(record.assetId)) {
     return { type: record.type, assetId: record.assetId };
@@ -581,6 +581,13 @@ export class AiFollowUpRepository {
             dataBase64: image.media_data.toString("base64")
           };
         }
+      } else if (configuredDelivery.type === "audio" || configuredDelivery.type === "video") {
+        const asset = await client.query<{ id: string; name: string; mime_type: string; file_name: string; size_bytes: number; media_data: Buffer }>(
+          `SELECT id,name,mime_type,file_name,size_bytes,media_data FROM ai_follow_up_media_assets WHERE tenant_id=$1 AND id=$2`,
+          [row.tenant_id, configuredDelivery.assetId]
+        );
+        const media = asset.rows[0];
+        if (media) delivery = { ...configuredDelivery, name: media.name, mimeType: media.mime_type, fileName: media.file_name, sizeBytes: media.size_bytes, dataBase64: media.media_data.toString("base64") };
       } else if (configuredDelivery.type === "sticker") {
         const asset = await client.query<{
           id: string; name: string; mime_type: string; file_name: string; size_bytes: number; media_data: Buffer;
@@ -922,17 +929,9 @@ export class AiFollowUpProcessor {
             throw new Error("Configured follow-up sticker is unavailable");
           }
           sent = await this.gateway.sendSticker(claim.sessionId, destination, { dataBase64: delivery.dataBase64 });
-        } else if (delivery.type === "image") {
-          if (!delivery.dataBase64 || !delivery.mimeType || !delivery.fileName || !this.gateway.sendMedia) {
-            throw new Error("Configured follow-up image is unavailable");
-          }
-          sent = await this.gateway.sendMedia(claim.sessionId, destination, {
-            mediaType: "image",
-            mimeType: delivery.mimeType,
-            fileName: delivery.fileName,
-            dataBase64: delivery.dataBase64,
-            caption: parsed.text
-          });
+        } else if (delivery.type === "image" || delivery.type === "audio" || delivery.type === "video") {
+          if (!delivery.dataBase64 || !delivery.mimeType || !delivery.fileName || !this.gateway.sendMedia) throw new Error(`Configured follow-up ${delivery.type} is unavailable`);
+          sent = await this.gateway.sendMedia(claim.sessionId, destination, { mediaType: delivery.type as never, mimeType: delivery.mimeType, fileName: delivery.fileName, dataBase64: delivery.dataBase64, caption: parsed.text });
         } else {
           sentBubbles = [];
           for (const [index, bubble] of textBubbles.entries()) {

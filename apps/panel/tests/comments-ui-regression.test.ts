@@ -81,7 +81,7 @@ describe("comments.md UI regressions", () => {
       "/conexao",
       "/workspace/members",
       "/workspace/roles",
-      "/workspace/api-keys",
+
       "/workspace/audit",
       "/agente",
       "/humanizacao",
@@ -90,8 +90,6 @@ describe("comments.md UI regressions", () => {
       expect(manifestSource).toContain(`"${path}"`);
       expect(destinations).toContain(`href: "${path}"`);
     }
-    expect(destinations).toContain('href: "/agente/melhorias"');
-    expect(destinations).toContain('label: "Melhoria da IA"');
     expect(shellSource).toContain("findPanelManifestItem(path)");
   });
 

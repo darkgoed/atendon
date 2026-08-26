@@ -9,10 +9,12 @@ import { api } from "@/lib/api";
 import { useRealtimeSignals } from "@/lib/realtime";
 import { usePermission } from "@/lib/use-permission";
 import { AgendaCalendar, type AgendaTimeGrid } from "./agenda-calendar";
+import { AgendaMonth } from "./agenda-month";
 import { AgendaCreateDialog } from "./agenda-create-dialog";
 import { AgendaDetailDialog } from "./agenda-detail-dialog";
 import { AgendaHeader } from "./agenda-header";
 import { AgendaTimeBlockDialog, AgendaTimeBlockList } from "./agenda-time-blocks";
+import { AgendaSlotDialog } from "./agenda-slot-dialog";
 import { isAppointmentResultPending } from "./agenda-appointment-state";
 import { AgendaError, AgendaLoading } from "./agenda-states";
 import type { AgendaPermissions, Appointment, AppointmentView, Slot } from "./agenda-types";
@@ -41,6 +43,7 @@ function AgendaContent() {
   const { units, unitsStatus, unitsError, unit, anchor, mode, days, availability, appointmentsData, appointmentsError, appointmentsLoading, appointments, timezone, today, loadUnits, loadAvailability, mutateAppointments, navigate, goToday, timeBlocks, timeBlocksError, mutateTimeBlocks } = data;
   const [appointmentView, setAppointmentView] = useState<AppointmentView>("all");
   const [timeBlockOpen, setTimeBlockOpen] = useState(false);
+  const [slotChoice, setSlotChoice] = useState<Slot | null>(null);
   const [deletingTimeBlockId, setDeletingTimeBlockId] = useState("");
   const [timeBlockActionError, setTimeBlockActionError] = useState("");
   const [now, setNow] = useState(() => Date.now());
@@ -110,6 +113,7 @@ function AgendaContent() {
     <Shell fitViewport>
       <AgendaHeader canCreate={permissions.canCreate} canBlock={canBlockTime} unit={unit} mode={mode} view={appointmentView} pendingCount={pendingAppointmentsCount} onCreate={actions.beginManualCreate} onBlock={() => setTimeBlockOpen(true)} onMode={data.setMode} onView={setAppointmentView} />
       <AgendaTimeBlockDialog open={timeBlockOpen} anchor={anchor} timezone={timezone} onClose={() => setTimeBlockOpen(false)} onSaved={refreshAfterTimeBlock} />
+      <AgendaSlotDialog open={Boolean(slotChoice)} slot={slotChoice} onClose={() => setSlotChoice(null)} onAddLead={() => { if (slotChoice) actions.beginCreate(slotChoice); setSlotChoice(null); }} onBlock={() => { setTimeBlockOpen(true); setSlotChoice(null); }} />
       {unitsStatus === "loading" ? <AgendaLoading label="Carregando unidades e agenda" /> : null}
       {unitsStatus === "error" ? <AgendaError message={unitsError} onRetry={loadUnits} /> : null}
       {unitsStatus === "ready" && units.length === 0 ? <Empty>Cadastre uma unidade para montar a agenda.</Empty> : null}
@@ -121,7 +125,7 @@ function AgendaContent() {
               <button type="button" className="agenda-toolbar__nav" onClick={() => navigate(1)} aria-label="Próximo período"><ArrowRight aria-hidden="true" /></button>
             </div>
             <button type="button" className="agenda-toolbar__today" onClick={goToday}>Hoje</button>
-            <strong className="agenda-period">{mode === "day" ? days[0].toLocaleDateString("pt-BR", { timeZone: "UTC", weekday: "long", day: "2-digit", month: "long" }) : `${days[0].toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "short" })} — ${days[6].toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "short" })}`}</strong>
+            <strong className="agenda-period">{mode === "month" ? days[0].toLocaleDateString("pt-BR", { timeZone: "UTC", month: "long", year: "numeric" }) : mode === "day" ? days[0].toLocaleDateString("pt-BR", { timeZone: "UTC", weekday: "long", day: "2-digit", month: "long" }) : `${days[0].toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "short" })} — ${days[6].toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "short" })}`}</strong>
             <div className="agenda-legend" aria-label="Tipos de evento">
               <span><i className="agenda-legend__swatch agenda-legend__swatch--meet" />Reunião</span>
               <span><i className="agenda-legend__swatch agenda-legend__swatch--demo" />Demo</span>
@@ -140,9 +144,9 @@ function AgendaContent() {
           {agendaReady ? (
             <>
               {pendingAppointmentsCount > 0 ? <PendingWarning count={pendingAppointmentsCount} onShow={() => setAppointmentView("pending")} /> : null}
-              <div className={`agenda-scroll ${mode === "day" ? "agenda-scroll--day" : ""}`}>
-                <AgendaCalendar days={days} today={today} timezone={timezone} failedDays={availability.failedDays} timeGrid={timeGrid} now={now} dragging={actions.dragging} reschedulingId={actions.reschedulingId} pendingActionId={actions.pendingActionId} canReschedule={permissions.canReschedule} canCreate={permissions.canCreate} onDrag={actions.setDragging} onDrop={actions.drop} onCreate={actions.beginCreate} onOpen={actions.openAppointment} />
-              </div>
+              {mode === "month" ? <AgendaMonth days={days} appointments={visibleAppointments} today={today} onSelect={(date) => { data.setMode("day"); data.setAnchor(date); }} /> : <div className={`agenda-scroll ${mode === "day" ? "agenda-scroll--day" : ""}`}>
+                <AgendaCalendar days={days} today={today} timezone={timezone} failedDays={availability.failedDays} timeGrid={timeGrid} now={now} dragging={actions.dragging} reschedulingId={actions.reschedulingId} pendingActionId={actions.pendingActionId} canReschedule={permissions.canReschedule} canCreate={permissions.canCreate} onDrag={actions.setDragging} onDrop={actions.drop} onOpen={actions.openAppointment} onSelectSlot={setSlotChoice} />
+              </div>}
               <AgendaDetailDialog actions={actions} timezone={timezone} now={now} />
               <AgendaCreateDialog actions={actions} timezone={timezone} />
             </>

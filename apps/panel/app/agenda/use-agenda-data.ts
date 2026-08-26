@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { api } from "@/lib/api";
 import { instantFromLocalMinute, localDay } from "@/lib/timezone";
 import type { AppointmentsResponse, AttendantTimeBlocksResponse, AvailabilityResponse, AvailabilityState, Unit } from "./agenda-types";
-import { addDays, dayKey, messageFrom } from "./agenda-utils";
+import { addCalendarMonths, addDays, dayKey, messageFrom } from "./agenda-utils";
 
 const appointmentsFetcher = (url: string) => api<AppointmentsResponse>(url);
 
@@ -19,7 +19,7 @@ export function useAgendaData({ requestedUnit, requestedDate, requestedAppointme
   const [unitsError, setUnitsError] = useState("");
   const [unit, setUnit] = useState(requestedUnit);
   const [anchor, setAnchor] = useState(() => requestedDate || dayKey(new Date()));
-  const [mode, setMode] = useState<"day" | "week">(requestedAppointmentId ? "day" : "week");
+  const [mode, setMode] = useState<"day" | "week" | "month">(requestedAppointmentId ? "day" : "week");
   const [availability, setAvailability] = useState<AvailabilityState>({ status: "idle", slots: {}, timezone: "UTC", error: "", failedDays: [], loadedDays: [], unitId: "" });
   const availabilityRequest = useRef(0);
   const anchorAlignedToWorkspace = useRef(Boolean(requestedDate));
@@ -45,6 +45,11 @@ export function useAgendaData({ requestedUnit, requestedDate, requestedAppointme
   const days = useMemo(() => {
     const date = new Date(`${anchor}T00:00:00.000Z`);
     if (mode === "day") return [date];
+    if (mode === "month") {
+      const first = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+      const last = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0));
+      return Array.from({ length: last.getUTCDate() }, (_, index) => addDays(first, index));
+    }
     const monday = addDays(date, -((date.getUTCDay() + 6) % 7));
     return Array.from({ length: 7 }, (_, index) => addDays(monday, index));
   }, [anchor, mode]);
@@ -125,7 +130,9 @@ export function useAgendaData({ requestedUnit, requestedDate, requestedAppointme
 
   function navigate(direction: number) {
     anchorInteracted.current = true;
-    setAnchor(dayKey(addDays(new Date(`${anchor}T00:00:00.000Z`), direction * (mode === "day" ? 1 : 7))));
+    const current = new Date(`${anchor}T00:00:00.000Z`);
+    const next = mode === "month" ? addCalendarMonths(current, direction) : addDays(current, direction * (mode === "day" ? 1 : 7));
+    setAnchor(dayKey(next));
   }
 
   function goToday() {
@@ -134,7 +141,7 @@ export function useAgendaData({ requestedUnit, requestedDate, requestedAppointme
   }
 
   return {
-    units, unitsStatus, unitsError, unit, setUnit, anchor, mode, setMode, days, availability,
+    units, unitsStatus, unitsError, unit, setUnit, anchor, setAnchor, mode, setMode, days, availability,
     appointmentsData: appointmentsQuery.data, appointmentsError: appointmentsQuery.error,
     appointmentsLoading: appointmentsQuery.isLoading, mutateAppointments: appointmentsQuery.mutate,
     appointments, timezone, today, loadUnits, loadAvailability, navigate, goToday,

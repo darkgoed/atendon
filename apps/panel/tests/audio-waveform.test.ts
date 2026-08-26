@@ -50,7 +50,23 @@ describe("audio waveform", () => {
     expect(composer).toContain("<VoiceInput");
     expect(composer).toContain("<VoiceMessagePlayer");
     expect(composer).toContain("fileName: attachment.file.name");
-    expect(media).toContain("audioDisplayName(rawFileName)");
-    expect(media).toContain("<VoiceMessagePlayer");
+    expect(media).not.toContain("audioDisplayName(rawFileName)");
+    expect(media).toContain("<VoiceMessagePlayer src={src} />");
+    expect(media).not.toContain("label={fileName}");
+    expect(media).not.toContain("<Microphone");
+  });
+
+  it("renders audio without exposing filename or legacy content while preserving other media branches", async () => {
+    const media = await readFile(new URL("../components/conversation-message-media.tsx", import.meta.url), "utf8");
+
+    expect(media).toContain('message.media_type === "audio"');
+    expect(media).toContain("<VoiceMessagePlayer src={src} />");
+    expect(media).not.toContain("{fileName}</div>");
+    expect(media).not.toContain("message.content && message.content !== rawFileName");
+    expect(media).toContain('message.media_type === "image"');
+    expect(media).toContain('alt={message.content || fileName}');
+    expect(media).toContain("<FileArrowDown");
+    expect(media).toContain('media_is_sticker');
+    expect(media).toContain('alt="Figurinha"');
   });
 });

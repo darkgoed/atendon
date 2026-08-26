@@ -398,7 +398,7 @@ describe("EvolutionClient webhook configuration", () => {
       "http://evolution.test/message/sendWhatsAppAudio/tenant-instance",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ number: "5511999999999", audio: "V2ViTQ==" })
+        body: JSON.stringify({ number: "5511999999999", audio: "V2ViTQ==", ptt: true })
       })
     );
   });

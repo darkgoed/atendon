@@ -1,8 +1,7 @@
 "use client";
 
-import { FileArrowDown, Microphone } from "@phosphor-icons/react";
+import { FileArrowDown } from "@phosphor-icons/react";
 import { VoiceMessagePlayer } from "@/components/ui/voice-input";
-import { audioDisplayName } from "@/lib/audio-waveform";
 
 export interface ConversationMediaMessage {
   id: string;
@@ -27,8 +26,6 @@ function formatBytes(bytes?: number | null): string {
 
 export function ConversationMessageMedia({ conversationId, message }: { conversationId: string; message: ConversationMediaMessage }) {
   const src = apiMediaUrl(conversationId, message.id);
-  const rawFileName = message.media_file_name || (message.media_type === "audio" ? "Mensagem de áudio" : message.media_type === "image" ? "Imagem" : "Documento");
-  const fileName = message.media_type === "audio" ? audioDisplayName(rawFileName) : rawFileName;
 
   if (message.media_is_sticker) {
     return (
@@ -43,12 +40,13 @@ export function ConversationMessageMedia({ conversationId, message }: { conversa
   if (message.media_type === "audio") {
     return (
       <div className="min-w-[min(19rem,72vw)]">
-        <div className="mb-2 flex items-center gap-2 text-xs text-[var(--body)]"><Microphone size={16} className="text-[var(--accent-soft)]" />{fileName}</div>
-        <VoiceMessagePlayer src={src} label={fileName} />
-        {message.content && message.content !== rawFileName && message.content !== fileName ? <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--text)]">{message.content}</p> : null}
+        <VoiceMessagePlayer src={src} />
       </div>
     );
   }
+
+  const rawFileName = message.media_file_name || (message.media_type === "image" ? "Imagem" : "Documento");
+  const fileName = rawFileName;
 
   if (message.media_type === "image") {
     return (

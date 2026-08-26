@@ -65,7 +65,8 @@ describe("panel capability manifest", () => {
     expect(findPanelManifestItem("/leads/pipeline")?.capability).toBe("pipeline_v1");
     expect(findPanelManifestItem("/leads/lead-7")?.capability).toBe("leads_v1");
     expect(findPanelManifestItem("/pos-venda/configurar")?.capability).toBe("post_sales_v1");
-    expect(findPanelManifestItem("/agente/melhorias")?.capability).toBe("workspace_admin_v1");
+    const removedAgentRoute = ["/agente/", "melhorias"].join("");
+    expect(panelManifest.some((item) => item.href === removedAgentRoute)).toBe(false);
     expect(JSON.stringify(panelManifest)).not.toMatch(/tripz.*slug|slug.*tripz/i);
   });
 

@@ -49,6 +49,11 @@ export type AttendantTimeBlock = {
   created_at: string;
 };
 export type AttendantTimeBlocksResponse = { blocks: AttendantTimeBlock[] };
+export type RecurringTimeBlock = {
+  id: string; member_id: string; start_local_time: string; end_local_time: string;
+  weekdays: number[]; starts_on: string; ends_on?: string | null; timezone: string;
+  reason: string; active: boolean;
+};
 
 export type AppointmentAssignee = {
   member_id: string;

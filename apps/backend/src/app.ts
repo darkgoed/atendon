@@ -12,7 +12,11 @@ import { config } from "./config.js";
 import { db } from "./db/client.js";
 import { logger } from "./logger.js";
 import { MessageRepository } from "./modules/messages/repository.js";
-import { parseIdempotencyKey } from "./modules/messages/idempotency.js";
+import { parseIdempotencyKey, payloadFingerprint } from "./modules/messages/idempotency.js";
+import { AiFollowUpProcessor } from "./modules/messages/ai-follow-up.js";
+import { runFollowUpOnce } from "./modules/messages/follow-up-idempotency.js";
+import { OpenRouterClient } from "./modules/ai-router/openrouter.js";
+import { defaultStageId } from "./modules/commercial-journey/service.js";
 import { applySignature, resolveSignatureSettings, type SignatureFormat, type SignatureNameStyle } from "./modules/messages/signature.js";
 import { enqueueInbound, enqueueInboundRecovery } from "./queue/message-queue.js";
 import { isWithinBusinessHours, loadBusinessHoursConfig, nextBusinessHoursStart } from "./modules/whatsapp/business-hours.js";
@@ -25,9 +29,6 @@ import { registerRootRoutes } from "./modules/root/routes.js";
 import { getVersionInfo } from "./modules/root/version.js";
 import { registerQualificationRoutes } from "./modules/qualification/routes.js";
 import { QualificationService } from "./modules/qualification/service.js";
-import { markReplayEnqueueFailure, registerAgentImprovementRoutes } from "./modules/agent-improvement/routes.js";
-import { createManualCandidate, createTemplateCandidate, publishCandidateVersion } from "./modules/agent-improvement/versions.js";
-import { enqueueAiReplay } from "./queue/ai-replay-queue.js";
 import { loadNewavePromptTemplate } from "./db/newave-template.js";
 import { encryptSecret } from "./modules/ai-router/secret-box.js";
 import { DEFAULT_MEDIA_FALLBACK } from "./modules/ai-router/defaults.js";
@@ -36,7 +37,7 @@ import { WhatsAppSessionManager } from "./modules/whatsapp/session-manager.js";
 import { migrateHumanizerConfig } from "./modules/messages/humanizer.js";
 import { checkReadiness } from "./readiness.js";
 import { AiFollowUpRepository } from "./modules/messages/ai-follow-up.js";
-import { decodeFollowUpImage, FollowUpMediaRepository } from "./modules/messages/follow-up-media.js";
+import { decodeFollowUpMedia, FollowUpMediaRepository } from "./modules/messages/follow-up-media.js";
 import { decodeOutboundMedia, safeMediaResponseMime } from "./modules/messages/outbound-media.js";
 import { registerStickerRoutes } from "./modules/stickers/routes.js";
 import { StickerRepository } from "./modules/stickers/repository.js";
@@ -61,10 +62,6 @@ import { TripzDocumentService } from "./modules/tripz-ai/document/service.js";
 import { enqueueTripzAiTurn } from "./queue/tripz-ai-queue.js";
 import { panelPresence } from "./modules/realtime/presence.js";
 import { withTenantTransaction } from "./db/tenant-transaction.js";
-import {
-  createLatestEvaluationEvent,
-  enqueueEvaluationEventAfterCommit
-} from "./modules/agent-improvement/evaluation-events.js";
 import { fetchOpenRouterCreditBalance } from "./modules/usage/openrouter-credits.js";
 import {
   canAccessConversation,
@@ -132,7 +129,6 @@ export const agentSchema = z.object({
     .optional()
 });
 const agentStatusSchema = z.object({ isActive: z.boolean() });
-const publishTemplateCandidateSchema = z.object({ confirmation: z.literal("PUBLICAR TEMPLATE") });
 const messageSchema = z.union([
   z.object({ text: z.string().trim().min(1).max(4_000), replyToMessageId: z.string().uuid().optional() }),
   z.object({
@@ -278,7 +274,7 @@ const aiFollowUpSettingsSchema = z.object({
 const followUpMediaBodySchema = z.object({
   name: z.string().trim().min(2).max(100),
   description: z.string().trim().min(3).max(500),
-  mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  mimeType: z.enum(["image/jpeg", "image/png", "image/webp", "audio/ogg", "audio/mpeg", "video/mp4"]),
   fileName: z.string().trim().min(1).max(180),
   dataBase64: z.string().min(1).max(24_000_000)
 });
@@ -362,7 +358,7 @@ export function buildApp() {
   void app.register(cors, {
     origin: config.PANEL_ORIGIN,
     credentials: true,
-    allowedHeaders: ["content-type", "x-api-key", "authorization", "idempotency-key", "last-event-id", "x-tripz-file-name", "x-file-name"]
+    allowedHeaders: ["content-type", "authorization", "idempotency-key", "last-event-id", "x-tripz-file-name", "x-file-name"]
   });
   void app.register(rateLimit, {
     global: false,
@@ -1113,35 +1109,6 @@ export function buildApp() {
     return reply.status(202).send({ status: "qr_pending" });
   });
 
-  app.get("/connection/failed-messages", async (request) => {
-    const session = await requirePermission(request, "connection.read");
-    const recovery = await new MessageRepository(db).outboundRecoverySummary(session.tenantId);
-    return { recovery };
-  });
-
-  app.post("/connection/failed-messages/resend", {
-    config: { rateLimit: HTTP_RATE_LIMITS.sensitiveWrite }
-  }, async (request, reply) => {
-    const session = await requirePermission(request, "connection.manage");
-    const connection = await db.query<{ connected: boolean }>(
-      "SELECT EXISTS(SELECT 1 FROM whatsapp_sessions WHERE tenant_id=$1 AND status='connected') connected",
-      [session.tenantId]
-    );
-    if (!connection.rows[0]?.connected) {
-      return reply.status(409).send({ error: "Reconecte o WhatsApp antes de reenviar mensagens" });
-    }
-    const result = await new MessageRepository(db).recoverFailedOutboundTexts(
-      session.tenantId,
-      (message) => whatsapp.sendText(message.sessionId, message.destination, message.text)
-    );
-    await db.query(
-      `INSERT INTO audit_logs(actor_user_id,workspace_id,actor_scope,action,resource_type,resource_id,metadata,ip_address,user_agent)
-       VALUES($1,$2,$3,'connection.failed_messages.resent','whatsapp_session',NULL,$4,$5,$6)`,
-      [session.userId, session.tenantId, session.actorScope, result, request.ip, request.headers["user-agent"]]
-    );
-    return result;
-  });
-
   app.get("/agent", async (request) => {
     const session = await requireRootWorkspace(request);
     const result = await db.query(`SELECT a.id, a.active_version_id, a.system_prompt, a.ai_model, a.model_params, a.enabled_tools, a.is_active, a.updated_at,
@@ -1181,88 +1148,7 @@ export function buildApp() {
       agent,
       available_tools: AVAILABLE_TOOL_NAMES,
       template_status: templateStatus,
-      evaluator_enabled: config.AI_EVALUATOR_ENABLED
     };
-  });
-
-  app.post("/agent/template-candidate", async (request, reply) => {
-    const session = await requireRootWorkspace(request);
-    const tenant = await db.query<{ slug: string }>("SELECT slug FROM tenants WHERE id=$1", [session.tenantId]);
-    if (tenant.rows[0]?.slug !== "newave-ia") return reply.status(404).send({ error: "Template versionado não disponível" });
-    const client = await db.connect();
-    let created: Awaited<ReturnType<typeof createTemplateCandidate>>;
-    let version: Awaited<ReturnType<typeof publishCandidateVersion>> | undefined;
-    const evaluationPolicy = config.AI_EVALUATOR_ENABLED ? "required" : "bypassed";
-    try {
-      await client.query("BEGIN");
-      created = await createTemplateCandidate(client, {
-        tenantId: session.tenantId,
-        systemPrompt: await loadNewavePromptTemplate(),
-        evaluationPolicy,
-        userId: session.userId,
-        actorScope: session.actorScope,
-        ipAddress: request.ip,
-        userAgent: typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : undefined
-      });
-      if (evaluationPolicy === "bypassed") {
-        version = await publishCandidateVersion(client, {
-          tenantId: session.tenantId,
-          candidateVersionId: created.version.id,
-          evaluationPolicy,
-          auditAction: "agent.template.published_without_evaluation",
-          userId: session.userId,
-          actorScope: session.actorScope,
-          ipAddress: request.ip,
-          userAgent: typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : undefined
-        });
-      }
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
-    if (created.runId) {
-      try {
-        await enqueueAiReplay(created.runId);
-      } catch (error) {
-        await markReplayEnqueueFailure(created.runId, created.proposalId, session.tenantId);
-        throw error;
-      }
-    }
-    return reply.status(version ? 201 : 202).send({
-      version: version ?? created.version,
-      candidateVersionId: created.version.id,
-      proposalId: created.proposalId,
-      runId: created.runId,
-      status: version ? "published" : "queued"
-    });
-  });
-
-  app.post("/agent/template-candidate/:id/publish", async (request, reply) => {
-    const session = await requireRootWorkspace(request);
-    const { id } = idParams.parse(request.params);
-    publishTemplateCandidateSchema.parse(request.body);
-    const client = await db.connect();
-    try {
-      await client.query("BEGIN");
-      const version = await publishCandidateVersion(client, {
-        tenantId: session.tenantId,
-        candidateVersionId: id,
-        userId: session.userId,
-        actorScope: session.actorScope,
-        ipAddress: request.ip,
-        userAgent: typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : undefined
-      });
-      await client.query("COMMIT");
-      return reply.status(201).send({ version });
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
   });
 
   app.get("/usage", async (request) => {
@@ -1336,82 +1222,9 @@ export function buildApp() {
   });
   app.put("/agent", async (request, reply) => {
     const session = await requireRootWorkspace(request); const body = agentSchema.parse(request.body);
-    const client = await db.connect();
-    let created: Awaited<ReturnType<typeof createManualCandidate>>;
-    let version: Awaited<ReturnType<typeof publishCandidateVersion>> | undefined;
-    const evaluationPolicy = config.AI_EVALUATOR_ENABLED ? "required" : "bypassed";
-    try {
-      await client.query("BEGIN");
-      const currentSettings = await client.query<{ openrouter_api_key_encrypted: string | null }>(
-        "SELECT openrouter_api_key_encrypted FROM tenant_ai_settings WHERE tenant_id=$1 FOR UPDATE",
-        [session.tenantId]
-      );
-      const encryptedKey = body.openRouterApiKey
-        ? encryptSecret(body.openRouterApiKey, config.DATA_ENCRYPTION_KEY)
-        : body.clearOpenRouterApiKey
-          ? null
-          : currentSettings.rows[0]?.openrouter_api_key_encrypted ?? null;
-      created = await createManualCandidate(client, {
-        tenantId: session.tenantId,
-        systemPrompt: body.systemPrompt,
-        aiModel: body.aiModel,
-        modelParams: { temperature: body.temperature, max_tokens: body.maxTokens, reasoning_effort: body.reasoningEffort },
-        enabledTools: body.enabledTools,
-        evaluationPolicy,
-        pendingTenantAiSettings: {
-          provider: body.openRouterProvider || null,
-          encryptedApiKey: encryptedKey,
-          mediaFallbackAudio: body.mediaFallbackAudio,
-          mediaFallbackImage: body.mediaFallbackImage,
-          mediaFallbackDocument: body.mediaFallbackDocument
-        },
-        userId: session.userId,
-        actorScope: session.actorScope,
-        ipAddress: request.ip,
-        userAgent: typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : undefined
-      });
-      await client.query(
-        `UPDATE agent_configs SET is_active=$2,updated_at=now()
-         WHERE tenant_id=$1 AND id=(SELECT id FROM agent_configs WHERE tenant_id=$1 ORDER BY updated_at DESC,id LIMIT 1)`,
-        [session.tenantId, body.isActive]
-      );
-      if (evaluationPolicy === "bypassed") {
-        version = await publishCandidateVersion(client, {
-          tenantId: session.tenantId,
-          candidateVersionId: created.version.id,
-          evaluationPolicy,
-          auditAction: "agent.version.manual_published_without_evaluation",
-          userId: session.userId,
-          actorScope: session.actorScope,
-          ipAddress: request.ip,
-          userAgent: typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : undefined
-        });
-      }
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally { client.release(); }
-    if (created.runId) {
-      try {
-        await enqueueAiReplay(created.runId);
-      } catch (error) {
-        await markReplayEnqueueFailure(created.runId, created.proposalId, session.tenantId);
-        throw error;
-      }
-    }
-    return reply.status(version ? 200 : 202).send({
-      agent: {
-        id: (version ?? created.version).agent_config_id,
-        enabled_tools: (version ?? created.version).enabled_tools,
-        updated_at: (version ?? created.version).created_at
-      },
-      version: version ?? created.version,
-      candidateVersionId: created.version.id,
-      proposalId: created.proposalId,
-      runId: created.runId,
-      status: version ? "published" : "queued"
-    });
+    const result = await db.query(`UPDATE agent_configs SET system_prompt=$2, ai_model=$3, model_params=$4, enabled_tools=$5, is_active=$6, updated_at=now() WHERE tenant_id=$1 RETURNING id, ai_model, enabled_tools, updated_at`, [session.tenantId, body.systemPrompt, body.aiModel, { temperature: body.temperature, max_tokens: body.maxTokens, reasoning_effort: body.reasoningEffort }, body.enabledTools ?? AVAILABLE_TOOL_NAMES, body.isActive]);
+    if (!result.rows[0]) return reply.status(404).send({ error: "Agente não encontrado" });
+    return reply.send({ agent: result.rows[0] });
   });
   app.patch("/agent/status", async (request, reply) => {
     const session = await requireRootWorkspace(request);
@@ -1509,7 +1322,7 @@ export function buildApp() {
   }, async (request, reply) => {
     const session = await requireRootWorkspace(request);
     const body = followUpMediaBodySchema.parse(request.body);
-    const decoded = decodeFollowUpImage(body);
+    const decoded = decodeFollowUpMedia(body);
     const media = await new FollowUpMediaRepository(db).create({
       tenantId: session.tenantId,
       userId: session.userId,
@@ -2501,15 +2314,9 @@ export function buildApp() {
         [id, session.tenantId, scope.userId]
       );
       if (!updated.rows[0]) return { found: false, event: null };
-      const event = await createLatestEvaluationEvent(client, {
-        tenantId: session.tenantId,
-        conversationId: id,
-        trigger: "closed"
-      });
-      return { found: true, event };
+      return { found: true };
     });
     if (!resolved.found) return reply.status(404).send({ error: "Conversa não encontrada" });
-    await enqueueEvaluationEventAfterCommit(db, resolved.event);
     await auditLog({
       actorUserId: session.userId,
       workspaceId: session.tenantId,
@@ -2547,6 +2354,59 @@ export function buildApp() {
     });
     return { ok: true };
   });
+  app.post("/conversations/:id/follow-up", async (request, reply) => {
+    const session = await requirePermission(request, "conversations.reply");
+    const { id } = idParams.parse(request.params);
+    const idempotencyKey = parseIdempotencyKey(request.headers["idempotency-key"]);
+    const fingerprint = payloadFingerprint({ conversationId: id });
+    const scope = await resolveCaseScope(db, session);
+    const conversation = await db.query<{ session_id: string; contact_phone: string; contact_jid: string | null; status: string }>(
+      `SELECT c.session_id,c.contact_phone,c.contact_jid,c.status FROM conversations c
+       WHERE c.id=$1 AND c.tenant_id=$2 AND (${conversationScopeCondition(scope, "c", "$3")})`,
+      [id, session.tenantId, scope.userId]
+    );
+    if (!conversation.rows[0]) return reply.status(404).send({ error: "Conversa não encontrada" });
+    if (conversation.rows[0].status !== "open") return reply.status(409).send({ error: "Reabra a conversa antes de fazer follow-up" });
+    const row = conversation.rows[0];
+    const processor = new AiFollowUpProcessor(new AiFollowUpRepository(db, config), whatsapp, new OpenRouterClient(config));
+    let claimedResult: { result: { externalId: string; messageId: string | null }; duplicate: boolean };
+    try {
+      claimedResult = await runFollowUpOnce(db, {
+        tenantId: session.tenantId, conversationId: id, idempotencyKey
+      }, async () => {
+        const outcome = await processor.process(id);
+        if (outcome === "cancelled" || outcome === "not_due") throw Object.assign(new Error("not_needed"), { statusCode: 409 });
+        if (outcome !== "sent") throw Object.assign(new Error("busy"), { statusCode: 409 });
+        const sent = await db.query<{ id: string; external_message_id: string }>(
+          `SELECT id,external_message_id FROM messages
+           WHERE tenant_id=$2 AND conversation_id=$1 AND sender='agent' AND external_message_id IS NOT NULL
+           ORDER BY created_at DESC LIMIT 1`, [id, session.tenantId]
+        );
+        return { externalId: sent.rows[0]?.external_message_id ?? "", messageId: sent.rows[0]?.id ?? null };
+      });
+    } catch (error) {
+      if ((error as { statusCode?: number }).statusCode === 409 || (error instanceof Error && ["not_needed", "busy"].includes(error.message))) {
+        return reply.status(409).send({ ok: false, status: error instanceof Error ? error.message : "conflict" });
+      }
+      request.log.error({ err: error, conversationId: id, idempotencyKey, fingerprint }, "Manual follow-up failed");
+      return reply.status(502).send({ ok: false, status: "failed" });
+    }
+    if (claimedResult.duplicate) return { ok: true, status: "sent", message_id: claimedResult.result.messageId };
+    const updated = await withTenantTransaction(db, session.tenantId, async (client) => {
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`follow-up:${session.tenantId}:${id}`]);
+      const lead = (await client.query<{ id: string }>(
+        `SELECT id FROM scheduling_leads WHERE tenant_id=$1 AND regexp_replace(phone,'\\\\D','','g')=regexp_replace($2,'\\\\D','','g') FOR UPDATE`,
+        [session.tenantId, row.contact_phone]
+      )).rows[0];
+      if (!lead) return null;
+      const stageId = await defaultStageId(client, session.tenantId, "follow_up");
+      await client.query(`UPDATE scheduling_leads SET status='follow_up',pipeline_stage_id=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2`, [session.tenantId, lead.id, stageId]);
+      return { leadId: lead.id, stageId };
+    });
+    if (!updated) return reply.status(409).send({ ok: false, status: "stage_failed" });
+    return { ok: true, status: "sent", message_id: claimedResult.result.messageId, lead_id: updated.leadId, pipeline_stage_id: updated.stageId };
+  });
+
   app.post("/conversations/:id/messages", {
     bodyLimit: 46 * 1024 * 1024,
     config: { rateLimit: HTTP_RATE_LIMITS.upload }
@@ -2608,7 +2468,6 @@ export function buildApp() {
       text,
       idempotencyKey,
       sentByUserId: session.userId,
-      ...(!media ? { recoveryText: outboundText! } : {}),
       ...(body.replyToMessageId ? { replyToMessageId: body.replyToMessageId } : {}),
       ...(media ? {
         mediaType: media.mediaType,
@@ -2733,7 +2592,6 @@ export function buildApp() {
   void app.register(registerDashboardWidgetRoutes);
   void app.register(registerOrganizationRoutes);
   void app.register(registerPostSalesRoutes);
-  void app.register(registerAgentImprovementRoutes);
   void app.register(registerSchedulingRoutes);
   void app.register(registerMeetRoutes);
   void app.register(registerStickerRoutes);

@@ -71,7 +71,7 @@ function assertFuture(value: string, now = new Date()) {
   return parsed;
 }
 
-async function defaultStageId(client: PoolClient, tenantId: string, status: LeadTechnicalStatus) {
+export async function defaultStageId(client: PoolClient, tenantId: string, status: LeadTechnicalStatus) {
   const result = await client.query<{ id: string }>(
     `SELECT id FROM pipeline_stages
      WHERE tenant_id=$1 AND technical_status=$2 AND is_default AND archived_at IS NULL

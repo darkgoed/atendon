@@ -15,6 +15,9 @@ RUN npm run build -w @atendon/backend \
     && npm prune --omit=dev --workspace @atendon/backend --include-workspace-root
 
 FROM node:22-bookworm-slim AS runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 RUN npm install --global npm@12.0.1
 ENV NODE_ENV=production
 WORKDIR /app

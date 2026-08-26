@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRinging, ChartBar, CheckCircle, ChatCircleDots, ClockCountdown, Cpu, Flask, FloppyDisk, GlobeHemisphereWest, GoogleLogo, ImageSquare, Key, Link as LinkIcon, LinkBreak, PencilSimple, Plus, Prohibit, ShieldCheck, Sticker, Trash, UploadSimple, UsersThree, VideoCamera, WarningCircle, Watch } from "@phosphor-icons/react";
+import { BellRinging, ChartBar, CheckCircle, ChatCircleDots, ClockCountdown, Cpu, FloppyDisk, GlobeHemisphereWest, GoogleLogo, ImageSquare, Link as LinkIcon, LinkBreak, PencilSimple, Plus, Prohibit, ShieldCheck, Sticker, Trash, UploadSimple, UsersThree, VideoCamera, WarningCircle, Watch } from "@phosphor-icons/react";
 import Link from "next/link";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
@@ -118,10 +118,8 @@ const settingsDestinations: readonly SettingsDestination[] = [
   { href: "/workspace/members", label: "Membros", description: "Equipe e convites do workspace", Icon: UsersThree, permission: "members.read" },
   { href: "/workspace/audit", label: "Auditoria", description: "Histórico de alterações e acessos", Icon: Watch, permission: "audit.read" },
   { href: "/workspace/roles", label: "Funções", description: "Papéis e permissões da equipe", Icon: ShieldCheck, rootWorkspaceOnly: true },
-  { href: "/workspace/api-keys", label: "Chaves de API", description: "Credenciais para integrações", Icon: Key, rootWorkspaceOnly: true },
   { href: "/agente", label: "Agente", description: "Modelo, instruções e publicação", Icon: Cpu, rootWorkspaceOnly: true },
-  { href: "/agente/melhorias", label: "Melhoria da IA", description: "Avaliações, propostas e versões", Icon: Flask, rootWorkspaceOnly: true },
-  { href: "/agente/figurinhas", label: "Figurinhas", description: "Biblioteca de respostas visuais", Icon: Sticker, rootWorkspaceOnly: true },
+  { href: "/follow-ups", label: "Follow-ups da IA", description: "Cadência e biblioteca de mídia", Icon: Sticker, rootWorkspaceOnly: true },
   { href: "/humanizacao", label: "Humanização", description: "Ritmo, presença e comportamento", Icon: ClockCountdown, rootWorkspaceOnly: true },
   { href: "/uso", label: "Uso", description: "Consumo e custos do workspace", Icon: ChartBar, rootWorkspaceOnly: true }
 ];
@@ -1709,7 +1707,7 @@ function AiFollowUpSettingsPanel() {
           </button>
           <div className="flex items-start gap-2 text-xs text-[var(--muted)]">
             <Sticker className="mt-0.5 shrink-0" size={15} aria-hidden="true" />
-            <p>As figurinhas vêm da biblioteca em <a className="accent underline-offset-2 hover:underline" href="/agente/figurinhas">Agente → Figurinhas</a> e sempre são enviadas sem texto.</p>
+            <p>As figurinhas vêm da biblioteca em <a className="accent underline-offset-2 hover:underline" href="/follow-ups">Follow-ups da IA</a> e sempre são enviadas sem texto.</p>
           </div>
         </form>
 

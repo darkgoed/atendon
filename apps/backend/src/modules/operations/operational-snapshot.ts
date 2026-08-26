@@ -1,8 +1,6 @@
 import type { Queue } from "bullmq";
 import type pg from "pg";
-import { aiEvaluationQueue } from "../../queue/ai-evaluation-queue.js";
 import { aiFollowUpQueue } from "../../queue/ai-follow-up-queue.js";
-import { aiReplayQueue } from "../../queue/ai-replay-queue.js";
 import { handoffNotificationQueue } from "../../queue/handoff-notification-queue.js";
 import { humanOutboundQueue } from "../../queue/human-message-queue.js";
 import { meetingContactDeliveryQueue } from "../../queue/meeting-contact-delivery-queue.js";
@@ -15,8 +13,6 @@ const QUEUES = [
   ["human_outbound", humanOutboundQueue],
   ["handoff_notification", handoffNotificationQueue],
   ["ai_follow_up", aiFollowUpQueue],
-  ["ai_evaluation", aiEvaluationQueue],
-  ["ai_replay", aiReplayQueue],
   ["meeting_provisioning", meetingProvisioningQueue],
   ["meeting_contact_delivery", meetingContactDeliveryQueue]
 ] as const satisfies ReadonlyArray<readonly [string, Queue]>;
@@ -24,7 +20,6 @@ const QUEUES = [
 const OUTBOX_NAMES = new Set([
   "handoff_notification",
   "ai_follow_up",
-  "ai_evaluation",
   "meeting_provisioning",
   "meeting_contact_delivery"
 ]);

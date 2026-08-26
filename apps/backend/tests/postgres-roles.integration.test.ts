@@ -6,8 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { config } from "../src/config.js";
 import { runMigrations } from "../src/db/migration-runner.js";
 import { withTenantTransaction } from "../src/db/tenant-transaction.js";
-import { AiAttendanceEvaluator } from "../src/modules/agent-improvement/evaluator.js";
-import type { AiRouter } from "../src/modules/ai-router/openrouter.js";
+
 
 const suffix = randomUUID().replaceAll("-", "").slice(0, 16);
 const databaseName = `atendon_sec01_${suffix}`;
@@ -381,45 +380,6 @@ describe("PostgreSQL least-privilege roles", () => {
     });
   });
 
-  it("lets an evaluator job acquire its own tenant-scoped claims session", async () => {
-    const complete = vi.fn<AiRouter["complete"]>().mockImplementation(async (input) => {
-      const payload = JSON.parse(String(input.history[0]?.content ?? "{}")) as {
-        tools: Array<{ toolName: string }>;
-      };
-      expect(payload.tools).toHaveLength(1);
-      expect(payload.tools[0]).toMatchObject({ toolName: "qualificar_lead" });
-      const score = { score: 90, rationale: "ok", evidenceMessageIds: [messageA] };
-      return {
-        text: JSON.stringify({
-          scores: {
-            correctness: score,
-            task_completion: score,
-            continuity: score,
-            communication: score,
-            security_privacy: score,
-            tool_usage: score,
-            handoff: score
-          },
-          violations: [],
-          overallScore: 90,
-          hasCriticalFailure: false,
-          summary: "ok"
-        }),
-        inputTokens: 1,
-        outputTokens: 1,
-        costUsd: 0
-      };
-    });
-    const evaluator = new AiAttendanceEvaluator(runtimePool, { complete }, config);
-
-    await expect(evaluator.process({
-      tenantId: tenantA,
-      conversationId: conversationA,
-      agentConfigVersionId: versionA,
-      trigger: "manual"
-    })).resolves.toBe("created");
-    expect(complete).toHaveBeenCalledOnce();
-  });
 
   it("lets the migration role reversibly disable and restore the pilot policy", async () => {
     await setPilotRls(false);

@@ -19,6 +19,14 @@ export const FINAL_ACTION_SUCCESS: Record<FinalAction, string> = {
 export const dayKey = (date: Date) => date.toISOString().slice(0, 10);
 export const addDays = (date: Date, count: number) => new Date(date.getTime() + count * 86_400_000);
 
+/** Move a calendar anchor by an exact number of calendar months (not 28 days). */
+export function addCalendarMonths(date: Date, count: number) {
+  const target = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + count, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(date.getUTCDate(), lastDay));
+  return target;
+}
+
 export function messageFrom(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }

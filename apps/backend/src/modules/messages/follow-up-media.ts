@@ -5,13 +5,15 @@ import { decodeOutboundMedia } from "./outbound-media.js";
 export type FollowUpDelivery =
   | { type: "text" }
   | { type: "image"; assetId: string }
+  | { type: "audio"; assetId: string }
+  | { type: "video"; assetId: string }
   | { type: "sticker"; assetId: string };
 
 export interface FollowUpMediaSummary {
   id: string;
   name: string;
   description: string;
-  mime_type: "image/jpeg" | "image/png" | "image/webp";
+  mime_type: "image/jpeg" | "image/png" | "image/webp" | "audio/ogg" | "audio/mpeg" | "video/mp4";
   file_name: string;
   size_bytes: number;
   created_at: string;
@@ -22,34 +24,90 @@ export interface FollowUpMediaAsset {
   id: string;
   name: string;
   description: string;
-  mimeType: "image/jpeg" | "image/png" | "image/webp";
+  mimeType: "image/jpeg" | "image/png" | "image/webp" | "audio/ogg" | "audio/mpeg" | "video/mp4";
   fileName: string;
   dataBase64: string;
 }
 
+// Assinaturas (magic bytes) por formato. Não confiamos no mimeType declarado
+// pelo cliente: um .mp3 renomeado para .ogg, ou um payload arbitrário com
+// Content-Type forjado, seria aceito se olhássemos só a extensão/cabeçalho.
+function matchesSignature(mimeType: string, data: Buffer): boolean {
+  const ascii = (from: number, to: number) => data.subarray(from, to).toString("ascii");
+  switch (mimeType) {
+    case "image/jpeg":
+      return data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
+    case "image/png":
+      return data.length >= 8 && data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    case "image/webp":
+      return data.length >= 12 && ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP";
+    case "audio/ogg":
+      // Container OGG começa com "OggS".
+      return data.length >= 4 && ascii(0, 4) === "OggS";
+    case "audio/mpeg":
+      // MP3 com tag ID3 ("ID3") ou frame sync MPEG (0xFF Ex/Fx).
+      return data.length >= 3
+        && (ascii(0, 3) === "ID3" || (data[0] === 0xff && (data[1] & 0xe0) === 0xe0));
+    case "video/mp4":
+      // Box ftyp nos bytes 4..8 do container ISO-BMFF.
+      return data.length >= 12 && ascii(4, 8) === "ftyp";
+    default:
+      return false;
+  }
+}
+
+/** Sinaliza que o OGG recebido usa Opus — o codec nativo de voice note do WhatsApp. */
+export function isOggOpus(data: Buffer): boolean {
+  if (data.length < 4 || data.subarray(0, 4).toString("ascii") !== "OggS") return false;
+  // "OpusHead" aparece no primeiro pacote do fluxo; procuramos no início do arquivo.
+  return data.subarray(0, Math.min(data.length, 512)).includes(Buffer.from("OpusHead", "ascii"));
+}
+
+export function decodeFollowUpMedia(input: {
+  mimeType: string;
+  fileName: string;
+  dataBase64: string;
+}): { mimeType: FollowUpMediaAsset["mimeType"]; fileName: string; data: Buffer } {
+  const declared = input.mimeType.split(";")[0]?.trim().toLowerCase() ?? "";
+  const data = Buffer.from(input.dataBase64, "base64");
+  if (!matchesSignature(declared, data)) {
+    throw Object.assign(
+      new Error("O conteúdo do arquivo não corresponde ao formato declarado"),
+      { statusCode: 400 }
+    );
+  }
+  // MediaType do gateway cobre audio/image/document — não há "video". Por isso
+  // vídeo é validado aqui (assinatura + tamanho) em vez de passar por
+  // decodeOutboundMedia, que rejeitaria video/mp4 como documento não permitido.
+  if (declared === "video/mp4") {
+    const MAX_VIDEO_BYTES = 16 * 1024 * 1024;
+    if (data.length > MAX_VIDEO_BYTES) {
+      throw Object.assign(new Error("Vídeo excede o tamanho máximo permitido"), { statusCode: 400 });
+    }
+    return { mimeType: "video/mp4", fileName: input.fileName.trim(), data };
+  }
+  const decoded = decodeOutboundMedia({
+    mediaType: declared.startsWith("audio/") ? "audio" : "image",
+    ...input
+  });
+  return {
+    mimeType: declared as FollowUpMediaAsset["mimeType"],
+    fileName: decoded.fileName,
+    data
+  };
+}
+
+/** Mantido para compatibilidade com chamadas existentes que só aceitam imagem. */
 export function decodeFollowUpImage(input: {
   mimeType: string;
   fileName: string;
   dataBase64: string;
 }): { mimeType: FollowUpMediaAsset["mimeType"]; fileName: string; data: Buffer } {
-  const decoded = decodeOutboundMedia({ mediaType: "image", ...input });
-  const data = Buffer.from(decoded.dataBase64, "base64");
-  const isJpeg = data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
-  const isPng = data.length >= 8 && data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
-  const isWebp = data.length >= 12
-    && data.subarray(0, 4).toString("ascii") === "RIFF"
-    && data.subarray(8, 12).toString("ascii") === "WEBP";
-  const validSignature = decoded.mimeType === "image/jpeg" ? isJpeg
-    : decoded.mimeType === "image/png" ? isPng
-      : decoded.mimeType === "image/webp" ? isWebp : false;
-  if (!validSignature) {
-    throw Object.assign(new Error("O conteúdo do arquivo não corresponde ao formato da imagem"), { statusCode: 400 });
+  const declared = input.mimeType.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (!declared.startsWith("image/")) {
+    throw Object.assign(new Error("Formato de imagem não suportado"), { statusCode: 400 });
   }
-  return {
-    mimeType: decoded.mimeType as FollowUpMediaAsset["mimeType"],
-    fileName: decoded.fileName,
-    data
-  };
+  return decodeFollowUpMedia(input);
 }
 
 export class FollowUpMediaRepository {

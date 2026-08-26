@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowClockwise, DotsThree } from "@phosphor-icons/react";
-import { useMemo, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { PipelineCard } from "@/components/pipeline-card";
 import {
   currentPipelineStageId,
@@ -44,6 +44,11 @@ function formatAverageStageAge(leads: PipelineLead[]): string {
   return `média ${Math.max(1, Math.round(averageHours / 24))}d`;
 }
 
+export function horizontalWheelDelta(event: Pick<WheelEvent, "deltaX" | "deltaY">): number {
+  if (Number.isFinite(event.deltaX) && event.deltaX !== 0) return event.deltaX;
+  return Number.isFinite(event.deltaY) ? event.deltaY : 0;
+}
+
 export function PipelineBoard({
   stages,
   leads,
@@ -82,6 +87,7 @@ export function PipelineBoard({
   const [dragging, setDragging] = useState<PipelineLead | null>(null);
   const [dropStageId, setDropStageId] = useState<string | null>(null);
   const [liveStatus, setLiveStatus] = useState("");
+  const boardRef = useRef<HTMLElement | null>(null);
   const leadsByStage = useMemo(() => new Map(stages.map((stage) => [
     stage.id,
     leads.filter((lead) => currentPipelineStageId(lead, stages, legacy) === stage.id)
@@ -89,6 +95,20 @@ export function PipelineBoard({
   const draggingStageId = dragging
     ? legacy ? `fallback:${dragging.status}` : dragging.pipeline_stage_id ?? null
     : null;
+
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+    const handleBoardWheel = (event: WheelEvent) => {
+      if (!event.shiftKey) return;
+      const delta = horizontalWheelDelta(event);
+      if (delta === 0) return;
+      event.preventDefault();
+      board.scrollLeft += delta;
+    };
+    board.addEventListener("wheel", handleBoardWheel, { passive: false });
+    return () => board.removeEventListener("wheel", handleBoardWheel);
+  }, []);
 
   function startDrag(event: DragEvent<HTMLElement>, lead: PipelineLead) {
     event.dataTransfer.setData("text/plain", lead.id);
@@ -121,7 +141,7 @@ export function PipelineBoard({
   return (
     <>
       <p className="sr-only" role="status" aria-live="polite">{liveStatus}</p>
-      <section className="pipeline-board overflow-x-auto overflow-y-hidden overscroll-contain" aria-label="Quadro de pipeline" tabIndex={0}>
+      <section ref={boardRef} className="pipeline-board overflow-x-auto overflow-y-hidden overscroll-contain" aria-label="Quadro de pipeline" tabIndex={0}>
         {loading && stages.length === 0
           ? [1, 2, 3, 4].map((item) => <PipelineColumnSkeleton key={item} width={pipelineColumnWidth(preferences.columnWidth)} />)
           : stages.map((stage) => {

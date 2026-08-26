@@ -1,7 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { config } from "../../config.js";
-import { requireApiTenant } from "../../auth/api-key.js";
 import { requirePermission, requireWorkspace, type WorkspaceSession } from "../../auth/session.js";
 import type { PermissionKey } from "../../auth/rbac.js";
 import {
@@ -18,7 +17,7 @@ import {
   date, enviarPropostaParceiro, googleMeetSettingsBody, httpError, instant, leadBody, leadFollowUpBody, leadIdentityBody, leadMapper, leadNoteBody, leadStatus, listCategorias, listParceiros,
   disconnectGoogleMeetOAuth, listOwnAttendantTimeBlocks, loadAtendonMeetSettings, loadAttendantPool, loadGoogleMeetSettings, loadLeadFollowUp, loadWorkspaceTimeZone, markAppointmentNoShow, openAppointmentConversation, panelAppointmentBody, panelLeadMapper, panelRescheduleBody, partnerBody, qualificationMapper, rescheduleAppointment, rescheduleBody, slug, transferLead, unitBody, unitMapper,
   updateAppointmentObservation, updateAtendonMeetSettings, updateAttendantAvailability, updateAttendantCalendarColor, updateAttendantPool, updateGoogleMeetSettings, updateLeadFollowUp, updateLeadIdentity, upsertLead, verificarHorarios, workspaceLocalDateTime,
-  listAppointmentAssignees, reassignAppointmentAssignee, removeAppointment, joinAppointment
+  listAppointmentAssignees, reassignAppointmentAssignee, removeAppointment, joinAppointment, recurringTimeBlockBody, recurringTimeBlockPatch, listOwnRecurringAttendantTimeBlocks, createOwnRecurringAttendantTimeBlock, updateOwnRecurringAttendantTimeBlock, deleteOwnRecurringAttendantTimeBlock
 } from "./service.js";
 import { createGoogleMeetOAuthClient, createGoogleMeetOAuthState, verifyGoogleMeetOAuthState } from "./google-meet.js";
 import { normalizeText } from "../qualification/normalizer.js";
@@ -113,52 +112,52 @@ function followUpActor(request: FastifyRequest, session: WorkspaceSession) {
 
 export async function registerSchedulingRoutes(app: FastifyInstance) {
   app.post("/leads", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request, reply) => {
-    const { tenantId } = await requireApiTenant(request, "scheduling.leads.upsert"); const body = leadBody.parse(request.body);
+    const { tenantId } = await requireWorkspace(request); const body = leadBody.parse(request.body);
     const result = await upsertLead(tenantId, body);
     return reply.status(result.created ? 201 : 200).send({ lead: leadMapper(result.row) });
   });
 
   app.get("/categorias", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiRead } }, async (request) => {
-    const { tenantId } = await requireApiTenant(request, "scheduling.categories.read"); assertTenantQuery(request.query, tenantId);
+    const { tenantId } = await requireWorkspace(request); assertTenantQuery(request.query, tenantId);
     return { categorias: await listCategorias(tenantId) };
   });
 
   app.get("/parceiros", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiRead } }, async (request) => {
-    const { tenantId } = await requireApiTenant(request, "scheduling.partners.read"); assertTenantQuery(request.query, tenantId);
+    const { tenantId } = await requireWorkspace(request); assertTenantQuery(request.query, tenantId);
     return { parceiros: await listParceiros(tenantId) };
   });
 
   app.post("/leads/:id/proposta-parceiro", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request, reply) => {
-    const { tenantId } = await requireApiTenant(request, "scheduling.leads.partner_proposal"); const { id } = idParams.parse(request.params);
+    const { tenantId } = await requireWorkspace(request); const { id } = idParams.parse(request.params);
     const body = z.object({ parceiro_id: slug }).parse(request.body);
     return reply.send(await enviarPropostaParceiro(tenantId, id, body.parceiro_id));
   });
 
   app.get("/unidades/:unidade_id/horarios", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiRead } }, async (request) => {
-    const { tenantId } = await requireApiTenant(request, "scheduling.availability.read"); const { unidade_id } = unitParams.parse(request.params);
+    const { tenantId } = await requireWorkspace(request); const { unidade_id } = unitParams.parse(request.params);
     const query = apiTenantQuery.extend({ data: date }).parse(request.query); assertTenantQuery(query, tenantId);
     return verificarHorarios(tenantId, unidade_id, query.data);
   });
 
   app.post("/agendamentos", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request, reply) => {
-    const { tenantId } = await requireApiTenant(request, "scheduling.appointments.create");
+    const { tenantId } = await requireWorkspace(request);
     return reply.status(201).send({ agendamento: await createAppointment(tenantId, appointmentBody.parse(request.body)) });
   });
   app.patch("/agendamentos/:id/reagendar", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request) => {
-    const { tenantId } = await requireApiTenant(request, "scheduling.appointments.reschedule"); const { id } = idParams.parse(request.params);
+    const { tenantId } = await requireWorkspace(request); const { id } = idParams.parse(request.params);
     return { agendamento: await rescheduleAppointment(tenantId, id, rescheduleBody.parse(request.body)) };
   });
   app.delete("/agendamentos/:id", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request) => {
-    const { tenantId } = await requireApiTenant(request, "scheduling.appointments.cancel"); const { id } = idParams.parse(request.params);
+    const { tenantId } = await requireWorkspace(request); const { id } = idParams.parse(request.params);
     return { agendamento: await cancelAppointment(tenantId, id) };
   });
   app.patch("/leads/:id/status", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request) => {
-    const { tenantId } = await requireApiTenant(request, "scheduling.leads.status"); const { id } = idParams.parse(request.params);
+    const { tenantId } = await requireWorkspace(request); const { id } = idParams.parse(request.params);
     const body = z.object({ status: leadStatus }).parse(request.body);
     return { lead: leadMapper(await atualizarStatusLead(tenantId, id, body.status)) };
   });
   app.post("/leads/:id/transferir", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request) => {
-    const { tenantId } = await requireApiTenant(request, "scheduling.leads.transfer"); const { id } = idParams.parse(request.params);
+    const { tenantId } = await requireWorkspace(request); const { id } = idParams.parse(request.params);
     return { lead: await transferLead(tenantId, id, transferBody.parse(request.body).motivo) };
   });
 
@@ -930,6 +929,22 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
       )
     };
   });
+  app.delete("/scheduling/attendants/me/time-blocks/:id", async (request) => {
+    const session = await requireWorkspace(request);
+    const { id } = idParams.parse(request.params);
+    return {
+      block: await deleteOwnAttendantTimeBlock(
+        session.tenantId,
+        session.userId,
+        id,
+        followUpActor(request, session)
+      )
+    };
+  });
+  app.get("/scheduling/attendants/me/recurring-time-blocks", async (request) => { const session=await requireWorkspace(request); const q=attendantTimeBlockQuery.parse(request.query); return { blocks: await listOwnRecurringAttendantTimeBlocks(session.tenantId,session.userId,{start:new Date(q.start),end:new Date(q.end)}) }; });
+  app.post("/scheduling/attendants/me/recurring-time-blocks", async (request,reply) => { const session=await requireWorkspace(request); const block=await createOwnRecurringAttendantTimeBlock(session.tenantId,session.userId,recurringTimeBlockBody.parse(request.body),followUpActor(request,session)); return reply.status(201).send({block}); });
+  app.patch("/scheduling/attendants/me/recurring-time-blocks/:id", async (request) => { const session=await requireWorkspace(request); const {id}=idParams.parse(request.params); return {block:await updateOwnRecurringAttendantTimeBlock(session.tenantId,session.userId,id,recurringTimeBlockPatch.parse(request.body))}; });
+  app.delete("/scheduling/attendants/me/recurring-time-blocks/:id", async (request) => { const session=await requireWorkspace(request); const {id}=idParams.parse(request.params); return {block:await deleteOwnRecurringAttendantTimeBlock(session.tenantId,session.userId,id)}; });
   app.patch("/scheduling/attendants/:memberId/availability", async (request) => {
     const session = await requirePermission(request, "units.manage");
     if (!hasWorkspaceCaseAccess(session)) throw httpError(403, "Somente gestores podem alterar outro atendente");

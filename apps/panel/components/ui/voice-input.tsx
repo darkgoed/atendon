@@ -122,7 +122,7 @@ export function VoiceInput({
   );
 }
 
-export function VoiceMessagePlayer({ src, label }: { src: string; label: string }) {
+export function VoiceMessagePlayer({ src, label = "mensagem de áudio" }: { src: string; label?: string }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const rangeRef = useRef<HTMLInputElement>(null);

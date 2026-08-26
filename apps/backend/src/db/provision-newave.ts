@@ -5,10 +5,6 @@ import { ensurePermissionCatalog, ensureWorkspaceDefaultRoles } from "../auth/rb
 import { DEFAULT_MEDIA_FALLBACK } from "../modules/ai-router/defaults.js";
 import { NEWAVE_ENABLED_TOOL_NAMES } from "../modules/ai-router/tools.js";
 import { DEFAULT_HUMANIZER_CONFIG } from "../modules/messages/humanizer.js";
-import {
-  NEWAVE_GOLD_CASES,
-  NEWAVE_GOLD_SUITE_VERSION
-} from "../modules/agent-improvement/newave-gold-suite.js";
 import { db } from "./client.js";
 import { loadNewavePromptTemplate } from "./newave-template.js";
 
@@ -131,40 +127,6 @@ export async function provisionNewave(pool: Pool) {
     );
     await client.query("UPDATE qualification_flows SET active=false,updated_at=now() WHERE tenant_id=$1 AND active", [tenantId]);
 
-    for (const regressionCase of NEWAVE_GOLD_CASES) {
-      const name = `${NEWAVE_GOLD_SUITE_VERSION}:${regressionCase.key}`;
-      const updated = await client.query(
-        `UPDATE ai_regression_cases
-         SET description=$3,scenario=$4::jsonb,expected_behavior=$5::jsonb,
-             severity=$6,is_active=true,updated_at=now()
-         WHERE tenant_id=$1 AND name=$2
-         RETURNING id`,
-        [
-          tenantId,
-          name,
-          regressionCase.description,
-          regressionCase.scenario,
-          regressionCase.expectedBehavior,
-          regressionCase.severity
-        ]
-      );
-      if (!updated.rows[0]) {
-        await client.query(
-          `INSERT INTO ai_regression_cases(
-             tenant_id,name,description,scenario,expected_behavior,severity,created_by_user_id
-           ) VALUES($1,$2,$3,$4::jsonb,$5::jsonb,$6,$7)`,
-          [
-            tenantId,
-            name,
-            regressionCase.description,
-            regressionCase.scenario,
-            regressionCase.expectedBehavior,
-            regressionCase.severity,
-            user.rows[0].id
-          ]
-        );
-      }
-    }
 
     await client.query("COMMIT");
     return { tenantId, ownerUserId: user.rows[0].id, agentId, sessionId };

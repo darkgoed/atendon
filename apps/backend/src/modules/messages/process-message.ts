@@ -1861,12 +1861,6 @@ export class MessageProcessor {
     const recordQualitySignal = async () => {
       if (!qualitySignalKind) return;
       try {
-        await this.repository.recordAiEvaluationSignal({
-          tenantId: message.tenantId,
-          conversationId: context.conversationId,
-          agentConfigVersionId: context.agentConfigVersionId,
-          kind: qualitySignalKind
-        });
       } catch (signalError) {
         logger.error({
           err: signalError,
@@ -2259,12 +2253,6 @@ export class MessageProcessor {
             "A IA atingiu o limite de ferramentas em um atendimento. Revise a conversa para confirmar se a ação solicitada foi concluída."
           );
           try {
-            await this.repository.recordAiEvaluationSignal({
-              tenantId: message.tenantId,
-              conversationId: context.conversationId,
-              agentConfigVersionId: context.agentConfigVersionId,
-              kind: "tool_limit"
-            });
           } catch (signalError) {
             logger.error({
               err: signalError,
@@ -2478,12 +2466,6 @@ export class MessageProcessor {
     } catch (error) {
       await recordQualitySignal();
       try {
-        await this.repository.recordAiEvaluationSignal({
-          tenantId: message.tenantId,
-          conversationId: context.conversationId,
-          agentConfigVersionId: context.agentConfigVersionId,
-          kind: "ai_error"
-        });
       } catch (signalError) {
         logger.error({
           err: signalError,

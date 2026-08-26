@@ -1348,7 +1348,7 @@ input[type=range]::-moz-range-track { height:5px; border-radius:var(--radius); b
 .agenda-block-list>div:last-child span{max-width:360px;overflow:hidden;font-family:'IBM Plex Mono',monospace;font-size:10px;text-overflow:ellipsis;white-space:nowrap}
 .agenda-block-list button{width:22px;height:22px;border-color:var(--border-2);background:var(--surface);color:var(--text-6)}
 
-.agenda-scroll{width:100%;max-width:100%;min-width:0;min-height:0;flex:1 1 auto;overflow:auto;overscroll-behavior:contain;border:0;border-radius:0;background:var(--surface)}
+.agenda-month{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;width:100%;min-width:0;border:1px solid var(--border);background:var(--border);overflow:hidden}.agenda-month__day{display:flex;min-width:0;min-height:92px;flex-direction:column;align-items:flex-start;gap:5px;padding:9px;background:var(--surface);color:var(--text);text-align:left}.agenda-month__day:hover,.agenda-month__day.is-today{background:var(--today-body-bg)}.agenda-month__day strong{font-size:13px}.agenda-month__weekday{font:600 10.5px 'Manrope',sans-serif;text-transform:uppercase;color:var(--text-7)}.agenda-month__summary{max-width:100%;overflow:hidden;color:var(--text-5);font-size:10px;text-overflow:ellipsis;white-space:nowrap}@media(max-width:600px){.agenda-month{grid-template-columns:repeat(2,minmax(0,1fr))}.agenda-month__day{min-height:76px}}
 .agenda-scroll--day{max-width:none;margin:0}
 .agenda-grid{display:grid;width:max-content;min-width:100%;grid-template-columns:56px repeat(var(--agenda-cols,7),minmax(132px,1fr));align-content:start}
 .agenda-corner,.agenda-day-head{position:sticky;top:0;z-index:3;min-height:44px;border-bottom:1px solid var(--border);background:var(--surface);isolation:isolate}
@@ -1480,21 +1480,19 @@ input[type=range]::-moz-range-track { height:5px; border-radius:var(--radius); b
 
 /* Leads — tabela operacional enxuta e leitura móvel sem overflow. */
 .content:has(> .leads-page){padding:0}
-.leads-page{min-width:0;min-height:100%;padding-bottom:18px;background:var(--bg)}
-.leads-page__header{display:flex;height:48px;min-width:0;align-items:center;justify-content:space-between;gap:16px;padding:0 16px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+.leads-page{display:flex;min-width:0;height:100%;min-height:0;flex-direction:column;overflow:hidden;background:var(--bg)}
+.leads-page__header{display:flex;height:48px;min-width:0;flex:none;align-items:center;justify-content:space-between;gap:16px;padding:0 16px;border-bottom:1px solid var(--border);background:var(--surface-2)}
 .leads-page__header>div:first-child{display:flex;min-width:0;align-items:baseline;gap:10px}
-.leads-page__header h1{margin:0;flex:none;color:var(--text);font-size:13.5px;font-weight:700;letter-spacing:-.2px}
-.leads-page__header p{min-width:0;margin:0;overflow:hidden;color:var(--text-6);font-size:11px;text-overflow:ellipsis;white-space:nowrap}
-.leads-page__header>div:last-child{min-width:0;flex:none}
-.leads-page__header .btn{min-height:28px;padding:6px 10px;font-size:11.5px}
-.leads-filters{display:grid;grid-template-columns:repeat(7,minmax(128px,1fr));gap:8px;padding:11px 16px 12px;border-bottom:1px solid var(--border);background:var(--surface)}
+.leads-page__actions{display:flex;min-width:0;align-items:center;justify-content:flex-end;gap:8px;flex:none}
+.leads-filters{display:grid;max-height:min(240px,40dvh);flex:none;overflow-y:auto;grid-template-columns:repeat(7,minmax(128px,1fr));gap:8px;padding:11px 16px 12px;border-bottom:1px solid var(--border);background:var(--surface)}
+
 .leads-filters .field{min-width:0;gap:4px}
 .leads-filters .label{font-size:9px;letter-spacing:.08em}
 .leads-filters .input{min-height:30px;padding-block:5px;font-size:11.5px}
 .leads-filters .search-field>.input{padding-left:32px}
 .leads-filters .search-field>svg{left:10px;width:13px;height:13px}
 .leads-page>.error,.leads-page>.accent,.leads-page>[role="status"]{margin:12px 16px 0}
-.leads-table-surface{margin:14px 16px 0;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface)}
+.leads-table-surface{flex:1;min-height:0;overflow-y:auto;margin:14px 16px 0;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface)}
 .leads-table{table-layout:fixed;color:var(--text-3);font-size:11px}
 .leads-table th{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text-7);font:500 9.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase}
 .leads-table td{min-width:0;padding:10px 12px;border-bottom:1px solid var(--border-2)}

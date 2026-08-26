@@ -11,7 +11,6 @@ import { buildInvitationAcceptUrl, createInvitationToken, sendWorkspaceInvitatio
 import { HTTP_RATE_LIMITS } from "../../security/http-rate-limit.js";
 import { isValidIanaTimeZone } from "../../timezone.js";
 import { httpError } from "../scheduling/service.js";
-import { registerWorkspaceApiKeyRoutes } from "./api-keys.js";
 import { adjustDelayedInboundJobs } from "../../queue/message-queue.js";
 
 const uuid = z.string().uuid();
@@ -150,7 +149,6 @@ function assertCanManageMemberProfile(
 }
 
 export async function registerWorkspaceRoutes(app: FastifyInstance) {
-  registerWorkspaceApiKeyRoutes(app);
 
   app.get("/workspaces/current/timezone", async (request) => {
     const session = await requirePermission(request, "workspace.update");
