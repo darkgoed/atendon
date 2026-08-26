@@ -1080,6 +1080,84 @@ describe("panel API tenant isolation",()=>{
       await app.inject({method:"PATCH",url:`/conversations/${conversationA}/reactivate`,headers:{cookie:cookieA}});
     }
   });
+  it("persists and safely resends text messages rejected by a closed WhatsApp connection",async()=>{
+    await pool.query("UPDATE conversations SET ai_active=false,status='open' WHERE id=$1",[conversationA]);
+    const failedText=`Mensagem recuperável ${randomUUID()}`;
+    const newerDisconnectedSession=randomUUID();
+    const closed=vi.spyOn(WhatsAppSessionManager.prototype,"sendText").mockRejectedValue(
+      new Error("Evolution API recusou a operação (HTTP 400): Error: Connection Closed")
+    );
+    try{
+      const failed=await app.inject({
+        method:"POST",url:`/conversations/${conversationA}/messages`,headers:{cookie:cookieA,"idempotency-key":`recovery-${randomUUID()}`},payload:{text:failedText}
+      });
+      expect(failed.statusCode).toBeGreaterThanOrEqual(400);
+    }finally{
+      closed.mockRestore();
+    }
+
+    const preview=await app.inject({url:"/connection/failed-messages",headers:{cookie:cookieA}});
+    expect(preview.statusCode).toBe(200);
+    expect(preview.json().recovery.available).toBe(1);
+    await pool.query(
+      "INSERT INTO whatsapp_sessions(id,tenant_id,instance_name,status) VALUES($1,$2,$3,'disconnected')",
+      [newerDisconnectedSession,tenantA,`disconnected-${randomUUID()}`]
+    );
+
+    const resend=vi.spyOn(WhatsAppSessionManager.prototype,"sendText").mockResolvedValue({externalId:`recovered-${randomUUID()}`});
+    try{
+      const recovered=await app.inject({method:"POST",url:"/connection/failed-messages/resend",headers:{cookie:cookieA}});
+      expect(recovered.statusCode).toBe(200);
+      expect(recovered.json()).toMatchObject({sent:1,failed:0,remaining:0});
+      expect(resend).toHaveBeenCalledOnce();
+      expect((await pool.query("SELECT content,status FROM messages WHERE tenant_id=$1 AND content=$2",[tenantA,failedText])).rows)
+        .toEqual([{content:failedText,status:"sent"}]);
+      const replay=await app.inject({method:"POST",url:"/connection/failed-messages/resend",headers:{cookie:cookieA}});
+      expect(replay.json()).toMatchObject({sent:0,failed:0,remaining:0});
+    }finally{
+      resend.mockRestore();
+      await pool.query("DELETE FROM whatsapp_sessions WHERE id=$1",[newerDisconnectedSession]);
+      await app.inject({method:"PATCH",url:`/conversations/${conversationA}/reactivate`,headers:{cookie:cookieA}});
+    }
+  });
+  it("does not resend when the provider accepted the message but local recording failed",async()=>{
+    await pool.query("UPDATE conversations SET ai_active=false,status='open' WHERE id=$1",[conversationA]);
+    const failedText=`Mensagem ambígua ${randomUUID()}`;
+    const requestKey=`ambiguous-${randomUUID()}`;
+    const closed=vi.spyOn(WhatsAppSessionManager.prototype,"sendText").mockRejectedValueOnce(
+      new Error("Evolution API recusou a operação (HTTP 400): Error: Connection Closed")
+    );
+    try{
+      await app.inject({
+        method:"POST",url:`/conversations/${conversationA}/messages`,headers:{cookie:cookieA,"idempotency-key":requestKey},payload:{text:failedText}
+      });
+    }finally{
+      closed.mockRestore();
+    }
+    await pool.query(
+      `UPDATE outbound_message_requests
+       SET recovery_payload=jsonb_set(recovery_payload,'{sentByUserId}',to_jsonb($3::text))
+       WHERE tenant_id=$1 AND idempotency_key=$2`,
+      [tenantA,requestKey,"00000000-0000-4000-8000-000000000999"]
+    );
+
+    const resend=vi.spyOn(WhatsAppSessionManager.prototype,"sendText").mockResolvedValue({externalId:`ambiguous-${randomUUID()}`});
+    try{
+      const first=await app.inject({method:"POST",url:"/connection/failed-messages/resend",headers:{cookie:cookieA}});
+      expect(first.statusCode).toBe(200);
+      expect(first.json()).toMatchObject({sent:0,failed:0,ambiguous:1,remaining:0});
+      const second=await app.inject({method:"POST",url:"/connection/failed-messages/resend",headers:{cookie:cookieA}});
+      expect(second.json()).toMatchObject({sent:0,failed:0,ambiguous:0,remaining:0});
+      expect(resend).toHaveBeenCalledOnce();
+      expect((await pool.query(
+        "SELECT status,external_message_id FROM outbound_message_requests WHERE tenant_id=$1 AND idempotency_key=$2",
+        [tenantA,requestKey]
+      )).rows[0]).toMatchObject({status:"ambiguous"});
+    }finally{
+      resend.mockRestore();
+      await app.inject({method:"PATCH",url:`/conversations/${conversationA}/reactivate`,headers:{cookie:cookieA}});
+    }
+  });
   it("sends media idempotently and serves conversation media through the authenticated proxy",async()=>{
     await app.inject({method:"PATCH",url:`/conversations/${conversationA}/pause`,headers:{cookie:cookieA}});
     const send=vi.spyOn(WhatsAppSessionManager.prototype,"sendMedia").mockResolvedValue({externalId:`media-${randomUUID()}`});

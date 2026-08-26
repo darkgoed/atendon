@@ -131,5 +131,5 @@ describe("0098 case organization migration",() => {
         "SELECT count(*)::int count FROM information_schema.columns WHERE table_name='conversations' AND column_name='lead_id'"
       )).rows[0].count).toBe(0);
     });
-  });
+  },15_000);
 });

@@ -1113,6 +1113,35 @@ export function buildApp() {
     return reply.status(202).send({ status: "qr_pending" });
   });
 
+  app.get("/connection/failed-messages", async (request) => {
+    const session = await requirePermission(request, "connection.read");
+    const recovery = await new MessageRepository(db).outboundRecoverySummary(session.tenantId);
+    return { recovery };
+  });
+
+  app.post("/connection/failed-messages/resend", {
+    config: { rateLimit: HTTP_RATE_LIMITS.sensitiveWrite }
+  }, async (request, reply) => {
+    const session = await requirePermission(request, "connection.manage");
+    const connection = await db.query<{ connected: boolean }>(
+      "SELECT EXISTS(SELECT 1 FROM whatsapp_sessions WHERE tenant_id=$1 AND status='connected') connected",
+      [session.tenantId]
+    );
+    if (!connection.rows[0]?.connected) {
+      return reply.status(409).send({ error: "Reconecte o WhatsApp antes de reenviar mensagens" });
+    }
+    const result = await new MessageRepository(db).recoverFailedOutboundTexts(
+      session.tenantId,
+      (message) => whatsapp.sendText(message.sessionId, message.destination, message.text)
+    );
+    await db.query(
+      `INSERT INTO audit_logs(actor_user_id,workspace_id,actor_scope,action,resource_type,resource_id,metadata,ip_address,user_agent)
+       VALUES($1,$2,$3,'connection.failed_messages.resent','whatsapp_session',NULL,$4,$5,$6)`,
+      [session.userId, session.tenantId, session.actorScope, result, request.ip, request.headers["user-agent"]]
+    );
+    return result;
+  });
+
   app.get("/agent", async (request) => {
     const session = await requireRootWorkspace(request);
     const result = await db.query(`SELECT a.id, a.active_version_id, a.system_prompt, a.ai_model, a.model_params, a.enabled_tools, a.is_active, a.updated_at,
@@ -2579,6 +2608,7 @@ export function buildApp() {
       text,
       idempotencyKey,
       sentByUserId: session.userId,
+      ...(!media ? { recoveryText: outboundText! } : {}),
       ...(body.replyToMessageId ? { replyToMessageId: body.replyToMessageId } : {}),
       ...(media ? {
         mediaType: media.mediaType,

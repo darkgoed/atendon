@@ -7,6 +7,8 @@ import { ERROR_TOAST_EVENT } from "@/lib/error-events";
 import { adaptivePollingDelay, toastableAlerts, type ServerAlertToast } from "@/lib/alerts";
 import type { PanelFeatureFlagsResponse } from "@/lib/feature-flags";
 import { canPollWorkspaceAlerts, type PanelSession } from "@/lib/session";
+import { WhatsAppDisconnectedHelp } from "@/components/whatsapp-disconnected-help";
+import { isWhatsAppDisconnectedError } from "@/lib/whatsapp-support";
 
 type Toast = { id: number; message: string; kind: "error" | "operational" };
 
@@ -176,6 +178,7 @@ export function ErrorToasts() {
           <div>
             <strong>{toast.kind === "operational" ? "Alerta operacional" : "Não foi possível concluir"}</strong>
             <p>{toast.message}</p>
+            {toast.kind === "error" && isWhatsAppDisconnectedError(toast.message) ? <WhatsAppDisconnectedHelp /> : null}
             {toast.kind === "operational" ? (
               <Link className="mt-2 inline-block text-xs font-medium text-[var(--warn)] underline underline-offset-4" href="/alertas">
                 Revisar na central

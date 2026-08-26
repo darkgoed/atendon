@@ -29,7 +29,7 @@ describe("migrations on a clean database", () => {
       try {
         await fresh.connect();
         const result = await runMigrations(fresh, fileURLToPath(new URL("../src/db/migrations", import.meta.url)), () => undefined);
-        expect(result.applied.at(-1)).toBe("0123_tenant_owned_messages_and_web_push.sql");
+        expect(result.applied.at(-1)).toBe("0124_outbound_message_recovery.sql");
         expect((await runMigrations(
           fresh,
           fileURLToPath(new URL("../src/db/migrations", import.meta.url)),
@@ -284,7 +284,7 @@ describe("migrations on a clean database", () => {
           const snapshot = await recordDeploymentFeatureFlagSnapshot(snapshotPool, deployVersion);
           expect(snapshot).toMatchObject({
             deployVersion,
-            latestMigration: "0123_tenant_owned_messages_and_web_push.sql",
+            latestMigration: "0124_outbound_message_recovery.sql",
             created: true
           });
           expect(snapshot.globalFlags.case_organization_v1.enabled).toBe(true);

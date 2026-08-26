@@ -131,6 +131,21 @@ export interface ManualOutboundInput {
   mediaSizeBytes?: number;
   contentFingerprint?: string;
   replyToMessageId?: string;
+  recoveryText?: string;
+}
+
+export interface OutboundRecoverySummary {
+  available: number;
+  ambiguous: number;
+  has_connected_session: boolean;
+  legacy_unrecoverable: number;
+  oldest_at: Date | null;
+}
+
+export interface RecoverableOutboundText {
+  sessionId: string;
+  destination: string;
+  text: string;
 }
 
 export interface ToolCallJournalInput {
@@ -1416,6 +1431,161 @@ export class MessageRepository {
     }
   }
 
+  async outboundRecoverySummary(tenantId: string): Promise<OutboundRecoverySummary> {
+    const result = await this.db.query<OutboundRecoverySummary>(
+      `WITH recoverable AS (
+         SELECT request.request_hash,min(request.created_at) oldest_at
+         FROM outbound_message_requests request
+         JOIN conversations conversation ON conversation.id=request.conversation_id AND conversation.tenant_id=request.tenant_id
+         JOIN whatsapp_sessions session ON session.id=conversation.session_id AND session.tenant_id=conversation.tenant_id
+         WHERE request.tenant_id=$1 AND request.status='failed' AND request.recovery_payload IS NOT NULL
+           AND session.status='connected'
+         GROUP BY request.request_hash
+       ), ambiguous AS (
+         SELECT DISTINCT request_hash
+         FROM outbound_message_requests
+         WHERE tenant_id=$1 AND status='ambiguous' AND recovery_payload IS NOT NULL
+       ), legacy AS (
+         SELECT DISTINCT failed.request_hash
+         FROM outbound_message_requests failed
+         WHERE failed.tenant_id=$1 AND failed.status='failed'
+           AND failed.recovery_payload IS NULL
+           AND failed.error_message ~* 'connection closed'
+           AND NOT EXISTS (
+             SELECT 1 FROM outbound_message_requests sent
+             WHERE sent.tenant_id=failed.tenant_id AND sent.request_hash=failed.request_hash AND sent.status='sent'
+           )
+       )
+       SELECT (SELECT count(*)::int FROM recoverable) available,
+              (SELECT count(*)::int FROM ambiguous) ambiguous,
+              EXISTS(SELECT 1 FROM whatsapp_sessions WHERE tenant_id=$1 AND status='connected') has_connected_session,
+              (SELECT count(*)::int FROM legacy) legacy_unrecoverable,
+              (SELECT min(oldest_at) FROM recoverable) oldest_at`,
+      [tenantId]
+    );
+    return result.rows[0] ?? { available: 0, ambiguous: 0, has_connected_session: false, legacy_unrecoverable: 0, oldest_at: null };
+  }
+
+  async recoverFailedOutboundTexts(
+    tenantId: string,
+    send: (message: RecoverableOutboundText) => Promise<{ externalId: string }>
+  ): Promise<{ sent: number; failed: number; ambiguous: number; remaining: number }> {
+    const client = await this.db.connect();
+    let candidates: Array<{
+      id: string;
+      request_hash: string;
+      conversation_id: string;
+      session_id: string;
+      destination: string;
+      recovery_payload: { sendText?: unknown; displayText?: unknown; sentByUserId?: unknown };
+    }> = [];
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`outbound-recovery:${tenantId}`]);
+      const selected = await client.query<(typeof candidates)[number]>(
+        `SELECT DISTINCT ON (request.request_hash)
+                request.id,request.request_hash,request.conversation_id,request.recovery_payload,
+                conversation.session_id,COALESCE(conversation.contact_jid,conversation.contact_phone) destination
+         FROM outbound_message_requests request
+         JOIN conversations conversation ON conversation.id=request.conversation_id AND conversation.tenant_id=request.tenant_id
+         JOIN whatsapp_sessions session ON session.id=conversation.session_id AND session.tenant_id=conversation.tenant_id
+         WHERE request.tenant_id=$1 AND request.status='failed' AND request.recovery_payload IS NOT NULL
+           AND conversation.status='open' AND session.status='connected'
+         ORDER BY request.request_hash,request.created_at,request.id
+         LIMIT 50`,
+        [tenantId]
+      );
+      candidates = selected.rows.filter((row) =>
+        typeof row.recovery_payload?.sendText === "string"
+        && typeof row.recovery_payload?.displayText === "string"
+        && typeof row.recovery_payload?.sentByUserId === "string"
+      );
+      if (candidates.length) {
+        await client.query(
+          `UPDATE outbound_message_requests
+           SET status='pending',processing_started_at=now(),recovery_attempts=recovery_attempts+1
+           WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND status='failed'`,
+          [tenantId, candidates.map((candidate) => candidate.id)]
+        );
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    let sentCount = 0;
+    let failedCount = 0;
+    let ambiguousCount = 0;
+    for (const candidate of candidates) {
+      const payload = candidate.recovery_payload as { sendText: string; displayText: string; sentByUserId: string };
+      let sent: { externalId: string };
+      try {
+        sent = await send({ sessionId: candidate.session_id, destination: candidate.destination, text: payload.sendText });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await this.db.query(
+          `UPDATE outbound_message_requests
+           SET status='failed',error_message=$3,
+               recovery_payload=CASE WHEN $4 THEN recovery_payload ELSE NULL END,
+               completed_at=now()
+           WHERE tenant_id=$1 AND id=$2 AND status='pending'`,
+          [tenantId, candidate.id, message, /connection closed/i.test(message)]
+        );
+        failedCount += 1;
+        continue;
+      }
+
+      const accepted = await this.db.query(
+        `UPDATE outbound_message_requests
+         SET status='ambiguous',external_message_id=$3,error_message='Provider accepted; local recording pending',completed_at=now()
+         WHERE tenant_id=$1 AND id=$2 AND status='pending'`,
+        [tenantId, candidate.id, sent.externalId]
+      );
+      if ((accepted.rowCount ?? 0) !== 1) {
+        ambiguousCount += 1;
+        continue;
+      }
+
+      const delivery = await this.db.connect();
+      try {
+        await delivery.query("BEGIN");
+        const recorded = await delivery.query(
+          `INSERT INTO messages(conversation_id,sender,content,external_message_id,provider_message_key,sent_by_user_id)
+           SELECT conversation.id,'human',$4,$5,$6,$7
+           FROM conversations conversation
+           WHERE conversation.id=$1 AND conversation.tenant_id=$2 AND conversation.session_id=$3
+           ON CONFLICT(provider_message_key) DO NOTHING`,
+          [candidate.conversation_id, tenantId, candidate.session_id, payload.displayText, sent.externalId,
+            this.messageKey({ tenantId, sessionId: candidate.session_id, externalId: sent.externalId }), payload.sentByUserId]
+        );
+        if ((recorded.rowCount ?? 0) === 0) {
+          const exists = await delivery.query("SELECT 1 FROM messages WHERE provider_message_key=$1", [
+            this.messageKey({ tenantId, sessionId: candidate.session_id, externalId: sent.externalId })
+          ]);
+          if (!exists.rows[0]) throw new Error("Conversation disappeared before recovered message could be recorded");
+        }
+        await delivery.query(
+          `UPDATE outbound_message_requests
+           SET status='sent',external_message_id=$3,error_message=NULL,recovery_payload=NULL,recovered_at=now(),completed_at=now()
+           WHERE tenant_id=$1 AND request_hash=$2 AND status IN ('failed','pending','ambiguous') AND recovery_payload IS NOT NULL`,
+          [tenantId, candidate.request_hash, sent.externalId]
+        );
+        await delivery.query("COMMIT");
+        sentCount += 1;
+      } catch {
+        await delivery.query("ROLLBACK");
+        ambiguousCount += 1;
+      } finally {
+        delivery.release();
+      }
+    }
+    const summary = await this.outboundRecoverySummary(tenantId);
+    return { sent: sentCount, failed: failedCount, ambiguous: ambiguousCount, remaining: summary.available };
+  }
+
   async sendManualMessageOnce(
     input: ManualOutboundInput,
     send: () => Promise<{ externalId: string }>
@@ -1432,20 +1602,24 @@ export class MessageRepository {
         contentFingerprint: input.contentFingerprint ?? null
       })
       : payloadFingerprint({ conversationId: input.conversationId, text: input.text });
+    const recoveryPayload = !input.mediaType && !input.replyToMessageId && input.recoveryText
+      ? { sendText: input.recoveryText, displayText: input.text, sentByUserId: input.sentByUserId }
+      : null;
     const claimed = await this.db.query<{ id: string }>(
-      `INSERT INTO outbound_message_requests(tenant_id,conversation_id,idempotency_key,request_hash)
-       SELECT $1,c.id,$3,$4 FROM conversations c
+      `INSERT INTO outbound_message_requests(tenant_id,conversation_id,idempotency_key,request_hash,recovery_payload)
+       SELECT $1,c.id,$3,$4,$6::jsonb FROM conversations c
        WHERE c.id=$2 AND c.tenant_id=$1 AND c.session_id=$5
        ON CONFLICT (tenant_id,idempotency_key) DO NOTHING
        RETURNING id`,
-      [input.tenantId, input.conversationId, idempotencyKey, requestHash, input.sessionId]
+      [input.tenantId, input.conversationId, idempotencyKey, requestHash, input.sessionId,
+        recoveryPayload ? JSON.stringify(recoveryPayload) : null]
     );
 
     if (!claimed.rows[0]) {
       for (let attempt = 0; attempt < IDEMPOTENCY_WAIT_ATTEMPTS; attempt += 1) {
         const previous = await this.db.query<{
           request_hash: string;
-          status: "pending" | "sent" | "failed";
+          status: "pending" | "sent" | "failed" | "ambiguous";
           external_message_id: string | null;
           error_message: string | null;
           stale: boolean;
@@ -1460,12 +1634,14 @@ export class MessageRepository {
         if (row.request_hash.trim() !== requestHash) throw conflict("Idempotency-Key já foi usada com outro conteúdo");
         if (row.status === "sent" && row.external_message_id) return { externalId: row.external_message_id, duplicate: true };
         if (row.status === "failed") throw conflict(`Envio anterior falhou: ${row.error_message ?? "erro desconhecido"}`);
+        if (row.status === "ambiguous") throw conflict("O provedor aceitou o envio, mas o histórico local ainda precisa ser reconciliado");
         if (row.stale) break;
         await wait(IDEMPOTENCY_WAIT_MS);
       }
       const expired = await this.db.query(
         `UPDATE outbound_message_requests
-         SET status='failed',error_message='Reserva expirada; confirme o estado antes de reenviar',completed_at=now()
+         SET status='failed',error_message='Reserva expirada; confirme o estado antes de reenviar',
+             recovery_payload=NULL,completed_at=now()
          WHERE tenant_id=$1 AND idempotency_key=$2 AND status='pending'
            AND processing_started_at < now() - interval '5 minutes'
          RETURNING id`,
@@ -1481,11 +1657,24 @@ export class MessageRepository {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await this.db.query(
-        `UPDATE outbound_message_requests SET status='failed',error_message=$3,completed_at=now()
+        `UPDATE outbound_message_requests
+         SET status='failed',error_message=$3,
+             recovery_payload=CASE WHEN $4 THEN recovery_payload ELSE NULL END,
+             completed_at=now()
          WHERE tenant_id=$1 AND idempotency_key=$2 AND status='pending'`,
-        [input.tenantId, idempotencyKey, message]
+        [input.tenantId, idempotencyKey, message, /connection closed/i.test(message)]
       );
       throw error;
+    }
+
+    const accepted = await this.db.query(
+      `UPDATE outbound_message_requests
+       SET status='ambiguous',external_message_id=$3,error_message='Provider accepted; local recording pending',completed_at=now()
+       WHERE tenant_id=$1 AND idempotency_key=$2 AND status='pending'`,
+      [input.tenantId, idempotencyKey, sent.externalId]
+    );
+    if ((accepted.rowCount ?? 0) !== 1) {
+      throw conflict("O provedor aceitou o envio, mas não foi possível reservar a reconciliação local");
     }
 
     const client = await this.db.connect();
@@ -1517,8 +1706,8 @@ export class MessageRepository {
       }
       await client.query(
         `UPDATE outbound_message_requests
-         SET status='sent',external_message_id=$3,error_message=NULL,completed_at=now()
-         WHERE tenant_id=$1 AND idempotency_key=$2 AND status='pending'`,
+        SET status='sent',external_message_id=$3,error_message=NULL,recovery_payload=NULL,completed_at=now()
+        WHERE tenant_id=$1 AND idempotency_key=$2 AND status='ambiguous'`,
         [input.tenantId, idempotencyKey, sent.externalId]
       );
       await client.query("COMMIT");

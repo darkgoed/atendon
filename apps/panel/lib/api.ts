@@ -1,4 +1,5 @@
 import { reportError } from "./error-events";
+import { friendlyPanelError } from "./whatsapp-support";
 
 export class ApiError extends Error {
   status: number;
@@ -42,7 +43,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw error;
   }
   if (!response.ok) {
-    const message = typeof body === "object" && body && "error" in body && typeof body.error === "string"
+    const rawMessage = typeof body === "object" && body && "error" in body && typeof body.error === "string"
       ? body.error
       : typeof body === "string"
         && contentType.toLowerCase().startsWith("text/plain")
@@ -50,6 +51,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
         && body.length <= 300
         ? body
         : `Falha na requisição (${response.status})`;
+    const message = friendlyPanelError(rawMessage);
     reportError(message);
     throw new ApiError(message, response.status, body);
   }

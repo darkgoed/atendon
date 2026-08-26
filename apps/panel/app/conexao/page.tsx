@@ -5,6 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useRef, useState } from "react";
 import { Empty } from "@/components/page-state";
 import { Shell } from "@/components/shell";
+import { FailedMessageRecovery, type FailedMessageRecoveryState } from "@/components/failed-message-recovery";
 import { api } from "@/lib/api";
 import { usePermission } from "@/lib/use-permission";
 
@@ -37,6 +38,10 @@ export default function Connection() {
   const [pollingRetrying, setPollingRetrying] = useState(false);
   const [confirmingReconnect, setConfirmingReconnect] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
+  const [recovery, setRecovery] = useState<FailedMessageRecoveryState>({ available: 0, ambiguous: 0, has_connected_session: false, legacy_unrecoverable: 0, oldest_at: null });
+  const [confirmingRecovery, setConfirmingRecovery] = useState(false);
+  const [recoveringMessages, setRecoveringMessages] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
   const retryPollingRef = useRef<() => void>(() => undefined);
   const resetPollingRef = useRef<() => void>(() => undefined);
   const pollingPausedRef = useRef(false);
@@ -67,10 +72,14 @@ export default function Connection() {
       inFlight = true;
       if (manual) setPollingRetrying(true);
       try {
-        const response = await api<{ connection: ConnectionState | null }>("/connection");
+        const [response, recoveryResponse] = await Promise.all([
+          api<{ connection: ConnectionState | null }>("/connection"),
+          api<{ recovery: FailedMessageRecoveryState }>("/connection/failed-messages")
+        ]);
         if (!active || pollingPausedRef.current) return;
         consecutiveFailures = 0;
         setConnection(response.connection);
+        setRecovery(recoveryResponse.recovery);
         setLoaded(true);
         setPollingError("");
         setRetryDelayMs(0);
@@ -149,6 +158,28 @@ export default function Connection() {
     }
   }
 
+  async function recoverFailedMessages() {
+    if (!canManageConnection || recoveringMessages || !recovery.has_connected_session) return;
+    setRecoveringMessages(true);
+    setRecoveryError("");
+    setNotice("");
+    try {
+      const result = await api<{ sent: number; failed: number; ambiguous: number; remaining: number }>("/connection/failed-messages/resend", { method: "POST" });
+      const refreshed = await api<{ recovery: FailedMessageRecoveryState }>("/connection/failed-messages");
+      setRecovery(refreshed.recovery);
+      setConfirmingRecovery(false);
+      setNotice(result.sent === 1
+        ? "1 mensagem foi reenviada e registrada na conversa."
+        : `${result.sent} mensagens foram reenviadas e registradas nas conversas.`);
+      if (result.failed > 0) setRecoveryError(`${result.failed} mensagens ainda não puderam ser reenviadas.`);
+      if (result.ambiguous > 0) setRecoveryError(`${result.ambiguous} envios foram aceitos, mas precisam de revisão no histórico e não serão reenviados.`);
+    } catch (requestError) {
+      setRecoveryError(errorMessage(requestError, "Não foi possível reenviar as mensagens."));
+    } finally {
+      setRecoveringMessages(false);
+    }
+  }
+
   const pending = connection?.status === "qr_pending";
   const degraded = loaded && Boolean(pollingError);
   const retryDelaySeconds = Math.max(1, Math.ceil(retryDelayMs / 1_000));
@@ -171,7 +202,7 @@ export default function Connection() {
               disabled={reconnecting}
               aria-expanded={confirmingReconnect}
               aria-controls="connection-reconnect-confirmation"
-              onClick={() => { setActionError(""); setNotice(""); setConfirmingReconnect(true); }}
+              onClick={() => { setActionError(""); setNotice(""); setConfirmingRecovery(false); setConfirmingReconnect(true); }}
             >
               <ArrowsClockwise size={16} aria-hidden="true" />
               Trocar número ou sessão
@@ -211,6 +242,20 @@ export default function Connection() {
       ) : null}
 
       {notice ? <p className="accent mb-4 text-sm" role="status" aria-live="polite">{notice}</p> : null}
+
+      {loaded && connection ? (
+        <FailedMessageRecovery
+          recovery={recovery}
+          canManage={canManageConnection}
+          connected={recovery.has_connected_session}
+          recovering={recoveringMessages}
+          confirming={confirmingRecovery}
+          error={recoveryError}
+          onConfirm={() => { setRecoveryError(""); setNotice(""); setConfirmingReconnect(false); setConfirmingRecovery(true); }}
+          onCancel={() => { setRecoveryError(""); setConfirmingRecovery(false); }}
+          onRecover={() => void recoverFailedMessages()}
+        />
+      ) : null}
 
       {degraded ? (
         <section className="mb-5 flex flex-wrap items-center justify-between gap-4 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-4" role="status" aria-live="polite">
