@@ -149,6 +149,7 @@ test("Dockerfiles de produção usam Node 22, npm 12, usuário não-root e coman
     worker: await readFile(join(rootDirectory, "deploy/docker/worker.Dockerfile"), "utf8"),
     panel: await readFile(join(rootDirectory, "deploy/docker/panel.Dockerfile"), "utf8")
   };
+  const apiSource = await readFile(join(rootDirectory, "apps/backend/src/app.ts"), "utf8");
   for (const [name, source] of Object.entries(files)) {
     assert.match(source, /FROM node:22(?:[.-])/i, `${name} não usa Node 22`);
     assert.match(source, /npm@12\.0\.1/, `${name} não fixa npm 12`);
@@ -157,9 +158,14 @@ test("Dockerfiles de produção usam Node 22, npm 12, usuário não-root e coman
   assert.match(files.api, /dist\/server\.js/);
   assert.match(files.api, /src\/db\/migrations/);
   assert.doesNotMatch(
-    files.api,
+    apiSource,
     /instrução-newave-ia\.md/,
     "a API deve usar o prompt persistido no banco, sem template Markdown em runtime"
+  );
+  assert.doesNotMatch(
+    apiSource,
+    /loadNewavePromptTemplate|template_status/,
+    "GET /agent não deve depender do template Markdown aposentado"
   );
   assert.match(files.worker, /dist\/worker\.js/);
   assert.match(files.panel, /standalone/);

@@ -29,8 +29,6 @@ import { registerRootRoutes } from "./modules/root/routes.js";
 import { getVersionInfo } from "./modules/root/version.js";
 import { registerQualificationRoutes } from "./modules/qualification/routes.js";
 import { QualificationService } from "./modules/qualification/service.js";
-import { loadNewavePromptTemplate } from "./db/newave-template.js";
-import { encryptSecret } from "./modules/ai-router/secret-box.js";
 import { DEFAULT_MEDIA_FALLBACK } from "./modules/ai-router/defaults.js";
 import { AVAILABLE_TOOL_NAMES } from "./modules/ai-router/tools.js";
 import { WhatsAppSessionManager } from "./modules/whatsapp/session-manager.js";
@@ -1123,31 +1121,9 @@ export function buildApp() {
       WHERE a.tenant_id=$1 ORDER BY a.updated_at DESC LIMIT 1`,
       [session.tenantId, DEFAULT_MEDIA_FALLBACK.audio, DEFAULT_MEDIA_FALLBACK.image, DEFAULT_MEDIA_FALLBACK.document]);
     const agent = result.rows[0] ?? null;
-    let templateStatus: {
-      available: boolean;
-      diverged: boolean;
-      candidateVersionId: string | null;
-      templateCharacters: number;
-    } | null = null;
-    if (agent?.tenant_slug === "newave-ia") {
-      const template = await loadNewavePromptTemplate();
-      const candidate = await db.query<{ id: string }>(
-        `SELECT id FROM agent_config_versions
-         WHERE tenant_id=$1 AND agent_config_id=$2 AND source='manual' AND status='candidate'
-         ORDER BY version_number DESC LIMIT 1`,
-        [session.tenantId, agent.id]
-      );
-      templateStatus = {
-        available: true,
-        diverged: agent.system_prompt !== template,
-        candidateVersionId: candidate.rows[0]?.id ?? null,
-        templateCharacters: template.length
-      };
-    }
     return {
       agent,
-      available_tools: AVAILABLE_TOOL_NAMES,
-      template_status: templateStatus,
+      available_tools: AVAILABLE_TOOL_NAMES
     };
   });
 
