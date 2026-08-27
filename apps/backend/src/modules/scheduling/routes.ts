@@ -929,18 +929,6 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
       )
     };
   });
-  app.delete("/scheduling/attendants/me/time-blocks/:id", async (request) => {
-    const session = await requireWorkspace(request);
-    const { id } = idParams.parse(request.params);
-    return {
-      block: await deleteOwnAttendantTimeBlock(
-        session.tenantId,
-        session.userId,
-        id,
-        followUpActor(request, session)
-      )
-    };
-  });
   app.get("/scheduling/attendants/me/recurring-time-blocks", async (request) => { const session=await requireWorkspace(request); const q=attendantTimeBlockQuery.parse(request.query); return { blocks: await listOwnRecurringAttendantTimeBlocks(session.tenantId,session.userId,{start:new Date(q.start),end:new Date(q.end)}) }; });
   app.post("/scheduling/attendants/me/recurring-time-blocks", async (request,reply) => { const session=await requireWorkspace(request); const block=await createOwnRecurringAttendantTimeBlock(session.tenantId,session.userId,recurringTimeBlockBody.parse(request.body),followUpActor(request,session)); return reply.status(201).send({block}); });
   app.patch("/scheduling/attendants/me/recurring-time-blocks/:id", async (request) => { const session=await requireWorkspace(request); const {id}=idParams.parse(request.params); return {block:await updateOwnRecurringAttendantTimeBlock(session.tenantId,session.userId,id,recurringTimeBlockPatch.parse(request.body))}; });
