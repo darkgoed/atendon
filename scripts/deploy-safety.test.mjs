@@ -156,6 +156,11 @@ test("Dockerfiles de produção usam Node 22, npm 12, usuário não-root e coman
   }
   assert.match(files.api, /dist\/server\.js/);
   assert.match(files.api, /src\/db\/migrations/);
+  assert.doesNotMatch(
+    files.api,
+    /instrução-newave-ia\.md/,
+    "a API deve usar o prompt persistido no banco, sem template Markdown em runtime"
+  );
   assert.match(files.worker, /dist\/worker\.js/);
   assert.match(files.panel, /standalone/);
   assert.match(files.panel, /server\.js/);

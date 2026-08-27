@@ -107,7 +107,10 @@ export function parseOpenRouterProviderOrder(value: unknown): string[] | undefin
 
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  APP_VERSION: z.string().trim().min(1).default("1.0.0"),
+  APP_VERSION: z.preprocess(
+    (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
+    z.string().trim().min(1).optional()
+  ),
   CHANGELOG_PATH: z.string().trim().min(1).default(fileURLToPath(new URL("../../../changelog.json", import.meta.url))),
   DEPLOY_VERSION: z.preprocess(
     (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
@@ -167,7 +170,7 @@ const schema = z.object({
   DEFAULT_SYSTEM_PROMPT: z.string()
     .refine((value) => value.trim().length > 0, "DEFAULT_SYSTEM_PROMPT não pode conter somente espaços")
     .default(defaultSystemPrompt),
-
+  AI_EVALUATOR_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
   WHATSAPP_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
   EVOLUTION_API_URL: z.string().url().default("http://localhost:8088"),
   EVOLUTION_API_KEY: z.string().min(16).default(ephemeralSecret()),

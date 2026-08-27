@@ -145,7 +145,7 @@ function AgendaContent() {
             <>
               {pendingAppointmentsCount > 0 ? <PendingWarning count={pendingAppointmentsCount} onShow={() => setAppointmentView("pending")} /> : null}
               {mode === "month" ? <AgendaMonth days={days} appointments={visibleAppointments} today={today} onSelect={(date) => { data.setMode("day"); data.setAnchor(date); }} /> : <div className={`agenda-scroll ${mode === "day" ? "agenda-scroll--day" : ""}`}>
-                <AgendaCalendar days={days} today={today} timezone={timezone} failedDays={availability.failedDays} timeGrid={timeGrid} now={now} dragging={actions.dragging} reschedulingId={actions.reschedulingId} pendingActionId={actions.pendingActionId} canReschedule={permissions.canReschedule} canCreate={permissions.canCreate} onDrag={actions.setDragging} onDrop={actions.drop} onOpen={actions.openAppointment} onSelectSlot={setSlotChoice} />
+                <AgendaCalendar days={days} today={today} timezone={timezone} failedDays={availability.failedDays} timeGrid={timeGrid} now={now} dragging={actions.dragging} reschedulingId={actions.reschedulingId} pendingActionId={actions.pendingActionId} canReschedule={permissions.canReschedule} canCreate={permissions.canCreate} onDrag={actions.setDragging} onDrop={actions.drop} onCreate={actions.beginCreate} onOpen={actions.openAppointment} onSelectSlot={setSlotChoice} />
               </div>}
               <AgendaDetailDialog actions={actions} timezone={timezone} now={now} />
               <AgendaCreateDialog actions={actions} timezone={timezone} />
@@ -185,7 +185,7 @@ function buildTimeGrid(days: Date[], slots: Record<string, Slot[]>, appointments
 function AvailabilityWarning({ failedDays, retrying, onRetry }: { failedDays: string[]; retrying: boolean; onRetry: () => Promise<void> }) {
   return (
     <section className="mb-5 flex flex-wrap items-center justify-between gap-4 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-4" role="status" aria-live="polite">
-      <div className="flex min-w-0 items-start gap-3"><WarningCircle className="mt-0.5 shrink-0 text-[var(--warn)]" size={20} aria-hidden="true" /><div><strong className="block text-sm text-[var(--warn)]">Disponibilidade atualizada parcialmente</strong><p className="mt-1 text-sm text-[var(--warn-muted)]">Falha em {failedDays.map((date) => new Date(`${date}T00:00:00.000Z`).toLocaleDateString("pt-BR", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "2-digit" })).join(", ")}. Os demais dias continuam válidos; onde havia dados anteriores, eles foram preservados e sinalizados.</p></div></div>
+      <div className="flex min-w-0 flex-1 items-start gap-3"><WarningCircle className="mt-0.5 shrink-0 text-[var(--warn)]" size={20} aria-hidden="true" /><div><strong className="block text-sm text-[var(--warn)]">Disponibilidade atualizada parcialmente</strong><p className="mt-1 text-sm text-[var(--warn-muted)]">Falha em {failedDays.map((date) => new Date(`${date}T00:00:00.000Z`).toLocaleDateString("pt-BR", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "2-digit" })).join(", ")}. Os demais dias continuam válidos; onde havia dados anteriores, eles foram preservados e sinalizados.</p></div></div>
       <button type="button" className="btn warn" disabled={retrying} onClick={() => void onRetry()}>{retrying ? "Tentando novamente…" : "Tentar dias com falha novamente"}</button>
     </section>
   );

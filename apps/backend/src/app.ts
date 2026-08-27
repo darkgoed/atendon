@@ -14,7 +14,7 @@ import { logger } from "./logger.js";
 import { MessageRepository } from "./modules/messages/repository.js";
 import { parseIdempotencyKey, payloadFingerprint } from "./modules/messages/idempotency.js";
 import { AiFollowUpProcessor } from "./modules/messages/ai-follow-up.js";
-import { runFollowUpOnce } from "./modules/messages/follow-up-idempotency.js";
+import { enqueueFollowUpOnce } from "./modules/messages/follow-up-idempotency.js";
 import { OpenRouterClient } from "./modules/ai-router/openrouter.js";
 import { defaultStageId } from "./modules/commercial-journey/service.js";
 import { applySignature, resolveSignatureSettings, type SignatureFormat, type SignatureNameStyle } from "./modules/messages/signature.js";
@@ -2369,42 +2369,30 @@ export function buildApp() {
     if (conversation.rows[0].status !== "open") return reply.status(409).send({ error: "Reabra a conversa antes de fazer follow-up" });
     const row = conversation.rows[0];
     const processor = new AiFollowUpProcessor(new AiFollowUpRepository(db, config), whatsapp, new OpenRouterClient(config));
-    let claimedResult: { result: { externalId: string; messageId: string | null }; duplicate: boolean };
+    let claimedResult: { requestId: string; duplicate: boolean; status: string; result?: { externalId: string; messageId: string | null } };
     try {
-      claimedResult = await runFollowUpOnce(db, {
-        tenantId: session.tenantId, conversationId: id, idempotencyKey
-      }, async () => {
+      claimedResult = await enqueueFollowUpOnce(db, { tenantId: session.tenantId, conversationId: id, idempotencyKey }, async () => {
         const outcome = await processor.process(id);
         if (outcome === "cancelled" || outcome === "not_due") throw Object.assign(new Error("not_needed"), { statusCode: 409 });
-        if (outcome !== "sent") throw Object.assign(new Error("busy"), { statusCode: 409 });
-        const sent = await db.query<{ id: string; external_message_id: string }>(
-          `SELECT id,external_message_id FROM messages
-           WHERE tenant_id=$2 AND conversation_id=$1 AND sender='agent' AND external_message_id IS NOT NULL
-           ORDER BY created_at DESC LIMIT 1`, [id, session.tenantId]
-        );
+        if (outcome !== "sent") throw Object.assign(new Error("conversation_busy"), { statusCode: 409 });
+        const sent = await db.query<{ id: string; external_message_id: string }>(`SELECT id,external_message_id FROM messages WHERE tenant_id=$2 AND conversation_id=$1 AND sender='agent' AND external_message_id IS NOT NULL ORDER BY created_at DESC LIMIT 1`, [id, session.tenantId]);
+        const updated = await withTenantTransaction(db, session.tenantId, async (client) => {
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`follow-up:${session.tenantId}:${id}`]);
+          const lead = (await client.query<{ id: string }>(`SELECT id FROM scheduling_leads WHERE tenant_id=$1 AND regexp_replace(phone,'\\\\D','','g')=regexp_replace($2,'\\\\D','','g') FOR UPDATE`, [session.tenantId, row.contact_phone])).rows[0];
+          if (!lead) return null;
+          const stageId = await defaultStageId(client, session.tenantId, "follow_up");
+          await client.query(`UPDATE scheduling_leads SET status='follow_up',pipeline_stage_id=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2`, [session.tenantId, lead.id, stageId]);
+          return { leadId: lead.id, stageId };
+        });
+        if (!updated) throw new Error("stage_failed");
         return { externalId: sent.rows[0]?.external_message_id ?? "", messageId: sent.rows[0]?.id ?? null };
       });
     } catch (error) {
-      if ((error as { statusCode?: number }).statusCode === 409 || (error instanceof Error && ["not_needed", "busy"].includes(error.message))) {
-        return reply.status(409).send({ ok: false, status: error instanceof Error ? error.message : "conflict" });
-      }
-      request.log.error({ err: error, conversationId: id, idempotencyKey, fingerprint }, "Manual follow-up failed");
-      return reply.status(502).send({ ok: false, status: "failed" });
+      if ((error as { statusCode?: number }).statusCode === 409) return reply.status(409).send({ ok: false, code: "idempotency_conflict" });
+      request.log.error({ err: error, conversationId: id, idempotencyKey, fingerprint }, "Manual follow-up enqueue failed");
+      return reply.status(503).send({ ok: false, code: "follow_up_unavailable" });
     }
-    if (claimedResult.duplicate) return { ok: true, status: "sent", message_id: claimedResult.result.messageId };
-    const updated = await withTenantTransaction(db, session.tenantId, async (client) => {
-      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`follow-up:${session.tenantId}:${id}`]);
-      const lead = (await client.query<{ id: string }>(
-        `SELECT id FROM scheduling_leads WHERE tenant_id=$1 AND regexp_replace(phone,'\\\\D','','g')=regexp_replace($2,'\\\\D','','g') FOR UPDATE`,
-        [session.tenantId, row.contact_phone]
-      )).rows[0];
-      if (!lead) return null;
-      const stageId = await defaultStageId(client, session.tenantId, "follow_up");
-      await client.query(`UPDATE scheduling_leads SET status='follow_up',pipeline_stage_id=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2`, [session.tenantId, lead.id, stageId]);
-      return { leadId: lead.id, stageId };
-    });
-    if (!updated) return reply.status(409).send({ ok: false, status: "stage_failed" });
-    return { ok: true, status: "sent", message_id: claimedResult.result.messageId, lead_id: updated.leadId, pipeline_stage_id: updated.stageId };
+    return reply.status(202).send({ ok: true, status: claimedResult.status, request_id: claimedResult.requestId });
   });
 
   app.post("/conversations/:id/messages", {

@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:#F7F7F5; --surface:#FFFFFF; --surface-2:#FBFBF9; --surface-3:#F4F4EE; --hover:#F0F0EA;
+    --border:#E6E6E0; --border-2:#EFEFE9; --border-3:#E0E0D9; --border-4:#F1F1EB;
+    --divider-dash:#DEDED6; --divider-dash-hover:#B8B8AE; --border-hover:#C9C9C0;
+    --disabled-bg:#E9E9E3;
+    --text:#1A1A18; --text-2:#2A2A26; --text-3:#3A3A36; --text-4:#57574F; --text-5:#6B6B64;
+    --text-6:#8A8A82; --text-7:#9A9A92; --text-8:#A3A39A; --text-9:#B0B0A8;
+    --scrollbar-thumb:#DEDED8;
+    --today-head-bg:#F7F8F6; --today-body-bg:#FDFDFC;
+    --primary:#0E7490; --primary-fg:#FFFFFF; --primary-hover:#0B5C73; --primary-text:#0E7490;
+    --primary-accent:#22D3EE; --primary-tint-bg:#E3F8FB; --primary-tint-border:#B9EAF2;
+  }
+  html, body { margin:0; padding:0; height:100%; background:var(--bg); }
+  body { font-family:'Manrope', system-ui, sans-serif; -webkit-font-smoothing:antialiased; color:var(--text); }
+  * { box-sizing:border-box; }
+  a { color:var(--primary-text); text-decoration:none; }
+  a:hover { color:var(--primary-hover); text-decoration:underline; }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:var(--scrollbar-thumb); border:3px solid var(--bg); border-radius:8px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+</style>
+</helmet>
+
+<div style="display:flex; height:100vh; width:100%; background:var(--bg); font-size:13px; line-height:1.45; overflow:hidden">
+
+  <aside style="width:212px; flex:0 0 212px; background:var(--surface-2); border-right:1px solid var(--border); display:flex; flex-direction:column; padding:14px 12px 12px">
+    <div style="display:flex; align-items:center; gap:9px; padding:4px 6px 16px">
+      <div style="width:24px; height:24px; border-radius:7px; background:var(--primary); display:flex; align-items:center; justify-content:center; color:var(--primary-fg); font-size:12px; font-weight:700">N</div>
+      <div style="font-size:13.5px; font-weight:700; letter-spacing:-0.2px">Nexo</div>
+      <div style="margin-left:auto; display:flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:5px; color:var(--text-7)" style-hover="background:var(--hover); color:var(--text-4)">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:2px">
+      <div onClick="{{ navConversas.go }}" style="display:flex; align-items:center; gap:9px; padding:7px 9px; border-radius:7px; cursor:pointer; font-size:12.5px; background: {{ navConversas.bg }}; color: {{ navConversas.color }}; font-weight: {{ navConversas.weight }}" style-hover="background:var(--hover)">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M13.5 7.4c0 2.7-2.5 4.9-5.5 4.9-.7 0-1.3-.1-1.9-.3l-3.1 1.2.9-2.6A4.7 4.7 0 0 1 2.5 7.4C2.5 4.7 5 2.5 8 2.5s5.5 2.2 5.5 4.9Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"></path></svg>
+        <span>Conversas</span>
+        <span style="margin-left:auto; font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--text-6)">14</span>
+      </div>
+      <div onClick="{{ navAgenda.go }}" style="display:flex; align-items:center; gap:9px; padding:7px 9px; border-radius:7px; cursor:pointer; font-size:12.5px; background: {{ navAgenda.bg }}; color: {{ navAgenda.color }}; font-weight: {{ navAgenda.weight }}" style-hover="background:var(--hover)">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="3.5" width="11" height="10" rx="2" stroke="currentColor" stroke-width="1.3"></rect><path d="M2.5 6.5h11M5.5 2.5v2M10.5 2.5v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg>
+        <span>Agenda</span>
+        <span style="margin-left:auto; font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--text-6)">6</span>
+      </div>
+      <div onClick="{{ navPipeline.go }}" style="display:flex; align-items:center; gap:9px; padding:7px 9px; border-radius:7px; cursor:pointer; font-size:12.5px; background: {{ navPipeline.bg }}; color: {{ navPipeline.color }}; font-weight: {{ navPipeline.weight }}" style-hover="background:var(--hover)">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2.4" y="3" width="3.4" height="10" rx="1.2" stroke="currentColor" stroke-width="1.3"></rect><rect x="7.6" y="3" width="3.4" height="6.5" rx="1.2" stroke="currentColor" stroke-width="1.3"></rect><rect x="12.8" y="3" width="0.8" height="4" rx="0.4" stroke="currentColor" stroke-width="1.1"></rect></svg>
+        <span>Pipeline</span>
+        <span style="margin-left:auto; font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--text-6)">48</span>
+      </div>
+    </div>
+
+    <div style="height:1px; background:var(--border); margin:14px 6px"></div>
+
+    <div style="padding:0 9px 8px; font-size:10px; font-weight:600; letter-spacing:0.6px; text-transform:uppercase; color:var(--text-8)">Filas</div>
+    <div style="display:flex; flex-direction:column; gap:1px">
+      <sc-for list="{{ queues }}" as="q" hint-placeholder-count="3">
+        <div style="display:flex; align-items:center; gap:8px; padding:6px 9px; border-radius:6px; cursor:pointer; color:var(--text-4); font-size:12.5px" style-hover="background:var(--hover); color:var(--text)">
+          <span style="width:6px; height:6px; border-radius:50%; background: {{ q.dot }}"></span>
+          <span>{{ q.label }}</span>
+          <span style="margin-left:auto; font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--text-7)">{{ q.count }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="margin-top:auto; display:flex; flex-direction:column; gap:1px">
+      <div style="display:flex; align-items:center; gap:9px; padding:7px 9px; border-radius:7px; cursor:pointer; color:var(--text-4); font-size:12.5px" style-hover="background:var(--hover); color:var(--text)">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z" stroke="currentColor" stroke-width="1.3"></path><path d="M8 1.8l1 1.6 1.9-.4.6 1.8 1.7.9-.7 1.8.7 1.8-1.7.9-.6 1.8-1.9-.4-1 1.6-1-1.6-1.9.4-.6-1.8-1.7-.9.7-1.8-.7-1.8 1.7-.9.6-1.8 1.9.4 1-1.6Z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"></path></svg>
+        <span>Configurações</span>
+      </div>
+      <div onClick="{{ toggleTheme }}" style="display:flex; align-items:center; gap:9px; padding:7px 9px; border-radius:7px; cursor:pointer; color:var(--text-4); font-size:12.5px" style-hover="background:var(--hover); color:var(--text)">
+        <sc-if value="{{ isDark }}" hint-placeholder-val="{{ false }}">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M13.5 9.8A5.5 5.5 0 0 1 6.2 2.5a5.5 5.5 0 1 0 7.3 7.3Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"></path></svg>
+        </sc-if>
+        <sc-if value="{{ isLight }}" hint-placeholder-val="{{ true }}">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3.2" stroke="currentColor" stroke-width="1.3"></circle><path d="M8 2v1.6M8 12.4V14M2 8h1.6M12.4 8H14M4 4l1.1 1.1M11 11l1.1 1.1M4 12l1.1-1.1M11 5l1.1-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg>
+        </sc-if>
+        <span>{{ themeLabel }}</span>
+        <div style="margin-left:auto; flex:0 0 30px; width:30px; height:16px; border-radius:8px; background: {{ trackBg }}; position:relative">
+          <div style="position:absolute; top:2px; left: {{ thumbLeft }}; width:12px; height:12px; border-radius:50%; background:#fff; transition:left 0.15s"></div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:9px; padding:7px 8px; margin-top:4px; border-top:1px solid var(--border); padding-top:11px">
+        <div style="width:24px; height:24px; border-radius:50%; background:var(--primary-tint-bg); color:var(--primary-text); display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:700">RL</div>
+        <div style="min-width:0">
+          <div style="font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Rafael Lima</div>
+          <div style="font-size:10.5px; color:var(--text-7)">Comercial · Online</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main style="flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden">
+
+    <sc-if value="{{ isConversas }}" hint-placeholder-val="{{ true }}">
+      <div data-screen-label="Conversas" style="display:flex; flex-direction:column; height:100vh; min-height:0">
+        <header style="height:48px; flex:0 0 48px; border-bottom:1px solid var(--border); background:var(--surface-2); display:flex; align-items:center; gap:12px; padding:0 16px">
+          <div style="font-size:13.5px; font-weight:700; letter-spacing:-0.2px">Conversas</div>
+          <div style="font-size:11.5px; color:var(--text-6); font-family:'IBM Plex Mono', monospace">14 abertas · 3 sem resposta</div>
+          <div style="margin-left:auto; display:flex; align-items:center; gap:8px">
+            <div style="display:flex; align-items:center; gap:6px; height:28px; padding:0 10px; border:1px solid var(--border-3); border-radius:6px; background:var(--surface); color:var(--text-4); font-size:12px; cursor:pointer" style-hover="border-color:var(--border-hover); color:var(--text)">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1.5 2.5h9M3 6h6M4.5 9.5h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg>
+              Filtros
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; height:28px; padding:0 11px; border-radius:6px; background:var(--primary); color:var(--primary-fg); font-size:12px; font-weight:600; cursor:pointer" style-hover="background:var(--primary-hover)">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2.5v7M2.5 6h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+              Nova conversa
+            </div>
+          </div>
+        </header>
+
+        <div style="flex:1; min-height:0; display:flex; overflow-x:auto">
+
+          <section style="width:322px; flex:0 0 322px; border-right:1px solid var(--border); background:var(--surface); display:flex; flex-direction:column; min-height:0">
+            <div style="padding:10px 12px 8px; border-bottom:1px solid var(--border-2)">
+              <div style="display:flex; align-items:center; gap:7px; height:30px; padding:0 9px; border:1px solid var(--border-3); border-radius:6px; background:var(--surface-2); color:var(--text-7)" style-hover="border-color:var(--border-hover)">
+                <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="6.2" cy="6.2" r="4" stroke="currentColor" stroke-width="1.3"></circle><path d="M9.4 9.4 12 12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg>
+                <span style="font-size:12px">Buscar por nome, telefone ou tag</span>
+              </div>
+              <div style="display:flex; gap:4px; margin-top:9px">
+                <sc-for list="{{ convTabs }}" as="t" hint-placeholder-count="4">
+                  <div onClick="{{ t.go }}" style="padding:4px 9px; border-radius:6px; font-size:11.5px; cursor:pointer; background: {{ t.bg }}; color: {{ t.color }}; font-weight: {{ t.weight }}" style-hover="background:var(--hover)">{{ t.label }}</div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="flex:1; min-height:0; overflow-y:auto">
+              <sc-for list="{{ conversations }}" as="c" hint-placeholder-count="7">
+                <div onClick="{{ c.go }}" style="display:flex; gap:10px; padding: {{ rowPad }} 12px; border-bottom:1px solid var(--border-4); cursor:pointer; position:relative; background: {{ c.bg }}" style-hover="background:var(--hover)">
+                  <div style="position:absolute; left:0; top:0; bottom:0; width:2px; background: {{ c.bar }}"></div>
+                  <div style="flex:0 0 30px; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:700; margin-top:2px; background: {{ c.avBg }}; color: {{ c.avColor }}">{{ c.initials }}</div>
+                  <div style="flex:1; min-width:0">
+                    <div style="display:flex; align-items:baseline; gap:6px">
+                      <div style="font-size:12.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color: {{ c.nameColor }}">{{ c.name }}</div>
+                      <div style="margin-left:auto; font-size:10.5px; color:var(--text-8); font-family:'IBM Plex Mono', monospace; flex:0 0 auto">{{ c.time }}</div>
+                    </div>
+                    <div style="font-size:11px; color:var(--text-6); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ c.company }}</div>
+                    <div style="font-size:11.5px; color: {{ c.previewColor }}; margin-top:4px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden">{{ c.preview }}</div>
+                    <div style="display:flex; align-items:center; gap:5px; margin-top:7px">
+                      <span style="display:inline-flex; align-items:center; gap:4px; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:600; background: {{ c.tagBg }}; color: {{ c.tagColor }}">{{ c.tag }}</span>
+                      <sc-if value="{{ c.sla }}" hint-placeholder-val="{{ true }}">
+                        <span style="display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:600; color: {{ c.slaColor }}">
+                          <span style="width:5px; height:5px; border-radius:50%; background: {{ c.slaColor }}"></span>{{ c.sla }}
+                        </span>
+                      </sc-if>
+                      <sc-if value="{{ c.unread }}" hint-placeholder-val="{{ true }}">
+                        <span style="margin-left:auto; min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--primary); color:var(--primary-fg); font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center">{{ c.unread }}</span>
+                      </sc-if>
+                    </div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+
+          <section style="flex:1 1 520px; min-width:480px; display:flex; flex-direction:column; background:var(--bg)">
+            <div style="min-height:52px; flex:0 0 auto; border-bottom:1px solid var(--border); background:var(--surface); display:flex; align-items:center; gap:10px; padding:0 16px">
+              <div style="flex:0 0 28px; width:28px; height:28px; border-radius:50%; background:var(--primary-tint-bg); color:var(--primary-text); display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:700">MD</div>
+              <div style="min-width:0; overflow:hidden">
+                <div style="font-size:13px; font-weight:600; letter-spacing:-0.1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Marina Duarte</div>
+                <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-6); white-space:nowrap">
+                  <span style="display:inline-flex; align-items:center; gap:3px; flex:0 0 auto"><span style="width:5px; height:5px; border-radius:50%; background:#25D366"></span>WhatsApp</span>
+                  <span style="color:var(--text-9); flex:0 0 auto">·</span>
+                  <span style="font-family:'IBM Plex Mono', monospace; flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis">+55 11 98432-1170</span>
+                </div>
+              </div>
+              <div style="margin-left:auto; flex:0 0 auto; display:flex; align-items:center; gap:6px; padding:12px 0">
+                <sc-for list="{{ threadActions }}" as="a" hint-placeholder-count="3">
+                  <div style="display:flex; align-items:center; gap:6px; height:28px; padding:0 10px; border:1px solid var(--border-3); border-radius:6px; background:var(--surface); color:var(--text-4); font-size:12px; cursor:pointer" style-hover="border-color:var(--border-hover); background:var(--surface-2)">{{ a.label }}</div>
+                </sc-for>
+                <div style="height:28px; padding:0 11px; border-radius:6px; background:var(--primary); color:var(--primary-fg); font-size:12px; font-weight:600; display:flex; align-items:center; cursor:pointer" style-hover="background:var(--primary-hover)">Resolver</div>
+              </div>
+            </div>
+
+            <div style="flex:1; min-height:0; overflow-y:auto; padding:18px 22px; display:flex; flex-direction:column; gap:14px">
+              <sc-for list="{{ messages }}" as="m" hint-placeholder-count="5">
+                <div style="display:flex; justify-content: {{ m.justify }}">
+                  <div style="max-width:min(560px, 74%); display:flex; flex-direction:column; align-items: {{ m.align }}">
+                    <sc-if value="{{ m.meta }}" hint-placeholder-val="{{ true }}">
+                      <div style="display:flex; align-items:center; gap:6px; margin-bottom:5px; font-size:10.5px; color:var(--text-7)">
+                        <span style="font-weight:600; color:var(--text-5)">{{ m.author }}</span>
+                        <sc-if value="{{ m.badge }}" hint-placeholder-val="{{ true }}">
+                          <span style="padding:1px 5px; border-radius:4px; border:1px solid {{ m.badgeBorder }}; background: {{ m.badgeBg }}; color: {{ m.badgeColor }}; font-size:9.5px; font-weight:700; letter-spacing:0.3px">{{ m.badge }}</span>
+                        </sc-if>
+                        <span style="font-family:'IBM Plex Mono', monospace">{{ m.time }}</span>
+                      </div>
+                    </sc-if>
+                    <div style="padding: {{ m.pad }}; border-radius:10px; font-size:12.5px; line-height:1.55; background: {{ m.bg }}; color: {{ m.color }}; border:1px solid {{ m.border }}; text-align: {{ m.textAlign }}; white-space:pre-line">{{ m.text }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <sc-if value="{{ showCopilot }}" hint-placeholder-val="{{ true }}">
+              <div style="margin:0 22px; padding:11px 13px; background:var(--surface); border:1px solid var(--border-3); border-bottom:none; border-radius:10px 10px 0 0">
+                <div style="display:flex; align-items:center; gap:8px">
+                  <span style="padding:2px 6px; border-radius:4px; background:var(--primary-tint-bg); border:1px solid var(--primary-tint-border); color:var(--primary-text); font-size:9.5px; font-weight:700; letter-spacing:0.4px">COPILOTO</span>
+                  <span style="font-size:11.5px; font-weight:600; color:var(--text-4)">Resposta sugerida</span>
+                  <div style="margin-left:auto; display:flex; gap:12px; font-size:11px; color:var(--text-6)">
+                    <sc-for list="{{ aiSignals }}" as="s" hint-placeholder-count="3">
+                      <span><span style="color:var(--text-8)">{{ s.k }}</span> <span style="font-weight:600; color:var(--text-4)">{{ s.v }}</span></span>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="margin-top:8px; font-size:12.5px; color:var(--text-3); line-height:1.55">{{ aiSuggestion }}</div>
+                <div style="display:flex; gap:6px; margin-top:10px">
+                  <div style="height:26px; padding:0 10px; border-radius:6px; background:var(--primary); color:var(--primary-fg); font-size:11.5px; font-weight:600; display:flex; align-items:center; cursor:pointer" style-hover="background:var(--primary-hover)">Inserir resposta</div>
+                  <div style="height:26px; padding:0 10px; border-radius:6px; border:1px solid var(--border-3); color:var(--text-4); font-size:11.5px; display:flex; align-items:center; cursor:pointer" style-hover="border-color:var(--border-hover); background:var(--surface-2)">Reescrever</div>
+                  <div style="height:26px; padding:0 10px; border-radius:6px; color:var(--text-6); font-size:11.5px; display:flex; align-items:center; cursor:pointer" style-hover="background:var(--hover); color:var(--text-4)">Descartar</div>
+                </div>
+              </div>
+            </sc-if>
+
+            <div style="margin:0 22px 18px; background:var(--surface); border:1px solid var(--border-3); border-radius: {{ composerRadius }}">
+              <div style="display:flex; gap:2px; padding:8px 10px 0">
+                <sc-for list="{{ composerTabs }}" as="t" hint-placeholder-count="2">
+                  <div onClick="{{ t.go }}" style="padding:4px 9px; border-radius:6px; font-size:11.5px; cursor:pointer; background: {{ t.bg }}; color: {{ t.color }}; font-weight: {{ t.weight }}" style-hover="background:var(--hover)">{{ t.label }}</div>
+                </sc-for>
+              </div>
+              <div style="padding:9px 12px 4px; font-size:12.5px; color:var(--text-9)">{{ composerPlaceholder }}</div>
+              <div style="display:flex; align-items:center; gap:8px; padding:8px 10px 9px; border-top:1px solid var(--border-4)">
+                <sc-for list="{{ quickReplies }}" as="q" hint-placeholder-count="3">
+                  <div style="padding:3px 8px; border:1px solid var(--border); border-radius:5px; font-size:11px; color:var(--text-4); cursor:pointer" style-hover="border-color:var(--border-hover); background:var(--surface-2); color:var(--text)">{{ q }}</div>
+                </sc-for>
+                <div style="margin-left:auto; display:flex; align-items:center; gap:8px">
+                  <span style="font-size:10.5px; color:var(--text-9); font-family:'IBM Plex Mono', monospace">⌘↵</span>
+                  <div style="height:28px; padding:0 13px; border-radius:6px; background:var(--disabled-bg); color:var(--text-8); font-size:12px; font-weight:600; display:flex; align-items:center; cursor:not-allowed">Enviar</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <aside style="width:328px; flex:0 0 328px; border-left:1px solid var(--border); background:var(--surface); overflow-y:auto">
+            <div style="padding:16px 16px 14px; border-bottom:1px solid var(--border-2)">
+              <div style="display:flex; gap:11px">
+                <div style="width:38px; height:38px; border-radius:50%; background:var(--primary-tint-bg); color:var(--primary-text); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700">MD</div>
+                <div style="min-width:0">
+                  <div style="font-size:13.5px; font-weight:700; letter-spacing:-0.2px">Marina Duarte</div>
+                  <div style="font-size:11.5px; color:var(--text-6); margin-top:1px">Head de Operações · Vetor Studio</div>
+                </div>
+              </div>
+              <div style="display:flex; gap:6px; margin-top:12px">
+                <div style="flex:1; height:28px; border:1px solid var(--border-3); border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:var(--text-4); cursor:pointer" style-hover="border-color:var(--border-hover); background:var(--surface-2)">Ver lead</div>
+                <div onClick="{{ goAgenda }}" style="flex:1; height:28px; border:1px solid var(--border-3); border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:var(--text-4); cursor:pointer" style-hover="border-color:var(--border-hover); background:var(--surface-2)">Agendar</div>
+              </div>
+            </div>
+
+            <div style="padding:14px 16px; border-bottom:1px solid var(--border-2)">
+              <div style="display:flex; align-items:center; justify-content:space-between">
+                <span style="font-size:10px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:var(--text-8)">Qualificação</span>
+                <span style="font-family:'IBM Plex Mono', monospace; font-size:12px; font-weight:500; color:var(--primary-text)">82/100</span>
+              </div>
+              <div style="height:4px; border-radius:2px; background:var(--border-2); margin-top:8px; overflow:hidden">
+                <div style="width:82%; height:100%; background:var(--primary-accent)"></div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:7px; margin-top:11px">
+                <sc-for list="{{ qualification }}" as="q" hint-placeholder-count="4">
+                  <div style="display:flex; align-items:center; gap:7px; font-size:11.5px">
+                    <span style="width:13px; height:13px; border-radius:4px; display:flex; align-items:center; justify-content:center; background: {{ q.bg }}; color: {{ q.color }}; font-size:9px; font-weight:700">{{ q.mark }}</span>
+                    <span style="color:var(--text-5)">{{ q.label }}</span>
+                    <span style="margin-left:auto; color:var(--text-3); font-weight:600">{{ q.value }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="padding:14px 16px; border-bottom:1px solid var(--border-2)">
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:var(--text-8); margin-bottom:10px">Próxima ação</div>
+              <div style="border:1px solid var(--border-3); border-radius:8px; padding:10px 11px">
+                <div style="font-size:12.5px; font-weight:600">Enviar proposta comercial</div>
+                <div style="display:flex; align-items:center; gap:7px; margin-top:6px; font-size:11px; color:var(--text-6)">
+                  <span style="display:inline-flex; align-items:center; gap:4px; color:#B54708; font-weight:600"><span style="width:5px; height:5px; border-radius:50%; background:#B54708"></span>Amanhã, 10:00</span>
+                  <span style="color:var(--text-9)">·</span>
+                  <span>Rafael Lima</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="padding:14px 16px; border-bottom:1px solid var(--border-2)">
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:var(--text-8); margin-bottom:10px">Detalhes</div>
+              <div style="display:flex; flex-direction:column; gap:9px">
+                <sc-for list="{{ leadFields }}" as="f" hint-placeholder-count="6">
+                  <div style="display:flex; gap:10px; font-size:11.5px">
+                    <span style="flex:0 0 92px; color:var(--text-7)">{{ f.k }}</span>
+                    <span style="color:var(--text-2); font-weight:500; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">{{ f.v }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:13px">
+                <sc-for list="{{ leadTags }}" as="t" hint-placeholder-count="3">
+                  <span style="padding:2.5px 7px; border-radius:5px; border:1px solid var(--border); background:var(--surface-2); font-size:10.5px; font-weight:600; color:var(--text-4)">{{ t }}</span>
+                </sc-for>
+                <span style="padding:2.5px 7px; border-radius:5px; border:1px dashed var(--divider-dash); font-size:10.5px; color:var(--text-8); cursor:pointer" style-hover="border-color:var(--divider-dash-hover); color:var(--text-4)">+ tag</span>
+              </div>
+            </div>
+
+            <div style="padding:14px 16px">
+              <div style="display:flex; align-items:center; gap:7px; margin-bottom:10px">
+                <span style="font-size:10px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:var(--text-8)">Resumo da conversa</span>
+                <span style="padding:1px 5px; border-radius:4px; background:var(--primary-tint-bg); border:1px solid var(--primary-tint-border); color:var(--primary-text); font-size:9px; font-weight:700">IA</span>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:8px">
+                <sc-for list="{{ aiSummary }}" as="s" hint-placeholder-count="3">
+                  <div style="display:flex; gap:8px; font-size:11.5px; color:var(--text-4); line-height:1.5">
+                    <span style="flex:0 0 3px; width:3px; border-radius:2px; background:var(--border-3); margin:3px 0"></span>
+                    <span>{{ s }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isAgenda }}" hint-placeholder-val="{{ true }}">
+      <div data-screen-label="Agenda" style="display:flex; flex-direction:column; height:100vh; min-height:0">
+        <header style="height:48px; flex:0 0 48px; border-bottom:1px solid var(--border); background:var(--surface-2); display:flex; align-items:center; gap:12px; padding:0 16px">
+          <div style="font-size:13.5px; font-weight:700; letter-spacing:-0.2px">Agenda</div>
+          <div style="display:flex; padding:2px; background:var(--hover); border-radius:7px; margin-left:6px">
+            <sc-for list="{{ agendaTabs }}" as="t" hint-placeholder-count="2">
+              <div onClick="{{ t.go }}" style="padding:4px 12px; border-radius:5px; font-size:11.5px; cursor:pointer; background: {{ t.bg }}; color: {{ t.color }}; font-weight: {{ t.weight }}; border:1px solid {{ t.border }}">{{ t.label }}</div>
+            </sc-for>
+          </div>
+          <div style="margin-left:auto; display:flex; align-items:center; gap:8px">
+            <sc-for list="{{ agendaFilters }}" as="f" hint-placeholder-count="3">
+              <div style="display:flex; align-items:center; gap:6px; height:28px; padding:0 10px; border:1px solid var(--border-3); border-radius:6px; background:var(--surface); font-size:12px; color:var(--text-4); cursor:pointer" style-hover="border-color:var(--border-hover); background:var(--surface-2)">
+                <span style="color:var(--text-7)">{{ f.k }}</span><span style="font-weight:600">{{ f.v }}</span>
+                <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </div>
+            </sc-for>
+            <div style="height:28px; padding:0 11px; border-radius:6px; background:var(--primary); color:var(--primary-fg); font-size:12px; font-weight:600; display:flex; align-items:center; gap:6px; cursor:pointer" style-hover="background:var(--primary-hover)">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2.5v7M2.5 6h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+              Nova reunião
+            </div>
+          </div>
+        </header>
+
+        <div style="height:44px; flex:0 0 44px; border-bottom:1px solid var(--border); background:var(--surface); display:flex; align-items:center; gap:10px; padding:0 16px">
+          <div style="display:flex; align-items:center; border:1px solid var(--border-3); border-radius:6px; overflow:hidden">
+            <div style="width:26px; height:26px; display:flex; align-items:center; justify-content:center; color:var(--text-5); cursor:pointer; border-right:1px solid var(--border)" style-hover="background:var(--bg); color:var(--text)">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M7.5 3 4.5 6l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </div>
+            <div style="width:26px; height:26px; display:flex; align-items:center; justify-content:center; color:var(--text-5); cursor:pointer" style-hover="background:var(--bg); color:var(--text)">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4.5 3l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </div>
+          </div>
+          <div style="height:26px; padding:0 10px; border:1px solid var(--border-3); border-radius:6px; font-size:11.5px; color:var(--text-4); display:flex; align-items:center; cursor:pointer" style-hover="border-color:var(--border-hover); background:var(--surface-2)">Hoje</div>
+          <div style="font-size:13px; font-weight:600; margin-left:4px">{{ agendaRange }}</div>
+          <div style="margin-left:auto; display:flex; align-items:center; gap:14px; font-size:11px; color:var(--text-6)">
+            <sc-for list="{{ legend }}" as="l" hint-placeholder-count="4">
+              <span style="display:inline-flex; align-items:center; gap:5px"><span style="width:8px; height:8px; border-radius:3px; background: {{ l.bg }}; border:1px solid {{ l.border }}"></span>{{ l.label }}</span>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="flex:1; min-height:0; display:flex">
+          <div style="flex:1; min-width:0; overflow:auto; background:var(--surface)">
+            <div style="display:flex; min-width:100%">
+              <div style="flex:0 0 56px; width:56px; border-right:1px solid var(--border-2); background:var(--surface-2)">
+                <div style="height: {{ capRowH }}; border-bottom:1px solid var(--border)"></div>
+                <sc-for list="{{ hours }}" as="h" hint-placeholder-count="11">
+                  <div style="height:60px; border-bottom:1px solid var(--surface-3); position:relative">
+                    <span style="position:absolute; top:-6px; right:7px; font-size:10px; color:var(--text-8); font-family:'IBM Plex Mono', monospace">{{ h }}</span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <sc-for list="{{ columns }}" as="col" hint-placeholder-count="7">
+                <div style="flex:1; min-width:132px; border-right:1px solid var(--border-2)">
+                  <div style="height: {{ capRowH }}; border-bottom:1px solid var(--border); padding:7px 9px; background: {{ col.headBg }}">
+                    <div style="display:flex; align-items:baseline; gap:5px">
+                      <span style="font-size:11px; color: {{ col.dowColor }}; font-weight:600; text-transform:uppercase; letter-spacing:0.3px">{{ col.dow }}</span>
+                      <span style="font-size:13px; font-weight:700; color: {{ col.dayColor }}; font-family:'IBM Plex Mono', monospace">{{ col.day }}</span>
+                    </div>
+                    <sc-if value="{{ showCapacity }}" hint-placeholder-val="{{ true }}">
+                      <div style="margin-top:6px">
+                        <div style="display:flex; align-items:center; justify-content:space-between; font-size:10px; color:var(--text-7)">
+                          <span>{{ col.capLabel }}</span>
+                          <span style="font-family:'IBM Plex Mono', monospace; color: {{ col.capColor }}; font-weight:500">{{ col.capPct }}</span>
+                        </div>
+                        <div style="display:flex; gap:2px; margin-top:4px">
+                          <sc-for list="{{ col.slots }}" as="s" hint-placeholder-count="5">
+                            <span style="flex:1; height:3px; border-radius:2px; background: {{ s.bg }}"></span>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+                  <div style="position:relative; background: {{ col.bodyBg }}">
+                    <sc-for list="{{ hours }}" as="h" hint-placeholder-count="11">
+                      <div style="height:60px; border-bottom:1px solid var(--surface-3)"></div>
+                    </sc-for>
+                    <sc-for list="{{ col.events }}" as="ev" hint-placeholder-count="2">
+                      <div onClick="{{ ev.go }}" style="position:absolute; left:4px; right:4px; overflow:hidden; cursor:pointer; padding:5px 7px; border-radius:7px; top: {{ ev.top }}; height: {{ ev.height }}; background: {{ ev.bg }}; border:1px solid {{ ev.border }}; box-shadow: {{ ev.shadow }}; background-image: {{ ev.stripes }}" style-hover="filter:brightness(0.98)">
+                        <div style="font-size:11px; font-weight:600; color: {{ ev.titleColor }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ ev.title }}</div>
+                        <div style="font-size:10px; color: {{ ev.metaColor }}; font-family:'IBM Plex Mono', monospace; margin-top:1px">{{ ev.time }}</div>
+                        <sc-if value="{{ ev.who }}" hint-placeholder-val="{{ true }}">
+                          <div style="font-size:10px; color: {{ ev.metaColor }}; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ ev.who }}</div>
+                        </sc-if>
+                      </div>
+                    </sc-for>
+                    <sc-if value="{{ col.now }}" hint-placeholder-val="{{ true }}">
+                      <div style="position:absolute; left:0; right:0; height:1px; background:#B54708; top: {{ nowTop }}">
+                        <span style="position:absolute; left:-3px; top:-3px; width:6px; height:6px; border-radius:50%; background:#B54708"></span>
+                      </div>
+                    </sc-if>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <aside style="width:296px; flex:0 0 296px; border-left:1px solid var(--border); background:var(--surface); overflow-y:auto">
+            <div style="padding:15px 16px; border-bottom:1px solid var(--border-2)">
+              <div style="display:flex; align-items:center; gap:7px">
+                <span style="width:8px; height:8px; border-radius:3px; background:var(--primary-tint-bg); border:1px solid var(--primary-tint-border)"></span>
+                <span style="font-size:10px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:var(--text-8)">Reunião selecionada</span>
+              </div>
+              <div style="font-size:14px; font-weight:700; letter-spacing:-0.2px; margin-top:10px">{{ sel.title }}</div>
+              <div style="font-size:12px; color:var(--text-5); margin-top:3px; font-family:'IBM Plex Mono', monospace">{{ sel.when }}</div>
+              <div style="display:flex; flex-direction:column; gap:9px; margin-top:13px">
+                <sc-for list="{{ sel.fields }}" as="f" hint-placeholder-count="4">
+                  <div style="display:flex; gap:10px; font-size:11.5px">
+                    <span style="flex:0 0 84px; color:var(--text-7)">{{ f.k }}</span>
+                    <span style="color:var(--text-2); font-weight:500">{{ f.v }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex; gap:6px; margin-top:14px">
+                <div onClick="{{ toggleReschedule }}" style="flex:1; height:29px; border-radius:6px; background:var(--primary); color:var(--primary-fg); font-size:11.5px; font-weight:600; display:flex; align-items:center; justify-content:center; cursor:pointer" style-hover="background:var(--primary-hover)">Reagendar</div>
+                <div style="height:29px; padding:0 11px; border:1px solid var(--border-3); border-radius:6px; font-size:11.5px; color:var(--text-4); display:flex; align-items:center; cursor:pointer" style-hover="border-color:var(--border-hover); background:var(--surface-2)">Cancelar</div>
+              </div>
+            </div>
+
+            <sc-if value="{{ rescheduling }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:15px 16px; border-bottom:1px solid var(--border-2); background:var(--surface-2)">
+                <div style="display:flex; align-items:center; gap:7px; margin-bottom:10px">
+                  <span style="font-size:10px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:var(--text-8)">Horários sugeridos</span>
+                  <span style="padding:1px 5px; border-radius:4px; background:var(--primary-tint-bg); border:1px solid var(--primary-tint-border); color:var(--primary-text); font-size:9px; font-weight:700">IA</span>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:6px">
+                  <sc-for list="{{ slotSuggestions }}" as="s" hint-placeholder-count="3">
+                    <div style="display:flex; align-items:center; gap:9px; padding:8px 10px; background:var(--surface); border:1px solid var(--border-3); border-radius:7px; cursor:pointer" style-hover="border-color:var(--primary-text)">
+                      <div style="min-width:0">
+                        <div style="font-size:11.5px; font-weight:600">{{ s.when }}</div>
+                        <div style="font-size:10.5px; color:var(--text-6); margin-top:1px">{{ s.note }}</div>
+                      </div>
+                      <span style="margin-left:auto; font-size:10.5px; font-weight:600; color: {{ s.fitColor }}">{{ s.fit }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+
+            <div style="padding:15px 16px; border-bottom:1px solid var(--border-2)">
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:var(--text-8); margin-bottom:11px">Capacidade da equipe · hoje</div>
+              <div style="display:flex; flex-direction:column; gap:11px">
+                <sc-for list="{{ teamCapacity }}" as="t" hint-placeholder-count="3">
+                  <div>
+                    <div style="display:flex; align-items:center; gap:8px; font-size:11.5px">
+                      <div style="width:20px; height:20px; border-radius:50%; background: {{ t.avBg }}; color: {{ t.avColor }}; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:700">{{ t.initials }}</div>
+                      <span style="color:var(--text-2); font-weight:500">{{ t.name }}</span>
+                      <span style="margin-left:auto; font-family:'IBM Plex Mono', monospace; font-size:11px; color: {{ t.color }}">{{ t.load }}</span>
+                    </div>
+                    <div style="height:4px; border-radius:2px; background:var(--border-2); margin-top:6px; overflow:hidden">
+                      <div style="height:100%; width: {{ t.pct }}; background: {{ t.color }}"></div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="padding:15px 16px">
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:var(--text-8); margin-bottom:11px">Bloqueios recorrentes</div>
+              <div style="display:flex; flex-direction:column; gap:7px">
+                <sc-for list="{{ blocks }}" as="b" hint-placeholder-count="3">
+                  <div style="display:flex; align-items:center; gap:9px; font-size:11.5px">
+                    <span style="width:3px; height:22px; border-radius:2px; background:var(--divider-dash)"></span>
+                    <div>
+                      <div style="color:var(--text-2); font-weight:500">{{ b.label }}</div>
+                      <div style="font-size:10.5px; color:var(--text-7); font-family:'IBM Plex Mono', monospace">{{ b.when }}</div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isPipeline }}" hint-placeholder-val="{{ true }}">
+      <div data-screen-label="Pipeline" style="display:flex; flex-direction:column; height:100vh; min-height:0">
+        <header style="height:48px; flex:0 0 48px; border-bottom:1px solid var(--border); background:var(--surface-2); display:flex; align-items:center; gap:12px; padding:0 16px">
+          <div style="font-size:13.5px; font-weight:700; letter-spacing:-0.2px">Pipeline</div>
+          <div style="display:flex; padding:2px; background:var(--hover); border-radius:7px; margin-left:6px">
+            <sc-for list="{{ pipeViews }}" as="t" hint-placeholder-count="2">
+              <div style="padding:4px 12px; border-radius:5px; font-size:11.5px; cursor:pointer; background: {{ t.bg }}; color: {{ t.color }}; font-weight: {{ t.weight }}; border:1px solid {{ t.border }}">{{ t.label }}</div>
+            </sc-for>
+          </div>
+          <div style="margin-left:auto; display:flex; align-items:center; gap:8px">
+            <div style="display:flex; align-items:center; gap:7px; height:28px; padding:0 9px; border:1px solid var(--border-3); border-radius:6px; background:var(--surface); color:var(--text-8); width:186px" style-hover="border-color:var(--border-hover)">
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="6.2" cy="6.2" r="4" stroke="currentColor" stroke-width="1.3"></circle><path d="M9.4 9.4 12 12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg>
+              <span style="font-size:12px">Buscar leads</span>
+            </div>
+            <div style="height:28px; padding:0 11px; border-radius:6px; background:var(--primary); color:var(--primary-fg); font-size:12px; font-weight:600; display:flex; align-items:center; gap:6px; cursor:pointer" style-hover="background:var(--primary-hover)">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2.5v7M2.5 6h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+              Novo lead
+            </div>
+          </div>
+        </header>
+
+        <div style="height:44px; flex:0 0 44px; border-bottom:1px solid var(--border); background:var(--surface); display:flex; align-items:center; gap:7px; padding:0 16px">
+          <sc-for list="{{ pipeFilters }}" as="f" hint-placeholder-count="5">
+            <div onClick="{{ f.go }}" style="display:flex; align-items:center; gap:6px; height:27px; padding:0 10px; border-radius:6px; font-size:11.5px; cursor:pointer; background: {{ f.bg }}; border:1px solid {{ f.border }}; color: {{ f.color }}" style-hover="border-color:var(--border-hover)">
+              <span style="color: {{ f.keyColor }}">{{ f.k }}</span><span style="font-weight:600">{{ f.v }}</span>
+              <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </div>
+          </sc-for>
+          <div style="height:27px; padding:0 9px; border-radius:6px; font-size:11.5px; color:var(--text-6); display:flex; align-items:center; cursor:pointer" style-hover="background:var(--hover); color:var(--text-4)">Limpar</div>
+          <div style="margin-left:auto; display:flex; align-items:center; gap:16px; font-size:11.5px">
+            <sc-for list="{{ pipeStats }}" as="s" hint-placeholder-count="3">
+              <span><span style="color:var(--text-7)">{{ s.k }}</span> <span style="font-weight:600; font-family:'IBM Plex Mono', monospace">{{ s.v }}</span></span>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="flex:1; min-height:0; overflow-x:auto; overflow-y:hidden; padding:14px 16px; background:var(--bg)">
+          <div style="display:flex; gap:12px; height:100%; align-items:stretch">
+            <sc-for list="{{ stages }}" as="st" hint-placeholder-count="6">
+              <div style="flex:0 0 272px; width:272px; display:flex; flex-direction:column; min-height:0; background: {{ st.colBg }}; border:1px solid {{ st.colBorder }}; border-radius:10px">
+                <div style="padding:11px 12px 10px; border-bottom:1px solid var(--border-2)">
+                  <div style="display:flex; align-items:center; gap:7px">
+                    <span style="width:7px; height:7px; border-radius:2px; background: {{ st.dot }}"></span>
+                    <span style="font-size:12px; font-weight:700; letter-spacing:-0.1px">{{ st.name }}</span>
+                    <span style="font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--text-7)">{{ st.count }}</span>
+                    <span style="margin-left:auto; width:18px; height:18px; border-radius:5px; display:flex; align-items:center; justify-content:center; color:var(--text-8); cursor:pointer" style-hover="background:var(--hover); color:var(--text-4)">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="2.5" cy="6" r="0.9" fill="currentColor"></circle><circle cx="6" cy="6" r="0.9" fill="currentColor"></circle><circle cx="9.5" cy="6" r="0.9" fill="currentColor"></circle></svg>
+                    </span>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:8px; margin-top:7px; font-size:11px">
+                    <span style="font-family:'IBM Plex Mono', monospace; font-weight:500; color:var(--text-3)">{{ st.value }}</span>
+                    <span style="color:var(--text-9)">·</span>
+                    <span style="color:var(--text-7)">{{ st.avgTime }}</span>
+                  </div>
+                </div>
+                <div style="flex:1; min-height:0; overflow-y:auto; padding:9px; display:flex; flex-direction:column; gap:8px">
+                  <sc-for list="{{ st.cards }}" as="c" hint-placeholder-count="2">
+                    <div style="background:var(--surface); border:1px solid {{ c.border }}; border-radius:8px; padding:10px 11px; cursor:pointer; box-shadow: {{ c.shadow }}" style-hover="border-color:var(--border-hover)">
+                      <div style="display:flex; align-items:flex-start; gap:8px">
+                        <div style="min-width:0; flex:1">
+                          <div style="font-size:12.5px; font-weight:600; letter-spacing:-0.1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ c.name }}</div>
+                          <div style="font-size:11px; color:var(--text-6); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ c.company }}</div>
+                        </div>
+                        <div style="flex:0 0 22px; width:22px; height:22px; border-radius:50%; background: {{ c.avBg }}; color: {{ c.avColor }}; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:700">{{ c.owner }}</div>
+                      </div>
+                      <div style="display:flex; align-items:center; gap:8px; margin-top:9px">
+                        <span style="font-family:'IBM Plex Mono', monospace; font-size:12px; font-weight:500; color:var(--text)">{{ c.value }}</span>
+                        <span style="display:inline-flex; align-items:center; gap:4px; padding:1.5px 6px; border-radius:4px; font-size:10px; font-weight:700; background: {{ c.scoreBg }}; color: {{ c.scoreColor }}">{{ c.score }}</span>
+                      </div>
+                      <div style="display:flex; align-items:center; gap:6px; margin-top:9px; padding:6px 7px; border-radius:6px; background:var(--surface-2); border:1px solid var(--border-4)">
+                        <span style="width:5px; height:5px; border-radius:50%; flex:0 0 5px; background: {{ c.actionColor }}"></span>
+                        <span style="font-size:10.5px; color:var(--text-4); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">{{ c.action }}</span>
+                        <span style="margin-left:auto; font-size:10px; font-weight:600; font-family:'IBM Plex Mono', monospace; color: {{ c.actionColor }}; flex:0 0 auto">{{ c.actionWhen }}</span>
+                      </div>
+                      <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin-top:9px">
+                        <sc-for list="{{ c.tags }}" as="t" hint-placeholder-count="2">
+                          <span style="padding:2px 6px; border-radius:4px; background:var(--surface-3); color:var(--text-5); font-size:10px; font-weight:600">{{ t }}</span>
+                        </sc-for>
+                        <span style="margin-left:auto; display:inline-flex; align-items:center; gap:4px; font-size:10px; color:var(--text-8); font-family:'IBM Plex Mono', monospace">
+                          <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4.3" stroke="currentColor" stroke-width="1.1"></circle><path d="M6 3.8V6l1.6 1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"></path></svg>
+                          {{ c.inStage }}
+                        </span>
+                      </div>
+                    </div>
+                  </sc-for>
+                  <div style="height:30px; border:1px dashed var(--divider-dash); border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--text-8); cursor:pointer" style-hover="border-color:var(--divider-dash-hover); color:var(--text-4); background:var(--surface-2)">+ Adicionar lead</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showAiCopilot&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Conversas&quot;},&quot;compactRows&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Conversas&quot;},&quot;showCapacity&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Agenda&quot;}}">
+class Component extends DCLogic {
+  state = { screen: 'conversas', conv: 'c1', convTab: 'Todas', composerTab: 'Responder', agendaView: 'Semana', sel: 'e4', rescheduling: false, pipeView: 'Kanban', activeFilter: 'Responsável', theme: 'light' };
+
+  set(k, v) { return () => this.setState({ [k]: v }); }
+
+  palettes = {
+    light: { bg:'#F7F7F5', surface:'#FFFFFF', 'surface-2':'#FBFBF9', 'surface-3':'#F4F4EE', hover:'#F0F0EA', border:'#E6E6E0', 'border-2':'#EFEFE9', 'border-3':'#E0E0D9', 'border-4':'#F1F1EB', 'divider-dash':'#DEDED6', 'divider-dash-hover':'#B8B8AE', 'border-hover':'#C9C9C0', 'disabled-bg':'#E9E9E3', text:'#1A1A18', 'text-2':'#2A2A26', 'text-3':'#3A3A36', 'text-4':'#57574F', 'text-5':'#6B6B64', 'text-6':'#8A8A82', 'text-7':'#9A9A92', 'text-8':'#A3A39A', 'text-9':'#B0B0A8', 'scrollbar-thumb':'#DEDED8', 'today-head-bg':'#F7F8F6', 'today-body-bg':'#FDFDFC', primary:'#0E7490', 'primary-fg':'#FFFFFF', 'primary-hover':'#0B5C73', 'primary-text':'#0E7490', 'primary-accent':'#22D3EE', 'primary-tint-bg':'#E3F8FB', 'primary-tint-border':'#B9EAF2' },
+    dark: { bg:'#0E1315', surface:'#171B1D', 'surface-2':'#14181A', 'surface-3':'#20262A', hover:'#232A2D', border:'#2A3134', 'border-2':'#252B2E', 'border-3':'#333B3E', 'border-4':'#262D30', 'divider-dash':'#3A4245', 'divider-dash-hover':'#4A5457', 'border-hover':'#454E51', 'disabled-bg':'#262C2E', text:'#F2F3F1', 'text-2':'#E2E4E1', 'text-3':'#C7CAC6', 'text-4':'#A7ABA6', 'text-5':'#8E938E', 'text-6':'#7C8280', 'text-7':'#6C7274', 'text-8':'#5C6265', 'text-9':'#4C5255', 'scrollbar-thumb':'#2E3538', 'today-head-bg':'#161C1E', 'today-body-bg':'#121719', primary:'#0E7490', 'primary-fg':'#FFFFFF', 'primary-hover':'#159AB4', 'primary-text':'#67E8F9', 'primary-accent':'#22D3EE', 'primary-tint-bg':'#0B2E35', 'primary-tint-border':'#1C5560' }
+  };
+
+  applyPalette(theme) {
+    const p = this.palettes[theme] || this.palettes.light;
+    Object.keys(p).forEach(k => document.documentElement.style.setProperty('--' + k, p[k]));
+  }
+
+  toggleTheme = () => {
+    const next = this.state.theme === 'light' ? 'dark' : 'light';
+    this.applyPalette(next);
+    this.setState({ theme: next });
+  };
+
+  renderVals() {
+    const A = 'var(--primary-text)', selBg = 'var(--primary-tint-bg)';
+    const compact = this.props.compactRows ?? false;
+    const scr = this.state.screen;
+
+    const navItem = (id) => ({ bg: scr === id ? 'var(--hover)' : 'transparent', color: scr === id ? 'var(--text)' : 'var(--text-4)', weight: scr === id ? 600 : 500, go: this.set('screen', id) });
+
+    const queues = [
+      { label: 'Sem resposta', count: '3', dot: '#B54708' },
+      { label: 'Atribuídas a mim', count: '5', dot: A },
+      { label: 'Copiloto ativo', count: '9', dot: '#94A3B8' }
+    ];
+
+    const convTabs = ['Todas', 'Não lidas', 'Minhas', 'IA'].map(l => ({
+      label: l, go: this.set('convTab', l),
+      bg: this.state.convTab === l ? 'var(--hover)' : 'transparent',
+      color: this.state.convTab === l ? 'var(--text)' : 'var(--text-6)',
+      weight: this.state.convTab === l ? 600 : 500
+    }));
+
+    const cdata = [
+      { id: 'c1', name: 'Marina Duarte', company: 'Vetor Studio · Google Ads', initials: 'MD', avBg: 'var(--primary-tint-bg)', avColor: A, preview: 'Consigo quinta às 15h. Manda o convite que eu confirmo com o time.', time: '09:26', unread: 2, tag: 'Reunião agendada', tagBg: 'var(--primary-tint-bg)', tagColor: A, sla: '', slaColor: '' },
+      { id: 'c2', name: 'Eduardo Prado', company: 'Prado & Filhos', initials: 'EP', avBg: '#F4EDE4', avColor: '#B54708', preview: 'Bom dia, alguém pode me responder sobre a renovação do contrato?', time: '09:04', unread: 1, tag: 'Proposta', tagBg: 'var(--surface-3)', tagColor: 'var(--text-5)', sla: '42 min', slaColor: '#B54708' },
+      { id: 'c3', name: 'Camila Rocha', company: 'Órbita Tecnologia', initials: 'CR', avBg: '#E6EAF2', avColor: '#3B5BA5', preview: 'Copiloto: enviei os 3 planos e pedi o número de licenças.', time: '08:51', unread: 0, tag: 'Qualificação', tagBg: 'var(--surface-3)', tagColor: 'var(--text-5)', sla: '', slaColor: '' },
+      { id: 'c4', name: 'Tiago Menezes', company: 'Indicação · Lume', initials: 'TM', avBg: '#EFE7F2', avColor: '#6B4C8A', preview: 'Perfeito, vou revisar com o financeiro e te retorno hoje.', time: 'Ontem', unread: 0, tag: 'Negociação', tagBg: 'var(--surface-3)', tagColor: 'var(--text-5)', sla: '', slaColor: '' },
+      { id: 'c5', name: 'Beatriz Salles', company: 'Casa Nova Interiores', initials: 'BS', avBg: 'var(--primary-tint-bg)', avColor: A, preview: 'Qual o prazo de implantação para 4 unidades?', time: 'Ontem', unread: 3, tag: 'Novo lead', tagBg: 'var(--primary-tint-bg)', tagColor: A, sla: '2 h', slaColor: '#B54708' },
+      { id: 'c6', name: 'Henrique Alves', company: 'Alvo Distribuidora', initials: 'HA', avBg: '#F0EFE4', avColor: '#8A7B2E', preview: 'Copiloto: lead fora do perfil, sugeri encerrar o atendimento.', time: 'Seg', unread: 0, tag: 'Desqualificado', tagBg: 'var(--surface-3)', tagColor: 'var(--text-7)', sla: '', slaColor: '' },
+      { id: 'c7', name: 'Luciana Prata', company: 'Prata Odontologia', initials: 'LP', avBg: '#E6EAF2', avColor: '#3B5BA5', preview: 'Obrigada! Já assinei o contrato pelo link.', time: 'Seg', unread: 0, tag: 'Ganho', tagBg: 'var(--primary-tint-bg)', tagColor: A, sla: '', slaColor: '' }
+    ];
+    const conversations = cdata.map(c => {
+      const on = this.state.conv === c.id;
+      return { ...c, go: this.set('conv', c.id), bg: on ? selBg : 'var(--surface)', bar: on ? A : 'transparent',
+        nameColor: c.unread ? 'var(--text)' : 'var(--text-2)',
+        previewColor: c.unread ? 'var(--text-3)' : 'var(--text-6)',
+        unread: c.unread ? String(c.unread) : '' };
+    });
+
+    const bubble = (o) => ({ pad: '9px 12px', textAlign: 'left', meta: true, ...o });
+    const messages = [
+      { justify: 'center', align: 'center', meta: false, text: 'Conversa iniciada via WhatsApp · Campanha Google Ads · Hoje', bg: 'transparent', color: 'var(--text-8)', border: 'transparent', pad: '2px 0', textAlign: 'center', author: '', time: '', badge: '' },
+      bubble({ justify: 'flex-start', align: 'flex-start', author: 'Marina Duarte', time: '09:12', badge: '', text: 'Oi! Vi o anúncio de vocês e queria entender melhor os planos para uma equipe de 8 pessoas.', bg: 'var(--surface)', color: 'var(--text-2)', border: 'var(--border)' }),
+      bubble({ justify: 'flex-end', align: 'flex-end', author: 'Copiloto', time: '09:13', badge: 'IA', badgeBg: 'var(--primary-tint-bg)', badgeBorder: 'var(--primary-tint-border)', badgeColor: A, text: 'Olá, Marina! Temos três planos. Para 8 pessoas o Growth costuma ser o mais indicado: inclui atendimento em equipe, relatórios e integração com WhatsApp oficial. Quer que eu chame um especialista?', bg: 'var(--primary-tint-bg)', color: 'var(--primary-text)', border: 'var(--primary-tint-border)' }),
+      bubble({ justify: 'flex-start', align: 'flex-start', author: 'Marina Duarte', time: '09:15', badge: '', text: 'Sim, o Growth parece bom. Vocês fazem integração com WhatsApp oficial mesmo? Hoje usamos um número compartilhado e é uma bagunça.', bg: 'var(--surface)', color: 'var(--text-2)', border: 'var(--border)' }),
+      bubble({ justify: 'flex-start', align: 'flex-start', author: 'Rafael Lima', time: '09:19', badge: 'NOTA INTERNA', badgeBg: '#FBF7EF', badgeBorder: '#EADFC8', badgeColor: '#8A6D1F', text: 'Cliente já usa concorrente, contrato vence em 30 dias. Prioridade alta — vou assumir a conversa.', bg: '#FDFBF5', color: '#4A4238', border: '#EFE6D4' }),
+      bubble({ justify: 'flex-end', align: 'flex-end', author: 'Rafael Lima', time: '09:22', badge: '', text: 'Marina, aqui é o Rafael, do time comercial. Fazemos sim, via API oficial — a migração leva cerca de 3 dias úteis e mantemos o histórico. Consegue uma call de 30 min esta semana?', bg: 'var(--primary)', color: 'var(--primary-fg)', border: 'var(--primary)' }),
+      bubble({ justify: 'flex-start', align: 'flex-start', author: 'Marina Duarte', time: '09:26', badge: '', text: 'Consigo quinta às 15h. Manda o convite que eu confirmo com o time.', bg: 'var(--surface)', color: 'var(--text-2)', border: 'var(--border)' })
+    ];
+
+    const composerTabs = ['Responder', 'Nota interna'].map(l => ({
+      label: l, go: this.set('composerTab', l),
+      bg: this.state.composerTab === l ? 'var(--hover)' : 'transparent',
+      color: this.state.composerTab === l ? 'var(--text)' : 'var(--text-6)',
+      weight: this.state.composerTab === l ? 600 : 500
+    }));
+
+    const hours = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
+    const H = 60, ROW0 = 8;
+    const pos = (start, dur) => ({ top: ((start - ROW0) * H + 2) + 'px', height: (dur * H - 5) + 'px' });
+    const T = {
+      meet: { bg: 'var(--primary-tint-bg)', border: 'var(--primary-tint-border)', titleColor: 'var(--primary-text)', metaColor: 'var(--primary-text)', shadow: 'none', stripes: 'none' },
+      demo: { bg: '#EEF1F7', border: '#D2DAEA', titleColor: '#243B6B', metaColor: '#5A6B93', shadow: 'none', stripes: 'none' },
+      follow: { bg: '#FAF6EE', border: '#E9DEC8', titleColor: '#6B5313', metaColor: '#8A7541', shadow: 'none', stripes: 'none' },
+      block: { bg: 'var(--surface-3)', border: 'var(--border-3)', titleColor: 'var(--text-5)', metaColor: 'var(--text-7)', shadow: 'none', stripes: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.035) 0 5px, transparent 5px 10px)' }
+    };
+    const ev = (id, type, title, time, who, start, dur) => ({
+      id, title, time, who, ...T[type], ...pos(start, dur),
+      go: this.set('sel', id)
+    });
+    const week = [
+      { dow: 'Seg', day: '24', today: false, cap: [1, 1, 1, 0, 0], events: [ev('e1', 'demo', 'Demo · Órbita Tec', '09:00 – 10:00', 'Camila Rocha', 9, 1), ev('e2', 'block', 'Bloqueio · Almoço', '12:00 – 13:00', '', 12, 1), ev('e3', 'follow', 'Follow-up Alvo', '16:00 – 16:30', 'Henrique A.', 16, 0.5)] },
+      { dow: 'Ter', day: '25', today: true, cap: [1, 1, 1, 1, 0], events: [ev('e4', 'meet', 'Kickoff · Vetor Studio', '10:00 – 11:00', 'Marina Duarte', 10, 1), ev('e5', 'block', 'Bloqueio · Almoço', '12:00 – 13:00', '', 12, 1), ev('e6', 'demo', 'Demo · Casa Nova', '14:00 – 15:00', 'Beatriz Salles', 14, 1), ev('e7', 'follow', 'Revisão de propostas', '17:00 – 18:00', 'Equipe', 17, 1)] },
+      { dow: 'Qua', day: '26', today: false, cap: [1, 0, 1, 0, 0], events: [ev('e8', 'meet', 'Negociação · Lume', '11:00 – 12:00', 'Tiago Menezes', 11, 1), ev('e9', 'block', 'Bloqueio · Almoço', '12:00 – 13:00', '', 12, 1)] },
+      { dow: 'Qui', day: '27', today: false, cap: [1, 1, 1, 1, 1], events: [ev('e10', 'demo', 'Demo · Prado & Filhos', '09:30 – 10:30', 'Eduardo Prado', 9.5, 1), ev('e11', 'block', 'Bloqueio · Almoço', '12:00 – 13:00', '', 12, 1), ev('e12', 'meet', 'Call comercial · Vetor', '15:00 – 15:30', 'Marina Duarte', 15, 0.5), ev('e13', 'follow', 'Follow-up Prata', '16:30 – 17:00', 'Luciana Prata', 16.5, 0.5)] },
+      { dow: 'Sex', day: '28', today: false, cap: [1, 1, 0, 0, 0], events: [ev('e14', 'meet', 'Onboarding · Prata Odonto', '10:00 – 11:30', 'Luciana Prata', 10, 1.5), ev('e15', 'block', 'Bloqueio · Planejamento', '15:00 – 18:00', 'Rafael Lima', 15, 3)] },
+      { dow: 'Sáb', day: '29', today: false, cap: [0, 0, 0, 0, 0], events: [] },
+      { dow: 'Dom', day: '30', today: false, cap: [0, 0, 0, 0, 0], events: [] }
+    ];
+    const dayCols = [
+      { dow: 'Rafael Lima', day: '', today: true, cap: [1, 1, 1, 1, 0], events: [ev('e4', 'meet', 'Kickoff · Vetor Studio', '10:00 – 11:00', 'Marina Duarte', 10, 1), ev('e5', 'block', 'Bloqueio · Almoço', '12:00 – 13:00', '', 12, 1), ev('e6', 'demo', 'Demo · Casa Nova', '14:00 – 15:00', 'Beatriz Salles', 14, 1)] },
+      { dow: 'Camila Nunes', day: '', today: true, cap: [1, 1, 0, 0, 0], events: [ev('e20', 'demo', 'Demo · Órbita Tec', '09:00 – 10:30', 'Camila Rocha', 9, 1.5), ev('e21', 'block', 'Bloqueio · Almoço', '12:00 – 13:00', '', 12, 1), ev('e22', 'follow', 'Follow-up Alvo', '15:30 – 16:00', 'Henrique A.', 15.5, 0.5)] },
+      { dow: 'Bruno Sá', day: '', today: true, cap: [1, 1, 1, 1, 1], events: [ev('e23', 'meet', 'Renovação · Prado', '08:30 – 09:30', 'Eduardo Prado', 8.5, 1), ev('e24', 'meet', 'Negociação · Lume', '11:00 – 12:00', 'Tiago Menezes', 11, 1), ev('e25', 'block', 'Bloqueio · Almoço', '12:00 – 13:00', '', 12, 1), ev('e26', 'demo', 'Demo · Casa Nova', '13:30 – 14:30', 'Beatriz Salles', 13.5, 1), ev('e27', 'follow', 'Revisão de propostas', '17:00 – 18:00', 'Equipe', 17, 1)] }
+    ];
+    const isWeek = this.state.agendaView === 'Semana';
+    const columns = (isWeek ? week : dayCols).map(c => {
+      const used = c.cap.filter(Boolean).length, total = c.cap.length;
+      const pct = Math.round(used / total * 100);
+      return {
+        dow: c.dow, day: c.day, events: c.events, now: c.today,
+        headBg: c.today ? 'var(--today-head-bg)' : 'var(--surface)',
+        bodyBg: c.today ? 'var(--today-body-bg)' : 'var(--surface)',
+        dowColor: c.today ? A : 'var(--text-7)',
+        dayColor: c.today ? A : 'var(--text-2)',
+        capLabel: used + '/' + total + ' slots',
+        capPct: pct + '%',
+        capColor: pct >= 100 ? '#B54708' : pct >= 60 ? 'var(--text-3)' : 'var(--text-7)',
+        slots: c.cap.map(v => ({ bg: v ? (pct >= 100 ? '#B54708' : A) : 'var(--surface-3)' }))
+      };
+    });
+
+    const selMap = {};
+    week.concat(dayCols).forEach(c => c.events.forEach(e => { selMap[e.id] = { title: e.title, when: e.time, who: e.who }; }));
+    const s = selMap[this.state.sel] || selMap.e4;
+    const sel = {
+      title: s.title,
+      when: (isWeek ? 'Ter, 25 ago' : 'Hoje, 25 ago') + ' · ' + s.when,
+      fields: [
+        { k: 'Lead', v: s.who || '—' },
+        { k: 'Responsável', v: 'Rafael Lima' },
+        { k: 'Tipo', v: 'Reunião comercial · 60 min' },
+        { k: 'Canal', v: 'Google Meet' },
+        { k: 'Status', v: 'Confirmada' }
+      ]
+    };
+
+    const stages = [
+      { name: 'Novo lead', dot: 'var(--divider-dash-hover)', count: '12', value: 'R$ 96.400', avgTime: 'média 1d', cards: [
+        { name: 'Beatriz Salles', company: 'Casa Nova Interiores', owner: 'CN', avBg: '#E6EAF2', avColor: '#3B5BA5', value: 'R$ 14.800', score: 'B', scoreBg: 'var(--surface-3)', scoreColor: 'var(--text-5)', action: 'Primeiro contato', actionWhen: 'hoje', actionColor: '#B54708', tags: ['4 unidades', 'Site'], inStage: '4h' },
+        { name: 'Henrique Alves', company: 'Alvo Distribuidora', owner: 'BS', avBg: '#F0EFE4', avColor: '#8A7B2E', value: 'R$ 6.200', score: 'C', scoreBg: 'var(--surface-3)', scoreColor: 'var(--text-7)', action: 'Qualificar via copiloto', actionWhen: '2d', actionColor: 'var(--text-7)', tags: ['Instagram'], inStage: '1d' }
+      ] },
+      { name: 'Contato feito', dot: '#94A3B8', count: '9', value: 'R$ 78.900', avgTime: 'média 3d', cards: [
+        { name: 'Eduardo Prado', company: 'Prado & Filhos', owner: 'RL', avBg: 'var(--primary-tint-bg)', avColor: A, value: 'R$ 22.400', score: 'A', scoreBg: 'var(--primary-tint-bg)', scoreColor: A, action: 'Responder renovação', actionWhen: 'atrasado', actionColor: '#B02A16', tags: ['Renovação', 'Alta prioridade'], inStage: '3d' },
+        { name: 'Camila Rocha', company: 'Órbita Tecnologia', owner: 'CN', avBg: '#E6EAF2', avColor: '#3B5BA5', value: 'R$ 18.000', score: 'B', scoreBg: 'var(--surface-3)', scoreColor: 'var(--text-5)', action: 'Enviar comparativo', actionWhen: 'amanhã', actionColor: 'var(--text-7)', tags: ['12 licenças'], inStage: '2d' }
+      ] },
+      { name: 'Qualificado', dot: '#7C9CC4', count: '8', value: 'R$ 124.300', avgTime: 'média 5d', cards: [
+        { name: 'Marina Duarte', company: 'Vetor Studio', owner: 'RL', avBg: 'var(--primary-tint-bg)', avColor: A, value: 'R$ 28.800', score: 'A', scoreBg: 'var(--primary-tint-bg)', scoreColor: A, action: 'Enviar proposta', actionWhen: 'amanhã 10h', actionColor: '#B54708', tags: ['Growth', '8 licenças'], inStage: '2d' },
+        { name: 'Sofia Bastos', company: 'Bastos Engenharia', owner: 'BS', avBg: '#F0EFE4', avColor: '#8A7B2E', value: 'R$ 41.500', score: 'A', scoreBg: 'var(--primary-tint-bg)', scoreColor: A, action: 'Agendar demo técnica', actionWhen: '3d', actionColor: 'var(--text-7)', tags: ['Indicação'], inStage: '5d' }
+      ] },
+      { name: 'Reunião agendada', dot: A, count: '7', value: 'R$ 152.700', avgTime: 'média 4d', cards: [
+        { name: 'Tiago Menezes', company: 'Lume Comunicação', owner: 'BS', avBg: '#F0EFE4', avColor: '#8A7B2E', value: 'R$ 33.900', score: 'A', scoreBg: 'var(--primary-tint-bg)', scoreColor: A, action: 'Negociação · qua 11h', actionWhen: 'qua', actionColor: A, tags: ['Indicação'], inStage: '1d' },
+        { name: 'Luciana Prata', company: 'Prata Odontologia', owner: 'CN', avBg: '#E6EAF2', avColor: '#3B5BA5', value: 'R$ 11.400', score: 'B', scoreBg: 'var(--surface-3)', scoreColor: 'var(--text-5)', action: 'Onboarding · sex 10h', actionWhen: 'sex', actionColor: A, tags: ['2 unidades'], inStage: '6d' }
+      ] },
+      { name: 'Proposta enviada', dot: '#B58A2E', count: '6', value: 'R$ 187.200', avgTime: 'média 8d', cards: [
+        { name: 'Gustavo Nery', company: 'Nery Logística', owner: 'RL', avBg: 'var(--primary-tint-bg)', avColor: A, value: 'R$ 64.000', score: 'A', scoreBg: 'var(--primary-tint-bg)', scoreColor: A, action: 'Follow-up da proposta', actionWhen: 'atrasado 2d', actionColor: '#B02A16', tags: ['Enterprise'], inStage: '11d' },
+        { name: 'Renata Vilas', company: 'Vilas Educação', owner: 'BS', avBg: '#F0EFE4', avColor: '#8A7B2E', value: 'R$ 26.700', score: 'B', scoreBg: 'var(--surface-3)', scoreColor: 'var(--text-5)', action: 'Aguardando financeiro', actionWhen: '5d', actionColor: 'var(--text-7)', tags: ['Growth'], inStage: '7d' }
+      ] },
+      { name: 'Ganho', dot: 'var(--primary-accent)', count: '6', value: 'R$ 98.500', avgTime: 'ciclo 21d', cards: [
+        { name: 'Paulo Reis', company: 'Reis Contabilidade', owner: 'CN', avBg: '#E6EAF2', avColor: '#3B5BA5', value: 'R$ 19.200', score: 'A', scoreBg: 'var(--primary-tint-bg)', scoreColor: A, action: 'Passar para implantação', actionWhen: 'hoje', actionColor: A, tags: ['Contrato assinado'], inStage: '—' }
+      ] }
+    ].map((st, i) => ({
+      ...st,
+      colBg: 'var(--surface)',
+      colBorder: 'var(--border)',
+      cards: st.cards.map(c => ({ ...c, border: 'var(--border)', shadow: 'none' }))
+    }));
+
+    return {
+      isConversas: scr === 'conversas', isAgenda: scr === 'agenda', isPipeline: scr === 'pipeline',
+      navConversas: navItem('conversas'), navAgenda: navItem('agenda'), navPipeline: navItem('pipeline'),
+      queues, convTabs, conversations, messages, composerTabs,
+      isDark: this.state.theme === 'dark', isLight: this.state.theme === 'light',
+      themeLabel: this.state.theme === 'dark' ? 'Modo escuro' : 'Modo claro',
+      trackBg: this.state.theme === 'dark' ? 'var(--primary)' : 'var(--border-3)',
+      thumbLeft: this.state.theme === 'dark' ? '16px' : '2px',
+      toggleTheme: this.toggleTheme,
+      rowPad: compact ? '9px' : '12px',
+      goAgenda: this.set('screen', 'agenda'),
+      threadActions: [{ label: 'Transferir' }, { label: 'Agendar' }, { label: 'Snooze' }],
+      showCopilot: this.props.showAiCopilot ?? true,
+      composerRadius: (this.props.showAiCopilot ?? true) ? '0 0 10px 10px' : '10px',
+      composerPlaceholder: this.state.composerTab === 'Responder' ? 'Escreva uma resposta para Marina…' : 'Nota visível apenas para a equipe…',
+      aiSuggestion: 'Combinado, Marina. Reservei quinta, 28/08, às 15h (30 min) e o convite já está no seu e-mail. Vou enviar antes um resumo da migração do número compartilhado para a API oficial.',
+      aiSignals: [{ k: 'Intenção', v: 'Agendar' }, { k: 'Sentimento', v: 'Positivo' }, { k: 'Plano', v: 'Growth' }],
+      quickReplies: ['Enviar proposta', 'Confirmar horário', 'Pedir CNPJ'],
+      qualification: [
+        { label: 'Orçamento', value: 'R$ 2,4k/mês', mark: '✓', bg: 'var(--primary-tint-bg)', color: A },
+        { label: 'Decisor', value: 'Sim', mark: '✓', bg: 'var(--primary-tint-bg)', color: A },
+        { label: 'Necessidade', value: 'WhatsApp oficial', mark: '✓', bg: 'var(--primary-tint-bg)', color: A },
+        { label: 'Prazo', value: '30 dias', mark: '~', bg: '#FBF7EF', color: '#8A6D1F' }
+      ],
+      leadFields: [
+        { k: 'Telefone', v: '+55 11 98432-1170' },
+        { k: 'E-mail', v: 'marina@vetorstudio.com' },
+        { k: 'Origem', v: 'Google Ads · Search' },
+        { k: 'Etapa', v: 'Qualificado' },
+        { k: 'Responsável', v: 'Rafael Lima' },
+        { k: 'Criado em', v: '18 ago 2026' }
+      ],
+      leadTags: ['Growth', '8 licenças', 'Alta prioridade'],
+      aiSummary: [
+        'Usa concorrente com número compartilhado; contrato vence em 30 dias.',
+        'Precisa de API oficial do WhatsApp e histórico preservado na migração.',
+        'Reunião pedida para quinta às 15h — aguardando convite.'
+      ],
+      agendaTabs: ['Dia', 'Semana'].map(l => ({
+        label: l, go: this.set('agendaView', l),
+        bg: this.state.agendaView === l ? 'var(--surface)' : 'transparent',
+        border: this.state.agendaView === l ? 'var(--border-3)' : 'transparent',
+        color: this.state.agendaView === l ? 'var(--text)' : 'var(--text-6)',
+        weight: this.state.agendaView === l ? 600 : 500
+      })),
+      agendaFilters: [{ k: 'Equipe', v: 'Comercial' }, { k: 'Responsável', v: 'Todos' }, { k: 'Tipo', v: 'Reuniões' }],
+      agendaRange: isWeek ? '24 – 30 de agosto de 2026' : 'Terça, 25 de agosto de 2026',
+      legend: [
+        { label: 'Reunião', bg: 'var(--primary-tint-bg)', border: 'var(--primary-tint-border)' },
+        { label: 'Demo', bg: '#EEF1F7', border: '#D2DAEA' },
+        { label: 'Follow-up', bg: '#FAF6EE', border: '#E9DEC8' },
+        { label: 'Bloqueio', bg: 'var(--surface-3)', border: 'var(--border-3)' }
+      ],
+      hours, columns, capRowH: (this.props.showCapacity ?? true) ? '74px' : '44px',
+      showCapacity: this.props.showCapacity ?? true,
+      nowTop: ((14.6 - ROW0) * H) + 'px',
+      sel, rescheduling: this.state.rescheduling,
+      toggleReschedule: () => this.setState(st => ({ rescheduling: !st.rescheduling })),
+      slotSuggestions: [
+        { when: 'Qui, 27 ago · 15:00', note: 'Livre para Rafael e para o lead', fit: 'Ideal', fitColor: A },
+        { when: 'Qua, 26 ago · 09:00', note: 'Antes do bloco de negociação', fit: 'Bom', fitColor: 'var(--text-5)' },
+        { when: 'Sex, 28 ago · 11:30', note: 'Dia com 2 slots livres', fit: 'Ok', fitColor: 'var(--text-7)' }
+      ],
+      teamCapacity: [
+        { name: 'Rafael Lima', initials: 'RL', load: '4/5', pct: '80%', color: '#B54708', avBg: 'var(--primary-tint-bg)', avColor: A },
+        { name: 'Camila Nunes', initials: 'CN', load: '2/5', pct: '40%', color: A, avBg: '#E6EAF2', avColor: '#3B5BA5' },
+        { name: 'Bruno Sá', initials: 'BS', load: '5/5', pct: '100%', color: '#B02A16', avBg: '#F0EFE4', avColor: '#8A7B2E' }
+      ],
+      blocks: [
+        { label: 'Almoço', when: 'Seg a Sex · 12:00 – 13:00' },
+        { label: 'Planejamento semanal', when: 'Sex · 15:00 – 18:00' },
+        { label: 'Sem reuniões', when: 'Sáb e Dom · dia inteiro' }
+      ],
+      pipeViews: ['Kanban', 'Lista'].map(l => ({
+        label: l,
+        bg: this.state.pipeView === l ? 'var(--surface)' : 'transparent',
+        border: this.state.pipeView === l ? 'var(--border-3)' : 'transparent',
+        color: this.state.pipeView === l ? 'var(--text)' : 'var(--text-6)',
+        weight: this.state.pipeView === l ? 600 : 500
+      })),
+      pipeFilters: [
+        { k: 'Responsável', v: 'Rafael Lima' }, { k: 'Origem', v: 'Todas' },
+        { k: 'Qualificação', v: 'A e B' }, { k: 'Valor', v: '> R$ 10k' }, { k: 'Última interação', v: '30 dias' }
+      ].map(f => {
+        const on = this.state.activeFilter === f.k;
+        return { ...f, go: this.set('activeFilter', f.k), bg: on ? selBg : 'var(--surface)', border: on ? 'var(--primary-tint-border)' : 'var(--border-3)', color: on ? 'var(--text)' : 'var(--text-4)', keyColor: on ? 'var(--primary-text)' : 'var(--text-7)' };
+      }),
+      pipeStats: [{ k: 'Total', v: 'R$ 738k' }, { k: 'Leads', v: '48' }, { k: 'Conversão', v: '21%' }],
+      stages
+    };
+  }
+}
+</script>
+</body>
+</html>

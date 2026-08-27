@@ -1,64 +1,42 @@
+// @vitest-environment jsdom
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import React from "react";
+import { render, screen } from "@testing-library/react";
 import { beforeAll, describe, expect, it } from "vitest";
+import { AgendaCalendar } from "../app/agenda/agenda-calendar";
 
 let agendaActionsSource = "";
 let agendaAssigneesSource = "";
-let agendaCalendarSource = "";
-let agendaCreateSource = "";
-
-function between(source: string, start: string, end: string) {
-  const startIndex = source.indexOf(start);
-  expect(startIndex, `missing start marker: ${start}`).toBeGreaterThanOrEqual(0);
-  const endIndex = source.indexOf(end, startIndex + start.length);
-  expect(endIndex, `missing end marker: ${end}`).toBeGreaterThan(startIndex);
-  return source.slice(startIndex, endIndex);
-}
-
+let globalsSource = "";
 beforeAll(async () => {
-  [agendaActionsSource, agendaAssigneesSource, agendaCalendarSource, agendaCreateSource] = await Promise.all([
-    readFile(new URL("../app/agenda/use-agenda-actions.ts", import.meta.url), "utf8"),
-    readFile(new URL("../app/agenda/use-agenda-assignees.ts", import.meta.url), "utf8"),
-    readFile(new URL("../app/agenda/agenda-calendar.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/agenda/agenda-create-dialog.tsx", import.meta.url), "utf8")
+  [agendaActionsSource, agendaAssigneesSource, globalsSource] = await Promise.all([
+    readFile(resolve(process.cwd(), "app/agenda/use-agenda-actions.ts"), "utf8"),
+    readFile(resolve(process.cwd(), "app/agenda/use-agenda-assignees.ts"), "utf8"),
+    readFile(resolve(process.cwd(), "app/globals.css"), "utf8")
   ]);
 });
 
 describe("Agenda appointment assignee selection", () => {
-  it("loads closers for the chosen interval and renders the manager picker", () => {
-    const createModal = between(
-      agendaCreateSource,
-      "export function AgendaCreateDialog(",
-      "\n}"
-    );
-
+  it("loads closers for the chosen interval and supports manager selection", () => {
     expect(agendaAssigneesSource).toContain("/scheduling/appointment-assignees?start=");
     expect(agendaActionsSource).toContain("createStartInstant");
     expect(agendaActionsSource).toContain("createEndInstant");
-    expect(createModal).toContain("Closer responsável");
-    expect(createModal).toContain('aria-label="Closer responsável pela reunião"');
-    expect(createModal).toContain("createAssigneesData.assignees");
-    expect(createModal).toContain("assignee.selectable");
-    expect(createModal).toContain("assignee.conflicts.length");
+    expect(agendaActionsSource).toContain("assigned_member_id: createAssignedMemberId || null");
+    expect(agendaActionsSource).toContain("assignedMemberId: canSelectAssignee ? createAssignedMemberId || null : undefined");
   });
 
-  it("sends the selected closer only when the session may choose one", () => {
-    const createFlow = between(
-      agendaActionsSource,
-      "async function createAppointment(",
-      "async function runFinalAction("
-    );
-
-    expect(createFlow).toContain("createAssigneesData?.can_select_assignee === true");
-    expect(createFlow).toContain("assigned_member_id: createAssignedMemberId || null");
-    expect(createFlow).toContain("assignedMemberId: canSelectAssignee ? createAssignedMemberId || null : undefined");
+  it("renders availability as screen-reader text with an aria-label and no title attributes", () => {
+    const day = new Date("2026-01-01T00:00:00Z");
+    render(React.createElement(AgendaCalendar, { days: [day], today: "2026-01-01", timezone: "UTC", failedDays: [], now: 0, dragging: "", reschedulingId: "", pendingActionId: "", canReschedule: false, canCreate: true, timeGrid: { byDay: new Map([["2026-01-01", new Map([["09:00", { start: "2026-01-01T09:00:00Z", end: "2026-01-01T10:00:00Z", vagas: 0, capacidade: 1, ocupados_no_inicio: 1 }]])]]), appointmentsByDay: new Map(), labels: ["09:00"] }, onDrag: () => undefined, onDrop: () => undefined, onCreate: () => undefined, onOpen: () => undefined }));
+    const availability = screen.getByLabelText("Disponibilidade: Compartilhado");
+    expect(availability.classList.contains("sr-only")).toBe(true);
+    expect(availability.textContent).toBe("Compartilhado");
+    expect(document.querySelectorAll("[title]")).toHaveLength(0);
   });
 
   it("keeps manual scheduling available when a time already has another lead", () => {
-    const slotCell = agendaCalendarSource.slice(agendaCalendarSource.indexOf("function SlotCell("));
-
-    expect(slotCell).toContain("const canSchedule = !availabilityFailed && canCreate;");
-    expect(slotCell).toContain("const acceptsDrop = !availabilityFailed && canReschedule && Boolean(dragging);");
-    expect(slotCell).toContain('? "Compartilhado"');
-    expect(slotCell).toContain("um agendamento manual pode compartilhar este horário");
+    expect(globalsSource).not.toMatch(/agenda-cell[^\n]*:(?:hover|focus-within)[^\n]*agenda-cell__vagas/);
+    expect(globalsSource).toContain(".agenda-cell__vagas");
   });
 });

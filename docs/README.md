@@ -29,6 +29,7 @@ Este diretório concentra planos, auditorias, fluxos e procedimentos operacionai
 - [Runbooks](runbooks/)
 - [Referências externas](REFERENCIAS.md)
 
-Os prompts `instrução-ia.md` e `instrução-newave-ia.md` permanecem na raiz porque
-são carregados diretamente pelo backend. Os arquivos de configuração, build e
-execução também permanecem na raiz por convenção das ferramentas utilizadas.
+O prompt `instrução-ia.md` permanece na raiz porque ainda é carregado diretamente
+pelo backend. O prompt ativo da Newave é persistido no banco e administrado pelo
+painel. Os arquivos de configuração, build e execução também permanecem na raiz
+por convenção das ferramentas utilizadas.

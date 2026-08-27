@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { config } from "../../config.js";
 
 export interface ChangelogItem {
@@ -45,18 +46,29 @@ export interface VersionInfo {
 }
 
 export async function getVersionInfo(tenantSlug?: string): Promise<VersionInfo> {
-  const currentVersion = config.APP_VERSION;
+  let changelogCurrent: string | undefined;
   let changelog: ChangelogItem[] = [];
 
   try {
     const raw = await readFile(config.CHANGELOG_PATH, "utf-8");
     const parsed = JSON.parse(raw) as { current?: string; history?: StoredChangelogItem[] };
+    changelogCurrent = typeof parsed.current === "string" && parsed.current.trim() ? parsed.current.trim() : undefined;
     if (Array.isArray(parsed.history)) {
       changelog = filterChangelogHistory(parsed.history, tenantSlug);
     }
-  } catch {
-    // Caso changelog.json não exista ou tenha falha de parse, retorna array vazio graciosamente
+  } catch (error) {
+    console.warn("Não foi possível ler changelog.json; usando fallback de versão", error);
   }
+
+  let packageVersion = "0.0.0";
+  try {
+    const packageRaw = await readFile(fileURLToPath(new URL("../../../../../package.json", import.meta.url)), "utf-8");
+    const parsedPackage = JSON.parse(packageRaw) as { version?: string };
+    if (typeof parsedPackage.version === "string" && parsedPackage.version.trim()) packageVersion = parsedPackage.version.trim();
+  } catch (error) {
+    console.warn("Não foi possível ler package.json para fallback de versão", error);
+  }
+  const currentVersion = config.APP_VERSION?.trim() || changelogCurrent || packageVersion;
 
   return {
     version: currentVersion,

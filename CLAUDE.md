@@ -100,6 +100,19 @@ Any string works as a custom agent type.
 - ALWAYS run tests after code changes
 - ALWAYS verify build succeeds before committing
 
+## Deploy scope (do not ask again)
+
+This project lives inside the shared `/var/www` Git worktree. For every AtendON
+commit or deployment, stage and commit only `apps/atendon/**` from the Git root
+(`/var/www`). Never use a root-wide `git add -A` or include sibling projects.
+
+Production deploys through Coolify application `luaj67tqgrdsjlvdjrt9x3ot` from
+`git@github.com:darkgoed/apps.git`, branch `main`, base directory `/atendon`,
+using `/docker-compose.yml`. The local mapping is
+`/var/www/apps/atendon` -> remote `/atendon`. A missing local Git remote or SSH
+credential is an authentication/setup problem, not an ambiguous deployment
+scope; do not ask the user to choose the scope again.
+
 ```bash
 npm run build && npm test
 ```

@@ -60,7 +60,7 @@ export default function PostSaleDebtsPage() {
       </header>
 
       {data?.summary ? (
-        <section className="card mb-4 grid gap-3 md:grid-cols-4">
+        <section className="card mb-4 grid gap-3 sm:grid-cols-2 md:grid-cols-4">
           <SummaryTile label="Total de registros" value={String(data.summary.total)} />
           <SummaryTile label="Pagos" value={String(data.summary.paid)} />
           <SummaryTile label="Em aberto" value={formatPostSaleDebtAmount(data.summary.amount_open_total)} />
@@ -68,7 +68,7 @@ export default function PostSaleDebtsPage() {
         </section>
       ) : null}
 
-      <section className="card mb-4 grid gap-3 md:grid-cols-3">
+      <section className="card mb-4 grid gap-3 sm:grid-cols-2 md:grid-cols-3">
         <label className="field">
           <span className="label">Busca</span>
           <span className="search-field"><MagnifyingGlass aria-hidden="true" /><input className="input" value={filters.q} onChange={(event) => change("q", event.target.value)} placeholder="Nome ou telefone" /></span>

@@ -850,7 +850,9 @@ export class AiFollowUpProcessor {
       await this.repository.releaseClaim(claim);
       return "busy";
     }
-    const lockHeartbeat = setInterval(() => void extendConversationLock(conversationLock).catch(() => undefined), 20_000);
+    const lockHeartbeat = setInterval(() => void extendConversationLock(conversationLock).catch((error) => {
+      console.error("Follow-up conversation lock heartbeat failed", { conversationId, error });
+    }), 20_000);
     try {
       const previousAssistantMessages = claim.history
         .filter((message) => message.role === "assistant")

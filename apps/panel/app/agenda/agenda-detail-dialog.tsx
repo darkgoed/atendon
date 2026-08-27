@@ -42,8 +42,8 @@ export function AgendaDetailDialog({ actions, timezone, now }: { actions: Agenda
         <div>
           <span className="label">Closer / responsável</span>
           {detailAssigneesData?.can_select_assignee && isActiveAppointment(selectedAppointment.status) ? (
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <select className="input min-w-56 flex-1" value={detailAssignedMemberId} disabled={savingAssignee || detailAssigneesLoading} onChange={(event) => setDetailAssignedMemberId(event.target.value)} aria-label="Responsável do lead">
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+              <select className="input min-w-0 flex-1" value={detailAssignedMemberId} disabled={savingAssignee || detailAssigneesLoading} onChange={(event) => setDetailAssignedMemberId(event.target.value)} aria-label="Responsável do lead">
                 {!detailAssignedMemberId ? <option value="">Sem responsável disponível</option> : null}
                 {detailAssigneesData.assignees.map((assignee) => <option key={assignee.member_id} value={assignee.member_id} disabled={!assignee.selectable && assignee.member_id !== selectedAppointment.responsavel?.member_id}>{assignee.name || assignee.email}{assignee.selectable ? "" : " · indisponível"}</option>)}
               </select>
@@ -124,7 +124,7 @@ function AppointmentDetails({ actions, timezone }: { actions: AgendaActions; tim
             <VideoCamera size={15} aria-hidden="true" />{joiningAppointmentId === selectedAppointment.id ? "Verificando reunião…" : joinBlockedIds.has(selectedAppointment.id) ? "Sala indisponível" : joinReadyUrl ? "Abrir Meet liberado" : "Entrar no Meet"}
           </button>
         ) : null}
-        {isActiveAppointment(selectedAppointment.status) && permissions.canReschedule ? <button type="button" className="btn active:scale-[.98]" onClick={() => beginReschedule(selectedAppointment)}><CalendarDots size={15} aria-hidden="true" /> Reagendar</button> : null}
+        {(isActiveAppointment(selectedAppointment.status) || selectedAppointment.status === "concluido" || selectedAppointment.status === "no_show") && permissions.canReschedule ? <button type="button" className="btn active:scale-[.98]" onClick={() => beginReschedule(selectedAppointment)}><CalendarDots size={15} aria-hidden="true" /> Reagendar</button> : null}
         {isActiveAppointment(selectedAppointment.status) && permissions.canComplete ? <button type="button" className="btn primary active:scale-[.98]" onClick={() => beginFinalAction(selectedAppointment, "complete")}><Check size={15} aria-hidden="true" /> Concluir</button> : null}
         {isActiveAppointment(selectedAppointment.status) && permissions.canNoShow ? <button type="button" className="btn warn active:scale-[.98]" onClick={() => beginFinalAction(selectedAppointment, "no_show")}><UserMinus size={15} aria-hidden="true" /> Não compareceu</button> : null}
         {selectedAppointment.status === "concluido" && permissions.canNoShow ? <button type="button" className="btn warn active:scale-[.98]" onClick={() => beginFinalAction(selectedAppointment, "no_show")}><UserMinus size={15} aria-hidden="true" /> Corrigir para não compareceu</button> : null}
@@ -164,7 +164,7 @@ function AppointmentRecordings({ appointmentId, timezone }: { appointmentId: str
       ) : error ? (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-3 py-4" role="alert">
           <p className="m-0 text-xs text-[var(--warn-muted)]">{error instanceof Error ? error.message : "Não foi possível carregar as gravações."}</p>
-          <button type="button" className="btn warn px-2 py-1 text-xs active:translate-y-px" onClick={() => void mutate()}><ArrowClockwise size={14} aria-hidden="true" />Tentar novamente</button>
+          <button type="button" className="btn warn px-2 py-1 text-xs active:translate-y-px inline-flex items-center gap-1.5" onClick={() => void mutate()}><ArrowClockwise size={14} aria-hidden="true" />Tentar novamente</button>
         </div>
       ) : recordings.length === 0 ? (
         <div className="mt-4 grid grid-cols-[34px_minmax(0,1fr)] gap-3 border-y border-dashed border-[var(--border)] py-4 text-[var(--faint-text)]">

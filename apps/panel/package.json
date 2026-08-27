@@ -7,15 +7,20 @@
     "build": "eslint . --max-warnings=0 && next build",
     "build:ci": "next build",
     "start": "next start -p 3200",
+    "audit:responsive": "node scripts/ui-responsive-audit.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "typecheck": "next typegen && tsc --noEmit"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.6",
     "@types/node": "^26.1.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "jsdom": "^30.0.1",
     "tailwindcss": "^4.3.2",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"

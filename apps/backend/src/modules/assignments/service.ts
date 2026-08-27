@@ -32,6 +32,16 @@ type CaseRows = {
 
 const normalizedPhoneSql = (column: string) => `regexp_replace(${column},'\\D','','g')`;
 
+/** Must be called after case rows are locked with FOR UPDATE. */
+export async function assignmentIsLockedByAttendance(client: PoolClient, tenantId: string, leadId: string): Promise<boolean> {
+  const result = await client.query(
+    `SELECT 1 FROM scheduling_appointments
+     WHERE tenant_id=$1 AND lead_id=$2 AND status IN ('concluido','no_show') LIMIT 1 FOR UPDATE`,
+    [tenantId, leadId]
+  );
+  return Boolean(result.rows[0]);
+}
+
 export async function lockAttendantRotation(client: PoolClient, tenantId: string): Promise<void> {
   // Mantém compatibilidade com instâncias anteriores durante atualização gradual.
   await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`closer-round-robin:${tenantId}`]);
@@ -653,6 +663,9 @@ export async function ensureCaseAssignment(
   await lockAttendantRotation(client, input.tenantId);
   const rows = await loadCaseRows(client, input.tenantId, input.selector);
   if (!rows) return null;
+  if ((await Promise.all(rows.leads.map((lead) => assignmentIsLockedByAttendance(client, input.tenantId, lead.id)))).some(Boolean)) {
+    return eligibleByExistingAssignment(client, input.tenantId, rows);
+  }
   const preferred = input.preferredMemberId
     ? (await eligibleAttendants(client, input.tenantId)).find(
         (candidate) => candidate.memberId === input.preferredMemberId
@@ -704,6 +717,7 @@ export async function rebalanceUnscheduledAssignments(
   for (const item of cases.rows) {
     const rows = await loadCaseRows(client, input.tenantId, { phone: item.phone });
     if (!rows) continue;
+    if ((await Promise.all(rows.leads.map((lead) => assignmentIsLockedByAttendance(client, input.tenantId, lead.id)))).some(Boolean)) continue;
     const assignment = await selectNextAttendant(client, input.tenantId);
     const changed = await synchronizeRows(
       client,
@@ -827,6 +841,7 @@ export async function redistributeRemovedAssignments(
   for (const item of cases.rows) {
     const rows = await loadCaseRows(client, input.tenantId, { phone: item.phone });
     if (!rows) continue;
+    if ((await Promise.all(rows.leads.map((lead) => assignmentIsLockedByAttendance(client, input.tenantId, lead.id)))).some(Boolean)) continue;
     const assignment = await selectNextAttendant(client, input.tenantId);
     const changed = await synchronizeRows(
       client,

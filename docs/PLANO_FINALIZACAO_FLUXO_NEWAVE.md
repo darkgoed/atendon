@@ -37,7 +37,7 @@ O comando garante:
 
 - tenant Newave IA em `America/Sao_Paulo`;
 - `arthurmuller07@gmail.com` no papel OWNER;
-- agente com modelo, temperatura, ferramentas e prompt ativo definidos no painel; `instrução-newave-ia.md` é o template versionado e suas mudanças entram primeiro como versão candidata;
+- agente com modelo, temperatura, ferramentas e prompt ativo persistidos no banco e definidos no painel;
 - sessão própria de WhatsApp;
 - agenda “Reuniões comerciais”, segunda a sexta, 09h–18h, slots de 60 minutos e capacidade 1.
 

@@ -24,6 +24,7 @@ export function AgendaCalendar({ days, today, timezone, failedDays, timeGrid, no
   canCreate: boolean;
   onDrag: (id: string) => void;
   onDrop: (start: string) => void;
+  onCreate: (slot: Slot) => void;
   onOpen: (appointment: Appointment) => void;
   onSelectSlot?: (slot: Slot) => void;
 }) {
@@ -122,7 +123,7 @@ function SlotCell({ slot, timezone, isToday, availabilityFailed, items, dragging
     >
       {nowPosition !== null ? <span className="agenda-now-indicator" style={{ "--agenda-now": `${nowPosition}%` } as React.CSSProperties} aria-hidden="true" /> : null}
       <div className="agenda-cell__meta">
-        <span className="mono agenda-cell__vagas" title={slot.vagas === 0 ? "A capacidade automática está preenchida, mas um agendamento manual pode compartilhar este horário." : undefined}>{availabilityLabel}</span>
+        <span className="sr-only mono agenda-cell__vagas" aria-label={`Disponibilidade: ${availabilityLabel}`}>{availabilityLabel}</span>
         {canSchedule ? <button type="button" className="agenda-cell__add" aria-label={`Opções para ${formatSlot(slot, timezone)}`} onClick={() => onSelectSlot?.(slot)}><Plus size={12} aria-hidden="true" />Agendar</button> : null}
       </div>
       <div className={`agenda-cell__appointments ${items.length > 1 ? "agenda-cell__appointments--shared" : ""}`} style={{ "--appointment-columns": Math.max(items.length, 1) } as React.CSSProperties}>
@@ -136,10 +137,10 @@ function SlotCell({ slot, timezone, isToday, availabilityFailed, items, dragging
             style={{ "--appointment-color": item.responsavel?.cor_agenda ?? "var(--primary)" } as React.CSSProperties}
             className={`agenda-appointment agenda-appointment--${item.status} cursor-pointer ${isAppointmentResultPending(item, now) ? "ring-1 ring-inset ring-[var(--warn)]" : ""} ${isActiveAppointment(item.status) && canReschedule ? "cursor-grab active:cursor-grabbing" : ""}`}
           >
-            <button type="button" className="agenda-appointment__contact" onClick={(event) => { event.stopPropagation(); onOpen(item); }} aria-label={`Abrir detalhes de ${item.lead_nome ?? item.lead_telefone}`} title={item.lead_nome ?? item.lead_telefone}>{item.lead_nome ?? item.lead_telefone}</button>
+            <button type="button" className="agenda-appointment__contact" onClick={(event) => { event.stopPropagation(); onOpen(item); }} aria-label={`Abrir detalhes de ${item.lead_nome ?? item.lead_telefone}`}>{item.lead_nome ?? item.lead_telefone}</button>
             <span className="agenda-appointment__time">{new Date(item.start).toLocaleTimeString("pt-BR", { timeZone: timezone, hour: "2-digit", minute: "2-digit" })} — {new Date(item.end).toLocaleTimeString("pt-BR", { timeZone: timezone, hour: "2-digit", minute: "2-digit" })}</span>
             <span className={`agenda-appointment__status ${isAppointmentResultPending(item, now) ? "text-[var(--warn)]" : ""}`}>{isAppointmentResultPending(item, now) ? "Resultado pendente" : APPOINTMENT_STATUS_LABELS[item.status]}</span>
-            <span className="truncate text-[10px] text-[var(--faint)]" title={item.responsavel?.email ?? "Sem responsável"}>{item.responsavel?.email ?? "Sem responsável"}</span>
+            <span className="truncate text-[10px] text-[var(--faint)]">{item.responsavel?.email ?? "Sem responsável"}</span>
           </article>
         ))}
       </div>

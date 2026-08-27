@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { config } from "../src/config.js";
 import { filterChangelogHistory, getVersionInfo } from "../src/modules/root/version.js";
 
 describe("version service", () => {
+  afterEach(() => vi.restoreAllMocks());
   it("returns version and changelog structure", async () => {
     const info = await getVersionInfo();
     expect(info).toHaveProperty("version");
@@ -40,5 +44,57 @@ describe("version service", () => {
       "Correção global de segurança",
       "Ajuste específico no prompt Newave"
     ]);
+  });
+
+  it("uses changelog.current when APP_VERSION is absent or empty", async () => {
+    const original = config.APP_VERSION;
+    try {
+      (config as { APP_VERSION?: string }).APP_VERSION = undefined;
+      expect((await getVersionInfo()).version).toBe("1.21.0");
+      (config as { APP_VERSION?: string }).APP_VERSION = "";
+      expect((await getVersionInfo()).version).toBe("1.21.0");
+    } finally {
+      (config as { APP_VERSION?: string }).APP_VERSION = original;
+    }
+  });
+
+  it("prefers an explicitly defined APP_VERSION", async () => {
+    const original = config.APP_VERSION;
+    try {
+      (config as { APP_VERSION?: string }).APP_VERSION = "9.8.7";
+      expect((await getVersionInfo()).version).toBe("9.8.7");
+    } finally {
+      (config as { APP_VERSION?: string }).APP_VERSION = original;
+    }
+  });
+
+  it("returns a valid fallback when changelog is missing", async () => {
+    const path = join(tmpdir(), `atendon-missing-${Date.now()}.json`);
+    const original = config.CHANGELOG_PATH;
+    (config as { CHANGELOG_PATH: string }).CHANGELOG_PATH = path;
+    try {
+      const info = await getVersionInfo();
+      expect(info.version).toBe("1.21.0");
+      expect(info.changelog).toEqual([]);
+    } finally {
+      (config as { CHANGELOG_PATH: string }).CHANGELOG_PATH = original;
+    }
+  });
+
+  it("falls back to package.json and warns when changelog JSON is invalid", async () => {
+    const path = join(tmpdir(), `atendon-invalid-${Date.now()}.json`);
+    const original = config.CHANGELOG_PATH;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(path, "{ invalid json", "utf8");
+    (config as { CHANGELOG_PATH: string }).CHANGELOG_PATH = path;
+    try {
+      const info = await getVersionInfo();
+      expect(info.version).toBe("1.21.0");
+      expect(info.changelog).toEqual([]);
+      expect(warn).toHaveBeenCalledWith("Não foi possível ler changelog.json; usando fallback de versão", expect.anything());
+    } finally {
+      (config as { CHANGELOG_PATH: string }).CHANGELOG_PATH = original;
+    }
   });
 });

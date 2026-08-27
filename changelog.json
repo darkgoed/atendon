@@ -1,6 +1,17 @@
 {
-  "current": "1.21.0",
+  "current": "1.22.0",
   "history": [
+    {
+      "version": "1.22.0",
+      "date": "2026-08-27",
+      "changes": [
+        {
+          "text": "Melhorias internas e correções de estabilidade",
+          "tenant_slugs": []
+        }
+      ],
+      "commit": "289d097118f676c4a0136b4c88acc3db7cf0e49b"
+    },
     {
       "version": "1.21.0",
       "date": "2026-08-25",

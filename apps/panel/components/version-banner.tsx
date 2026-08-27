@@ -16,6 +16,7 @@ export function VersionBanner({
   if (!isOpen || !versionInfo) return null;
 
   const currentVersion = versionInfo.version;
+  const hasKnownVersion = typeof currentVersion === "string" && currentVersion.trim().length > 0;
   const currentChangelog = versionInfo.changelog.find((item) => item.version === currentVersion)
     ?? versionInfo.changelog[0];
 
@@ -46,7 +47,7 @@ export function VersionBanner({
                 O que há de novo
               </h2>
               <p id="version-banner-desc" className="text-xs text-[var(--muted)]">
-                Novidades da versão <strong className="mono text-[var(--accent)]">v{currentVersion}</strong>
+                {hasKnownVersion ? <>Novidades da versão <strong className="mono text-[var(--accent)]">v{currentVersion}</strong></> : "Novidades da versão implantada"}
                 {currentChangelog?.date ? ` (${currentChangelog.date})` : ""}
               </p>
             </div>
@@ -78,7 +79,7 @@ export function VersionBanner({
             </div>
           ) : (
             <p className="text-sm text-[var(--muted)]">
-              O sistema foi atualizado para a versão <span className="mono">v{currentVersion}</span> com melhorias gerais de desempenho e segurança.
+              {hasKnownVersion ? <>O sistema foi atualizado para a versão <span className="mono">v{currentVersion}</span> com melhorias gerais de desempenho e segurança.</> : "A versão implantada está sendo identificada. Consulte novamente em instantes."}
             </p>
           )}
 

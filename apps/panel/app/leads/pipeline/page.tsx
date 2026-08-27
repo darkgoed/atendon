@@ -6,6 +6,7 @@ import useSWR from "swr";
 import { BulkLeadActions } from "@/components/bulk-lead-actions";
 import { PipelineBoard } from "@/components/pipeline-board";
 import { PipelineFilters } from "@/components/pipeline-filters";
+import { PipelineList } from "@/components/pipeline-list";
 import { PipelineSettings } from "@/components/pipeline-settings";
 import { PipelineTransitionDialog } from "@/components/pipeline-transition-dialog";
 import { PipelineViewPreferences } from "@/components/pipeline-view-preferences";
@@ -37,6 +38,7 @@ import { useRealtimeSignals } from "@/lib/realtime";
 import { canAccessWithSession, hasWorkspaceWideCaseScope, type PanelSession } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
 import { usePipelinePreferences } from "@/lib/use-pipeline-preferences";
+import { readPipelineViewPreference, writePipelineViewPreference } from "@/lib/pipeline-view";
 
 type PipelineResponse = { leads: PipelineLead[]; timezone?: string };
 type PipelineConfigResponse = { stages: PipelineStage[]; transitions: PipelineTransition[]; follow_up_config: PipelineFollowUpConfig };
@@ -58,6 +60,7 @@ const fallbackStatusTransitions: Record<string, readonly string[]> = {
 };
 const fallbackColors = ["var(--text-8)", "var(--info)", "var(--text-6)", "var(--primary)", "var(--cat-referral)", "var(--urgent)", "var(--warn)", "var(--info)", "var(--ok)", "var(--danger)"];
 const fallbackStages: PipelineStage[] = CANONICAL_PIPELINE_STATUSES.map((status, index) => ({ id: `fallback:${status}`, name: pipelineStatusLabel(status), color: fallbackColors[index], position: (index + 1) * 10, capacity_target: null, technical_status: status, is_default: true }));
+
 const fallbackTransitions = Object.entries(fallbackStatusTransitions).flatMap(([source, targets]) => targets.map((target) => `fallback:${source}:fallback:${target}`));
 
 export default function PipelinePage() {
@@ -68,6 +71,7 @@ export default function PipelinePage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [pendingLeadIds, setPendingLeadIds] = useState<Set<string>>(() => new Set());
   const [intent, setIntent] = useState<TransitionIntent | null>(null);
+  const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
   const [actionError, setActionError] = useState("");
   const { data: session } = useSWR<PanelSession>("/me", fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
   const [preferences, setPreferences] = usePipelinePreferences(session?.activeWorkspace?.id, session?.user.id);
@@ -78,6 +82,17 @@ export default function PipelinePage() {
     const timer = window.setTimeout(() => setDebouncedSearch(filters.busca.trim()), 300);
     return () => window.clearTimeout(timer);
   }, [filters.busca]);
+
+  useEffect(() => {
+    if (!session?.activeWorkspace?.id || !session.user.id) return;
+    const stored = readPipelineViewPreference(session.activeWorkspace.id, session.user.id);
+    if (stored) setViewMode(stored);
+  }, [session?.activeWorkspace?.id, session?.user.id]);
+
+  function changeView(mode: "kanban" | "list") {
+    setViewMode(mode);
+    if (session?.activeWorkspace?.id && session.user.id) writePipelineViewPreference(session.activeWorkspace.id, session.user.id, mode);
+  }
 
   const queryFilters = useMemo(() => ({
     ...filters,
@@ -237,8 +252,8 @@ export default function PipelinePage() {
         <div className="flex min-w-0 items-baseline gap-2">
           <h1 className="truncate">{hasWorkspaceScope ? "Pipeline" : "Meu pipeline"}</h1>
           <div className="pipeline-page__view" aria-label="Visualização do pipeline">
-            <span aria-current="page">Kanban</span>
-            <span aria-disabled="true">Lista</span>
+            <button type="button" aria-pressed={viewMode === "kanban"} onClick={() => changeView("kanban")}>Kanban</button>
+            <button type="button" aria-pressed={viewMode === "list"} onClick={() => changeView("list")}>Lista</button>
           </div>
           <span className="mono pipeline-page__count" role="status" aria-live="polite">{loading ? "carregando…" : `${leads.length} lead(s)`}</span>
         </div>
@@ -262,7 +277,19 @@ export default function PipelinePage() {
       {loadError && leads.length > 0 ? <div className="mb-3 flex shrink-0 items-center justify-between gap-3 border border-[var(--warn-border)] px-3 py-2 text-xs text-[var(--warn)]" role="alert"><span>Os dados exibidos podem estar desatualizados: {loadError}</span><button type="button" className="btn min-h-8 px-2 py-1 text-[11px]" onClick={retry}><ArrowClockwise size={13} aria-hidden="true" />Tentar novamente</button></div> : null}
 
       <div className="pipeline-page__board">
-        <PipelineBoard
+        {viewMode === "list" ? <PipelineList
+          leads={visibleLeads}
+          stages={stages}
+          members={members}
+          legacy={organizationEnabled === false}
+          loading={loading}
+          canMove={canMove}
+          canSelect={organizationEnabled === true}
+          selectedIds={selectedIds}
+          pendingLeadIds={pendingLeadIds}
+          onToggleSelected={toggleSelected}
+          onMoveRequest={requestMove}
+        /> : <PipelineBoard
           stages={stages}
           leads={visibleLeads}
           allowedTransitions={allowedTransitions}
@@ -279,7 +306,7 @@ export default function PipelinePage() {
           onToggleSelected={toggleSelected}
           onMoveRequest={requestMove}
           onRetry={retry}
-        />
+        />}
       </div>
 
       {intent && dialogTargets.length ? (

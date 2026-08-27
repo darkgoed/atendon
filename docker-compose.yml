@@ -6,8 +6,8 @@ x-default-logging: &default-logging
 
 x-atendon-runtime-environment: &atendon-runtime-environment
   NODE_ENV: production
-  APP_VERSION: ${APP_VERSION:?Configure APP_VERSION}
-  DEPLOY_VERSION: ${DEPLOY_VERSION:?Configure DEPLOY_VERSION com uma tag imutável}
+  APP_VERSION: ${APP_VERSION:-}
+  DEPLOY_VERSION: ${DEPLOY_VERSION:-development}
   CONTAINER_RUNTIME: "true"
   HOST: 0.0.0.0
   PORT: "3110"
@@ -21,7 +21,7 @@ x-atendon-runtime-environment: &atendon-runtime-environment
   JWT_SECRET: ${JWT_SECRET:?Configure JWT_SECRET}
   DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?Configure DATA_ENCRYPTION_KEY}
   DATA_ENCRYPTION_KEY_PREVIOUS: ${DATA_ENCRYPTION_KEY_PREVIOUS:-}
-
+  TENANT_API_KEY: ${TENANT_API_KEY:?Configure TENANT_API_KEY}
   PANEL_SEED_EMAIL: ${PANEL_SEED_EMAIL:-admin@atendon.local}
   PANEL_SEED_PASSWORD: ${PANEL_SEED_PASSWORD:?Configure PANEL_SEED_PASSWORD}
   ROOT_SEED_EMAIL: ${ROOT_SEED_EMAIL:-}
@@ -35,7 +35,7 @@ x-atendon-runtime-environment: &atendon-runtime-environment
   CHANGELOG_OPENROUTER_API_KEY: ${CHANGELOG_OPENROUTER_API_KEY:-}
   CHANGELOG_OPENROUTER_MODEL: ${CHANGELOG_OPENROUTER_MODEL:-google/gemma-4-26b-a4b-it:free}
   DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-openai/gpt-oss-20b:free}
-
+  AI_EVALUATOR_ENABLED: ${AI_EVALUATOR_ENABLED:-true}
   WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-true}
   TRIPZ_AI_OPENROUTER_API_KEY: ${TRIPZ_AI_OPENROUTER_API_KEY:-}
   TRIPZ_AI_MODEL: ${TRIPZ_AI_MODEL:-anthropic/claude-sonnet-4.6}
@@ -141,8 +141,8 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
-      APP_VERSION: ${APP_VERSION:?Configure APP_VERSION}
-      DEPLOY_VERSION: ${DEPLOY_VERSION:?Configure DEPLOY_VERSION com uma tag imutável}
+      APP_VERSION: ${APP_VERSION:-}
+      DEPLOY_VERSION: ${DEPLOY_VERSION:-development}
       DATABASE_URL: postgresql://${ATENDON_RUNTIME_DB_USER:-atendon_app}:${ATENDON_RUNTIME_DB_PASSWORD:?Configure ATENDON_RUNTIME_DB_PASSWORD URL-encoded}@postgres:5432/${POSTGRES_DB:-atendon}
       MIGRATION_DATABASE_URL: postgresql://${ATENDON_MIGRATION_DB_USER:-atendon_migration}:${ATENDON_MIGRATION_DB_PASSWORD:?Configure ATENDON_MIGRATION_DB_PASSWORD URL-encoded}@postgres:5432/${POSTGRES_DB:-atendon}
       DATABASE_OWNER_ROLE: ${ATENDON_OWNER_DB_ROLE:-atendon_owner}

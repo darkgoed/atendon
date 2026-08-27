@@ -2197,7 +2197,7 @@ export async function rescheduleAppointment(
     ) {
       throw httpError(404, "Agendamento não encontrado");
     }
-    if (["cancelado", "concluido", "no_show"].includes(current.rows[0].status)) throw httpError(409, "Agendamento não pode ser reagendado neste status");
+    if (current.rows[0].status === "cancelado") throw httpError(409, "Agendamento cancelado não pode ser reagendado");
     const unit = await loadUnit(client, tenantId, input.unidade_id ?? current.rows[0].unit_id);
     const start = new Date(input.start);
     const end = options.manual
@@ -2242,7 +2242,7 @@ export async function rescheduleAppointment(
     }
     const result = await client.query(
       `UPDATE scheduling_appointments
-       SET unit_id=$3,start_at=$4,end_at=$5,status='reagendado',result_pending_at=NULL,updated_at=now()
+       SET unit_id=$3,start_at=$4,end_at=$5,status='confirmado',result_pending_at=NULL,updated_at=now()
        WHERE id=$1 AND tenant_id=$2 RETURNING *`, [appointmentId, tenantId, unit.id, start.toISOString(), end.toISOString()]
     );
     await client.query(

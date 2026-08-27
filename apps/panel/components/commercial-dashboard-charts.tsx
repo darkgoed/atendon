@@ -36,7 +36,7 @@ export function RateRing({ value, tone }: { value: number; tone: string }) {
         transform="rotate(-90 32 32)"
         style={{ transition: "stroke-dasharray .6s cubic-bezier(.22,1,.36,1)" }}
       />
-      <text x="32" y="36" textAnchor="middle" fill="var(--text)" fontSize="13" fontWeight="600" fontFamily="'IBM Plex Mono',monospace">
+      <text x="32" y="36" textAnchor="middle" fill="var(--text)" fontSize="13" fontWeight="600" fontFamily="var(--font-mono)">
         {Math.round(clamped)}%
       </text>
     </svg>

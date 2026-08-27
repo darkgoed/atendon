@@ -13,6 +13,8 @@ chaves/
 coverage/
 playwright-report/
 test-results/
+strix_runs/
+apps/panel/ui-responsive-audit.json
 .deploy-state/
 data/jitsi/
 data/meet-recordings/

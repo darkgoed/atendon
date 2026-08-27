@@ -203,9 +203,9 @@ export default function PostSalesPage() {
         </header>
 
         {data?.summary ? <PostSalesSummaryStrip summary={data.summary} /> : (
-          <div className="post-sales-summary post-sales-summary--loading" role="status" aria-label="Carregando resumo">
+          <div className="post-sales-summary-wrap"><div className="post-sales-summary post-sales-summary--loading" role="status" aria-label="Carregando resumo">
             {[1, 2, 3, 4, 5].map((item) => <span className="skeleton" key={item} aria-hidden="true" />)}
-          </div>
+          </div></div>
         )}
 
         <section className="post-sales-layout" data-mobile-view={mobileView}>

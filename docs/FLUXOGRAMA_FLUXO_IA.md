@@ -201,7 +201,7 @@ flowchart TD
 | Regras de agenda, lead e qualificação | `apps/backend/src/modules/scheduling/service.ts` |
 | Humanização, debounce e lock | `apps/backend/src/modules/messages/humanizer.ts` |
 | Prompt comercial Meta Cell | `instrução-ia.md` |
-| Prompt comercial Newave | `instrução-newave-ia.md` |
+| Prompt comercial Newave | `agent_configs.system_prompt` (administrado em `/agente`) |
 
 ## Resumo em uma frase
 

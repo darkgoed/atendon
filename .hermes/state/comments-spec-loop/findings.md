@@ -1,35 +1,56 @@
-# Findings — comments.md
+# Findings — comments.md (rodada 2026-08-26)
 
-Atualizado em: 2026-08-25T12:08:22Z
+## Phase 1 — intenção catalogada
 
-## Intenção coberta
+Fonte: /var/www/apps/atendon/comments.md (8 itens não-vazios).
 
-1. A tela de detalhe em `/leads/[id]` exibe uma grade fixa de respostas de qualificação, inclusive muitos valores “não informado”. O pedido corrige a abordagem: a IA pode continuar persistindo dados estruturados para regras internas, filtros e auditoria, mas a interface operacional deve mostrar somente o resumo narrativo da qualificação.
-2. Remover a Timeline do detalhe do lead.
-3. Simplificar a visualização geral de `/leads`, sobretudo o detalhe, sem remover operações, permissões, acompanhamento, notas, status ou atribuições.
-4. Trocar a oferta comercial de “reunião/chamada rápida de 15 minutos” por um convite humano para um bate-papo de 20 a 40 minutos.
-5. A IA não pode revelar ao contato etapas, fluxo, política, correções ou “o próximo passo” interno. Pode propor uma ação comercial naturalmente, mas não descrevê-la como etapa do fluxo.
+1. **L1 — Bug de exibição.** Em Conversas, mensagens de áudio estão mostrando o
+   nome do arquivo (`audio-2026-08-25T12-10-18-804Z`). Intenção: áudio deve
+   renderizar só como player, sem o nome técnico do arquivo.
 
-## Mapeamento técnico
+2. **L3 — Bug de UX.** No Pipeline, shift+scroll com o cursor sobre um card não
+   rola o board horizontalmente. Intenção: shift+wheel deve rolar horizontal em
+   qualquer ponto do board.
 
-- `apps/panel/app/leads/[id]/page.tsx`: renderiza qualificação (`resumo`, `justificativa`, `respostas`) e Timeline (`eventos`). A simplificação deve remover justificativa/respostas/timeline da renderização e os tipos/imports mortos, preservando resumo, estrelas, situação e metadados úteis.
-- `apps/panel/app/leads/page.tsx`: já usa apenas o resumo em uma linha truncada; não há respostas estruturadas nem Timeline na listagem.
-- `apps/panel/tests/comments-ui-regression.test.ts`: local adequado para regressões de estrutura da tela de leads.
-- `instrução-newave-ia.md`: prompt principal Newave, com várias regras e exemplos fixados em 15 minutos e linguagem de processo.
-- `apps/backend/src/modules/messages/prefilled-context.ts`: normaliza a duração comercial, injeta contexto operacional e valida convites/perguntas de período. Hoje força 15 minutos em todos esses caminhos.
-- `apps/backend/src/modules/messages/process-message.ts`: `internalCorrectionDisclosureCorrection` já impede parte das exposições internas; precisa cobrir anúncios explícitos de “próximo passo/etapa/fluxo”. O validador é usado no fluxo principal e na recuperação compacta.
-- `apps/backend/tests/prefilled-context.test.ts`, `apps/backend/tests/process-message.test.ts`, `apps/backend/tests/newave-template.test.ts`: testes diretamente afetados.
+3. **L5 — Feature transversal.** Tela de loading por módulo/rota do painel. Sem
+   tempo mínimo artificial e sem timeout máximo — o loading dura exatamente o
+   tempo do carregamento real.
 
-## Invariantes e riscos
+4. **L7 — Feature.** Botão "Follow-up" ao lado de "Resolver" em Conversas. Ao
+   clicar: IA gera e dispara um follow-up contextual imediatamente e o lead cai
+   para o estágio follow-up.
 
-- Não remover colunas/API de qualificação: respostas estruturadas ainda alimentam filtros, decisão humana e regras internas; o pedido é de apresentação.
-- Não remover eventos do backend nem afetar auditoria; apenas não renderizar a Timeline em `/leads/[id]`.
-- Duração operacional das agendas (`slotDurationMinutes`) continua interna e intacta para disponibilidade/conflitos.
-- Convites devem aceitar variantes naturais de “bate-papo/conversa” e a faixa 20–40, rejeitando 15 ou duração operacional exposta.
-- Menções legítimas como “o próximo passo depende de você” também soam processuais; o filtro será intencionalmente estrito quando a IA anunciar “o próximo passo é/será/agora”. Propostas naturais como “podemos conversar amanhã” permanecem permitidas.
-- Há mudanças preexistentes do usuário no worktree; limitar alterações aos arquivos acima e aos artefatos de SPEC/estado.
+5. **L9 — Feature + redesign.** Agenda: adicionar visão mensal; remover scroll
+   horizontal (layout fixo); grid de slots; ao clicar num slot, além de
+   adicionar lead, poder bloquear horário; bloqueio recorrente (ex.: almoço 12h
+   todos os dias) com motivo obrigatório; fidelidade visual ao handoff
+   `design_handoff_b2b/CRM Atendimento IA.dc.html` (formato, layout, fonte,
+   cores soft).
 
-## Ambiguidades resolvidas pelo código
+6. **L11 — Feature.** Follow-up com envio de áudio anexado (ogg/mp3), igual ao
+   fluxo de figurinha/imagem. Requisito-chave: o áudio deve chegar como
+   mensagem de voz nativa (PTT), não como arquivo baixado/encaminhado.
 
-- “Somente resumo” é tratado como simplificação visual, não como migração destrutiva de dados.
-- “Nunca falar qual seu próximo passo do fluxo” não proíbe convidar/agendar; proíbe revelar a mecânica interna ou rotular a ação como passo/etapa do fluxo.
+7. **L13 — Refactor de UI.** Em Leads, as funcionalidades devem virar botões no
+   topo (padrão de Conversas/Pipeline/Agenda) em vez de cards/divs próprios. A
+   página não pode rolar; só a lista rola internamente.
+
+8. **L15 — Remoção.** Deletar 100%: Melhoria da IA (`/agente/melhorias`) e
+   Chaves de API (`/workspace/api-keys`).
+
+9. **L17 — Movimentação.** Figurinhas da IA (`/agente/figurinhas`) passa para um
+   novo módulo `/follow-ups`, que reúne os follow-ups e a inserção de imagens,
+   vídeos, áudios e figurinhas.
+
+## Ambiguidades resolvidas sem perguntar ao usuário
+
+- comments.md L9 cita `design_handoff_b2b2/` numa parte e `design_handoff_b2b/`
+  noutra. Só existe `design_handoff_b2b/` no repo — usado como referência única.
+- L11, L15 e L17 se sobrepõem no mesmo módulo (`/follow-ups`) e no mesmo menu de
+  navegação, então foram agrupados numa única SPEC para evitar dois agentes
+  editando `shell.tsx` ao mesmo tempo.
+
+## Phase 2 — mapeamento (preenchido pelos agentes nas SPECs)
+
+Cada SPEC em `specs/active/` contém a seção `## Affected Areas` com os arquivos
+reais investigados. Ver `progress.md` para o mapa item → SPEC.

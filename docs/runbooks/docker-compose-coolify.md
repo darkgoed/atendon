@@ -1,6 +1,12 @@
 # Docker Compose e Coolify
 
-Este arquivo cobre somente o runtime containerizado preparado para o cutover. Enquanto o cutover não for aprovado, mantenha os processos atuais, `ecosystem.config.js`, `deploy/start-panel.sh` e as unidades systemd como estão. Não execute `build.sh` apenas para validar esta mudança: ele é o deploy real e alcança banco e containers configurados no ambiente.
+## Política vigente de produção
+
+O deploy oficial do AtendON é feito exclusivamente pelo Coolify, a partir do repositório Git configurado no recurso `luaj67tqgrdsjlvdjrt9x3ot`. Alterações locais só chegam à produção depois de commit/merge no branch acompanhado pelo Coolify e de um deployment concluído pelo próprio Coolify.
+
+Não execute `./build.sh`, `docker compose up`, recriação de containers ou migrations diretamente no host como procedimento de deploy. O `build.sh` é um fluxo legado/emergencial que altera banco e containers fora do controle do Coolify; seu uso pode deixar o schema registrado no banco incompatível com o commit que o Coolify implanta. Ele só pode ser usado com autorização operacional explícita e um plano documentado de reconciliação com o Coolify.
+
+Para validação local sem publicação, use os comandos `npm run test`, `npm run typecheck`, `npm run lint` e `npm run build` conforme o escopo da mudança. Esses comandos não substituem o deployment do Coolify.
 
 ## Contrato do stack
 
@@ -56,8 +62,30 @@ Não use `down -v`: a opção `-v` remove volumes e é incompatível com a prese
 
 ## Deploy e rollback
 
-`build.sh` mantém `flock` e executa instalação determinística, isolamento/migration de teste, lint, typecheck, testes, E2E, builds locais e das imagens. Só depois valida as imagens candidatas. Em seguida cria backup, comprova um restore real em banco descartável, ativa manutenção, aplica migrations forward-only, executa `provision:tripz` e `snapshot:deploy`, e troca o stack com `docker compose up --wait`.
+O fluxo oficial é: validar em checkout limpo, integrar a mudança ao branch Git acompanhado pelo Coolify, iniciar o deployment pelo Coolify e verificar o deployment UUID, o job `database-migrate`, os healthchecks e o commit efetivamente implantado.
+
+O `build.sh` permanece no repositório apenas como ferramenta legada/emergencial. Ele mantém `flock` e executa instalação, testes, builds, backup/restore, migrations e troca direta do stack com `docker compose up --wait`; por isso, não é um comando de validação nem o mecanismo normal de publicação.
 
 Se a troca ou os healthchecks falharem, o script retagueia os IDs das imagens anteriores e recria o conjunto anterior de containers. Migrations são forward-only: o rollback não restaura automaticamente o banco de produção. O backup e o relatório de restore ficam em `.deploy-state/` (ou nos diretórios configurados por `ATENDON_DEPLOY_STATE_DIR` e `ATENDON_BACKUP_DIR`).
 
-O bump de changelog/versão é opt-in com `ATENDON_BUMP_VERSION=1`; o fluxo não executa commit nem push. Para uma tag fornecida pelo pipeline/Coolify, use `ATENDON_DEPLOY_VERSION`.
+### Release de versão e changelog
+
+O changelog é um artefato versionado: o Coolify constrói o checkout, mas não executa
+`build.sh` nem `scripts/changelog-bump.mjs`. Antes de publicar, no checkout local,
+execute o único comando de bump (`npm run version:bump`), revise o resultado,
+faça commit de `package.json` e `changelog.json` e faça push para o branch
+acompanhado pelo Coolify. Só então inicie o deployment; nenhuma geração ocorre
+dentro do Dockerfile.
+
+No painel do Coolify, defina para a aplicação Compose (Environment Variables):
+
+- `APP_VERSION`: versão semântica publicada, igual ao `current` do changelog
+  (por exemplo `1.22.0`);
+- `DEPLOY_VERSION`: identificador imutável do deploy, preferencialmente o SHA do
+  commit ou uma tag (por exemplo `a1b2c3d` ou `v1.22.0`).
+
+Essas variáveis são compartilhadas por API e worker. Se `APP_VERSION` não for
+definida, o backend usa `changelog.json.current` e, na ausência do arquivo,
+`package.json.version`; `DEPLOY_VERSION` usa `development` apenas como fallback
+local seguro. Recomenda-se sempre configurar ambos no Coolify para que a imagem
+e o runtime identifiquem exatamente o release implantado.

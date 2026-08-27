@@ -964,13 +964,15 @@ export default function Conversations() {
     setError("");
     setFollowUpPending(true);
     try {
-      await api(`/conversations/${selectedRef.current}/follow-up`, {
+      const response = await api<{ status?: string; code?: string }>(`/conversations/${selectedRef.current}/follow-up`, {
         method: "POST",
         headers: { "Idempotency-Key": `conversation-follow-up-${selectedRef.current}-${Date.now()}` }
       });
+      setAiActionNotice(response.status === "pending" ? "Follow-up enfileirado; o envio está sendo processado." : "Follow-up aceito.");
       await Promise.all([mutateList(), mutateThread()]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Falha ao enviar follow-up");
+      const message = e instanceof Error ? e.message : "Falha ao enviar follow-up";
+      setError(message.includes("idempotency_conflict") ? "Esta solicitação já está em andamento." : message);
     } finally {
       setFollowUpPending(false);
     }

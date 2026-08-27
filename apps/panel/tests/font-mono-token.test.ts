@@ -1,0 +1,17 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const css = readFileSync(resolve(__dirname, '../app/globals.css'), 'utf8');
+
+describe('font mono token', () => {
+  it('uses the replacement token and removes the legacy mono family from CSS', () => {
+    expect(css).toContain('--font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace');
+    expect(css).not.toContain(['IBM', 'Plex', 'Mono'].join(' '));
+  });
+
+  it('does not load the legacy mono family from Google Fonts', () => {
+    const importLine = css.split('\n')[0];
+    expect(importLine).not.toContain('IBM+Plex+Mono');
+  });
+});

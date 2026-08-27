@@ -11,13 +11,13 @@ export function PostSalesSummaryStrip({ summary }: { summary: PostSaleSummary })
     { label: "Completos", value: summary.complete, Icon: CheckCircle }
   ];
   return (
-    <dl className="post-sales-summary" aria-label="Resumo da carteira">
+    <div className="post-sales-summary-wrap"><dl className="post-sales-summary" aria-label="Resumo da carteira">
       {items.map(({ label, value, Icon, tone }) => (
         <div key={label} data-tone={tone || undefined}>
           <dt><Icon size={15} aria-hidden="true" /> {label}</dt>
           <dd className="mono">{value}</dd>
         </div>
       ))}
-    </dl>
+    </dl></div>
   );
 }
