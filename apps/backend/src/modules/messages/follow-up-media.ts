@@ -182,9 +182,15 @@ export class FollowUpMediaRepository {
     const used = await this.db.query<{ used: boolean }>(
       `SELECT EXISTS(
          SELECT 1 FROM tenant_ai_settings
-         WHERE tenant_id=$1 AND ai_follow_up_delivery @> $2::jsonb
+         WHERE tenant_id=$1 AND (
+           ai_follow_up_delivery @> $2::jsonb
+           OR ai_follow_up_delivery @> $3::jsonb
+           OR ai_follow_up_delivery @> $4::jsonb
+         )
        ) used`,
-      [tenantId, JSON.stringify([{ type: "image", assetId: id }])]
+      [tenantId, JSON.stringify([{ type: "image", assetId: id }]),
+        JSON.stringify([{ type: "audio", assetId: id }]),
+        JSON.stringify([{ type: "video", assetId: id }])]
     );
     if (used.rows[0]?.used) return "in_use";
     const result = await this.db.query(
@@ -195,13 +201,13 @@ export class FollowUpMediaRepository {
   }
 
   async validateDelivery(tenantId: string, delivery: FollowUpDelivery[]): Promise<void> {
-    const imageIds = delivery.filter((item) => item.type === "image").map((item) => item.assetId);
+    const mediaIds = delivery.filter((item) => item.type === "image" || item.type === "audio" || item.type === "video").map((item) => item.assetId);
     const stickerIds = delivery.filter((item) => item.type === "sticker").map((item) => item.assetId);
-    const [images, stickers] = await Promise.all([
-      imageIds.length
+    const [media, stickers] = await Promise.all([
+      mediaIds.length
         ? this.db.query<{ id: string }>(
           "SELECT id FROM ai_follow_up_media_assets WHERE tenant_id=$1 AND id=ANY($2::uuid[])",
-          [tenantId, imageIds]
+          [tenantId, mediaIds]
         )
         : Promise.resolve({ rows: [] as Array<{ id: string }> }),
       stickerIds.length
@@ -211,8 +217,8 @@ export class FollowUpMediaRepository {
         )
         : Promise.resolve({ rows: [] as Array<{ id: string }> })
     ]);
-    if (images.rows.length !== new Set(imageIds).size) {
-      throw Object.assign(new Error("Uma das imagens selecionadas não está mais disponível"), { statusCode: 400 });
+    if (media.rows.length !== new Set(mediaIds).size) {
+      throw Object.assign(new Error("Uma das mídias selecionadas não está mais disponível"), { statusCode: 400 });
     }
     if (stickers.rows.length !== new Set(stickerIds).size) {
       throw Object.assign(new Error("Uma das figurinhas selecionadas não está ativa ou não existe"), { statusCode: 400 });

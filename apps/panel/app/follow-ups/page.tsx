@@ -3,6 +3,7 @@
 import { Clock } from "@phosphor-icons/react";
 import { Shell } from "@/components/shell";
 import { AiFollowUpSettingsPanel } from "@/components/ai-follow-up-settings-panel";
+import { AiStickerLibrary } from "@/components/ai-sticker-library";
 
 export default function FollowUpsPage() {
   return (
@@ -15,6 +16,7 @@ export default function FollowUpsPage() {
         </div>
       </header>
       <AiFollowUpSettingsPanel />
+      <AiStickerLibrary />
     </Shell>
   );
 }

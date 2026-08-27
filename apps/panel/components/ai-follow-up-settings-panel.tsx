@@ -1,14 +1,15 @@
 "use client";
 
 import { ChatCircleDots, ClockCountdown, FloppyDisk, ImageSquare, Plus, Prohibit, Sticker, Trash, UploadSimple } from "@phosphor-icons/react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import useSWR from "swr";
 import { api } from "@/lib/api";
 import { formatFollowUpDelay, isValidFollowUpDelays, normalizeFollowUpDelivery, type AiFollowUpSettings, type FollowUpDelivery } from "@/lib/ai-follow-ups";
 
 type FollowUpMedia = { id: string; name: string; description: string; mime_type: string; file_name: string; size_bytes: number };
 type FollowUpSticker = { id: string; name: string; enabled: boolean };
 function apiContentUrl(path: string) { const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/backend"; return `${base}${path}`; }
-async function fileBase64(file: File): Promise<string> { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = () => reject(new Error("Não foi possível ler a imagem")); reader.onload = () => resolve(String(reader.result).split(",")[1] ?? ""); reader.readAsDataURL(file); }); }
+async function fileBase64(file: File): Promise<string> { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = () => reject(new Error("Não foi possível ler a mídia")); reader.onload = () => resolve(String(reader.result).split(",")[1] ?? ""); reader.readAsDataURL(file); }); }
 
 export function AiFollowUpSettingsPanel() {
   const defaultDelays = [120, 1440, 4320];
@@ -18,7 +19,17 @@ export function AiFollowUpSettingsPanel() {
     delivery: normalizeFollowUpDelivery(defaultDelays)
   });
   const [media, setMedia] = useState<FollowUpMedia[]>([]);
-  const [stickers, setStickers] = useState<FollowUpSticker[]>([]);
+  // A biblioteca de figurinhas usa a mesma chave SWR; assim, cadastrar ou ativar
+  // uma figurinha lá revalida esta lista sem exigir reload da página.
+  const { data: stickerData } = useSWR<{ stickers: FollowUpSticker[] }>(
+    "/ai-stickers",
+    (url: string) => api<{ stickers: FollowUpSticker[] }>(url),
+    { revalidateOnFocus: false }
+  );
+  const stickers = useMemo(
+    () => (stickerData?.stickers ?? []).filter((sticker) => sticker.enabled),
+    [stickerData?.stickers]
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -32,10 +43,9 @@ export function AiFollowUpSettingsPanel() {
     let active = true;
     Promise.all([
       api<{ settings: AiFollowUpSettings }>("/ai-follow-ups/settings"),
-      api<{ media: FollowUpMedia[] }>("/ai-follow-ups/media"),
-      api<{ stickers: FollowUpSticker[] }>("/ai-stickers")
+      api<{ media: FollowUpMedia[] }>("/ai-follow-ups/media")
     ])
-      .then(([settingsResponse, mediaResponse, stickerResponse]) => {
+      .then(([settingsResponse, mediaResponse]) => {
         if (!active) return;
         setSettings({
           ...settingsResponse.settings,
@@ -45,7 +55,6 @@ export function AiFollowUpSettingsPanel() {
           )
         });
         setMedia(mediaResponse.media);
-        setStickers(stickerResponse.stickers.filter((sticker) => sticker.enabled));
       })
       .catch((loadError: unknown) => {
         if (active) setError(loadError instanceof Error ? loadError.message : "Falha ao carregar os follow-ups da IA");
@@ -105,7 +114,7 @@ export function AiFollowUpSettingsPanel() {
       setUploadName("");
       setUploadDescription("");
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Falha ao adicionar a imagem");
+      setError(uploadError instanceof Error ? uploadError.message : "Falha ao adicionar a mídia");
     } finally {
       setUploading(false);
     }
@@ -176,6 +185,8 @@ export function AiFollowUpSettingsPanel() {
             const delivery = settings.delivery[index] ?? { type: "text" as const };
             const selectedImage = delivery.type === "image" ? media.find((item) => item.id === delivery.assetId) : undefined;
             const selectedSticker = delivery.type === "sticker" ? stickers.find((item) => item.id === delivery.assetId) : undefined;
+            const selectedAudio = delivery.type === "audio" ? media.find((item) => item.id === delivery.assetId) : undefined;
+            const selectedVideo = delivery.type === "video" ? media.find((item) => item.id === delivery.assetId) : undefined;
             return (
               <div key={index} className="grid gap-4 rounded border border-[var(--border)] p-4">
                 <div className="grid items-center gap-3 sm:grid-cols-[92px_minmax(0,1fr)_minmax(130px,auto)_40px]">
@@ -223,13 +234,17 @@ export function AiFollowUpSettingsPanel() {
                       value={delivery.type}
                       onChange={(event) => {
                         const type = event.target.value;
-                        if (type === "image" && media[0]) changeDelivery(index, { type, assetId: media[0].id });
+                        if (type === "image" && media.find((item) => item.mime_type.startsWith("image/"))) changeDelivery(index, { type, assetId: media.find((item) => item.mime_type.startsWith("image/"))!.id });
+                        else if (type === "audio" && media.find((item) => item.mime_type.startsWith("audio/"))) changeDelivery(index, { type, assetId: media.find((item) => item.mime_type.startsWith("audio/"))!.id });
+                        else if (type === "video" && media.find((item) => item.mime_type === "video/mp4")) changeDelivery(index, { type, assetId: media.find((item) => item.mime_type === "video/mp4")!.id });
                         else if (type === "sticker" && stickers[0]) changeDelivery(index, { type, assetId: stickers[0].id });
                         else changeDelivery(index, { type: "text" });
                       }}
                     >
                       <option value="text">Somente texto</option>
-                      <option value="image" disabled={!media.length}>Imagem + texto</option>
+                      <option value="image" disabled={!media.some((item) => item.mime_type.startsWith("image/"))}>Imagem + texto</option>
+                      <option value="audio" disabled={!media.some((item) => item.mime_type.startsWith("audio/"))}>Áudio (nota de voz, sem legenda)</option>
+                      <option value="video" disabled={!media.some((item) => item.mime_type === "video/mp4")}>Vídeo + texto</option>
                       <option value="sticker" disabled={!stickers.length}>Figurinha sem texto</option>
                     </select>
                   </label>
@@ -238,9 +253,11 @@ export function AiFollowUpSettingsPanel() {
                     <label className="field">
                       <span>Imagem do case</span>
                       <select className="input" value={delivery.assetId} onChange={(event) => changeDelivery(index, { type: "image", assetId: event.target.value })}>
-                        {media.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                        {media.filter((item) => item.mime_type.startsWith("image/")).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                       </select>
                     </label>
+                  ) : delivery.type === "audio" || delivery.type === "video" ? (
+                    <label className="field"><span>{delivery.type === "audio" ? "Áudio para enviar" : "Vídeo para enviar"}</span><select className="input" value={delivery.assetId} onChange={(event) => changeDelivery(index, { type: delivery.type, assetId: event.target.value })}>{media.filter((item) => delivery.type === "audio" ? item.mime_type.startsWith("audio/") : item.mime_type === "video/mp4").map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
                   ) : delivery.type === "sticker" ? (
                     <label className="field">
                       <span>Figurinha para descontrair</span>
@@ -267,7 +284,8 @@ export function AiFollowUpSettingsPanel() {
                     <img src={apiContentUrl(`/ai-stickers/${selectedSticker.id}/content`)} alt={selectedSticker.name} className="h-16 w-18 object-contain" />
                     <div><strong className="text-sm text-[var(--heading)]">{selectedSticker.name}</strong><p className="sub mt-1 text-xs">Será enviada sozinha, sem texto adicional.</p></div>
                   </div>
-                ) : null}
+                ) : selectedAudio ? (<div className="rounded bg-[var(--active)] p-3"><audio controls className="w-full" src={apiContentUrl(`/ai-follow-ups/media/${selectedAudio.id}/content`)} /><p className="sub mt-1 text-xs">Nota de voz, sem legenda.</p></div>)
+                : selectedVideo ? (<div className="rounded bg-[var(--active)] p-3"><video controls className="w-full" src={apiContentUrl(`/ai-follow-ups/media/${selectedVideo.id}/content`)} /><p className="sub mt-1 text-xs">O texto da IA será enviado como legenda.</p></div>) : null}
               </div>
             );
           })}
@@ -285,15 +303,15 @@ export function AiFollowUpSettingsPanel() {
       <aside className="border-t border-[var(--border)] pt-5 md:border-l md:border-t-0 md:pl-6 md:pt-1" aria-label="Como funcionam os follow-ups">
         <form className="grid gap-3 border-b border-[var(--border)] pb-6" onSubmit={uploadImage}>
           <div>
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--heading)]"><ImageSquare size={17} aria-hidden="true" />Imagens de cases</h2>
-            <p className="sub mt-1 text-xs leading-relaxed">Adicione JPEG, PNG ou WebP. Ao selecionar uma imagem, o texto criado pela IA vai na legenda.</p>
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--heading)]"><ImageSquare size={17} aria-hidden="true" />Mídias de cases</h2>
+            <p className="sub mt-1 text-xs leading-relaxed">Adicione imagens, áudio OGG/MP3 ou vídeo MP4. Áudio é enviado como nota de voz sem legenda; vídeo recebe a legenda da IA.</p>
           </div>
           <label className="field">
             <span>Arquivo</span>
             <input
               className="input file:mr-3 file:border-0 file:bg-transparent file:text-xs file:font-semibold"
               type="file"
-              accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+              accept="image/jpeg,image/png,image/webp,audio/ogg,audio/mpeg,video/mp4,.jpg,.jpeg,.png,.webp,.ogg,.mp3,.mp4"
               onChange={(event) => {
                 const next = event.target.files?.[0];
                 setUploadFile(next);
@@ -312,11 +330,11 @@ export function AiFollowUpSettingsPanel() {
           </label>
           <button className="btn active:scale-[0.98]" disabled={!uploadFile || !uploadName.trim() || !uploadDescription.trim() || uploading}>
             <UploadSimple size={16} aria-hidden="true" />
-            {uploading ? "Adicionando…" : "Adicionar imagem"}
+            {uploading ? "Adicionando…" : "Adicionar mídia"}
           </button>
           <div className="flex items-start gap-2 text-xs text-[var(--muted)]">
             <Sticker className="mt-0.5 shrink-0" size={15} aria-hidden="true" />
-            <p>As figurinhas vêm da biblioteca em <a className="accent underline-offset-2 hover:underline" href="/follow-ups">Follow-ups da IA</a> e sempre são enviadas sem texto.</p>
+            <p>As figurinhas vêm da biblioteca logo abaixo nesta página e sempre são enviadas sem texto.</p>
           </div>
         </form>
 

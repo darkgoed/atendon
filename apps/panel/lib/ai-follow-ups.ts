@@ -3,7 +3,9 @@ export type FollowUpIntervalUnit = "minutes" | "hours" | "days";
 export type FollowUpDelivery =
   | { type: "text" }
   | { type: "image"; assetId: string }
-  | { type: "sticker"; assetId: string };
+  | { type: "sticker"; assetId: string }
+  | { type: "audio"; assetId: string }
+  | { type: "video"; assetId: string };
 
 export interface AiFollowUpSettings {
   enabled: boolean;

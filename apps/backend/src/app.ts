@@ -225,12 +225,14 @@ const signatureSettingsSchema = z.object({
   nameStyle: z.enum(["full", "first_name"])
 });
 const conversationSignatureSchema = z.object({ enabled: z.boolean().nullable() });
-const aiFollowUpSettingsSchema = z.object({
+export const aiFollowUpSettingsSchema = z.object({
   enabled: z.boolean(),
   delaysMinutes: z.array(z.number().int().min(1).max(43_200)).min(1).max(10).optional(),
   delivery: z.array(z.discriminatedUnion("type", [
     z.object({ type: z.literal("text") }),
     z.object({ type: z.literal("image"), assetId: z.string().uuid() }),
+    z.object({ type: z.literal("audio"), assetId: z.string().uuid() }),
+    z.object({ type: z.literal("video"), assetId: z.string().uuid() }),
     z.object({ type: z.literal("sticker"), assetId: z.string().uuid() })
   ])).min(1).max(10).optional(),
   // Compatibilidade temporária com clientes anteriores. A API persiste e
@@ -1360,6 +1362,8 @@ export function buildApp() {
     const deliveryResult = z.array(z.discriminatedUnion("type", [
       z.object({ type: z.literal("text") }),
       z.object({ type: z.literal("image"), assetId: z.string().uuid() }),
+      z.object({ type: z.literal("audio"), assetId: z.string().uuid() }),
+      z.object({ type: z.literal("video"), assetId: z.string().uuid() }),
       z.object({ type: z.literal("sticker"), assetId: z.string().uuid() })
     ])).safeParse(row?.ai_follow_up_delivery);
     const delivery = deliveryResult.success && deliveryResult.data.length === delaysMinutes.length

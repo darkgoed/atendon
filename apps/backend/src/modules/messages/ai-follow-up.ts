@@ -248,6 +248,16 @@ export function followUpSystemPrompt(claim: Pick<AiFollowUpClaim, "systemPrompt"
 - Contexto factual informado pelo operador: "${compactContextText(claim.delivery.description ?? "sem contexto adicional", 500)}".
 - Escreva uma legenda natural que apresente essa imagem e conecte o case ao próximo passo da conversa. Use somente os fatos fornecidos no contexto; não invente números, resultados ou prazos.
 `
+    : claim.delivery?.type === "audio"
+      ? `\nFORMATO DESTA TENTATIVA:
+- Um áudio chamado "${compactContextText(claim.delivery.name ?? "áudio selecionado", 100)}" será enviado como nota de voz, sem texto ou legenda acompanhando o envio.
+- Contexto factual informado pelo operador: "${compactContextText(claim.delivery.description ?? "sem contexto adicional", 500)}". Use-o para orientar o conteúdo do áudio sem inventar fatos.
+`
+      : claim.delivery?.type === "video"
+        ? `\nFORMATO DESTA TENTATIVA:
+- Um vídeo chamado "${compactContextText(claim.delivery.name ?? "vídeo selecionado", 100)}" será enviado com uma legenda curta.
+- Contexto factual informado pelo operador: "${compactContextText(claim.delivery.description ?? "sem contexto adicional", 500)}". Escreva uma legenda natural usando somente esses fatos; não invente números, resultados ou prazos.
+`
     : "";
   return protectedSystemPrompt(`${claim.systemPrompt}
 
