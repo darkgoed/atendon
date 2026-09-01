@@ -78,6 +78,17 @@ describe("confirmação de reunião pelo contato", () => {
     expect(planned.map((entry: { moment: string }) => entry.moment)).toEqual(["duas_horas_antes", "quinze_minutos_antes"]);
   });
 
+  it("o Momento 1 nunca é agendado para o futuro", () => {
+    // Quem envia o pedido de confirmação logo após agendar é a própria IA, na
+    // conversa. Se o runtime também o agendasse, o lead receberia a mensagem
+    // duplicada e, dias depois, com "hoje" apontando para a data errada.
+    const planned = decideConfirmationMoments({
+      startAt, now: new Date("2026-08-31T09:00:00Z"), appointmentStatus: "confirmado", state: "nao_solicitada"
+    });
+    const posAgendamento = planned.find((entry: { moment: string }) => entry.moment === "pos_agendamento");
+    expect(posAgendamento?.availableAt.toISOString()).toBe("2026-08-31T09:00:00.000Z");
+  });
+
   it("aceita variant fora da faixa sem quebrar a montagem", () => {
     const base = { appointmentId: "a", moment: "duas_horas_antes" as const, name: "João", formattedTime: "16h", state: "solicitada" as const };
     // -1 precisa cair na mesma variação que 2, e nunca produzir índice inválido.

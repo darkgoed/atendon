@@ -111,14 +111,41 @@ Revisor achou 4 itens. Triagem (2 procedem, 1 rejeitado, 1 já conhecido):
 Testes de meeting-confirmation: 6 (subagente) → **11** (após minhas correções).
 
 ## Guardrail de deploy
-Perfil do usuário: deploy é SEMPRE decisão dele. Nada commitado, nada deployado.
+Deploy AUTORIZADO pelo usuário em 2026-09-01 ("faça deploy e termine oq tem q terminar").
+
+## Fase 9 — Worker de confirmação + DEPLOY: CONCLUÍDAS
+
+Worker construído (fila `meeting-confirmation`, repository/processor, wiring no
+worker.ts). Defeitos que EU achei no entregável do subagente e corrigi:
+1. `enqueueForAppointment` fazia JOIN em tabela `lead` — **não existe** (é
+   `scheduling_leads`). Query quebraria em runtime.
+2. Ordenava por `conversations.updated_at` — coluna inexistente.
+3. `markAttemptStarted` sem RETURNING: `rows[0]` sempre undefined → retornava
+   false → **nunca enviaria nada**.
+4. Gate da flag com default `true` (`= async()=>true`) → falha ABERTA. Removido
+   o default: sem verificador explícito, nada é enviado.
+5. Worker não era fechado no shutdown (vazamento de conexão).
+6. Faltava o gatilho: nada criava linhas na outbox. Adicionado
+   `findAppointmentsNeedingConfirmation` (varredura self-healing, cobre também
+   reagendamento e agendamentos anteriores à feature).
+7. Código e testes vinham minificados numa linha; reescritos legíveis.
+
+As 8 queries SQL novas foram validadas por PREPARE contra o schema real.
+
+### Deploy verificado em produção
+- push graft fast-forward (sem `+`): `b227643..cb13c55` → origin/main
+- Coolify deployment #19, status `finished`, commit `cb13c556b821`
+- `database-migrate` Exited (0); `schema_migrations` termina em 0128
+- prompt publicado: **v48 active (49.560 bytes)**, v47 retired
+- conteúdo conferido no banco: momento/aderência/decisor/cadeia presentes,
+  "nenhuma nota pode descartar" preservada
+- flag `scheduling_meeting_confirmation_v1` = NULL (desligada)
+- outbox: 28 pending, 14 suppressed, **0 attempted_at / 0 external_message_id**
+  → o gate funcionou em produção real, nenhum lead recebeu mensagem
+- worker: 14 "Meeting confirmation processed" result=suppressed, 0 erros nível 50
+- painel público 200; bundle servido pelo domínio contém "Momento de compra"
 
 ## Débito declarado honestamente
-- O agendador (worker/fila) que ENFILEIRA e ENVIA as confirmações NÃO foi
-  construído. O módulo tem textos + lógica de decisão testados, mas ninguém o
-  importa ainda (verificado por grep). Consequência: o Momento 1 já é coberto
-  pela própria resposta da IA (via prompt), mas Momentos 2 e 3 dependem desse
-  agendador. A flag desligada torna isso seguro.
 - `version service` x3 continua falhando (1.21.0 vs 1.22.0) — dívida anterior,
   fora do escopo desta rodada.
 

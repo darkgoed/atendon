@@ -8,9 +8,9 @@ const claimed = {
   conversationId: "c1",
   sessionId: "s1",
   destination: "5511999999999",
-  messageText: "Fechado, ficou marcado pra hoje às 16h",
-  moment: "pos_agendamento" as const,
-  state: "nao_solicitada" as const
+  messageText: "Ana, nossa conversa está marcada pra hoje às 16h Segue tudo certo pra você?",
+  moment: "duas_horas_antes" as const,
+  state: "solicitada" as const
 };
 
 function setup(flagEnabled = true) {

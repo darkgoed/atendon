@@ -122,6 +122,28 @@ export function interpretConfirmationResponse(response: string, current: Contact
 
 const CONFIRMATION_LEASE_MS = 60_000;
 
+/**
+ * Momentos disparados pelo runtime a partir do horário da reunião.
+ *
+ * `pos_agendamento` NÃO entra aqui de propósito: quem envia o pedido de
+ * confirmação logo após agendar é a própria IA, dentro da conversa (seção 21
+ * do prompt). Enfileirá-lo aqui produziria mensagem duplicada e, pior, uma
+ * confirmação retroativa — "Fechado, ficou marcado pra hoje às 09h" enviada
+ * dias depois do agendamento, com o "hoje" errado. Os textos do Momento 1
+ * seguem no catálogo porque descrevem o que a IA deve dizer.
+ */
+const RUNTIME_SCHEDULED_MOMENTS: readonly ConfirmationMoment[] = [
+  "duas_horas_antes",
+  "quinze_minutos_antes"
+];
+
+/**
+ * Texto gravado no enfileiramento. Nunca é enviado: o texto real é redigido no
+ * claim, com o horário e o estado de confirmação vigentes naquele momento.
+ * A coluna exige ao menos 1 caractere, por isso não usamos string vazia.
+ */
+const PENDING_MESSAGE_PLACEHOLDER = "(a redigir no envio)";
+
 /** Momentos cujo texto pede uma ação do contato (os demais só lembram). */
 const MOMENTS_REQUESTING_CONFIRMATION: readonly ConfirmationMoment[] = [
   "pos_agendamento",
@@ -211,24 +233,14 @@ export class MeetingConfirmationRepository {
         now: new Date(),
         state: appointment.contact_confirmation_state,
         appointmentStatus: appointment.status
-      });
-
-      const formattedTime = new Intl.DateTimeFormat("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: appointment.timezone || "America/Sao_Paulo"
-      }).format(appointment.start_at);
-      const contactName = appointment.lead_name?.trim().split(/\s+/)[0] ?? "";
+      }).filter((entry) => RUNTIME_SCHEDULED_MOMENTS.includes(entry.moment));
 
       const inserted: string[] = [];
       for (const entry of planned) {
-        const message = buildConfirmationMessage({
-          appointmentId: appointment.id,
-          moment: entry.moment,
-          name: contactName,
-          formattedTime,
-          state: appointment.contact_confirmation_state
-        });
+        // message_text entra vazio de propósito e é redigido no momento do
+        // envio (claim). Congelar o texto aqui produziria "hoje" errado para
+        // uma reunião de amanhã e ignoraria uma confirmação que o contato
+        // tenha dado entre o enfileiramento e a janela de disparo.
         const row = await client.query<{ id: string }>(
           `INSERT INTO scheduling_meeting_confirmation_outbox(
              tenant_id, appointment_id, conversation_id, session_id,
@@ -240,7 +252,7 @@ export class MeetingConfirmationRepository {
           [
             appointment.tenant_id, appointment.id, appointment.conversation_id,
             appointment.session_id, appointment.contact_phone, appointment.contact_jid,
-            entry.moment, message, entry.availableAt
+            entry.moment, PENDING_MESSAGE_PLACEHOLDER, entry.availableAt
           ]
         );
         if (row.rows[0]) inserted.push(row.rows[0].id);
@@ -257,7 +269,8 @@ export class MeetingConfirmationRepository {
         message_text: string; moment: ConfirmationMoment; status: string;
         attempted_at: Date | null; processing_started_at: Date | null;
         available: boolean; contact_confirmation_state: ContactConfirmationState;
-        appointment_status: AppointmentStatus;
+        appointment_status: AppointmentStatus; start_at: Date;
+        lead_name: string | null; timezone: string;
       }>(
         `SELECT outbox.id, outbox.tenant_id, outbox.appointment_id, outbox.conversation_id,
                 outbox.session_id, outbox.contact_phone, outbox.contact_jid,
@@ -265,10 +278,16 @@ export class MeetingConfirmationRepository {
                 outbox.attempted_at, outbox.processing_started_at,
                 outbox.available_at <= now() available,
                 appointment.contact_confirmation_state,
-                appointment.status appointment_status
+                appointment.status appointment_status,
+                appointment.start_at,
+                lead.name lead_name,
+                tenant.timezone
          FROM scheduling_meeting_confirmation_outbox outbox
          JOIN scheduling_appointments appointment
            ON appointment.id = outbox.appointment_id AND appointment.tenant_id = outbox.tenant_id
+         JOIN scheduling_leads lead
+           ON lead.id = appointment.lead_id AND lead.tenant_id = appointment.tenant_id
+         JOIN tenants tenant ON tenant.id = outbox.tenant_id
          WHERE outbox.id = $1
          FOR UPDATE OF outbox SKIP LOCKED`,
         [outboxId]
@@ -317,6 +336,27 @@ export class MeetingConfirmationRepository {
       );
       if (!claimed.rows[0]) return null;
 
+      // O texto é redigido AGORA, não no enfileiramento: usa o horário da
+      // reunião no fuso do tenant e o estado de confirmação vigente, de forma
+      // que quem confirmou receba lembrete e quem não confirmou receba pedido.
+      const formattedTime = new Intl.DateTimeFormat("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: row.timezone || "America/Sao_Paulo"
+      }).format(row.start_at);
+      const contactName = row.lead_name?.trim().split(/\s+/)[0] ?? "";
+      const messageText = buildConfirmationMessage({
+        appointmentId: row.appointment_id,
+        moment: row.moment,
+        name: contactName,
+        formattedTime,
+        state: row.contact_confirmation_state
+      });
+      await client.query(
+        "UPDATE scheduling_meeting_confirmation_outbox SET message_text=$3, updated_at=now() WHERE id=$1 AND tenant_id=$2",
+        [row.id, row.tenant_id, messageText]
+      );
+
       return {
         id: row.id,
         tenantId: row.tenant_id,
@@ -324,7 +364,7 @@ export class MeetingConfirmationRepository {
         conversationId: row.conversation_id,
         sessionId: row.session_id,
         destination: row.contact_jid ?? row.contact_phone,
-        messageText: row.message_text,
+        messageText,
         moment: row.moment,
         state: row.contact_confirmation_state
       };
@@ -411,6 +451,10 @@ export class MeetingConfirmationRepository {
    * indisponibilidade do worker se recupera sozinha na próxima passada.
    * `enqueueForAppointment` usa ON CONFLICT DO NOTHING, então reprocessar é
    * inofensivo.
+   *
+   * Cobre apenas os Momentos 2 e 3: o Momento 1 é enviado pela própria IA na
+   * conversa, e quem marca `solicitada` naquele caso é
+   * `markConfirmationRequested`.
    */
   async findAppointmentsNeedingConfirmation(limit = 100): Promise<string[]> {
     const result = await this.pool.query<{ id: string }>(

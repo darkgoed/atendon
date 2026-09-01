@@ -946,7 +946,17 @@ export class MessageProcessor {
       await repository.markHandoffNotificationSent(notification.id, sent.externalId);
     },
     private readonly schedulingMinimumLeadMinutes = 15,
-    private readonly aiTurnProgress?: AiTurnProgressPublisher
+    private readonly aiTurnProgress?: AiTurnProgressPublisher,
+    /**
+     * Injetado como função para não acoplar o processamento de mensagens ao
+     * módulo de scheduling. Opcional: quando ausente, o turno segue normal e
+     * apenas o registro de confirmação deixa de acontecer.
+     */
+    private readonly registerContactConfirmation?: (
+      tenantId: string,
+      appointmentId: string,
+      response: string
+    ) => Promise<boolean>
   ) {}
 
   async process(
@@ -1248,6 +1258,26 @@ export class MessageProcessor {
       capabilityEnabled("leads_v1"),
       capabilityEnabled("appointments_v1")
     ]);
+    // Registro anti no-show: uma resposta afirmativa do contato promove o
+    // agendamento a CONFIRMADO. Fica antes de qualquer ramo que encerre o
+    // turno (inclusive o de reação com 👍), senão um "sim" seguido de "ok"
+    // seria lido como confirmação e nunca chegaria aqui.
+    if (appointmentsCapabilityEnabled && context.activeAppointment && this.registerContactConfirmation) {
+      try {
+        await this.registerContactConfirmation(
+          message.tenantId,
+          context.activeAppointment.id,
+          effectiveMessage.text
+        );
+      } catch (error) {
+        // Confirmação é sinal comercial, não parte do fluxo de resposta:
+        // uma falha aqui nunca pode derrubar o atendimento.
+        logger.error(
+          { err: error, tenantId: message.tenantId, appointmentId: context.activeAppointment.id },
+          "Falha ao registrar confirmação de presença do contato"
+        );
+      }
+    }
     if (
       appointmentsCapabilityEnabled
       && context.activeAppointment
