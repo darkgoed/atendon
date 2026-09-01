@@ -163,7 +163,9 @@ export const qualificationAnswersBody = z.object({
   possibilidade_investimento: z.string().trim().min(1).max(500).optional(),
   cidade: z.string().trim().min(1).max(500).optional(),
   decisor_comercial: z.string().trim().min(1).max(500).optional(),
-  instagram: z.string().trim().min(1).max(500).optional()
+  instagram: z.string().trim().min(1).max(500).optional(),
+  participacao_decisor: z.string().trim().min(1).max(500).optional(),
+  momento_compra: z.string().trim().min(1).max(500).optional()
 }).strict();
 export const qualifyLeadBody = z.object({
   estrelas: z.number().int().min(1).max(5),

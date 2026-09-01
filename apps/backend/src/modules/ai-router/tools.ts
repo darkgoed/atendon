@@ -131,7 +131,9 @@ const NEWAVE_TOOL_DEFINITIONS: ToolDefinition[] = [
           possibilidade_investimento: { type: "string" },
           cidade: { type: "string" },
           decisor_comercial: { type: "string" },
-          instagram: { type: "string" }
+          instagram: { type: "string" },
+          participacao_decisor: { type: "string", description: "Registrar no formato: Decisor: sozinho|sócio|outro; Todos participarão: sim|não confirmado." },
+          momento_compra: { type: "string", description: "Classificação INTERNA do momento de compra: quente (quer implementar agora/curto prazo), morno (está avaliando) ou frio (curiosidade/sem previsão). Nunca revelar ao contato." }
         },
         additionalProperties: false
       },

@@ -126,7 +126,7 @@ describe("operational feature flags", () => {
       "web_push_v1",
     ]);
     const flags = await workspaceFlags(ownerACookie);
-    expect(FEATURE_FLAG_KEYS).toHaveLength(19);
+    expect(FEATURE_FLAG_KEYS).toHaveLength(20);
     expect(Object.keys(flags).sort()).toEqual([...FEATURE_FLAG_KEYS].sort());
     expect(Object.entries(flags).every(([key, enabled]) => enabled === released.has(key))).toBe(true);
 
@@ -143,7 +143,7 @@ describe("operational feature flags", () => {
 
     const rootList = await app.inject({ url: "/root/feature-flags", headers: { cookie: rootCookie } });
     expect(rootList.statusCode).toBe(200);
-    expect(rootList.json().flags).toHaveLength(19);
+    expect(rootList.json().flags).toHaveLength(20);
     expect(rootList.json().flags.every((flag: {
       key: string;
       defaultEnabled: boolean;

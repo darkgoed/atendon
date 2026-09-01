@@ -29,7 +29,7 @@ describe("migrations on a clean database", () => {
       try {
         await fresh.connect();
         const result = await runMigrations(fresh, fileURLToPath(new URL("../src/db/migrations", import.meta.url)), () => undefined);
-        expect(result.applied.at(-1)).toBe("0124_outbound_message_recovery.sql");
+        expect(result.applied.at(-1)).toBe("0128_newave_commercial_prompt_revision.sql");
         expect((await runMigrations(
           fresh,
           fileURLToPath(new URL("../src/db/migrations", import.meta.url)),
@@ -48,7 +48,7 @@ describe("migrations on a clean database", () => {
            FROM feature_flag_definitions`
         );
         expect(flags.rows[0]).toEqual({
-          total: 19,
+          total: 20,
           defaults_off: true,
           globals_enabled: 4,
           kills_off: true
@@ -284,7 +284,7 @@ describe("migrations on a clean database", () => {
           const snapshot = await recordDeploymentFeatureFlagSnapshot(snapshotPool, deployVersion);
           expect(snapshot).toMatchObject({
             deployVersion,
-            latestMigration: "0124_outbound_message_recovery.sql",
+            latestMigration: "0128_newave_commercial_prompt_revision.sql",
             created: true
           });
           expect(snapshot.globalFlags.case_organization_v1.enabled).toBe(true);

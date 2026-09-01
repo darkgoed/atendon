@@ -8,7 +8,7 @@ import useSWR from "swr";
 import { ContactAvatar } from "@/components/contact-avatar";
 import { Shell } from "@/components/shell";
 import { ApiError, api } from "@/lib/api";
-import { leadStatusLabel } from "@/lib/labels";
+import { commercialPreparationAnswers, leadStatusLabel } from "@/lib/labels";
 import { useRealtimeSignals } from "@/lib/realtime";
 import {
   canLeaveCaseUnassigned,
@@ -25,6 +25,7 @@ type Qualificacao = {
   resumo: string | null;
   avaliado_em: string | null;
   requer_decisao_humana: boolean;
+  respostas?: Record<string, string> | null;
   origem_facebook?: { source_type?: string; source_id?: string; source_url?: string; headline?: string; body?: string; ctwa_clid?: string };
 };
 
@@ -488,6 +489,11 @@ export default function LeadDetail() {
                     <Item label="Campanha/anúncio" value={data.qualificacao.origem_facebook?.headline ?? data.qualificacao.origem_facebook?.source_id} />
                     <Item label="Origem" value={data.qualificacao.origem_facebook?.source_type ? `Facebook · ${data.qualificacao.origem_facebook.source_type}` : "Facebook/WhatsApp"} />
                   </dl>
+                  {commercialPreparationAnswers(data.qualificacao.respostas).length ? (
+                    <dl className="mb-4 grid gap-3 text-sm md:grid-cols-2">
+                      {commercialPreparationAnswers(data.qualificacao.respostas).map((item) => <Item key={item.key} label={item.label} value={item.value} />)}
+                    </dl>
+                  ) : null}
                   <div className="rounded border border-[var(--border)] p-4"><strong className="mb-2 block text-xs">Resumo</strong><p className="whitespace-pre-wrap text-sm text-[var(--body)]">{data.qualificacao.resumo ?? "—"}</p></div>
                 </section>
               ) : (

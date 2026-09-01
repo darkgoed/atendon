@@ -1,107 +1,237 @@
-Em configurações, ja possuimos o modulo de follow-up no qual a gente seleciona a cadencia e especifica qual tipo de follow up vai ser enviado: "Cadência automática
-Após o intervalo, a IA relê a conversa e só envia se a resposta for necessária para avançar ao agendamento ou ao fechamento com o SDR ou especialista. Qualquer resposta do contato encerra a sequência atual.
+1. Manter a qualificação curta
 
-Ativo
-Tentativas cumulativas
-Cada valor é contado desde a resposta original da IA, não desde a tentativa anterior.
+Depois que a IA já entende nome + negócio + dor, faltariam apenas duas perguntas comerciais realmente importantes.
 
-Adicionar
-1ª tentativa
-120
-2 hora(s) após a origem
+Pergunta 1 — Decisor
 
-Formato do envio
+“Uma parceria como essa depende só de você ou mais alguém participa da decisão?”
 
-Somente texto
-A IA escreve uma retomada curta de acordo com o contexto.
+Se disser sócio:
 
-2ª tentativa
-1440
-1 dia(s) após a origem
+“Nesse caso, o ideal é ele participar da conversa também, assim vocês conseguem avaliar tudo juntos e evitamos você ter que repassar a apresentação depois”
 
-Formato do envio
+E encerra. Não faz outra pergunta no mesmo turno.
 
-Somente texto
-A IA escreve uma retomada curta de acordo com o contexto.
+Pergunta 2 — Momento
 
-3ª tentativa
-4320
-3 dia(s) após a origem
+“Se a solução fizer sentido para a loja, vocês pensam em colocar isso em prática agora ou estão mais na fase de conhecer?”
 
-Formato do envio
+Respostas livres.
 
-Figurinha sem texto
-Figurinha para descontrair
+A IA classifica internamente como:
 
-fig-da-pra-me-responder
-fig-da-pra-me-responder
-fig-da-pra-me-responder
-Será enviada sozinha, sem texto adicional.
+Quente: quer implementar agora / curto prazo
+Morno: está avaliando
+Frio: curiosidade / sem previsão
 
-4ª tentativa
-5760
-4 dia(s) após a origem
+Não precisamos perguntar diretamente:
 
-Formato do envio
+“Você está preparado para fechar?”
 
-Somente texto
-A IA escreve uma retomada curta de acordo com o contexto.
+Acho agressivo demais para WhatsApp e tende a criar resistência antes da reunião.
 
-5ª tentativa
-5800
-5800 minuto(s) após a origem
+2. Eu mudaria a regra de “todo lead agenda”
 
-Formato do envio
+Hoje o prompt determina:
 
-Somente texto
-A IA escreve uma retomada curta de acordo com o contexto.
+“Todo lead deve ser conduzido a uma tentativa de agendamento”
 
-6ª tentativa
-7240
-7240 minuto(s) após a origem
+Eu substituiria por:
 
-Formato do envio
+Todo lead com aderência comercial deve ser conduzido a uma tentativa de agendamento
+Antes de oferecer horários, a IA deve verificar se há negócio compatível, dor relacionada à solução, capacidade mínima definida pela operação e intenção real de avaliar a Newave
+Leads sem aderência ou claramente sem momento de compra não devem ocupar a agenda comercial, podendo permanecer em acompanhamento ou nutrição
 
-Somente texto
-A IA escreve uma retomada curta de acordo com o contexto.
+Isso é essencial.
 
-7ª tentativa
-8680
-8680 minuto(s) após a origem
+Senão podemos criar uma IA excelente em agendar reuniões ruins.
 
-Formato do envio
+3. Decisor precisa entrar na regra de reunião
 
-Somente texto
-A IA escreve uma retomada curta de acordo com o contexto.
+Eu acrescentaria ao prompt:
 
-8ª tentativa
-10120
-10120 minuto(s) após a origem
+Participação de decisores
 
-Formato do envio
+Se o contato disser que depende de sócio, gerente ou outro responsável para tomar a decisão, a IA deve tentar organizar a reunião com essa pessoa presente
 
-Somente texto
-A IA escreve uma retomada curta de acordo com o contexto.
+Nunca diga que a reunião não pode acontecer sem ela
 
-Alterações também atualizam sequências que ainda estão aguardando."
-Por favor, transfira isso que temos em configurações para o novo /follow-ups e retire ele do menu lateral, mantenha em configuracoes como modulo iguais: "Alertas
-Central operacional exclusiva do ROOT
-Conexão
-Sessão e estado do WhatsApp
-Membros
-Equipe e convites do workspace"
+Explique o benefício de participar:
 
-Em /agenda, precisa ser corrigido problema de consistencia e responsividade, creio que deve ser resolvido em todos os modulos/telas, tem botões com textos bugados, tem texto sobrepostos, icones sobrepostos a textos, faça uma analise PROFUNDA sobre isso
+“Assim vocês conseguem avaliar juntos e tirar todas as dúvidas na mesma conversa”
 
-Troque a fonte: IBM Plex Mono por outra, não gosto dela
+Ao registrar o lead, informar ao comercial:
 
-Botão de follow-up em /conversas esta dando erro 409, falha na aquisição
+Decisor: sozinho / sócio / outro
+Todos participarão: sim / não confirmado
 
-Em /leads/pipeline do lado do botão Kanban tem o botão Lista, dê vida à esse botão
+Isso já prepara o Beto para a call.
 
-Lead que compareceu ou não compareceu, deve ter botão para reagendar o lead, após lead reagendado automaticamente o status vai para confirmado normalmente
-Após o comparecimento ou não comparecimento, o lead não pode MUDAR de responsavel, somente se transferido pelo proprio closer ou cargo maior, mas não pode ser alterador para outro closer de forma automatica
+4. O maior ajuste anti-no-show
 
-O hover dos leads da agenda, não deve aparecer "Compartilhado ou Livre" não deve ter texto nenhum no hover
+No script atual, depois do agendamento a IA confirma e encerra.
 
-Sistema de changelog com a nova infra utilizando coolify não esta funcionando
+Eu criaria um estado diferente:
+
+AGENDADO
+↓
+CONFIRMAÇÃO SOLICITADA
+↓
+CONFIRMADO
+↓
+REUNIÃO
+
+Após o agendamento:
+
+“Fechado, ficou marcado pra amanhã às 14h pelo Google Meet
+
+Como esse horário fica reservado pra sua operação, me confirma por aqui se posso contar contigo”
+
+Agora existe uma ação ativa do lead.
+
+Se responder:
+
+“Sim”
+
+CRM:
+
+CONFIRMADO
+
+Isso vale mais do que simplesmente enviar:
+
+“Sua reunião é amanhã às 14h.”
+
+5. Confirmação no dia
+
+Quando o runtime disparar o lembrete, eu mudaria de lembrete passivo para confirmação:
+
+“[Nome], passando pra confirmar nossa conversa de hoje às 14h, segue tudo certo por aí?”
+
+Se responder sim:
+
+CONFIRMADO NO DIA
+
+Se não responder, entra numa rotina específica de recuperação.
+
+Isso também está de acordo com a regra atual do documento de só disparar lembretes quando o CRM/runtime determinar.
+
+6. Beto precisa receber um resumo melhor
+
+# CONFIRMAÇÕES DE REUNIÃO — NEWAVE
+
+## MOMENTO 1 — LOGO APÓS O AGENDAMENTO
+
+### Variação 1
+
+Fechado, ficou marcado pra hoje às 16h
+
+Só me confirma se segue tudo certo pra gente se falar nesse horário?
+
+### Variação 2
+
+Combinado, nossa conversa ficou pra hoje às 16h
+
+Me dá um ok por aqui só pra eu confirmar contigo
+
+### Variação 3
+
+Prontinho, deixei marcado pra hoje às 16h
+
+Tá tudo certo pra você nesse horário?
+
+---
+
+# MOMENTO 2 — 1 A 2 HORAS ANTES
+
+## SE O LEAD JÁ CONFIRMOU
+
+### Variação 1
+
+[Nome], passando só pra lembrar que nossa conversa é hoje às 16h
+
+Nos falamos daqui a pouco
+
+### Variação 2
+
+[Nome], daqui a pouco temos nossa conversa das 16h
+
+Até já
+
+### Variação 3
+
+[Nome], nossa conversa segue marcada pras 16h
+
+Daqui a pouco nos falamos
+
+---
+
+## SE O LEAD AINDA NÃO CONFIRMOU
+
+### Variação 1
+
+[Nome], nossa conversa está marcada pra hoje às 16h
+
+Segue tudo certo pra você?
+
+### Variação 2
+
+[Nome], passando pra confirmar nosso horário de hoje às 16h
+
+Consegue me dar um ok por aqui?
+
+### Variação 3
+
+[Nome], temos nossa conversa marcada pras 16h de hoje
+
+Posso manter esse horário contigo?
+
+---
+
+# MOMENTO 3 — 15 MINUTOS ANTES
+
+## SE O LEAD JÁ CONFIRMOU
+
+Não pedir confirmação novamente, apenas lembrar e facilitar a entrada na reunião
+
+### Variação 1
+
+[Nome], nossa conversa começa em 15 minutinhos
+
+Até já
+
+### Variação 2
+
+[Nome], passando só pra avisar que daqui a 15 minutos começamos nossa conversa
+
+Nos falamos já
+
+### Variação 3
+
+[Nome], falta só 15 minutinhos pra nossa conversa
+
+Até daqui a pouco
+
+---
+
+## SE O LEAD AINDA NÃO RESPONDEU
+
+Aqui fazemos a última tentativa de confirmação
+
+### Variação 1
+
+[Nome], nossa conversa começa em 15 minutos
+
+Segue tudo certo pra você participar?
+
+### Variação 2
+
+[Nome], estamos a 15 minutos do nosso horário
+
+Consegue me confirmar se vai conseguir entrar?
+
+### Variação 3
+
+[Nome], nossa conversa está marcada pra daqui a 15 minutos
+
+Se aconteceu algum imprevisto, me avisa por aqui
+

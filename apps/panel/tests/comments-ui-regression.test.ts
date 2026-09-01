@@ -215,8 +215,15 @@ describe("comments.md UI regressions", () => {
     expect(leadDetailSource).not.toContain("Respostas estruturadas");
     expect(leadDetailSource).not.toContain("Nenhuma resposta estruturada foi registrada");
     expect(leadDetailSource).not.toContain("Justificativa interna");
-    expect(leadDetailSource).not.toContain("qualificacao.respostas");
     expect(leadDetailSource).not.toContain("qualificacao.justificativa");
+  });
+
+  // O dump completo das respostas continua fora do detalhe do lead. Decisor e
+  // momento de compra são a exceção pedida pelo comercial: preparam o closer
+  // para a call e passam por uma seleção explícita, não por despejo do jsonb.
+  it("shows only decision maker and buying moment from the structured answers", () => {
+    expect(leadDetailSource).toContain("commercialPreparationAnswers(data.qualificacao.respostas)");
+    expect(leadDetailSource).not.toContain("readableQualificationAnswers(data.qualificacao.respostas)");
   });
 
   it("does not render the lead detail timeline", () => {

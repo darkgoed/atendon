@@ -202,6 +202,59 @@ function readableFallback(value: string): string {
   return normalized ? normalized[0].toLocaleUpperCase("pt-BR") + normalized.slice(1) : "Não informado";
 }
 
+const qualificationAnswerLabels: Record<string, string> = {
+  tempo_mercado: "Tempo de mercado",
+  faturamento: "Faturamento",
+  nicho: "Nicho",
+  ticket_medio: "Ticket médio",
+  causa_perda_vendas: "Causa da perda de vendas",
+  possibilidade_investimento: "Possibilidade de investimento",
+  cidade: "Cidade",
+  decisor_comercial: "Decisor comercial",
+  instagram: "Instagram",
+  participacao_decisor: "Participação do decisor",
+  momento_compra: "Momento de compra"
+};
+
+// O jsonb do banco não preserva ordem útil para leitura. Fixamos a ordem em que
+// o comercial lê o card: contexto do negócio primeiro, decisão e momento por
+// último, que é o que prepara a call.
+const qualificationAnswerOrder = Object.keys(qualificationAnswerLabels);
+
+/**
+ * Campos que preparam o closer para a call, pedidos explicitamente pelo
+ * comercial. Uma decisão anterior removeu do detalhe do lead o dump completo
+ * das respostas estruturadas por ser ruído; estes dois continuam visíveis
+ * porque respondem "quem decide" e "qual o momento", que mudam a abordagem da
+ * reunião.
+ */
+const commercialPreparationKeys = ["participacao_decisor", "momento_compra"] as const;
+
+export function qualificationAnswerLabel(key: string): string {
+  return qualificationAnswerLabels[key] ?? readableFallback(key);
+}
+
+export function readableQualificationAnswers(answers?: Record<string, string> | null): Array<{ key: string; label: string; value: string }> {
+  if (!answers) return [];
+  return Object.entries(answers)
+    .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
+    .sort(([a], [b]) => {
+      // Chave desconhecida vai para o fim, preservando ordem alfabética entre elas.
+      const rankA = qualificationAnswerOrder.indexOf(a);
+      const rankB = qualificationAnswerOrder.indexOf(b);
+      if (rankA === -1 && rankB === -1) return a.localeCompare(b, "pt-BR");
+      if (rankA === -1) return 1;
+      if (rankB === -1) return -1;
+      return rankA - rankB;
+    })
+    .map(([key, value]) => ({ key, label: qualificationAnswerLabel(key), value: value.trim() }));
+}
+
+/** Somente decisor e momento de compra, na ordem em que o closer lê antes da call. */
+export function commercialPreparationAnswers(answers?: Record<string, string> | null): Array<{ key: string; label: string; value: string }> {
+  const selected = commercialPreparationKeys as readonly string[];
+  return readableQualificationAnswers(answers).filter((answer) => selected.includes(answer.key));
+}
 export function leadStatusLabel(value: string): string {
   return leadStatuses[value] ?? readableFallback(value);
 }

@@ -47,6 +47,9 @@ import {
   MeetingContactDeliveryProcessor,
   MeetingContactDeliveryRepository
 } from "./modules/scheduling/meeting-contact-delivery.js";
+import { MEETING_CONFIRMATION_QUEUE, enqueueMeetingConfirmation, type MeetingConfirmationJob } from "./queue/meeting-confirmation-queue.js";
+import { MeetingConfirmationProcessor, MeetingConfirmationRepository } from "./modules/scheduling/meeting-confirmation.js";
+import { isFeatureFlagEnabled } from "./modules/operations/feature-flags.js";
 import {
   AppointmentStatusReactionProcessor,
   AppointmentStatusReactionRepository
@@ -203,6 +206,26 @@ const meetingContactDeliveryWorker = new Worker<MeetingContactDeliveryJob>(
   (job) => meetingContactDeliveryProcessor.process(job.data.outboxId),
   { connection: redisConnection, concurrency: 3, metrics: workerMetrics }
 );
+const meetingConfirmationRepository = new MeetingConfirmationRepository(db);
+const meetingConfirmationProcessor = new MeetingConfirmationProcessor(
+  meetingConfirmationRepository,
+  manager,
+  (tenantId) => isFeatureFlagEnabled(db, tenantId, "scheduling_meeting_confirmation_v1")
+);
+const meetingConfirmationWorker = new Worker<MeetingConfirmationJob>(
+  MEETING_CONFIRMATION_QUEUE,
+  (job) => meetingConfirmationProcessor.process(job.data.outboxId),
+  { connection: redisConnection, concurrency: 3, metrics: workerMetrics }
+);
+meetingConfirmationWorker.on("completed", (job, result) => {
+  logger.info({ jobId: job.id, outboxId: job.data.outboxId, result }, "Meeting confirmation processed");
+});
+meetingConfirmationWorker.on("failed", (job, error) => {
+  logger.error(
+    { jobId: job?.id, outboxId: job?.data.outboxId, err: error },
+    "Meeting confirmation worker failed; database reconciliation will classify the operation"
+  );
+});
 const appointmentStatusReactionRepository = new AppointmentStatusReactionRepository(db);
 const appointmentStatusReactionProcessor = new AppointmentStatusReactionProcessor(
   appointmentStatusReactionRepository,
@@ -452,6 +475,24 @@ const meetingContactDeliveryReconciler = setInterval(() => {
   void reconcileMeetingContactDeliveries()
     .catch((error) => logger.error({ error }, "Meeting contact delivery outbox reconciliation failed"));
 }, 15_000);
+const reconcileMeetingConfirmations = async (): Promise<void> => {
+  // Primeiro cria as linhas que faltam para agendamentos futuros, depois
+  // despacha as que já venceram. A ordem importa: sem o primeiro passo a
+  // outbox nunca receberia nada.
+  for (const appointmentId of await meetingConfirmationRepository.findAppointmentsNeedingConfirmation(100)) {
+    await meetingConfirmationRepository.enqueueForAppointment(appointmentId);
+  }
+  let cursor: string | undefined;
+  do {
+    const page = await meetingConfirmationRepository.findDuePage(100, cursor);
+    await Promise.all(page.ids.map((id) => enqueueMeetingConfirmation(id)));
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor);
+};
+const meetingConfirmationReconciler = setInterval(() => {
+  void reconcileMeetingConfirmations()
+    .catch((error) => logger.error({ error }, "Meeting confirmation outbox reconciliation failed"));
+}, 15_000);
 const reconcileAppointmentStatusReactions = async (): Promise<void> => {
   let cursor: string | undefined;
   do {
@@ -494,6 +535,8 @@ void reconcileMeetingProvisioning()
   .catch((error) => logger.error({ error }, "Initial meeting provisioning reconciliation failed"));
 void reconcileMeetingContactDeliveries()
   .catch((error) => logger.error({ error }, "Initial meeting contact delivery reconciliation failed"));
+void reconcileMeetingConfirmations()
+  .catch((error) => logger.error({ error }, "Initial meeting confirmation reconciliation failed"));
 void reconcileAppointmentStatusReactions()
   .catch((error) => logger.error({ error }, "Initial appointment status reaction reconciliation failed"));
 void reconcilePendingMeetingResults()
@@ -513,6 +556,7 @@ async function shutdown(): Promise<void> {
   clearInterval(businessHoursTicker);
   clearInterval(meetingProvisioningReconciler);
   clearInterval(meetingContactDeliveryReconciler);
+  clearInterval(meetingConfirmationReconciler);
   clearInterval(appointmentStatusReactionReconciler);
   clearInterval(pendingMeetingResultReconciler);
   clearInterval(heartbeatTimer);
@@ -531,6 +575,7 @@ async function shutdown(): Promise<void> {
   await followUpWorker.close();
   await meetingProvisioningWorker.close();
   await meetingContactDeliveryWorker.close();
+  await meetingConfirmationWorker.close();
   await appointmentStatusReactionWorker.close();
   await tripzAiWorker.close();
   await meetMaintenanceWorker.close();

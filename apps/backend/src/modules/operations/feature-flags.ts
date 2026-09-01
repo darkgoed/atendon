@@ -8,7 +8,7 @@ export const FEATURE_FLAG_KEYS = [
   "state_tool_gating_v2", "compact_prompt_v2", "case_organization_v1",
   "dashboard_widgets_v1", "web_push_v1", "tripz_ai_v1", "post_sales_v1",
   "dashboard_v1", "leads_v1", "pipeline_v1", "appointments_v1",
-  "workspace_admin_v1"
+  "workspace_admin_v1", "scheduling_meeting_confirmation_v1"
 ] as const;
 
 export const CAPABILITY_KEYS = [
