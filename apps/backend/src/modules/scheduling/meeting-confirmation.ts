@@ -69,15 +69,11 @@ export function decideConfirmationMoments(input: { startAt: Date; now: Date; sta
 
   const moments: { moment: ConfirmationMoment; availableAt: Date }[] = [];
 
-  // Momento 1 acompanha o agendamento: fica disponível imediatamente, nunca no
-  // horário da reunião, e vale inclusive para uma reunião marcada para daqui a
-  // pouco, porque é justamente ele que pede a confirmação ativa do contato.
-  //
-  // Quem já confirmou NÃO recebe este momento: todo texto de pos_agendamento
-  // pede confirmação, e recobrar quem já respondeu é exatamente o incômodo que
-  // a regra "não pedir confirmação novamente" existe para evitar. Os momentos
-  // 2 e 3 continuam, porque para quem confirmou eles viram lembrete.
-  if (input.state !== "confirmada") moments.push({ moment: "pos_agendamento", availableAt: new Date(now) });
+  // O Momento 1 NÃO entra aqui: quem envia o pedido de confirmação logo após
+  // agendar é a própria IA, dentro da conversa (seção 21 do prompt). Se o
+  // runtime também o enfileirasse, o contato receberia a mensagem duplicada.
+  // Quem marca o estado como `solicitada` naquele caso é a criação do
+  // agendamento, não este planejador.
 
   // Dentro de duas horas não acumulamos a janela anterior: só a última
   // tentativa ainda chega a tempo de ser útil ao contato.
@@ -424,14 +420,20 @@ export class MeetingConfirmationRepository {
     );
   }
 
-  /** Promove para `confirmada` quando a resposta do contato confirma presença. */
+  /** Promove o agendamento a CONFIRMADO quando o contato afirma presença.
+   *
+   * Só vale a partir de `solicitada`: sem essa trava, qualquer "ok" ou
+   * "perfeito" dito em outro ponto da conversa marcaria o lead como confirmado
+   * e silenciaria os lembretes de quem nunca confirmou nada.
+   */
   async registerContactConfirmation(tenantId: string, appointmentId: string, response: string): Promise<boolean> {
     const current = await this.pool.query<{ contact_confirmation_state: ContactConfirmationState }>(
       "SELECT contact_confirmation_state FROM scheduling_appointments WHERE id=$1 AND tenant_id=$2",
       [appointmentId, tenantId]
     );
     const state = current.rows[0]?.contact_confirmation_state;
-    if (!state || interpretConfirmationResponse(response, state) !== "confirmada") return false;
+    if (state !== "solicitada") return false;
+    if (interpretConfirmationResponse(response, state) !== "confirmada") return false;
     const updated = await this.pool.query<{ id: string }>(
       `UPDATE scheduling_appointments
        SET contact_confirmation_state='confirmada', contact_confirmation_at=now(), updated_at=now()

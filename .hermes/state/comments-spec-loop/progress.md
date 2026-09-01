@@ -145,6 +145,46 @@ As 8 queries SQL novas foram validadas por PREPARE contra o schema real.
 - worker: 14 "Meeting confirmation processed" result=suppressed, 0 erros nível 50
 - painel público 200; bundle servido pelo domínio contém "Momento de compra"
 
+## Fase 10 — Auto-revisão pós-deploy: 3 defeitos MEUS encontrados e corrigidos
+
+Revisei a própria entrega olhando o fluxo ponta a ponta e o estado real da
+outbox em produção. Achei três defeitos que teriam virado mensagem errada para
+o lead no instante em que a flag fosse ligada:
+
+1. **Texto congelado no enfileiramento.** `message_text` era montado no INSERT,
+   dias antes do disparo. Evidência colhida em produção: uma reunião de 01/Sep
+   09:00 tinha a linha "temos nossa conversa marcada pras 09:00 de **hoje**"
+   gravada em 31/Ago — o "hoje" estaria errado na hora do envio. Pior: usava o
+   estado de confirmação do INSERT, então quem confirmasse depois continuaria
+   recebendo pedido em vez de lembrete. Agora o texto é redigido no `claim`.
+
+2. **Momento 1 agendado pelo runtime.** Quem envia o pedido de confirmação logo
+   após agendar é a própria IA (seção 21 do prompt). O runtime também o
+   enfileirava → mensagem duplicada e retroativa. Runtime agora cobre só os
+   Momentos 2 e 3.
+
+3. **`registerContactConfirmation` nunca era chamado.** Existia e era testado,
+   mas nenhum caminho de produção o invocava (provado por grep). O estado nunca
+   sairia de `solicitada`: um lead que respondesse "sim" seguiria recebendo
+   pedido de confirmação até a reunião — exatamente o incômodo que o recurso
+   existe para evitar. Ligado em `process-message` via injeção no construtor,
+   com falha isolada.
+
+### Deploy da correção verificado
+- push graft fast-forward `cb13c55..1d401cf`; siblings intactos
+- Coolify deploy **#20 `finished`**, commit `1d401cf21a49`
+- containers api/panel/worker `(healthy)`, 0 erros nível 50
+- `registerContactConfirmation` presente no bundle da imagem em produção
+- outbox limpa das 42 linhas defeituosas (trava: só apagava `attempted_at IS
+  NULL`; 0 enviadas preservadas) e recriada pelo código novo:
+  **28 linhas, só `duas_horas_antes` e `quinze_minutos_antes`, message_text =
+  "(a redigir no envio)"**, 0 tentativas de envio
+- painel público 200
+
+Lição registrada: `tsc` verde não valida SQL em string nem prova que uma função
+exportada é chamada por alguém. Grep de chamadores e `PREPARE` contra o schema
+real pegaram o que o typecheck não pegava.
+
 ## Débito declarado honestamente
 - `version service` x3 continua falhando (1.21.0 vs 1.22.0) — dívida anterior,
   fora do escopo desta rodada.

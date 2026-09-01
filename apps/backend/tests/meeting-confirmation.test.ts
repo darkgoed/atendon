@@ -33,26 +33,26 @@ describe("confirmação de reunião pelo contato", () => {
   it("não enfileira cancelada e só usa 15 minutos quando falta menos de duas horas", () => {
     expect(decideConfirmationMoments({ startAt, now: new Date("2026-08-31T12:00:00Z"), appointmentStatus: "cancelado", state: "nao_solicitada" })).toEqual([]);
     expect(decideConfirmationMoments({ startAt, now: new Date("2026-08-31T15:00:00Z"), appointmentStatus: "confirmado", state: "nao_solicitada" }).map((entry: { moment: string }) => entry.moment))
-      .toEqual(["pos_agendamento", "quinze_minutos_antes"]);
+      .toEqual(["quinze_minutos_antes"]);
   });
 
-  it("enfileira as três janelas quando a reunião ainda está distante", () => {
+  it("enfileira as duas janelas quando a reunião ainda está distante", () => {
     const planned = decideConfirmationMoments({ startAt, now: new Date("2026-08-31T09:00:00Z"), appointmentStatus: "confirmado", state: "nao_solicitada" });
-    expect(planned.map((entry: { moment: string }) => entry.moment)).toEqual(["pos_agendamento", "duas_horas_antes", "quinze_minutos_antes"]);
-    // O pedido de confirmação sai na hora do agendamento, não no horário da reunião.
-    expect(planned[0]!.availableAt.toISOString()).toBe("2026-08-31T09:00:00.000Z");
-    expect(planned[1]!.availableAt.toISOString()).toBe("2026-08-31T14:00:00.000Z");
-    expect(planned[2]!.availableAt.toISOString()).toBe("2026-08-31T15:45:00.000Z");
+    expect(planned.map((entry: { moment: string }) => entry.moment)).toEqual(["duas_horas_antes", "quinze_minutos_antes"]);
+    expect(planned[0]!.availableAt.toISOString()).toBe("2026-08-31T14:00:00.000Z");
+    expect(planned[1]!.availableAt.toISOString()).toBe("2026-08-31T15:45:00.000Z");
   });
 
-  it("ainda pede confirmação ativa quando a reunião é logo mais", () => {
+  it("não enfileira nada quando a reunião é logo mais", () => {
+    // O pedido de confirmação do Momento 1 é da IA, na conversa; as janelas de
+    // 2h e 15min já passaram, então o runtime não tem o que disparar.
     expect(decideConfirmationMoments({ startAt, now: new Date("2026-08-31T15:50:00Z"), appointmentStatus: "confirmado", state: "nao_solicitada" }).map((entry: { moment: string }) => entry.moment))
-      .toEqual(["pos_agendamento"]);
+      .toEqual([]);
   });
 
   it("não enfileira janela passada", () => {
     expect(decideConfirmationMoments({ startAt, now: new Date("2026-08-31T14:01:00Z"), appointmentStatus: "confirmado", state: "nao_solicitada" }).map((entry: { moment: string }) => entry.moment))
-      .toEqual(["pos_agendamento", "quinze_minutos_antes"]);
+      .toEqual(["quinze_minutos_antes"]);
   });
 
   it("interpreta confirmação sem aceitar negação", () => {
@@ -78,15 +78,14 @@ describe("confirmação de reunião pelo contato", () => {
     expect(planned.map((entry: { moment: string }) => entry.moment)).toEqual(["duas_horas_antes", "quinze_minutos_antes"]);
   });
 
-  it("o Momento 1 nunca é agendado para o futuro", () => {
+  it("o runtime nunca agenda o Momento 1", () => {
     // Quem envia o pedido de confirmação logo após agendar é a própria IA, na
     // conversa. Se o runtime também o agendasse, o lead receberia a mensagem
     // duplicada e, dias depois, com "hoje" apontando para a data errada.
     const planned = decideConfirmationMoments({
       startAt, now: new Date("2026-08-31T09:00:00Z"), appointmentStatus: "confirmado", state: "nao_solicitada"
     });
-    const posAgendamento = planned.find((entry: { moment: string }) => entry.moment === "pos_agendamento");
-    expect(posAgendamento?.availableAt.toISOString()).toBe("2026-08-31T09:00:00.000Z");
+    expect(planned.map((entry: { moment: string }) => entry.moment)).not.toContain("pos_agendamento");
   });
 
   it("aceita variant fora da faixa sem quebrar a montagem", () => {

@@ -2049,9 +2049,10 @@ export async function createAppointment(
          lead_id,tenant_id,unit_id,start_at,end_at,status,
          assigned_member_id,assigned_at,meeting_provisioning_status,
          creation_idempotency_key,creation_request_hash,created_by_user_id,
-         meeting_provider,meeting_space_name,meeting_code,meeting_url,meeting_created_at
+         meeting_provider,meeting_space_name,meeting_code,meeting_url,meeting_created_at,
+         contact_confirmation_state,contact_confirmation_requested_at
        )
-       VALUES($1,$2,$3,$4,$5,'confirmado',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+       VALUES($1,$2,$3,$4,$5,'confirmado',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
       [
         input.lead_id, tenantId, unit.id, start.toISOString(), end.toISOString(),
         assignedAttendant?.memberId ?? null,
@@ -2064,7 +2065,14 @@ export async function createAppointment(
         meetRoomIdentity?.roomName ?? null,
         meetRoomIdentity?.publicCode ?? null,
         atendonMeetUrl,
-        atendonMeetAutomation ? new Date() : null
+        atendonMeetAutomation ? new Date() : null,
+        // Quando quem agenda é a IA (sem ator humano), ela pede a confirmação
+        // no mesmo turno, conforme a seção 21 do prompt. O estado já nasce
+        // `solicitada` para que a resposta do contato possa promovê-lo a
+        // `confirmada`. Agendamento criado por atendente no painel não passa
+        // por esse pedido, então continua `nao_solicitada`.
+        options.actor?.userId ? "nao_solicitada" : "solicitada",
+        options.actor?.userId ? null : new Date()
       ]
     );
     if (meetRoomIdentity) {
