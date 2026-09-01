@@ -101,3 +101,96 @@ describe("registerContactConfirmation", () => {
     expect(await stateOf(outroTenant)).toBe("solicitada");
   });
 });
+
+describe("markSent", () => {
+  /**
+   * O lembrete precisa aparecer na conversa do painel. Sem isso ele chega no
+   * WhatsApp do contato e some para o time comercial, que responde ao lead sem
+   * ver o que a operação acabou de mandar — foi exatamente o que aconteceu no
+   * primeiro disparo real.
+   */
+  async function createConversation(): Promise<{ conversationId: string; sessionId: string; leadId: string }> {
+    const sessionId = randomUUID();
+    const lead = await pool.query<{ id: string }>(
+      "INSERT INTO scheduling_leads(tenant_id, phone, name, source) VALUES($1,$2,$3,'whatsapp') RETURNING id",
+      [tenantId, `5511${randomUUID().replace(/\D/g, "").slice(0, 9)}`, "Rodrigo Melfi"]
+    );
+    await pool.query(
+      "INSERT INTO whatsapp_sessions(id, tenant_id, status) VALUES($1,$2,'connected')",
+      [sessionId, tenantId]
+    );
+    const conversation = await pool.query<{ id: string }>(
+      `INSERT INTO conversations(tenant_id, session_id, contact_phone, lead_id, last_message_at)
+       VALUES($1,$2,$3,$4, now() - interval '2 hours') RETURNING id`,
+      [tenantId, sessionId, `5511${randomUUID().replace(/\D/g, "").slice(0, 9)}`, lead.rows[0]!.id]
+    );
+    return { conversationId: conversation.rows[0]!.id, sessionId, leadId: lead.rows[0]!.id };
+  }
+
+  function claimedFor(conversationId: string, sessionId: string, appointmentId: string) {
+    return {
+      id: randomUUID(),
+      tenantId,
+      appointmentId,
+      conversationId,
+      sessionId,
+      destination: "5511999999999",
+      messageText: "Rodrigo, estamos a 15 minutos do nosso horário\n\nConsegue me confirmar se vai conseguir entrar?",
+      moment: "quinze_minutos_antes" as const,
+      state: "solicitada" as const
+    };
+  }
+
+  it("grava a mensagem enviada na conversa e reordena a lista", async () => {
+    const { conversationId, sessionId } = await createConversation();
+    const appointmentId = await createAppointment("solicitada");
+    const externalId = `EXT-${randomUUID()}`;
+    const before = await pool.query<{ last_message_at: Date }>(
+      "SELECT last_message_at FROM conversations WHERE id=$1", [conversationId]
+    );
+
+    await repository.markSent(claimedFor(conversationId, sessionId, appointmentId), externalId);
+
+    const message = await pool.query<{ sender: string; content: string; status: string }>(
+      "SELECT sender, content, status FROM messages WHERE external_message_id=$1", [externalId]
+    );
+    expect(message.rows).toHaveLength(1);
+    expect(message.rows[0]!.sender).toBe("agent");
+    expect(message.rows[0]!.status).toBe("sent");
+    expect(message.rows[0]!.content).toContain("15 minutos");
+
+    const after = await pool.query<{ last_message_at: Date }>(
+      "SELECT last_message_at FROM conversations WHERE id=$1", [conversationId]
+    );
+    expect(after.rows[0]!.last_message_at.getTime()).toBeGreaterThan(before.rows[0]!.last_message_at.getTime());
+  });
+
+  it("não duplica a mensagem se o envio for reprocessado", async () => {
+    const { conversationId, sessionId } = await createConversation();
+    const appointmentId = await createAppointment("solicitada");
+    const externalId = `EXT-${randomUUID()}`;
+    const delivery = claimedFor(conversationId, sessionId, appointmentId);
+
+    await repository.markSent(delivery, externalId);
+    await repository.markSent(delivery, externalId);
+
+    const count = await pool.query<{ count: string }>(
+      "SELECT count(*) FROM messages WHERE external_message_id=$1", [externalId]
+    );
+    expect(count.rows[0]!.count).toBe("1");
+  });
+
+  it("não grava em conversa de outro tenant", async () => {
+    const { conversationId, sessionId } = await createConversation();
+    const appointmentId = await createAppointment("solicitada");
+    const externalId = `EXT-${randomUUID()}`;
+    const delivery = { ...claimedFor(conversationId, sessionId, appointmentId), tenantId: randomUUID() };
+
+    await repository.markSent(delivery, externalId);
+
+    const count = await pool.query<{ count: string }>(
+      "SELECT count(*) FROM messages WHERE external_message_id=$1", [externalId]
+    );
+    expect(count.rows[0]!.count).toBe("0");
+  });
+});

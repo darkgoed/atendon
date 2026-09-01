@@ -417,14 +417,50 @@ export class MeetingConfirmationRepository {
     return Boolean(updated.rows[0]);
   }
 
+  /**
+   * Conclui o envio e grava a mensagem na conversa.
+   *
+   * O registro em `messages` não é opcional: sem ele o lembrete chega no
+   * WhatsApp do contato mas some do painel, e o comercial responde a um lead
+   * sem ver o que a operação acabou de mandar. Vai na mesma transação do
+   * `status='sent'` para que as duas coisas sejam verdade juntas.
+   *
+   * `provider_message_key` carrega tenant e sessão porque o ID do provedor só
+   * é único dentro da sessão; o ON CONFLICT torna o reprocessamento inofensivo.
+   */
   async markSent(delivery: ClaimedMeetingConfirmation, externalMessageId: string): Promise<void> {
-    await this.pool.query(
-      `UPDATE scheduling_meeting_confirmation_outbox
-       SET status='sent', external_message_id=$3, completed_at=now(),
-           processing_started_at=NULL, last_error=NULL, updated_at=now()
-       WHERE id=$1 AND tenant_id=$2 AND status='processing'`,
-      [delivery.id, delivery.tenantId, externalMessageId]
-    );
+    await withTransaction(this.pool, async (client) => {
+      await client.query(
+        `UPDATE scheduling_meeting_confirmation_outbox
+         SET status='sent', external_message_id=$3, completed_at=now(),
+             processing_started_at=NULL, last_error=NULL, updated_at=now()
+         WHERE id=$1 AND tenant_id=$2 AND status='processing'`,
+        [delivery.id, delivery.tenantId, externalMessageId]
+      );
+      await client.query(
+        `INSERT INTO messages(
+           conversation_id, sender, content, external_message_id, provider_message_key, status
+         )
+         SELECT c.id, 'agent', $4, $5, $6, 'sent'
+         FROM conversations c
+         WHERE c.id=$1 AND c.tenant_id=$2 AND c.session_id=$3
+         ON CONFLICT(provider_message_key) DO NOTHING`,
+        [
+          delivery.conversationId,
+          delivery.tenantId,
+          delivery.sessionId,
+          delivery.messageText,
+          externalMessageId,
+          `${delivery.tenantId}:${delivery.sessionId}:${externalMessageId}`
+        ]
+      );
+      // Sem isto a conversa não sobe na lista do painel e o comercial só veria
+      // o lembrete abrindo o histórico do lead.
+      await client.query(
+        "UPDATE conversations SET last_message_at=now() WHERE id=$1 AND tenant_id=$2",
+        [delivery.conversationId, delivery.tenantId]
+      );
+    });
     if (MOMENTS_REQUESTING_CONFIRMATION.includes(delivery.moment) && delivery.state !== "confirmada") {
       await this.markConfirmationRequested(delivery.tenantId, delivery.appointmentId);
     }
