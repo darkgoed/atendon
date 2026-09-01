@@ -46,6 +46,43 @@ function stableIndex(id: string): number {
   return Math.abs(hash) % 3;
 }
 
+/**
+ * Primeiro nome utilizável para tratar o contato.
+ *
+ * O cadastro do WhatsApp traz nomes que não servem como vocativo: títulos
+ * ("Dr Cardoso", "Consultor Fred") e nomes só com emoji. Chamar alguém de
+ * "Dr," ou "✌🏻," numa mensagem comercial é pior do que não usar nome nenhum,
+ * então nesses casos devolvemos string vazia e a saudação é omitida.
+ */
+const NAME_TITLES = new Set([
+  "dr", "dra", "sr", "sra", "srta", "consultor", "consultora",
+  "doutor", "doutora", "prof", "professor", "professora"
+]);
+
+export function displayFirstName(rawName: string | null | undefined): string {
+  const tokens = (rawName ?? "")
+    .replace(/[^\p{L}\p{M}\s.'-]/gu, " ")
+    .split(/\s+/)
+    .map((token) => token.replace(/\.$/, "").trim())
+    .filter((token) => token.length > 0);
+  for (const token of tokens) {
+    if (NAME_TITLES.has(token.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase())) continue;
+    if (token.length < 2) continue;
+    return token;
+  }
+  return "";
+}
+
+/** Horário no jeito que se escreve no WhatsApp: "16h", "17h30". */
+export function formatMeetingTime(startAt: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone
+  }).formatToParts(startAt);
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
+  return minute === "00" ? `${Number(hour)}h` : `${Number(hour)}h${minute}`;
+}
+
 export function buildConfirmationMessage(input: {
   appointmentId: string; moment: ConfirmationMoment; name: string; formattedTime: string;
   state: ContactConfirmationState; variant?: number;
@@ -58,7 +95,13 @@ export function buildConfirmationMessage(input: {
     ? stableIndex(`${input.appointmentId}:${input.moment}`)
     : ((Math.trunc(input.variant) % 3) + 3) % 3;
   const choice = choices[index]!;
-  return `${choice[0].replaceAll("[Nome]", input.name).replaceAll("{time}", input.formattedTime)} ${choice[1]}`;
+  // Sem nome utilizável a saudação some junto com a vírgula: "[Nome], nossa
+  // conversa..." não pode virar ", nossa conversa...".
+  const opening = input.name
+    ? choice[0].replaceAll("[Nome]", input.name)
+    : choice[0].replace(/^\[Nome\],\s*/, "").replace(/^(.)/, (letter) => letter.toUpperCase());
+  // Duas frases em parágrafos separados, como no material aprovado.
+  return `${opening.replaceAll("{time}", input.formattedTime)}\n\n${choice[1]}`;
 }
 
 export function decideConfirmationMoments(input: { startAt: Date; now: Date; state: ContactConfirmationState; appointmentStatus: AppointmentStatus }): { moment: ConfirmationMoment; availableAt: Date }[] {
@@ -335,12 +378,8 @@ export class MeetingConfirmationRepository {
       // O texto é redigido AGORA, não no enfileiramento: usa o horário da
       // reunião no fuso do tenant e o estado de confirmação vigente, de forma
       // que quem confirmou receba lembrete e quem não confirmou receba pedido.
-      const formattedTime = new Intl.DateTimeFormat("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: row.timezone || "America/Sao_Paulo"
-      }).format(row.start_at);
-      const contactName = row.lead_name?.trim().split(/\s+/)[0] ?? "";
+      const formattedTime = formatMeetingTime(row.start_at, row.timezone || "America/Sao_Paulo");
+      const contactName = displayFirstName(row.lead_name);
       const messageText = buildConfirmationMessage({
         appointmentId: row.appointment_id,
         moment: row.moment,

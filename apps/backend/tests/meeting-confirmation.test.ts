@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildConfirmationMessage,
   decideConfirmationMoments,
+  displayFirstName,
+  formatMeetingTime,
   interpretConfirmationResponse,
   type ConfirmationMoment
 } from "../src/modules/scheduling/meeting-confirmation.js";
@@ -86,6 +88,39 @@ describe("confirmação de reunião pelo contato", () => {
       startAt, now: new Date("2026-08-31T09:00:00Z"), appointmentStatus: "confirmado", state: "nao_solicitada"
     });
     expect(planned.map((entry: { moment: string }) => entry.moment)).not.toContain("pos_agendamento");
+  });
+
+  it("trata o contato pelo primeiro nome utilizável", () => {
+    expect(displayFirstName("Rodrigo Melfi")).toBe("Rodrigo");
+    // Título não é vocativo: "Consultor," ou "Dr," soa pior que sem nome.
+    expect(displayFirstName("Consultor Fred")).toBe("Fred");
+    expect(displayFirstName("Dr Cardoso")).toBe("Cardoso");
+    expect(displayFirstName("Dra. Marina Alves")).toBe("Marina");
+    // Nome só com emoji não rende saudação alguma.
+    expect(displayFirstName("✌🏻")).toBe("");
+    expect(displayFirstName(null)).toBe("");
+  });
+
+  it("escreve o horário como se escreve no WhatsApp", () => {
+    const tz = "America/Sao_Paulo";
+    expect(formatMeetingTime(new Date("2026-09-01T19:00:00Z"), tz)).toBe("16h");
+    expect(formatMeetingTime(new Date("2026-09-01T20:30:00Z"), tz)).toBe("17h30");
+    expect(formatMeetingTime(new Date("2026-09-02T12:00:00Z"), tz)).toBe("9h");
+  });
+
+  it("omite a saudação sem deixar vírgula solta quando não há nome", () => {
+    const message = buildConfirmationMessage({
+      appointmentId: "a1", moment: "duas_horas_antes", name: "", formattedTime: "11h", state: "solicitada", variant: 1
+    });
+    expect(message.startsWith(",")).toBe(false);
+    expect(message).toBe("Passando pra confirmar nosso horário de hoje às 11h\n\nConsegue me dar um ok por aqui?");
+  });
+
+  it("separa as duas frases em parágrafos", () => {
+    const message = buildConfirmationMessage({
+      appointmentId: "a1", moment: "duas_horas_antes", name: "Ana", formattedTime: "16h", state: "solicitada", variant: 0
+    });
+    expect(message).toBe("Ana, nossa conversa está marcada pra hoje às 16h\n\nSegue tudo certo pra você?");
   });
 
   it("aceita variant fora da faixa sem quebrar a montagem", () => {
