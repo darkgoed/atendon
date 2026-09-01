@@ -185,6 +185,42 @@ Lição registrada: `tsc` verde não valida SQL em string nem prova que uma fun�
 exportada é chamada por alguém. Grep de chamadores e `PREPARE` contra o schema
 real pegaram o que o typecheck não pegava.
 
+## Fase 11 — Segunda revisão: mais 2 defeitos + 1 correção incompleta
+
+1. **`registerContactConfirmation` aceitava confirmação nunca solicitada.**
+   Não exigia estado `solicitada`, e o dicionário de afirmação inclui "ok",
+   "beleza", "certo", "perfeito". Qualquer uma dessas palavras dita em outro
+   ponto da conversa marcaria CONFIRMADO e silenciaria os lembretes de quem
+   nunca confirmou. Em produção os 14 agendamentos futuros estavam todos em
+   `nao_solicitada` — o caminho errado era o único alcançável. Agora só promove
+   a partir de `solicitada`.
+
+2. **O estado nunca saía de `nao_solicitada`.** `markConfirmationRequested`
+   existia mas ninguém a chamava. Combinado com o item 1: ou o recurso ficava
+   inerte, ou dava confirmação falsa. Agendamento criado pela IA agora nasce
+   `solicitada` (é ela que pede a confirmação no mesmo turno, seção 21);
+   criado por atendente no painel continua `nao_solicitada`.
+
+3. **Correção anterior estava incompleta.** O patch da Fase 10 editou o
+   comentário de `decideConfirmationMoments` mas deixou o `push` do Momento 1
+   ativo. Não houve efeito em produção porque o filtro no enfileiramento já
+   barrava, mas a regra estava no lugar errado. Removido de fato — e agora há
+   teste cobrindo.
+
+**Cobertura nova:** `meeting-confirmation-registration.integration.test.ts`
+(4 testes contra banco real: promoção, recusa, hesitação, idempotência e
+isolamento por tenant). Não existia nenhum teste chamando
+`registerContactConfirmation`.
+
+### Deploy #21 verificado
+- push graft `1d401cf..5be801d`; siblings intactos; fast-forward
+- Coolify **#21 `finished`**, migrate exit 0, containers `(healthy)`
+- as duas correções presentes no bundle da imagem em produção
+- outbox: 28 linhas (só Momentos 2 e 3), 0 tentativas, 0 enviadas
+- flag `NULL` (off), prompt v48 `active` com 49.560 bytes
+- 0 erros nível 50 em api e worker; painel 200
+- backend 1084 testes, 13 falhas herdadas, **0 regressões**
+
 ## Débito declarado honestamente
 - `version service` x3 continua falhando (1.21.0 vs 1.22.0) — dívida anterior,
   fora do escopo desta rodada.
