@@ -1,6 +1,9 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 const CURRENT_VERSION = "v2";
+const IV_LENGTH = 12;
+const AUTH_TAG_LENGTH = 16;
+const INVALID_ENCRYPTED_SECRET = "Invalid encrypted secret";
 
 export interface SecretKeyring {
   current: string;
@@ -24,54 +27,60 @@ function normalizeKeyring(value: string | SecretKeyring): SecretKeyring {
   return typeof value === "string" ? { current: value } : value;
 }
 
+function decodeCanonical(segment: string): Buffer {
+  if (!/^[A-Za-z0-9_-]*$/.test(segment)) throw new Error(INVALID_ENCRYPTED_SECRET);
+  const decoded = Buffer.from(segment, "base64url");
+  if (decoded.toString("base64url") !== segment) throw new Error(INVALID_ENCRYPTED_SECRET);
+  return decoded;
+}
+
 export function encryptSecret(value: string, secret: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key(secret), iv);
+  const iv = randomBytes(IV_LENGTH);
+  const cipher = createCipheriv("aes-256-gcm", key(secret), iv, { authTagLength: AUTH_TAG_LENGTH });
   const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   return [CURRENT_VERSION, keyId(secret), iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), encrypted.toString("base64url")].join(".");
 }
 
-function decryptWithKey(encodedIv: string, encodedTag: string, encodedValue: string, secret: string): string {
-  const decipher = createDecipheriv("aes-256-gcm", key(secret), Buffer.from(encodedIv, "base64url"));
-  decipher.setAuthTag(Buffer.from(encodedTag, "base64url"));
-  return Buffer.concat([decipher.update(Buffer.from(encodedValue, "base64url")), decipher.final()]).toString("utf8");
+function decryptWithKey(iv: Buffer, tag: Buffer, encrypted: Buffer, secret: string): string {
+  const decipher = createDecipheriv("aes-256-gcm", key(secret), iv, { authTagLength: AUTH_TAG_LENGTH });
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8");
 }
 
 export function decryptSecret(value: string, keys: string | SecretKeyring): string {
   const keyring = normalizeKeyring(keys);
   const parts = value.split(".");
   const candidates = uniqueKeys(keyring);
-  let encodedIv: string;
-  let encodedTag: string;
-  let encodedValue: string;
-
-  if (parts[0] === CURRENT_VERSION && parts.length === 5) {
-    const [, encryptedKeyId, iv, tag, encrypted] = parts;
-    encodedIv = iv;
-    encodedTag = tag;
-    encodedValue = encrypted;
-    const selected = candidates.find((candidate) => keyId(candidate) === encryptedKeyId);
-    if (!selected) throw new Error("Encrypted secret key is unavailable");
-    try {
-      return decryptWithKey(encodedIv, encodedTag, encodedValue, selected);
-    } catch {
-      throw new Error("Invalid encrypted secret");
+  try {
+    if (parts[0] === CURRENT_VERSION && parts.length === 5) {
+      const [, encryptedKeyId, encodedIv, encodedTag, encodedValue] = parts;
+      decodeCanonical(encryptedKeyId);
+      const iv = decodeCanonical(encodedIv);
+      const tag = decodeCanonical(encodedTag);
+      const encrypted = decodeCanonical(encodedValue);
+      if (iv.length !== IV_LENGTH || tag.length !== AUTH_TAG_LENGTH) throw new Error(INVALID_ENCRYPTED_SECRET);
+      const selected = candidates.find((candidate) => keyId(candidate) === encryptedKeyId);
+      if (!selected) throw new Error(`${INVALID_ENCRYPTED_SECRET} (unavailable)`);
+      return decryptWithKey(iv, tag, encrypted, selected);
     }
-  }
-
-  // v1 ciphertexts did not carry a key identifier and were derived from
-  // JWT_SECRET. Try the supplied keyring so they can be read and rotated
-  // without rewriting or losing the stored value during deployment.
-  if (parts[0] !== "v1" || parts.length !== 4) throw new Error("Invalid encrypted secret");
-  [, encodedIv, encodedTag, encodedValue] = parts;
-  for (const candidate of candidates) {
-    try {
-      return decryptWithKey(encodedIv, encodedTag, encodedValue, candidate);
-    } catch {
-      // AES-GCM authentication failure means this candidate is not the key.
+    if (parts[0] !== "v1" || parts.length !== 4) throw new Error(INVALID_ENCRYPTED_SECRET);
+    const [, encodedIv, encodedTag, encodedValue] = parts;
+    const iv = decodeCanonical(encodedIv);
+    const tag = decodeCanonical(encodedTag);
+    const encrypted = decodeCanonical(encodedValue);
+    if (iv.length !== IV_LENGTH || tag.length !== AUTH_TAG_LENGTH) throw new Error(INVALID_ENCRYPTED_SECRET);
+    for (const candidate of candidates) {
+      try {
+        return decryptWithKey(iv, tag, encrypted, candidate);
+      } catch {
+        // Try the next rotation key.
+      }
     }
+  } catch (error) {
+    // Keep malformed input and authentication failures indistinguishable.
+    if (error instanceof Error && error.message === `${INVALID_ENCRYPTED_SECRET} (unavailable)`) throw error;
   }
-  throw new Error("Encrypted secret key is unavailable");
+  throw new Error(INVALID_ENCRYPTED_SECRET);
 }
 
 export function encryptedSecretNeedsRotation(value: string, currentKey: string): boolean {

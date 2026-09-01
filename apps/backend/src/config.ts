@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { z } from "zod";
+import { isPublicHttpsUrl } from "./security/outbound-url.js";
 
 export const PRIVILEGED_DATABASE_ENVIRONMENT_KEYS = [
   "MIGRATION_DATABASE_URL",
@@ -204,6 +205,7 @@ const schema = z.object({
   SMTP_PASSWORD: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
   SMTP_FROM: z.preprocess((value) => value === "" ? undefined : value, z.string().email().optional()),
   TRANSFER_NOTIFICATION_WEBHOOK_URL: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
+  TRANSFER_NOTIFICATION_WEBHOOK_HMAC_SECRET: z.preprocess((value) => value === "" ? undefined : value, z.string().min(32).optional()),
   TRANSFER_NOTIFICATION_CHANNEL: z.enum(["webhook", "slack", "email", "whatsapp"]).default("webhook"),
   TRANSFER_NOTIFICATION_TIMEOUT_MS: z.coerce.number().int().positive().max(120_000).default(15_000),
   GOOGLE_MEET_TOKEN_URL: z.string().url().default("https://oauth2.googleapis.com/token"),
@@ -266,6 +268,22 @@ function validateConfig(value: AppConfig, context: z.RefinementCtx, environment:
     context.addIssue({ code: "custom", path: ["GOOGLE_MEET_OAUTH_CLIENT_ID"], message: "Configure juntos GOOGLE_MEET_OAUTH_CLIENT_ID, GOOGLE_MEET_OAUTH_CLIENT_SECRET e GOOGLE_MEET_OAUTH_REDIRECT_URI" });
   }
   if (value.NODE_ENV === "production") {
+    if (value.TRANSFER_NOTIFICATION_WEBHOOK_URL) {
+      try {
+        if (!isPublicHttpsUrl(value.TRANSFER_NOTIFICATION_WEBHOOK_URL)) {
+          context.addIssue({ code: "custom", path: ["TRANSFER_NOTIFICATION_WEBHOOK_URL"], message: "Webhook de transferência deve ser HTTPS público em produção" });
+        }
+      } catch { context.addIssue({ code: "custom", path: ["TRANSFER_NOTIFICATION_WEBHOOK_URL"], message: "Webhook de transferência inválido" }); }
+    }
+    const googleExpected: Record<string, string> = {
+      GOOGLE_MEET_TOKEN_URL: "https://oauth2.googleapis.com/token",
+      GOOGLE_MEET_API_BASE_URL: "https://meet.googleapis.com",
+      GOOGLE_MEET_OAUTH_AUTH_URL: "https://accounts.google.com/o/oauth2/v2/auth",
+      GOOGLE_MEET_OAUTH_USERINFO_URL: "https://openidconnect.googleapis.com/v1/userinfo"
+    };
+    for (const [name, expected] of Object.entries(googleExpected)) {
+      if (value[name as keyof AppConfig] !== expected) context.addIssue({ code: "custom", path: [name], message: `${name} deve usar o endpoint oficial fixo em produção` });
+    }
     if (
       !environment.DEPLOY_VERSION
       || ["development", "latest", "unknown"].includes(value.DEPLOY_VERSION.toLocaleLowerCase("en-US"))

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { SignJWT, jwtVerify } from "jose";
+import { SignJWT, errors, jwtVerify } from "jose";
 import type { FastifyRequest } from "fastify";
 import { config } from "../config.js";
 import { db } from "../db/client.js";
@@ -71,8 +71,10 @@ export async function requireIdentity(
       mustChangePassword: current.rows[0].must_change_password
     };
   } catch (error) {
-    if (typeof error === "object" && error && "statusCode" in error) throw error;
-    throw Object.assign(new Error("Sessão inválida"), { statusCode: 401 });
+    if (error instanceof errors.JOSEError) {
+      throw Object.assign(new Error("Sessão inválida"), { statusCode: 401 });
+    }
+    throw error;
   }
 }
 

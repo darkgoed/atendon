@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { compare, hash } from "bcryptjs";
 import { timingSafeEqual } from "node:crypto";
+import { errors, jwtVerify } from "jose";
 import Fastify from "fastify";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
@@ -684,7 +685,25 @@ export function buildApp() {
     });
   });
 
-  app.post("/auth/logout", async (_request, reply) => { reply.clearCookie("atendon_session", { path: "/" }); return { ok: true }; });
+  app.post("/auth/logout", { config: { rateLimit: HTTP_RATE_LIMITS.sensitiveWrite } }, async (request, reply) => {
+    const token = request.cookies.atendon_session;
+    if (token) {
+      try {
+        const { payload } = await jwtVerify(token, new TextEncoder().encode(config.JWT_SECRET), { algorithms: ["HS256"] });
+        const userId = String(payload.userId);
+        const current = await db.query<{ status: string; session_version: number }>("SELECT status,session_version FROM users WHERE id=$1", [userId]);
+        const user = current.rows[0];
+        if (user?.status === "active" && Number(payload.sessionVersion) === user.session_version) {
+          await db.query("UPDATE users SET session_version=session_version+1,updated_at=now() WHERE id=$1 AND session_version=$2", [userId, user.session_version]);
+        }
+      } catch (error) {
+        if (error instanceof errors.JOSEError) return reply.clearCookie("atendon_session", { path: "/" }).send({ ok: true });
+        throw error;
+      }
+    }
+    reply.clearCookie("atendon_session", { path: "/" });
+    return { ok: true };
+  });
   app.get("/me", async (request) => buildMePayload(await requireSession(request)));
   app.get("/me/notification-preferences", async (request) => {
     const session = await requireSession(request);

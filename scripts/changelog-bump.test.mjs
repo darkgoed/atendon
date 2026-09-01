@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   bumpVersion,
   parseChangelogResponse,
+  sanitizeDiffForAi,
   selectBumpType,
   summarizeDiff
 } from "./changelog-bump.mjs";
@@ -54,7 +55,7 @@ test("aplica o nível escolhido à versão SemVer", () => {
 
 test("normaliza a resposta estruturada do changelog", () => {
   assert.deepEqual(
-    parseChangelogResponse('```json\n{"changes":[{"text":"  Corrige o login  ","tenant_slugs":[]},{"text":"Melhora a IA Zulu","tenant_slugs":["tripzturismo-a44ab4"]}]}\n```'),
+    parseChangelogResponse('```json\n{"changes":[{"text":"  Corrige o login  ","tenant_slugs":[]},{"text":"Melhora a IA Zulu","tenant_slugs":["tripzturismo-a44ab4"]}]}\n```', ["tripzturismo-a44ab4"]),
     [
       { text: "Corrige o login", tenant_slugs: [] },
       { text: "Melhora a IA Zulu", tenant_slugs: ["tripzturismo-a44ab4"] }
@@ -64,9 +65,24 @@ test("normaliza a resposta estruturada do changelog", () => {
   assert.throws(() => parseChangelogResponse(""), /conteúdo vazio/);
 });
 
-test("solicita JSON estruturado à IA e devolve os itens gerados", async () => {
+test("filtra slugs ao allowlist e omite item totalmente inventado", () => {
+  assert.deepEqual(parseChangelogResponse(JSON.stringify({ changes: [
+    { text: "real", tenant_slugs: ["acme", "acme", "fake"] },
+    { text: "fake", tenant_slugs: ["fake"] },
+    { text: "global", tenant_slugs: [] }
+  ]}), ["acme"]), [
+    { text: "real", tenant_slugs: ["acme"] }, { text: "global", tenant_slugs: [] }
+  ]);
+});
+
+test("remove PII e segredos do diff antes do envio", () => {
+  const safe = sanitizeDiffForAi("owner@example.com +5511999999999 password=super-secret https://u:p@example.com sk-or-v1-THISISASECRET");
+  for (const value of ["owner@example.com", "5511999999999", "super-secret", "u:p", "THISISASECRET"]) assert.doesNotMatch(safe, new RegExp(value));
+});
+test("envia ao fetch somente diff sanitizado, preservando texto inocente", async () => {
   let requestBody;
-  const changes = await summarizeDiff("1 file changed", "+ correção", {
+  const diff = "owner@example.com telefone +5511999999999 password=super-secret token=tok-secret Authorization: Bearer auth-secret https://u:p@example.com\ntexto inocente";
+  await summarizeDiff("1 file changed", diff, {
     env: {
       CHANGELOG_OPENROUTER_API_KEY: "test-key",
       CHANGELOG_OPENROUTER_TIMEOUT_MS: "1000"
@@ -75,18 +91,16 @@ test("solicita JSON estruturado à IA e devolve os itens gerados", async () => {
       requestBody = JSON.parse(init.body);
       return {
         ok: true,
-        json: async () => ({
-          choices: [{ message: { content: '{"changes":[{"text":"Login corrigido","tenant_slugs":[]}]}' } }]
-        })
+        json: async () => ({ choices: [{ message: { content: '{"changes":[{"text":"Login corrigido","tenant_slugs":[]}]}' } }] })
       };
     }
   });
 
-  assert.deepEqual(changes, [{ text: "Login corrigido", tenant_slugs: [] }]);
-  assert.equal(requestBody.model, "google/gemma-4-26b-a4b-it:free");
-  assert.equal(requestBody.response_format.type, "json_schema");
-  assert.equal(requestBody.provider.require_parameters, true);
-  assert.match(requestBody.messages[0].content, /formato exato/);
+  const sentContent = requestBody.messages[1].content;
+  assert.match(sentContent, /texto inocente/);
+  for (const secret of ["owner@example.com", "5511999999999", "super-secret", "tok-secret", "auth-secret", "u:p"]) {
+    assert.doesNotMatch(sentContent, new RegExp(secret.replace(/[.*+?^${}()|[\\]\\]/g, "\\\\$&")));
+  }
 });
 
 test("preserva o detalhe seguro de erros não retentáveis da OpenRouter", async () => {
@@ -146,4 +160,43 @@ test("repete respostas inválidas antes de usar a resposta da IA", async () => {
 
   assert.equal(attempts, 2);
   assert.deepEqual(changes, [{ text: "Busca mais estável", tenant_slugs: [] }]);
+});
+
+test("degrada parâmetros estruturados uma vez quando não há endpoint compatível", async () => {
+  const requests = [];
+  const changes = await summarizeDiff("1 file changed", "+ correção", {
+    env: { CHANGELOG_OPENROUTER_API_KEY: "test-key", CHANGELOG_OPENROUTER_MAX_ATTEMPTS: "1" },
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(init.body);
+      requests.push(body);
+      if (requests.length === 1) return {
+        ok: false, status: 404,
+        json: async () => ({ error: { message: "No endpoints found that can handle requested parameters" } })
+      };
+      return { ok: true, json: async () => ({ choices: [{ message: { content: '{"changes":[{"text":"Compatível","tenant_slugs":[]}]}' } }] }) };
+    }
+  });
+  assert.equal(requests.length, 2);
+  assert.deepEqual(requests[0].provider, { require_parameters: true });
+  assert.equal(requests[0].response_format.type, "json_schema");
+  assert.equal(requests[1].provider, undefined);
+  assert.equal(requests[1].response_format, undefined);
+  assert.equal(requests[1].model, requests[0].model);
+  assert.deepEqual(changes, [{ text: "Compatível", tenant_slugs: [] }]);
+});
+
+test("resposta inválida do fallback ainda falha em release estrito", async () => {
+  const requests = [];
+  await assert.rejects(() => summarizeDiff("1 file changed", "+ correção", {
+    env: { CHANGELOG_OPENROUTER_API_KEY: "test-key", CHANGELOG_STRICT_RELEASE: "1", CHANGELOG_OPENROUTER_MAX_ATTEMPTS: "1" },
+    fetchImpl: async (_url, init) => {
+      requests.push(JSON.parse(init.body));
+      if (requests.length === 1) return {
+        ok: false, status: 400,
+        json: async () => ({ error: { message: "No endpoints found that can handle requested parameters" } })
+      };
+      return { ok: true, json: async () => ({ choices: [{ message: { content: "não é JSON" } }] }) };
+    }
+  }), /release estrito: OpenRouter falhou/);
+  assert.equal(requests.length, 2);
 });

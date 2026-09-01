@@ -106,7 +106,7 @@ function readPositiveInteger(value, fallback, name) {
   return parsed;
 }
 
-export function parseChangelogResponse(content) {
+export function parseChangelogResponse(content, allowedSlugs = []) {
   if (typeof content !== "string" || !content.trim()) {
     throw new Error("OpenRouter retornou conteúdo vazio");
   }
@@ -115,20 +115,37 @@ export function parseChangelogResponse(content) {
   if (!Array.isArray(parsed.changes)) {
     throw new Error("OpenRouter retornou changes inválido");
   }
+  const allowed = new Set(allowedSlugs);
   const changes = parsed.changes
     .filter((change) => change && typeof change === "object" && !Array.isArray(change))
     .map((change) => ({
       text: typeof change.text === "string" ? change.text.trim() : "",
       tenant_slugs: Array.isArray(change.tenant_slugs)
-        ? [...new Set(change.tenant_slugs.filter((slug) => typeof slug === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)))]
-        : []
+        ? [...new Set(change.tenant_slugs.filter((slug) => typeof slug === "string" && allowed.has(slug)))]
+        : [],
+      hadScope: Array.isArray(change.tenant_slugs) && change.tenant_slugs.length > 0
     }))
-    .filter((change) => change.text)
+    .filter((change) => change.text && (!change.hadScope || change.tenant_slugs.length > 0))
+    .map(({ hadScope, ...change }) => change)
     .slice(0, 6);
   if (changes.length === 0) {
     throw new Error("OpenRouter não retornou itens de changelog");
   }
   return changes;
+}
+
+export function extractCandidateSlugs(diffText) {
+  return new Set(String(diffText).match(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g) || []);
+}
+
+export function sanitizeDiffForAi(diffText) {
+  return String(diffText)
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email redacted]")
+    .replace(/\b(?:\+?\d[\d ().-]{7,}\d)\b/g, "[phone redacted]")
+    .replace(/(https?:\/\/)([^\s/@:]+):([^\s/@]+)@/gi, "$1[credentials redacted]@")
+    .replace(/(authorization\s*:\s*(?:bearer\s+)?)[^\s,;]+/gi, "$1[redacted]")
+    .replace(/(password|passwd|secret|token|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .replace(/\b(?:sk-[A-Za-z0-9_-]{12,}|sk-or-v1-[A-Za-z0-9_-]+|gh[pousr]_[A-Za-z0-9_]{20,})\b/g, "[token redacted]");
 }
 
 function isRetryable(error) {
@@ -159,6 +176,9 @@ export async function summarizeDiff(diffStat, diffText, options = {}) {
   const log = options.log || ((message) => console.log(message));
   const apiKey = env.CHANGELOG_OPENROUTER_API_KEY;
   if (!apiKey) {
+    if (env.CHANGELOG_STRICT_RELEASE === "1" && env.RELEASE_ALLOW_GENERIC_FALLBACK !== "true") {
+      throw new Error("release estrito exige CHANGELOG_OPENROUTER_API_KEY; fallback genérico requer opt-in explícito");
+    }
     log("==> CHANGELOG_OPENROUTER_API_KEY ausente; usando entrada genérica");
     return [GENERIC_SCOPED_CHANGE];
   }
@@ -168,49 +188,54 @@ export async function summarizeDiff(diffStat, diffText, options = {}) {
   const timeoutMs = readPositiveInteger(env.CHANGELOG_OPENROUTER_TIMEOUT_MS, 120000, "CHANGELOG_OPENROUTER_TIMEOUT_MS");
   const maxAttempts = readPositiveInteger(env.CHANGELOG_OPENROUTER_MAX_ATTEMPTS, 2, "CHANGELOG_OPENROUTER_MAX_ATTEMPTS");
 
-  const truncated = diffText.length > DIFF_MAX_CHARS
-    ? `${diffText.slice(0, DIFF_MAX_CHARS)}\n... (diff truncado)`
-    : diffText;
+  const sanitized = sanitizeDiffForAi(diffText);
+  const truncated = sanitized.length > DIFF_MAX_CHARS
+    ? `${sanitized.slice(0, DIFF_MAX_CHARS)}\n... (diff truncado)`
+    : sanitized;
+  const allowedSlugs = extractCandidateSlugs(diffText);
 
   let lastError;
   let attemptsMade = 0;
+  let structuredFallbackUsed = false;
+  const messages = [
+    {
+      role: "system",
+      content: "Analise o diff e descreva somente mudanças perceptíveis por quem usa o produto. Escreva de 1 a 6 itens curtos em português do Brasil. Cada item deve ter text e tenant_slugs. Use tenant_slugs=[] apenas para segurança, estabilidade ou recursos realmente compartilhados por todas as empresas. Mudanças em prompt, IA, regras, integrações ou comportamento de uma empresa devem listar somente os slugs exatos encontrados no diff. Nunca publique Zulu, Newave ou outro nome de empresa como mudança global; se o slug não puder ser comprovado, omita o item. Não mencione changelog, commits, arquivos, testes, refactors, lint, infraestrutura ou detalhes internos. Não invente mudanças. Se não houver efeito perceptível, use um único item global genérico sobre estabilidade. Retorne somente JSON válido no formato exato {\"changes\":[{\"text\":\"item curto\",\"tenant_slugs\":[]}]}, sem outros campos ou texto fora do JSON."
+    },
+    { role: "user", content: `Resumo estatístico:\n${diffStat}\n\nDiff:\n${truncated}` }
+  ];
+  const structuredBody = {
+    model, max_tokens: 1200, temperature: 0.2,
+    provider: { require_parameters: true },
+    response_format: { type: "json_schema", json_schema: { name: "changelog", strict: true, schema: CHANGELOG_SCHEMA } },
+    messages
+  };
+  const isStructuredEndpointError = (status, detail) =>
+    [400, 404].includes(status) && /no endpoints? found|requested parameters|parameters.*(support|handle)/i.test(detail);
+
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     attemptsMade = attempt;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetchImpl(`${baseUrl}/chat/completions`, {
+      const makeRequest = (body) => fetchImpl(`${baseUrl}/chat/completions`, {
         method: "POST",
         signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 1200,
-          temperature: 0.2,
-          provider: { require_parameters: true },
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "changelog",
-              strict: true,
-              schema: CHANGELOG_SCHEMA
-            }
-          },
-          messages: [
-            {
-              role: "system",
-              content: "Analise o diff e descreva somente mudanças perceptíveis por quem usa o produto. Escreva de 1 a 6 itens curtos em português do Brasil. Cada item deve ter text e tenant_slugs. Use tenant_slugs=[] apenas para segurança, estabilidade ou recursos realmente compartilhados por todas as empresas. Mudanças em prompt, IA, regras, integrações ou comportamento de uma empresa devem listar somente os slugs exatos encontrados no diff. Nunca publique Zulu, Newave ou outro nome de empresa como mudança global; se o slug não puder ser comprovado, omita o item. Não mencione changelog, commits, arquivos, testes, refactors, lint, infraestrutura ou detalhes internos. Não invente mudanças. Se não houver efeito perceptível, use um único item global genérico sobre estabilidade. Retorne somente JSON válido no formato exato {\"changes\":[{\"text\":\"item curto\",\"tenant_slugs\":[]}]}, sem outros campos ou texto fora do JSON."
-            },
-            {
-              role: "user",
-              content: `Resumo estatístico:\n${diffStat}\n\nDiff:\n${truncated}`
-            }
-          ]
-        })
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(body)
       });
+      let response = await makeRequest(structuredBody);
+      if (!response.ok) {
+        const detail = await readOpenRouterError(response);
+        if (!structuredFallbackUsed && isStructuredEndpointError(response.status, detail)) {
+          structuredFallbackUsed = true;
+          log("==> Endpoint sem suporte a parâmetros estruturados; tentando formato compatível");
+          const compatibleBody = { ...structuredBody };
+          delete compatibleBody.provider;
+          delete compatibleBody.response_format;
+          response = await makeRequest(compatibleBody);
+        }
+      }
       if (!response.ok) {
         const detail = await readOpenRouterError(response);
         const error = new Error(`OpenRouter respondeu ${response.status}${detail ? `: ${detail}` : ""}`);
@@ -219,7 +244,7 @@ export async function summarizeDiff(diffStat, diffText, options = {}) {
       }
       const body = await response.json();
       try {
-        return parseChangelogResponse(body.choices?.[0]?.message?.content);
+        return parseChangelogResponse(body.choices?.[0]?.message?.content, allowedSlugs);
       } catch (error) {
         error.retryable = true;
         throw error;
@@ -234,6 +259,9 @@ export async function summarizeDiff(diffStat, diffText, options = {}) {
     }
   }
 
+  if (env.CHANGELOG_STRICT_RELEASE === "1") {
+    throw new Error(`release estrito: OpenRouter falhou após ${attemptsMade} tentativa(s): ${lastError?.message}`);
+  }
   log(`==> Falha ao chamar OpenRouter após ${attemptsMade} tentativa(s) (${lastError?.message}); usando entrada genérica`);
   return [GENERIC_SCOPED_CHANGE];
 }

@@ -70,12 +70,13 @@ Se a troca ou os healthchecks falharem, o script retagueia os IDs das imagens an
 
 ### Release de versão e changelog
 
-O changelog é um artefato versionado: o Coolify constrói o checkout, mas não executa
-`build.sh` nem `scripts/changelog-bump.mjs`. Antes de publicar, no checkout local,
-execute o único comando de bump (`npm run version:bump`), revise o resultado,
-faça commit de `package.json` e `changelog.json` e faça push para o branch
-acompanhado pelo Coolify. Só então inicie o deployment; nenhuma geração ocorre
-dentro do Dockerfile.
+O changelog é um artefato versionado. O fluxo único é **commit do código → prepare → revisar → commit da release → push → Coolify**:
+primeiro faça commit do código em checkout limpo; então execute `npm run release:prepare` (Node 22 carrega `.env` se existir,
+sem imprimir valores), revise `package.json`, `package-lock.json` e `changelog.json`,
+faça commit e push, e só então inicie o deployment no Coolify. O comando falha
+fechado se a IA configurada não responder; sem chave, só aceita o fallback genérico
+quando `RELEASE_ALLOW_GENERIC_FALLBACK=true` for opt-in explícito. Nenhuma geração ou
+Git ocorre dentro de Dockerfiles/Coolify.
 
 No painel do Coolify, defina para a aplicação Compose (Environment Variables):
 

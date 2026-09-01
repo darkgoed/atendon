@@ -54,18 +54,20 @@ rodar `build.sh` à mão.
 
 ## Requirements
 
-### R1 — Bump do changelog fora do build da imagem
+### R1 — Preparação única do release fora do build da imagem
 
 Description: a geração do changelog é um passo de repositório (pré-deploy),
 executado com git disponível, produzindo um `changelog.json` versionado e
 commitado. NÃO se tenta gerar o changelog dentro do estágio de build da imagem.
 
 Acceptance Criteria:
-- Existe um comando documentado e único para o bump (o já existente
-  `npm run version:bump`), e a documentação do fluxo Coolify diz explicitamente:
-  bump → commit → push no branch acompanhado → Coolify constrói.
+- Existe `npm run release:prepare`, que carrega `.env` opcionalmente com Node 22,
+  executa o gerador em modo estrito e sincroniza o `package-lock.json`.
+- O fluxo documentado é commit do código → prepare → revisar → commit da release → push → Coolify.
 - `changelog.json` continua sendo o artefato versionado lido em runtime.
 - Nenhum Dockerfile passa a executar `git` ou o gerador durante o build.
+- IA configurada com falha nunca cai silenciosamente no texto genérico; sem chave,
+  o fallback exige `RELEASE_ALLOW_GENERIC_FALLBACK=true`.
 
 Verification: inspeção dos Dockerfiles (nenhuma invocação nova) + doc presente.
 

@@ -1,5 +1,7 @@
 import type { PoolClient } from "pg";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
+import https, { type RequestOptions } from "node:https";
+import type { ClientRequest, IncomingMessage } from "node:http";
 import { z } from "zod";
 import { config } from "../../config.js";
 import { db } from "../../db/client.js";
@@ -35,6 +37,7 @@ import {
 import type { CancellationInput, ConcludeAppointmentInput, NoShowInput } from "../commercial-journey/schemas.js";
 import { stageRequiresCommercialPayload } from "../commercial-journey/domain.js";
 import { createMeetRoomIdentity, insertMeetRoom, participantJoinUrl } from "../meet/service.js";
+import { publicHttpsAgent, resolvePublicHttpsUrl, type LookupAll } from "../../security/outbound-url.js";
 
 export const slug = z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100);
 export const uuid = z.string().uuid();
@@ -56,6 +59,34 @@ async function synchronizeAppointmentNotification(tenantId: string, appointmentI
   });
 }
 
+export type TransferRequestFactory = (url: URL, options: RequestOptions, callback: (response: IncomingMessage) => void) => ClientRequest;
+
+const defaultTransferRequest: TransferRequestFactory = (url, options, callback) => https.request(url, options, callback);
+
+export type TransferNotificationDeps = {
+  lookup?: LookupAll;
+  request?: TransferRequestFactory;
+  clock?: () => number;
+};
+
+export async function sendTransferNotification(urlRaw: string, payload: Record<string, unknown>, timeoutMs: number, hmacSecret?: string, deps: TransferNotificationDeps = {}): Promise<void> {
+  const lookup = deps.lookup;
+  const url = await resolvePublicHttpsUrl(urlRaw, lookup);
+  const body = JSON.stringify(payload);
+  const timestamp = Math.floor((deps.clock ?? Date.now)() / 1000).toString();
+  const signature = hmacSecret ? createHmac("sha256", hmacSecret).update(`${timestamp}.${body}`).digest("hex") : undefined;
+  await new Promise<void>((resolve, reject) => {
+    const request = (deps.request ?? defaultTransferRequest)(url, { method: "POST", agent: publicHttpsAgent(lookup), timeout: timeoutMs, headers: { "content-type": "application/json", ...(signature ? { "x-atendon-timestamp": timestamp, "x-atendon-signature": signature } : {}) } }, (response) => {
+      response.resume();
+      if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400) return reject(new Error("Webhook redirects are not allowed"));
+      if (!response.statusCode || response.statusCode >= 400) return reject(new Error(`Webhook respondeu ${response.statusCode}`));
+      resolve();
+    });
+    request.on("timeout", () => request.destroy(new Error("Webhook timeout")));
+    request.on("error", reject);
+    request.end(body);
+  });
+}
 export function allowedLeadStatusTransitions(status: LeadStatus): readonly LeadStatus[] {
   return LEAD_TECHNICAL_STATUSES.filter((target) => target !== status
     && domainAllowsStageTransition(status,target) && !stageRequiresCommercialPayload(target));
@@ -2573,13 +2604,14 @@ export async function markAppointmentNoShow(
   return finishJourneyOperation(tenantId,appointmentId,markAppointmentNoShowJourney(tenantId,appointmentId,input,actor,expectedAssignedMemberId));
 }
 
-export async function transferLead(tenantId: string, leadId: string, reason: string) {
+export async function transferLead(tenantId: string, leadId: string, reason: string, expectedAssignedMemberId?: string) {
   const result = await withTransaction(async (client) => {
-    const lead = await client.query<{ id: string; phone: string; name: string | null; unit_id: string | null; status: string }>(
-      "SELECT id,phone,name,unit_id,status FROM scheduling_leads WHERE id=$1 AND tenant_id=$2 FOR UPDATE", [leadId, tenantId]
+    const lead = await client.query<{ id: string; phone: string; name: string | null; unit_id: string | null; status: string; assigned_member_id: string | null }>(
+      "SELECT id,phone,name,unit_id,status,assigned_member_id FROM scheduling_leads WHERE id=$1 AND tenant_id=$2 FOR UPDATE", [leadId, tenantId]
     );
     if (!lead.rows[0]) throw httpError(404, "Lead não encontrado");
-    await client.query("UPDATE scheduling_leads SET status='aguardando_resposta',updated_at=now() WHERE id=$1", [leadId]);
+    if (expectedAssignedMemberId && lead.rows[0].assigned_member_id !== expectedAssignedMemberId) throw httpError(404, "Lead não encontrado");
+    await client.query("UPDATE scheduling_leads SET status='aguardando_resposta',updated_at=now() WHERE id=$1 AND tenant_id=$2 AND ($3::uuid IS NULL OR assigned_member_id=$3)", [leadId, tenantId, expectedAssignedMemberId ?? null]);
     await client.query(
       `UPDATE conversations SET ai_active=false,handoff_reason='commercial_handoff',handoff_error_code=NULL
        WHERE tenant_id=$1 AND (lead_id=$2 OR regexp_replace(contact_phone,'\\D','','g')=regexp_replace($3,'\\D','','g'))`,
@@ -2611,12 +2643,7 @@ export async function transferLead(tenantId: string, leadId: string, reason: str
 
   if (config.TRANSFER_NOTIFICATION_WEBHOOK_URL) {
     try {
-      const response = await fetch(config.TRANSFER_NOTIFICATION_WEBHOOK_URL, {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ tenant: tenantId, lead_id: leadId, unidade_id: result.lead.unit_id, telefone: result.lead.phone, nome: result.lead.name, motivo: reason, destinatario: result.recipient }),
-        signal: AbortSignal.timeout(config.TRANSFER_NOTIFICATION_TIMEOUT_MS)
-      });
-      if (!response.ok) throw new Error(`Webhook respondeu ${response.status}`);
+      await sendTransferNotification(config.TRANSFER_NOTIFICATION_WEBHOOK_URL, { tenant: tenantId, lead_id: leadId, unidade_id: result.lead.unit_id, telefone: result.lead.phone, nome: result.lead.name, motivo: reason, destinatario: result.recipient }, config.TRANSFER_NOTIFICATION_TIMEOUT_MS, config.TRANSFER_NOTIFICATION_WEBHOOK_HMAC_SECRET);
       await db.query("UPDATE scheduling_transfer_notifications SET status='sent',sent_at=now() WHERE id=$1", [result.notificationId]);
     } catch (error) {
       await db.query("UPDATE scheduling_transfer_notifications SET status='failed',error=$2 WHERE id=$1", [result.notificationId, error instanceof Error ? error.message : String(error)]);
@@ -2997,12 +3024,13 @@ export async function listUnidades(tenantId: string) {
   return result.rows.map(unitMapper);
 }
 
-export async function enviarPropostaParceiro(tenantId: string, leadId: string, parceiroId: string) {
+export async function enviarPropostaParceiro(tenantId: string, leadId: string, parceiroId: string, expectedAssignedMemberId?: string) {
   const linkProposta = await withTransaction(async (client) => {
     const partner = await client.query<{ proposal_link: string }>("SELECT proposal_link FROM scheduling_partners WHERE tenant_id=$1 AND id=$2 AND active", [tenantId, parceiroId]);
     if (!partner.rows[0]) throw httpError(404, "Parceiro ativo não encontrado");
-    const lead = await client.query<{ status: string }>("SELECT status FROM scheduling_leads WHERE id=$1 AND tenant_id=$2 FOR UPDATE", [leadId, tenantId]);
+    const lead = await client.query<{ status: string; assigned_member_id: string | null }>("SELECT status,assigned_member_id FROM scheduling_leads WHERE id=$1 AND tenant_id=$2 FOR UPDATE", [leadId, tenantId]);
     if (!lead.rows[0]) throw httpError(404, "Lead não encontrado");
+    if (expectedAssignedMemberId && lead.rows[0].assigned_member_id !== expectedAssignedMemberId) throw httpError(404, "Lead não encontrado");
     const stage = await client.query<{ id: string }>(
       "SELECT id FROM pipeline_stages WHERE tenant_id=$1 AND technical_status='proposta_enviada' AND is_default AND archived_at IS NULL",
       [tenantId]
@@ -3371,7 +3399,8 @@ export async function atualizarStatusLead(
   tenantId: string,
   leadId: string,
   status: LeadStatus,
-  actor?: JourneyActor
+  actor?: JourneyActor,
+  expectedAssignedMemberId?: string
 ) {
   return withTransaction(async (client) => {
     const lead = await client.query<Record<string, unknown> & { status: LeadStatus }>(
@@ -3379,6 +3408,7 @@ export async function atualizarStatusLead(
       [leadId, tenantId]
     );
     if (!lead.rows[0]) throw httpError(404, "Lead não encontrado");
+    if (expectedAssignedMemberId && lead.rows[0].assigned_member_id !== expectedAssignedMemberId) throw httpError(404, "Lead não encontrado");
     const currentStatus = lead.rows[0].status;
     if (currentStatus === status) return lead.rows[0];
     if (stageRequiresCommercialPayload(status)) {
@@ -3387,7 +3417,7 @@ export async function atualizarStatusLead(
     if (!allowedLeadStatusTransitions(currentStatus).includes(status)) {
       throw httpError(409, `Transição de status não permitida: ${currentStatus} -> ${status}`);
     }
-    const row = await client.query("UPDATE scheduling_leads SET status=$3,updated_at=now() WHERE id=$1 AND tenant_id=$2 RETURNING *", [leadId, tenantId, status]);
+    const row = await client.query("UPDATE scheduling_leads SET status=$3,updated_at=now() WHERE id=$1 AND tenant_id=$2 AND ($4::uuid IS NULL OR assigned_member_id=$4) RETURNING *", [leadId, tenantId, status, expectedAssignedMemberId ?? null]);
     await client.query(
       `INSERT INTO scheduling_lead_events(
          lead_id,tenant_id,event_type,previous_status,new_status,actor_user_id

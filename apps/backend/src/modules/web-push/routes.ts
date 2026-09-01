@@ -5,6 +5,7 @@ import { db } from "../../db/client.js";
 import { requireWorkspace } from "../../auth/session.js";
 import { isFeatureFlagEnabled } from "../operations/feature-flags.js";
 import { WebPushRepository } from "./repository.js";
+import { resolvePublicHttpsUrl, OutboundUrlError } from "../../security/outbound-url.js";
 
 const subscriptionBody = z.object({
   endpoint: z.string().url().max(4_096).refine((value) => new URL(value).protocol === "https:", "Endpoint deve usar HTTPS"),
@@ -69,6 +70,12 @@ export async function registerWebPushRoutes(app: FastifyInstance) {
       return reply.status(503).send({ error: "Web Push indisponível neste workspace" });
     }
     const body = subscriptionBody.parse(request.body);
+    try {
+      await resolvePublicHttpsUrl(body.endpoint);
+    } catch (error) {
+      if (error instanceof OutboundUrlError) return reply.status(400).send({ code: error.code, error: "Endpoint inválido" });
+      throw error;
+    }
     const subscription = await repository.upsertSubscription({
       tenantId: session.tenantId,
       userId: session.userId,

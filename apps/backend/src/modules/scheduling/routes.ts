@@ -112,53 +112,81 @@ function followUpActor(request: FastifyRequest, session: WorkspaceSession) {
 
 export async function registerSchedulingRoutes(app: FastifyInstance) {
   app.post("/leads", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request, reply) => {
-    const { tenantId } = await requireWorkspace(request); const body = leadBody.parse(request.body);
-    const result = await upsertLead(tenantId, body);
+    const { session, scope } = await panelCaseScope(request, "leads.create");
+    if (scope.type === "mine" && !scope.memberId) throw httpError(403, "Membro ativo obrigatório para criar um lead");
+    const body = leadBody.parse(request.body);
+    const existing = await db.query<{ id: string }>(`SELECT id FROM scheduling_leads WHERE tenant_id=$1 AND regexp_replace(phone,'\\D','','g')=regexp_replace($2,'\\D','','g') ORDER BY created_at,id LIMIT 1`, [session.tenantId, body.telefone]);
+    if (existing.rows[0] && !await canAccessLead(session, scope, existing.rows[0].id)) return reply.status(404).send({ error: "Lead não encontrado" });
+    const result = await upsertLead(session.tenantId, body, { preferredAssignedMemberId: scope.type === "mine" ? scope.memberId ?? undefined : undefined, actor: followUpActor(request, session), expectedExistingLeadId: existing.rows[0]?.id ?? null, expectedAssignedMemberId: scope.type === "mine" ? scope.memberId ?? undefined : undefined });
     return reply.status(result.created ? 201 : 200).send({ lead: leadMapper(result.row) });
   });
 
   app.get("/categorias", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiRead } }, async (request) => {
-    const { tenantId } = await requireWorkspace(request); assertTenantQuery(request.query, tenantId);
-    return { categorias: await listCategorias(tenantId) };
+    const { session } = await panelCaseScope(request, "categories.read"); assertTenantQuery(request.query, session.tenantId);
+    return { categorias: await listCategorias(session.tenantId) };
   });
 
   app.get("/parceiros", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiRead } }, async (request) => {
-    const { tenantId } = await requireWorkspace(request); assertTenantQuery(request.query, tenantId);
-    return { parceiros: await listParceiros(tenantId) };
+    const { session } = await panelCaseScope(request, "partners.read"); assertTenantQuery(request.query, session.tenantId);
+    return { parceiros: await listParceiros(session.tenantId) };
   });
 
   app.post("/leads/:id/proposta-parceiro", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request, reply) => {
-    const { tenantId } = await requireWorkspace(request); const { id } = idParams.parse(request.params);
+    const { session, scope } = await panelCaseScope(request, "leads.send_partner_proposal"); const { id } = idParams.parse(request.params);
+    if (!await canAccessLead(session, scope, id)) return reply.status(404).send({ error: "Lead não encontrado" });
     const body = z.object({ parceiro_id: slug }).parse(request.body);
-    return reply.send(await enviarPropostaParceiro(tenantId, id, body.parceiro_id));
+    return reply.send(await enviarPropostaParceiro(session.tenantId, id, body.parceiro_id, scope.type === "mine" ? scope.memberId ?? undefined : undefined));
   });
 
   app.get("/unidades/:unidade_id/horarios", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiRead } }, async (request) => {
-    const { tenantId } = await requireWorkspace(request); const { unidade_id } = unitParams.parse(request.params);
-    const query = apiTenantQuery.extend({ data: date }).parse(request.query); assertTenantQuery(query, tenantId);
-    return verificarHorarios(tenantId, unidade_id, query.data);
+    const { session } = await panelCaseScope(request, "availability.read"); const { unidade_id } = unitParams.parse(request.params);
+    const query = apiTenantQuery.extend({ data: date }).parse(request.query); assertTenantQuery(query, session.tenantId);
+    return verificarHorarios(session.tenantId, unidade_id, query.data);
   });
 
   app.post("/agendamentos", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request, reply) => {
-    const { tenantId } = await requireWorkspace(request);
-    return reply.status(201).send({ agendamento: await createAppointment(tenantId, appointmentBody.parse(request.body)) });
+    const { session, scope } = await panelCaseScope(request, "appointments.create");
+    const body = appointmentBody.parse(request.body);
+    const hasExplicitAssignee = Object.prototype.hasOwnProperty.call(body, "assigned_member_id");
+    if (hasExplicitAssignee && !hasWorkspaceCaseAccess(session)) {
+      throw httpError(403, "Somente gestores podem escolher o closer da reunião");
+    }
+    if (!await canAccessLead(session, scope, body.lead_id)) return reply.status(404).send({ error: "Lead não encontrado" });
+    const agendamento = await createAppointment(session.tenantId, body, {
+      manual: true,
+      allowCapacityOverride: true,
+      requireAvailableAttendant: true,
+      expectedAssignedMemberId: scope.type === "mine" ? scope.memberId ?? undefined : undefined,
+      allowExplicitAssignee: hasWorkspaceCaseAccess(session),
+      actor: followUpActor(request, session)
+    });
+    return reply.status(201).send({ agendamento });
   });
-  app.patch("/agendamentos/:id/reagendar", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request) => {
-    const { tenantId } = await requireWorkspace(request); const { id } = idParams.parse(request.params);
-    return { agendamento: await rescheduleAppointment(tenantId, id, rescheduleBody.parse(request.body)) };
+  app.patch("/agendamentos/:id/reagendar", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request, reply) => {
+    const { session, scope } = await panelCaseScope(request, "appointments.reschedule"); const { id } = idParams.parse(request.params);
+    if (!await canAccessAppointment(session, scope, id)) return reply.status(404).send({ error: "Agendamento não encontrado" });
+    return { agendamento: await rescheduleAppointment(session.tenantId, id, rescheduleBody.parse(request.body), {
+      manual: true,
+      allowCapacityOverride: true,
+      expectedAssignedMemberId: scope.type === "mine" ? scope.memberId ?? undefined : undefined,
+      actor: followUpActor(request, session)
+    }) };
   });
-  app.delete("/agendamentos/:id", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request) => {
-    const { tenantId } = await requireWorkspace(request); const { id } = idParams.parse(request.params);
-    return { agendamento: await cancelAppointment(tenantId, id) };
+  app.delete("/agendamentos/:id", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request, reply) => {
+    const { session, scope } = await panelCaseScope(request, "appointments.cancel"); const { id } = idParams.parse(request.params);
+    if (!await canAccessAppointment(session, scope, id)) return reply.status(404).send({ error: "Agendamento não encontrado" });
+    return { agendamento: await cancelAppointment(session.tenantId, id, undefined, followUpActor(request, session), scope.type === "mine" ? scope.memberId ?? undefined : undefined) };
   });
-  app.patch("/leads/:id/status", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request) => {
-    const { tenantId } = await requireWorkspace(request); const { id } = idParams.parse(request.params);
+  app.patch("/leads/:id/status", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request, reply) => {
+    const { session, scope } = await panelCaseScope(request, "leads.update_status"); const { id } = idParams.parse(request.params);
+    if (!await canAccessLead(session, scope, id)) return reply.status(404).send({ error: "Lead não encontrado" });
     const body = z.object({ status: leadStatus }).parse(request.body);
-    return { lead: leadMapper(await atualizarStatusLead(tenantId, id, body.status)) };
+    return { lead: leadMapper(await atualizarStatusLead(session.tenantId, id, body.status, undefined, scope.type === "mine" ? scope.memberId ?? undefined : undefined)) };
   });
-  app.post("/leads/:id/transferir", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request) => {
-    const { tenantId } = await requireWorkspace(request); const { id } = idParams.parse(request.params);
-    return { lead: await transferLead(tenantId, id, transferBody.parse(request.body).motivo) };
+  app.post("/leads/:id/transferir", { config: { rateLimit: HTTP_RATE_LIMITS.publicApiWrite } }, async (request, reply) => {
+    const { session, scope } = await panelCaseScope(request, "leads.transfer"); const { id } = idParams.parse(request.params);
+    if (!await canAccessLead(session, scope, id)) return reply.status(404).send({ error: "Lead não encontrado" });
+    return { lead: await transferLead(session.tenantId, id, transferBody.parse(request.body).motivo, scope.type === "mine" ? scope.memberId ?? undefined : undefined) };
   });
 
   app.get("/scheduling/leads", async (request) => {
@@ -445,7 +473,8 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
       tenantId,
       id,
       body.status,
-      followUpActor(request, session)
+      followUpActor(request, session),
+      scope.type === "mine" ? scope.memberId ?? undefined : undefined
     ));
     return { lead, status_permitidos: allowedLeadStatusTransitions(leadStatus.parse(lead.status)) };
   });
@@ -466,7 +495,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
     const { session, scope } = await panelCaseScope(request, "leads.transfer");
     const tenantId = session.tenantId; const { id } = idParams.parse(request.params);
     if (!await canAccessLead(session, scope, id)) return reply.status(404).send({ error: "Lead não encontrado" });
-    return { lead: await transferLead(tenantId, id, transferBody.parse(request.body).motivo) };
+    return { lead: await transferLead(tenantId, id, transferBody.parse(request.body).motivo, scope.type === "mine" ? scope.memberId ?? undefined : undefined) };
   });
   app.delete("/scheduling/leads/:id", async (request, reply) => {
     const { session, scope } = await panelCaseScope(request, "leads.delete");

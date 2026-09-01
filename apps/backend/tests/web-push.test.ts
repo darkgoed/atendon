@@ -90,6 +90,16 @@ describe("Web Push delivery", () => {
     expect(repository.finishOutbox).toHaveBeenCalledWith(delivery().outboxId, "push provider unavailable", true);
   });
 
+  it("passes the hardened agent and timeout to the web-push request", async () => {
+    const repository = repositoryMock();
+    const sender: WebPushSender = { send: vi.fn().mockResolvedValue(undefined) };
+    const processor = new WebPushProcessor(repository as unknown as WebPushRepository, sender);
+    await processor.process(delivery().tenantId, delivery().outboxId);
+    expect(sender.send).toHaveBeenCalledWith(expect.anything(), expect.any(String), expect.objectContaining({
+      timeout: expect.any(Number), agent: expect.anything()
+    }));
+  });
+
   it("enables operational categories by default and keeps other updates opt-in", () => {
     expect(defaultPushPreferencesFor("assigned_message")).toBe(true);
     expect(defaultPushPreferencesFor("appointment_reminder")).toBe(true);

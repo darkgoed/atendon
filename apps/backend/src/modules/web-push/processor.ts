@@ -1,8 +1,9 @@
 import webPush, { type PushSubscription, type RequestOptions } from "web-push";
 import type { AppConfig } from "../../config.js";
-import type { PendingWebPushDelivery, WebPushEventType, WebPushUrgency } from "./repository.js";
-import { WebPushRepository } from "./repository.js";
+import { WebPushRepository, type PendingWebPushDelivery, type WebPushEventType, type WebPushUrgency } from "./repository.js";
+import { publicHttpsAgent } from "../../security/outbound-url.js";
 
+const WEB_PUSH_REQUEST_TIMEOUT_MS = 10_000;
 export interface WebPushSender {
   send(subscription: PushSubscription, payload: string, options: RequestOptions): Promise<void>;
 }
@@ -73,8 +74,9 @@ export class WebPushProcessor {
           keys: { p256dh: delivery.p256dh, auth: delivery.auth }
         }, privateWebPushPayload(delivery), {
           TTL: delivery.eventType === "appointment_reminder" ? 15 * 60 : 60 * 60,
-          urgency: requestUrgency(delivery.urgency)
-        });
+          urgency: requestUrgency(delivery.urgency),
+          timeout: WEB_PUSH_REQUEST_TIMEOUT_MS,
+          agent: publicHttpsAgent()        });
         await this.repository.markDeliverySent(delivery.outboxId, delivery.subscriptionId);
       } catch (error) {
         const status = deliveryStatus(error);

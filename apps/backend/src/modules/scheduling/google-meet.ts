@@ -101,7 +101,7 @@ export class GoogleMeetClient {
     try {
       response = await this.fetcher(this.cfg.GOOGLE_MEET_TOKEN_URL, {
         method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
+        redirect: "error", headers: { "content-type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           grant_type: "refresh_token",
           client_id: clientId,
@@ -137,7 +137,7 @@ export class GoogleMeetClient {
     try {
       response = await this.fetcher(`${this.cfg.GOOGLE_MEET_API_BASE_URL.replace(/\/$/, "")}/v2/spaces`, {
         method: "POST",
-        headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+        redirect: "error", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
         // ponytail: link é único por agendamento (nunca reutilizado/público), então liberar entrada
         // automática (accessType OPEN) substitui a sala de espera sem abrir risco de acesso indevido.
         body: JSON.stringify({ config: { accessType: "OPEN" } }),
@@ -241,7 +241,7 @@ export class GoogleMeetOAuthClient {
     try {
       tokenResponse = await this.fetcher(this.cfg.GOOGLE_MEET_TOKEN_URL, {
         method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
+        redirect: "error", headers: { "content-type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           grant_type: "authorization_code",
           code,
@@ -263,6 +263,7 @@ export class GoogleMeetOAuthClient {
     let userResponse: Response;
     try {
       userResponse = await this.fetcher(this.cfg.GOOGLE_MEET_OAUTH_USERINFO_URL, {
+        redirect: "error",
         headers: { authorization: `Bearer ${token.data.access_token}` },
         signal: AbortSignal.timeout(this.cfg.GOOGLE_MEET_TIMEOUT_MS)
       });
