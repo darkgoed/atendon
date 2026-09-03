@@ -1,26 +1,21 @@
 import { instantFromLocalMinute } from "../../lib/timezone";
 
-export const LOSS_REASONS = [
-  "preco",
-  "sem_interesse",
-  "sem_momento",
-  "nao_qualificado",
-  "concorrente",
-  "sem_retorno",
-  "outro"
-] as const;
-
-export type LossReason = (typeof LOSS_REASONS)[number];
+/**
+ * A chave do motivo vem do catálogo do tenant (`/organization/loss-reasons`),
+ * por isso é uma string livre e não mais um union fechado: cada cliente tem o
+ * seu próprio vocabulário comercial.
+ */
+export type LossReason = string;
 export type AppointmentOutcome = "fechado" | "proposta_enviada" | "em_negociacao" | "follow_up" | "nao_avancou";
 
 export type AppointmentOutcomePayload =
   | { outcome: "fechado"; sale_value: number }
   | { outcome: "proposta_enviada" | "em_negociacao" | "follow_up"; next_action: string; next_action_at: string }
-  | { outcome: "nao_avancou"; loss_reason: LossReason };
+  | { outcome: "nao_avancou"; loss_reason: LossReason; loss_reason_note?: string };
 
 export type AppointmentCancellationPayload =
   | { disposition: "recover"; next_action: string; next_action_at: string }
-  | { disposition: "lost"; loss_reason: LossReason };
+  | { disposition: "lost"; loss_reason: LossReason; loss_reason_note?: string };
 
 export type OutcomeDraft = {
   outcome: AppointmentOutcome | "";
@@ -28,6 +23,7 @@ export type OutcomeDraft = {
   nextAction: string;
   nextActionAtLocal: string;
   lossReason: LossReason | "";
+  lossReasonNote?: string;
 };
 
 export type CancellationDraft = {
@@ -35,6 +31,7 @@ export type CancellationDraft = {
   nextAction: string;
   nextActionAtLocal: string;
   lossReason: LossReason | "";
+  lossReasonNote?: string;
 };
 
 type ValidationResult<T> = { ok: true; payload: T } | { ok: false; error: string };
@@ -56,7 +53,8 @@ function nextActionFields(
 export function buildOutcomePayload(
   draft: OutcomeDraft,
   timezone: string,
-  now = Date.now()
+  now = Date.now(),
+  requiresNote = false
 ): ValidationResult<AppointmentOutcomePayload> {
   if (!draft.outcome) return { ok: false, error: "Selecione o resultado da reunião." };
   if (draft.outcome === "fechado") {
@@ -66,7 +64,15 @@ export function buildOutcomePayload(
   }
   if (draft.outcome === "nao_avancou") {
     if (!draft.lossReason) return { ok: false, error: "Selecione o motivo da perda." };
-    return { ok: true, payload: { outcome: "nao_avancou", loss_reason: draft.lossReason } };
+    if (requiresNote && !draft.lossReasonNote?.trim()) return { ok: false, error: "Descreva o motivo no campo de observação." };
+    return {
+      ok: true,
+      payload: {
+        outcome: "nao_avancou",
+        loss_reason: draft.lossReason,
+        ...(draft.lossReasonNote?.trim() ? { loss_reason_note: draft.lossReasonNote.trim() } : {})
+      }
+    };
   }
   const next = nextActionFields(draft.nextAction, draft.nextActionAtLocal, timezone, now);
   if (!next.ok) return next;
@@ -76,12 +82,21 @@ export function buildOutcomePayload(
 export function buildCancellationPayload(
   draft: CancellationDraft,
   timezone: string,
-  now = Date.now()
+  now = Date.now(),
+  requiresNote = false
 ): ValidationResult<AppointmentCancellationPayload> {
   if (!draft.disposition) return { ok: false, error: "Escolha como este cancelamento deve ser tratado." };
   if (draft.disposition === "lost") {
     if (!draft.lossReason) return { ok: false, error: "Selecione o motivo da perda." };
-    return { ok: true, payload: { disposition: "lost", loss_reason: draft.lossReason } };
+    if (requiresNote && !draft.lossReasonNote?.trim()) return { ok: false, error: "Descreva o motivo no campo de observação." };
+    return {
+      ok: true,
+      payload: {
+        disposition: "lost",
+        loss_reason: draft.lossReason,
+        ...(draft.lossReasonNote?.trim() ? { loss_reason_note: draft.lossReasonNote.trim() } : {})
+      }
+    };
   }
   const next = nextActionFields(draft.nextAction, draft.nextActionAtLocal, timezone, now);
   if (!next.ok) return next;

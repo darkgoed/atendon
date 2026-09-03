@@ -40,6 +40,27 @@ describe("Agenda commercial result contracts", () => {
     expect(buildCancellationPayload({ disposition: "recover", nextAction: "Ligar novamente", nextActionAtLocal: "2030-01-08T10:00", lossReason: "" }, "UTC", new Date("2030-01-07T10:00:00.000Z").getTime()))
       .toEqual({ ok: true, payload: { disposition: "recover", next_action: "Ligar novamente", next_action_at: "2030-01-08T10:00:00.000Z" } });
   });
+
+  it("carries the disqualification note and enforces it when the reason requires one", () => {
+    expect(buildOutcomePayload(
+      { outcome: "nao_avancou", saleValue: "", nextAction: "", nextActionAtLocal: "", lossReason: "queria_emprestimo", lossReasonNote: "  só queria capital de giro  " },
+      "UTC"
+    )).toEqual({ ok: true, payload: { outcome: "nao_avancou", loss_reason: "queria_emprestimo", loss_reason_note: "só queria capital de giro" } });
+
+    expect(buildOutcomePayload(
+      { outcome: "nao_avancou", saleValue: "", nextAction: "", nextActionAtLocal: "", lossReason: "outro", lossReasonNote: "   " },
+      "UTC",
+      Date.now(),
+      true
+    )).toMatchObject({ ok: false, error: "Descreva o motivo no campo de observação." });
+
+    expect(buildCancellationPayload(
+      { disposition: "lost", nextAction: "", nextActionAtLocal: "", lossReason: "outro", lossReasonNote: "mudou de ramo" },
+      "UTC",
+      Date.now(),
+      true
+    )).toEqual({ ok: true, payload: { disposition: "lost", loss_reason: "outro", loss_reason_note: "mudou de ramo" } });
+  });
 });
 
 describe("Agenda pending and guarded entry", () => {

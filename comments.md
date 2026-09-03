@@ -1,237 +1,399 @@
-1. Manter a qualificação curta
+"SCRIPT DE AGENDAMENTO — NEWAVE PAY
 
-Depois que a IA já entende nome + negócio + dor, faltariam apenas duas perguntas comerciais realmente importantes.
+OBJETIVO: qualificar o lojista e agendar uma apresentação com o responsável pela decisão.
 
-Pergunta 1 — Decisor
+1. PRIMEIRO CONTATO
 
-“Uma parceria como essa depende só de você ou mais alguém participa da decisão?”
+Olá, [nome]! Tudo bem?
 
-Se disser sócio:
+Sou [atendente], da equipe Newave Pay.
 
-“Nesse caso, o ideal é ele participar da conversa também, assim vocês conseguem avaliar tudo juntos e evitamos você ter que repassar a apresentação depois”
+Você preencheu nosso formulário para conhecer novas soluções financeiras para sua loja. Quero entender rapidamente sua operação e verificar se temos uma solução compatível.
 
-E encerra. Não faz outra pergunta no mesmo turno.
+Posso fazer algumas perguntas rápidas? Leva menos de dois minutos.
 
-Pergunta 2 — Momento
+2. QUALIFICAÇÃO
+3. Qual é o segmento da sua empresa e em qual cidade ela está localizada?
+4. Qual é o valor médio das suas vendas?
+5. Aproximadamente quantas vendas sua loja realiza por mês?
+6. Quais formas de pagamento e financiamento vocês oferecem atualmente?
+7. Quantos clientes deixam de comprar por falta de limite no cartão, dinheiro à vista ou acesso ao crédito tradicional?
+8. Vocês já trabalham com alguma financeira? Onde acontece a maior quantidade de recusas?
+9. Quantas pessoas fazem parte da equipe comercial?
+10. Você é a pessoa responsável por avaliar e contratar novas soluções financeiras?
 
-“Se a solução fizer sentido para a loja, vocês pensam em colocar isso em prática agora ou estão mais na fase de conhecer?”
+Se não for:
 
-Respostas livres.
+Perfeito. Quem participa dessa decisão com você?
 
-A IA classifica internamente como:
+O ideal é que essa pessoa esteja presente na apresentação, porque mostraremos o funcionamento, a implantação e o investimento.
 
-Quente: quer implementar agora / curto prazo
-Morno: está avaliando
-Frio: curiosidade / sem previsão
+3. IDENTIFICAÇÃO DA OPORTUNIDADE
 
-Não precisamos perguntar diretamente:
+Entendi, [nome].
 
-“Você está preparado para fechar?”
+Pelo que você me contou, sua loja vende em média [quantidade/ticket], mas perde oportunidades principalmente por [dor relatada].
 
-Acho agressivo demais para WhatsApp e tende a criar resistência antes da reunião.
+A Newave Pay pode complementar as formas de pagamento que você já utiliza e oferecer novas possibilidades para diferentes perfis de clientes, sempre conforme as regras e a análise de cada modalidade.
 
-2. Eu mudaria a regra de “todo lead agenda”
+4. GERAR INTERESSE
 
-Hoje o prompt determina:
+Na Imagine recuperar apenas [número conservador] das vendas que sua loja perde todos os meses.
 
-“Todo lead deve ser conduzido a uma tentativa de agendamento”
+Com um ticket médio de R$ [valor], isso poderia representar aproximadamente R$ [valor potencial] em faturamento adicional.
 
-Eu substituiria por:
+Na apresentação, nosso especialista vai analisar essa oportunidade e mostrar:
 
-Todo lead com aderência comercial deve ser conduzido a uma tentativa de agendamento
-Antes de oferecer horários, a IA deve verificar se há negócio compatível, dor relacionada à solução, capacidade mínima definida pela operação e intenção real de avaliar a Newave
-Leads sem aderência ou claramente sem momento de compra não devem ocupar a agenda comercial, podendo permanecer em acompanhamento ou nutrição
+* Quais modalidades podem fazer sentido para sua loja;
+* Como as simulações são realizadas;
+* Como funciona a implantação;
+* Como sua equipe será treinada;
+* Qual é o investimento;
+* E qual pode ser o potencial comercial da operação.
 
-Isso é essencial.
+5. AGENDAMENTO
 
-Senão podemos criar uma IA excelente em agendar reuniões ruins.
+A apresentação dura aproximadamente [tempo] minutos e pode ser feita por videochamada.
 
-3. Decisor precisa entrar na regra de reunião
+Tenho disponibilidade hoje às [horário 1] ou amanhã às [horário 2]. Qual funciona melhor para você?
 
-Eu acrescentaria ao prompt:
+Evitar perguntar apenas: “Quando você pode?”. Sempre oferecer duas opções.
 
-Participação de decisores
+6. CONFIRMAÇÃO
 
-Se o contato disser que depende de sócio, gerente ou outro responsável para tomar a decisão, a IA deve tentar organizar a reunião com essa pessoa presente
+Perfeito, ficou agendado:
 
-Nunca diga que a reunião não pode acontecer sem ela
+Data: [data]
+Horário: [horário]
+Formato: videochamada
+Link: [link]
 
-Explique o benefício de participar:
+É importante participar de um local tranquilo e, se houver outro responsável pela decisão, convidá-lo para a reunião.
 
-“Assim vocês conseguem avaliar juntos e tirar todas as dúvidas na mesma conversa”
+Posso contar com sua presença?
 
-Ao registrar o lead, informar ao comercial:
+7. LEMBRETE NO DIA ANTERIOR
 
-Decisor: sozinho / sócio / outro
-Todos participarão: sim / não confirmado
+Olá, [nome]!
 
-Isso já prepara o Beto para a call.
+Passando para confirmar nossa apresentação da Newave Pay amanhã, às [horário].
 
-4. O maior ajuste anti-no-show
+Vamos mostrar como a solução pode ser aplicada à operação da sua loja e avaliar o potencial de novas vendas.
 
-No script atual, depois do agendamento a IA confirma e encerra.
+Está confirmado para você?
 
-Eu criaria um estado diferente:
+8. LEMBRETE 30 MINUTOS ANTES
 
-AGENDADO
-↓
-CONFIRMAÇÃO SOLICITADA
-↓
-CONFIRMADO
-↓
-REUNIÃO
+Olá, [nome]!
 
-Após o agendamento:
+Nossa apresentação começa em 30 minutos.
 
-“Fechado, ficou marcado pra amanhã às 14h pelo Google Meet
+Este é o link para participar: [link]
 
-Como esse horário fica reservado pra sua operação, me confirma por aqui se posso contar contigo”
+O especialista [nome do vendedor] estará esperando você no horário combinado.
 
-Agora existe uma ação ativa do lead.
+9. SE O LEAD PERGUNTAR O PREÇO
 
-Se responder:
+Vou explicar como o investimento funciona.
 
-“Sim”
+Antes, precisamos entender quais modalidades são compatíveis com sua empresa e o potencial da operação. Por isso, o especialista apresenta os valores durante a reunião, já relacionando o investimento com a realidade da sua loja.
 
-CRM:
+Tenho [horário 1] ou [horário 2]. Qual é melhor?
 
-CONFIRMADO
+10. SE PEDIR MATERIAL
 
-Isso vale mais do que simplesmente enviar:
+Envio, sim.
 
-“Sua reunião é amanhã às 14h.”
+Mas o material apresenta apenas uma visão geral. Na reunião, conseguimos analisar sua loja, explicar a operação e responder às dúvidas sobre investimento e implantação.
 
-5. Confirmação no dia
+Podemos fazer uma apresentação de [tempo] minutos e, depois, envio o material completo.
 
-Quando o runtime disparar o lembrete, eu mudaria de lembrete passivo para confirmação:
+Você prefere [horário 1] ou [horário 2]?
 
-“[Nome], passando pra confirmar nossa conversa de hoje às 14h, segue tudo certo por aí?”
+11. OBJEÇÃO: “ESTOU SEM TEMPO”
 
-Se responder sim:
+Entendo. Por isso, a apresentação é objetiva e já direcionada para a realidade da sua loja.
 
-CONFIRMADO NO DIA
+Se hoje estiver complicado, posso reservar [dia/horário 1] ou [dia/horário 2]. Qual gera menos impacto na sua rotina?
 
-Se não responder, entra numa rotina específica de recuperação.
+12. OBJEÇÃO: “SÓ QUERO SABER COMO FUNCIONA”
 
-Isso também está de acordo com a regra atual do documento de só disparar lembretes quando o CRM/runtime determinar.
+Perfeito. É exatamente isso que o especialista mostrará: modalidades, simulação, implantação, treinamento e investimento.
 
-6. Beto precisa receber um resumo melhor
+Como cada operação possui uma necessidade diferente, a apresentação evita que eu envie uma informação genérica e sem aplicação prática.
 
-# CONFIRMAÇÕES DE REUNIÃO — NEWAVE
+Tenho [opção 1] e [opção 2]. Qual você prefere?
 
-## MOMENTO 1 — LOGO APÓS O AGENDAMENTO
+13. FOLLOW-UP SEM RESPOSTA — 24 HORAS
 
-### Variação 1
+Olá, [nome]!
 
-Fechado, ficou marcado pra hoje às 16h
+Você solicitou informações sobre a Newave Pay e tentei contato para conhecer sua operação.
 
-Só me confirma se segue tudo certo pra gente se falar nesse horário?
+Ainda faz sentido avaliar novas formas de pagamento para aumentar as possibilidades de venda da sua loja?
 
-### Variação 2
+14. FOLLOW-UP — 3 DIAS
 
-Combinado, nossa conversa ficou pra hoje às 16h
+Olá, [nome]!
 
-Me dá um ok por aqui só pra eu confirmar contigo
+Serei objetivo: se sua loja perde clientes por falta de limite, dinheiro à vista ou acesso ao crédito tradicional, vale conhecer a operação da Newave Pay.
 
-### Variação 3
+Tenho uma apresentação disponível em [opção 1] ou [opção 2]. Posso reservar uma delas para você?
 
-Prontinho, deixei marcado pra hoje às 16h
+15. FOLLOW-UP FINAL
 
-Tá tudo certo pra você nesse horário?
+Olá, [nome]!
 
----
+Como não consegui falar com você, vou encerrar o atendimento neste momento.
 
-# MOMENTO 2 — 1 A 2 HORAS ANTES
+Quando ampliar as formas de pagamento voltar a ser uma prioridade para sua loja, podemos retomar a análise.
 
-## SE O LEAD JÁ CONFIRMOU
+Caso queira conhecer agora, ainda consigo reservar [dia e horário].
 
-### Variação 1
+SCRIPT DE APRESENTAÇÃO E FECHAMENTO — NEWAVE PAY
 
-[Nome], passando só pra lembrar que nossa conversa é hoje às 16h
+OBJETIVO: diagnosticar a oportunidade, apresentar a solução adequada e conduzir o lojista a uma decisão.
 
-Nos falamos daqui a pouco
+1. ABERTURA
 
-### Variação 2
+Olá, [nome]! Obrigado por reservar este horário.
 
-[Nome], daqui a pouco temos nossa conversa das 16h
+O [nome do agendador] me passou algumas informações sobre sua loja. Pelo que entendi, vocês trabalham com [segmento], possuem um ticket médio de aproximadamente R$ [valor] e hoje enfrentam [dor identificada].
 
-Até já
+Está correto?
 
-### Variação 3
+Nossa conversa terá três partes:
 
-[Nome], nossa conversa segue marcada pras 16h
+1. Entender melhor sua operação;
+2. Mostrar como a Newave Pay pode ser aplicada;
+3. Avaliar investimento e próximos passos.
 
-Daqui a pouco nos falamos
+Se fizer sentido para os dois lados, podemos avançar hoje. Tudo bem?
 
----
+2. DIAGNÓSTICO COMERCIAL
 
-## SE O LEAD AINDA NÃO CONFIRMOU
+Antes de apresentar a solução, quero aprofundar alguns pontos.
 
-### Variação 1
+* Qual é o faturamento médio mensal da loja?
+* Qual é o principal produto ou serviço vendido?
+* Qual é o ticket médio?
+* Quantos atendimentos acontecem por mês?
+* Qual é a taxa aproximada de fechamento?
+* Quantos clientes não compram por falta de crédito?
+* Quais financeiras ou modalidades vocês utilizam?
+* Onde ocorre a maior quantidade de reprovações?
+* Sua equipe oferece alternativas ou encerra o atendimento depois da primeira recusa?
+* Quem realizará as simulações?
+* Qual resultado você espera gerar com uma nova solução?
+* Se encontrar uma solução viável, existe intenção de implantar agora?
 
-[Nome], nossa conversa está marcada pra hoje às 16h
+3. RESUMO DA DOR
 
-Segue tudo certo pra você?
+Deixe-me confirmar se compreendi corretamente.
 
-### Variação 2
+Hoje sua loja atende aproximadamente [quantidade] clientes, possui ticket médio de R$ [valor] e perde cerca de [quantidade] oportunidades por [motivo].
 
-[Nome], passando pra confirmar nosso horário de hoje às 16h
+Além da venda perdida, existe investimento em divulgação, estrutura e equipe para trazer esse cliente até a loja, mas a operação não consegue aproveitar toda a demanda.
 
-Consegue me dar um ok por aqui?
+É esse o principal problema que você quer resolver?
 
-### Variação 3
+4. APRESENTAÇÃO DA NEWAVE PAY
 
-[Nome], temos nossa conversa marcada pras 16h de hoje
+A Newave Pay ajuda empresas a ampliarem suas possibilidades de venda por meio de diferentes modalidades financeiras.
 
-Posso manter esse horário contigo?
+A proposta não é substituir cartão, Pix ou as financeiras que sua loja já utiliza. É acrescentar alternativas para clientes que não conseguem concluir a compra pelos meios tradicionais.
 
----
+Com a implantação, sua loja recebe:
 
-# MOMENTO 3 — 15 MINUTOS ANTES
+* Acesso às modalidades contratadas;
+* Processo estruturado para realização das simulações;
+* Treinamento comercial e operacional;
+* Orientação para identificar o perfil adequado;
+* Suporte durante a operação;
+* Estratégia para transformar recusas em novas oportunidades.
 
-## SE O LEAD JÁ CONFIRMOU
+Cada proposta depende das regras, disponibilidade e análise da modalidade utilizada. Portanto, não existe promessa de aprovação para todos os clientes.
 
-Não pedir confirmação novamente, apenas lembrar e facilitar a entrada na reunião
+5. DEMONSTRAÇÃO PRÁTICA
 
-### Variação 1
+Agora vou mostrar como sua equipe realizará o atendimento.
 
-[Nome], nossa conversa começa em 15 minutinhos
+Situação:
 
-Até já
+O cliente escolhe um produto de R$ [valor], mas não possui dinheiro à vista ou limite no cartão.
 
-### Variação 2
+Em vez de encerrar a venda, o vendedor identifica o perfil do cliente, apresenta as modalidades disponíveis e realiza a simulação conforme o procedimento da Newave Pay.
 
-[Nome], passando só pra avisar que daqui a 15 minutos começamos nossa conversa
+O objetivo é criar uma nova possibilidade de fechamento sem abandonar as formas de pagamento que a loja já utiliza.
 
-Nos falamos já
+6. CÁLCULO DO POTENCIAL
 
-### Variação 3
+Você informou que perde aproximadamente [quantidade] vendas por mês e possui ticket médio de R$ [valor].
 
-[Nome], falta só 15 minutinhos pra nossa conversa
+Se a operação recuperar apenas [quantidade conservadora] dessas vendas, o potencial será:
 
-Até daqui a pouco
+[quantidade] vendas × R$ [ticket médio] = R$ [faturamento potencial]
 
----
+Não é uma garantia de resultado. É uma projeção baseada nos números informados por você.
 
-## SE O LEAD AINDA NÃO RESPONDEU
+Diante desse potencial, fazer essa recuperação teria impacto relevante na sua loja?
 
-Aqui fazemos a última tentativa de confirmação
+7. APRESENTAÇÃO DO INVESTIMENTO
 
-### Variação 1
+Para implantar a operação, o investimento é de [valor e condições].
 
-[Nome], nossa conversa começa em 15 minutos
+Esse investimento contempla:
 
-Segue tudo certo pra você participar?
+* [item];
+* [item];
+* [item];
+* [item];
+* [item].
 
-### Variação 2
+Além do valor, sua loja precisa definir um responsável pela operação e garantir que a equipe participe do treinamento.
 
-[Nome], estamos a 15 minutos do nosso horário
+Até aqui, o funcionamento e o investimento fazem sentido para você?
 
-Consegue me confirmar se vai conseguir entrar?
+8. FECHAMENTO DIRETO
 
-### Variação 3
+Considerando a necessidade que identificamos e o potencial da sua operação, minha recomendação é avançarmos com a implantação.
 
-[Nome], nossa conversa está marcada pra daqui a 15 minutos
+Para começar, precisamos:
 
-Se aconteceu algum imprevisto, me avisa por aqui
+1. Confirmar os dados da empresa;
+2. Receber a documentação;
+3. Formalizar a contratação;
+4. Agendar o treinamento;
+5. Iniciar a operação.
 
+Podemos avançar agora com o cadastro da empresa?
+
+Depois da pergunta, aguardar a resposta. Não continuar falando para preencher o silêncio.
+
+9. OBJEÇÃO: “PRECISO PENSAR”
+
+Compreendo. Para que sua análise seja objetiva, qual ponto ainda impede sua decisão?
+
+É o investimento, o funcionamento, o momento da empresa ou a expectativa de retorno?
+
+Após a resposta:
+
+Além desse ponto, existe alguma outra questão que impediria você de começar?
+
+10. OBJEÇÃO: “ESTÁ CARO”
+
+Entendo. Quando você diz que está caro, está comparando com outra solução ou com o valor disponível para investir neste momento?
+
+Retomar o cálculo:
+
+Hoje estimamos que sua loja pode recuperar [quantidade] vendas, representando aproximadamente R$ [valor] em faturamento.
+
+Quantas vendas seriam necessárias para recuperar o investimento?
+
+Se o investimento ainda não couber no caixa, verificar somente condições comerciais oficialmente autorizadas. Nunca inventar desconto.
+
+11. OBJEÇÃO: “NÃO TENHO CERTEZA SE VAI FUNCIONAR”
+
+É uma preocupação legítima.
+
+Nenhuma empresa séria deve garantir vendas ou aprovações. O resultado depende do fluxo de clientes, perfil do público, oferta da equipe e critérios das modalidades.
+
+O que conseguimos garantir é a entrega da estrutura, do treinamento e do suporte definidos na contratação.
+
+Pelos números que você apresentou, existe demanda suficiente para justificar a implantação?
+
+12. OBJEÇÃO: “JÁ TENHO OUTRAS FINANCEIRAS”
+
+Isso é positivo, porque sua equipe já está acostumada a trabalhar com crédito.
+
+A questão é: quando essas opções recusam o cliente, sua loja ainda possui outra possibilidade ou perde a venda?
+
+A Newave Pay entra como complemento para ampliar sua cobertura, conforme o perfil e as regras de cada modalidade.
+
+13. OBJEÇÃO: “PRECISO FALAR COM MEU SÓCIO”
+
+Sem problema. Qual informação seu sócio precisará para tomar a decisão?
+
+O melhor caminho é fazermos uma conversa rápida com vocês dois, evitando que você precise reproduzir toda a apresentação.
+
+Ele consegue participar hoje às [horário] ou amanhã às [horário]?
+
+14. OBJEÇÃO: “MANDA A PROPOSTA”
+
+Envio, sim.
+
+Antes, quero confirmar: se a proposta registrar exatamente as condições apresentadas e não surgir nenhuma informação diferente, você estará preparado para avançar?
+
+Se não estiver, identificar a objeção real antes de enviar.
+
+15. OBJEÇÃO: “AGORA NÃO É O MOMENTO”
+
+Entendo. O que precisa acontecer para se tornar o momento certo?
+
+* Melhorar o caixa?
+* Aumentar o fluxo de clientes?
+* Organizar a equipe?
+* Encerrar outro contrato?
+
+Definir um motivo e uma data real de retomada. Não aceitar “mais para frente” sem prazo.
+
+16. FECHAMENTO POR ESCOLHA
+
+Para sua operação, temos duas possibilidades autorizadas:
+
+* [opção/plano 1];
+* [opção/plano 2].
+
+Pelo volume da sua loja, recomendo [opção] porque [justificativa].
+
+Você prefere iniciar por essa opção ou pela alternativa [outra opção]?
+
+17. CONFIRMAÇÃO DA VENDA
+
+Excelente, [nome].
+
+Vamos formalizar os próximos passos:
+
+Empresa: [razão social]
+CNPJ: [CNPJ]
+Responsável: [nome]
+Plano/modalidade: [opção]
+Investimento: [valor]
+Condição: [forma de pagamento]
+Treinamento: [data prevista]
+Início da operação: [previsão]
+
+Agora enviarei [contrato/link/documentação]. Assim que concluir, me avise para confirmarmos a implantação.
+
+18. FOLLOW-UP APÓS A REUNIÃO
+
+Olá, [nome]!
+
+Com base em nossa reunião, identificamos que sua loja:
+
+* Possui ticket médio de R$ [valor];
+* Perde aproximadamente [quantidade] vendas;
+* Precisa melhorar [dor];
+* Tem potencial estimado de R$ [valor] em oportunidades.
+
+A proposta apresentada foi [resumo].
+
+Qual ponto precisamos resolver para confirmar a implantação?
+
+19. FOLLOW-UP COM PRAZO
+
+Olá, [nome]!
+
+Ficamos de concluir sua decisão sobre a Newave Pay hoje.
+
+Você conseguiu avaliar a proposta?
+
+Se existir alguma dúvida, podemos resolvê-la agora. Caso esteja de acordo, avanço com sua implantação.
+
+20. ENCERRAMENTO PROFISSIONAL
+
+Olá, [nome]!
+
+Como não avançamos dentro do prazo combinado, vou encerrar esta negociação por enquanto.
+
+Se ampliar as formas de pagamento voltar a ser uma prioridade, podemos reavaliar sua operação e as condições disponíveis naquele momento."

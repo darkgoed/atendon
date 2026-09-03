@@ -36,6 +36,7 @@ import {
 } from "../commercial-journey/service.js";
 import type { CancellationInput, ConcludeAppointmentInput, NoShowInput } from "../commercial-journey/schemas.js";
 import { stageRequiresCommercialPayload } from "../commercial-journey/domain.js";
+import { resolveLossReason } from "../commercial-journey/loss-reasons.js";
 import { createMeetRoomIdentity, insertMeetRoom, participantJoinUrl } from "../meet/service.js";
 import { publicHttpsAgent, resolvePublicHttpsUrl, type LookupAll } from "../../security/outbound-url.js";
 
@@ -284,6 +285,7 @@ export function leadMapper(row: Record<string, unknown>) {
     commercial_outcome: row.commercial_outcome ?? null,
     sale_value: row.sale_value === null || row.sale_value === undefined ? null : Number(row.sale_value),
     loss_reason: row.loss_reason ?? null,
+    loss_reason_note: row.loss_reason_note ?? null,
     commercial_updated_at: row.commercial_updated_at ?? null,
     commercial_updated_by_user_id: row.commercial_updated_by_user_id ?? null,
     sdr_email: row.sdr_user_email ?? null,
@@ -371,6 +373,7 @@ export function appointmentMapper(row: Record<string, unknown>) {
     commercial_outcome: row.commercial_outcome ?? null,
     sale_value: row.sale_value === null || row.sale_value === undefined ? null : Number(row.sale_value),
     loss_reason: row.loss_reason ?? null,
+    loss_reason_note: row.loss_reason_note ?? null,
     outcome_next_action: row.outcome_next_action ?? null,
     outcome_next_action_at: row.outcome_next_action_at ?? null,
     outcome_metadata: row.outcome_metadata ?? {},
@@ -3436,7 +3439,8 @@ export async function atualizarStatusLead(
 export async function markLeadDisqualified(
   tenantId: string,
   leadId: string,
-  reason: "preco" | "nao_qualificado" | "outro" = "nao_qualificado"
+  reason = "nao_qualificado",
+  note?: string | null
 ) {
   return withTransaction(async (client) => {
     const current = await client.query<Record<string, unknown> & {
@@ -3444,27 +3448,31 @@ export async function markLeadDisqualified(
       status: LeadStatus;
       commercial_outcome: string | null;
       loss_reason: string | null;
+      loss_reason_note: string | null;
     }>(
       "SELECT * FROM scheduling_leads WHERE id=$1 AND tenant_id=$2 FOR UPDATE",
       [leadId, tenantId]
     );
     if (!current.rows[0]) throw httpError(404, "Lead não encontrado");
+    const resolved = await resolveLossReason(client, tenantId, reason, note);
     if (current.rows[0].status === "perdido"
       && current.rows[0].commercial_outcome === "nao_avancou"
-      && current.rows[0].loss_reason === reason) return current.rows[0];
+      && current.rows[0].loss_reason === resolved.key
+      && current.rows[0].loss_reason_note === resolved.note) return current.rows[0];
     const updated = await client.query(
       "UPDATE scheduling_leads " +
       "SET status='perdido',commercial_outcome='nao_avancou',sale_value=NULL,loss_reason=$3," +
+      "loss_reason_note=$4," +
       "recovery_required=false,recovery_member_id=NULL,next_action=NULL,next_action_at=NULL," +
       "commercial_updated_at=now(),updated_at=now() " +
       "WHERE id=$1 AND tenant_id=$2 RETURNING *",
-      [leadId, tenantId, reason]
+      [leadId, tenantId, resolved.key, resolved.note]
     );
     await client.query(
       "INSERT INTO scheduling_lead_events(" +
       "lead_id,tenant_id,event_type,previous_status,new_status,details) " +
       "VALUES($1,$2,'lead_desqualificado',$3,'perdido',$4)",
-      [leadId, tenantId, current.rows[0].status, { reason: "tripz_boleto_payment", loss_reason: reason }]
+      [leadId, tenantId, current.rows[0].status, { reason: "tripz_boleto_payment", loss_reason: resolved.key, loss_reason_note: resolved.note }]
     );
     return updated.rows[0];
   });

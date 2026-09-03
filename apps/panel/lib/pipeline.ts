@@ -109,6 +109,7 @@ export type PipelineLead = {
   commercial_outcome?: string | null;
   sale_value?: number | null;
   loss_reason?: string | null;
+  loss_reason_note?: string | null;
   proxima_acao?: string | null;
   proxima_acao_em?: string | null;
   ai_follow_up?: PipelineAiFollowUpProgress | null;
@@ -251,7 +252,7 @@ export function normalizePipelinePreferences(value: unknown): PipelinePreference
 export type PipelineCommercialInput =
   | { sale_value: number }
   | { next_action: string; next_action_at: string }
-  | { loss_reason: string };
+  | { loss_reason: string; loss_reason_note?: string };
 
 export type PipelineTransitionRequirement = "sale" | "next_action" | "loss" | null;
 

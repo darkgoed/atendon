@@ -9,6 +9,7 @@ import { ContactAvatar } from "@/components/contact-avatar";
 import { Shell } from "@/components/shell";
 import { ApiError, api } from "@/lib/api";
 import { commercialPreparationAnswers, leadStatusLabel } from "@/lib/labels";
+import { lossReasonLabel, useLossReasons } from "@/lib/loss-reasons";
 import { useRealtimeSignals } from "@/lib/realtime";
 import {
   canLeaveCaseUnassigned,
@@ -44,6 +45,8 @@ type LeadDetailData = {
     closer_email?: string | null;
     recovery_required?: boolean;
     recovery_email?: string | null;
+    loss_reason?: string | null;
+    loss_reason_note?: string | null;
   };
   qualificacao: Qualificacao | null;
   agendamentos: Array<{
@@ -109,6 +112,7 @@ export default function LeadDetail() {
   const canTransfer = usePermission("leads.transfer");
   const canReadFollowUp = usePermission("leads.follow_up.read");
   const canManageFollowUp = usePermission("leads.follow_up.manage");
+  const { reasons: lossReasons } = useLossReasons();
   const [data, setData] = useState<LeadDetailData>();
   const [followUpData, setFollowUpData] = useState<FollowUpData>();
   const [followUpLoading, setFollowUpLoading] = useState(false);
@@ -548,6 +552,8 @@ export default function LeadDetail() {
                   <Item label="SDR" value={data.lead.sdr_email ?? "Não atribuído"} />
                   <Item label="Closer" value={data.lead.closer_email ?? "Não atribuído"} />
                   {data.lead.recovery_required ? <Item label="Recuperação" value={data.lead.recovery_email ?? "Responsável pendente"} /> : null}
+                  {data.lead.loss_reason ? <Item label="Motivo da desqualificação" value={lossReasonLabel(lossReasons, data.lead.loss_reason)} /> : null}
+                  {data.lead.loss_reason_note ? <Item label="Observação" value={data.lead.loss_reason_note} /> : null}
                 </dl>
               </section>
               {canReadFollowUp ? (

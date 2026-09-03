@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
+import { lossReasonRequiresNote, useLossReasons } from "@/lib/loss-reasons";
 import {
   buildCancellationPayload,
   buildOutcomePayload,
@@ -20,28 +21,42 @@ const OUTCOME_OPTIONS: Array<{ value: AppointmentOutcome; label: string; detail:
   { value: "nao_avancou", label: "Não avançou", detail: "Registre o motivo da perda." }
 ];
 
-const LOSS_OPTIONS: Array<{ value: LossReason; label: string }> = [
-  { value: "preco", label: "Preço" },
-  { value: "sem_interesse", label: "Sem interesse" },
-  { value: "sem_momento", label: "Sem momento" },
-  { value: "nao_qualificado", label: "Não qualificado" },
-  { value: "concorrente", label: "Concorrente" },
-  { value: "sem_retorno", label: "Sem retorno" },
-  { value: "outro", label: "Outro" }
-];
+const emptyOutcome: OutcomeDraft = { outcome: "", saleValue: "", nextAction: "", nextActionAtLocal: "", lossReason: "", lossReasonNote: "" };
+const emptyCancellation: CancellationDraft = { disposition: "", nextAction: "", nextActionAtLocal: "", lossReason: "", lossReasonNote: "" };
 
-const emptyOutcome: OutcomeDraft = { outcome: "", saleValue: "", nextAction: "", nextActionAtLocal: "", lossReason: "" };
-const emptyCancellation: CancellationDraft = { disposition: "", nextAction: "", nextActionAtLocal: "", lossReason: "" };
-
-function LossReasonField({ value, disabled, onChange }: { value: LossReason | ""; disabled: boolean; onChange: (value: LossReason) => void }) {
+function LossReasonField({ value, note, disabled, onChange, onNoteChange }: {
+  value: LossReason | "";
+  note: string;
+  disabled: boolean;
+  onChange: (value: LossReason) => void;
+  onNoteChange: (value: string) => void;
+}) {
+  const { reasons, error } = useLossReasons();
+  const noteRequired = lossReasonRequiresNote(reasons, value);
   return (
-    <label className="field">
-      <span className="label">Motivo da perda</span>
-      <select className="input" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value as LossReason)} required>
-        <option value="">Selecione um motivo</option>
-        {LOSS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-      </select>
-    </label>
+    <>
+      <label className="field">
+        <span className="label">Motivo da desqualificação</span>
+        <select className="input" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} required>
+          <option value="">Selecione um motivo</option>
+          {reasons.map((reason) => <option key={reason.id} value={reason.chave}>{reason.rotulo}</option>)}
+        </select>
+        {error ? <small className="error">{error}</small> : null}
+      </label>
+      <label className="field">
+        <span className="label">Observação{noteRequired ? "" : " (opcional)"}</span>
+        <textarea
+          className="input min-h-20 resize-y"
+          value={note}
+          maxLength={500}
+          disabled={disabled}
+          required={noteRequired}
+          onChange={(event) => onNoteChange(event.target.value)}
+          placeholder="Detalhe o que o cliente disse"
+        />
+        <small className="sub">{noteRequired ? "Obrigatório para este motivo." : "Contexto extra para o closer."}</small>
+      </label>
+    </>
   );
 }
 
@@ -78,12 +93,13 @@ export function AppointmentOutcomeForm({ timezone, submitting, serverError, onBa
 }) {
   const [draft, setDraft] = useState<OutcomeDraft>(emptyOutcome);
   const [error, setError] = useState("");
+  const { reasons } = useLossReasons();
   const requiresNextAction = draft.outcome === "proposta_enviada" || draft.outcome === "em_negociacao" || draft.outcome === "follow_up";
   const clearError = () => { setError(""); onClearError(); };
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const result = buildOutcomePayload(draft, timezone);
+    const result = buildOutcomePayload(draft, timezone, Date.now(), lossReasonRequiresNote(reasons, draft.lossReason));
     if (!result.ok) {
       setError(result.error);
       return;
@@ -117,7 +133,7 @@ export function AppointmentOutcomeForm({ timezone, submitting, serverError, onBa
       {requiresNextAction ? (
         <NextActionFields action={draft.nextAction} actionAt={draft.nextActionAtLocal} timezone={timezone} disabled={submitting} onAction={(value) => { setDraft((current) => ({ ...current, nextAction: value })); clearError(); }} onActionAt={(value) => { setDraft((current) => ({ ...current, nextActionAtLocal: value })); clearError(); }} />
       ) : null}
-      {draft.outcome === "nao_avancou" ? <LossReasonField value={draft.lossReason} disabled={submitting} onChange={(value) => { setDraft((current) => ({ ...current, lossReason: value })); clearError(); }} /> : null}
+      {draft.outcome === "nao_avancou" ? <LossReasonField value={draft.lossReason} note={draft.lossReasonNote ?? ""} disabled={submitting} onChange={(value) => { setDraft((current) => ({ ...current, lossReason: value })); clearError(); }} onNoteChange={(value) => { setDraft((current) => ({ ...current, lossReasonNote: value })); clearError(); }} /> : null}
       {error || serverError ? <p className="error" role="alert">{error || serverError}</p> : null}
       <div className="flex flex-wrap justify-end gap-2">
         <button type="button" className="btn" disabled={submitting} onClick={onBack}>Voltar</button>
@@ -137,11 +153,12 @@ export function AppointmentCancellationForm({ timezone, submitting, serverError,
 }) {
   const [draft, setDraft] = useState<CancellationDraft>(emptyCancellation);
   const [error, setError] = useState("");
+  const { reasons } = useLossReasons();
   const clearError = () => { setError(""); onClearError(); };
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const result = buildCancellationPayload(draft, timezone);
+    const result = buildCancellationPayload(draft, timezone, Date.now(), lossReasonRequiresNote(reasons, draft.lossReason));
     if (!result.ok) {
       setError(result.error);
       return;
@@ -171,7 +188,7 @@ export function AppointmentCancellationForm({ timezone, submitting, serverError,
         </label>
       </fieldset>
       {draft.disposition === "recover" ? <NextActionFields action={draft.nextAction} actionAt={draft.nextActionAtLocal} timezone={timezone} disabled={submitting} onAction={(value) => { setDraft((current) => ({ ...current, nextAction: value })); clearError(); }} onActionAt={(value) => { setDraft((current) => ({ ...current, nextActionAtLocal: value })); clearError(); }} /> : null}
-      {draft.disposition === "lost" ? <LossReasonField value={draft.lossReason} disabled={submitting} onChange={(value) => { setDraft((current) => ({ ...current, lossReason: value })); clearError(); }} /> : null}
+      {draft.disposition === "lost" ? <LossReasonField value={draft.lossReason} note={draft.lossReasonNote ?? ""} disabled={submitting} onChange={(value) => { setDraft((current) => ({ ...current, lossReason: value })); clearError(); }} onNoteChange={(value) => { setDraft((current) => ({ ...current, lossReasonNote: value })); clearError(); }} /> : null}
       {error || serverError ? <p className="error" role="alert">{error || serverError}</p> : null}
       <div className="flex flex-wrap justify-end gap-2">
         <button type="button" className="btn" disabled={submitting} onClick={onBack}>Voltar</button>

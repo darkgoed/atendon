@@ -27,6 +27,20 @@ export const tagUpdateSchema = z.object({
   archived: z.boolean().optional()
 }).strict().refine((value) => Object.keys(value).length > 0, "Informe ao menos um campo");
 
+export const lossReasonCreateSchema = z.object({
+  chave: z.string().trim().regex(/^[a-z0-9_]{2,40}$/, "Use apenas letras minúsculas, números e underscore"),
+  rotulo: z.string().trim().min(1).max(120),
+  posicao: z.number().int().min(0).max(9999).optional(),
+  exige_observacao: z.boolean().optional()
+}).strict();
+
+export const lossReasonUpdateSchema = z.object({
+  rotulo: z.string().trim().min(1).max(120).optional(),
+  posicao: z.number().int().min(0).max(9999).optional(),
+  exige_observacao: z.boolean().optional(),
+  arquivado: z.boolean().optional()
+}).strict().refine((value) => Object.keys(value).length > 0, "Informe ao menos um campo");
+
 export const savedViewResourceSchema = z.enum(["conversations", "leads", "pipeline"]);
 
 const conversationFiltersSchema = z.object({

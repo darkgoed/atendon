@@ -4,6 +4,7 @@ import { ArrowRight, X } from "@phosphor-icons/react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { ModalDialog } from "@/components/modal-dialog";
 import { instantFromLocalMinute } from "@/lib/timezone";
+import { lossReasonRequiresNote, useLossReasons } from "@/lib/loss-reasons";
 import {
   pipelineStatusLabel,
   pipelineTransitionRequirement,
@@ -36,10 +37,13 @@ export function PipelineTransitionDialog({
   const [nextAction, setNextAction] = useState("");
   const [nextActionAt, setNextActionAt] = useState("");
   const [lossReason, setLossReason] = useState("");
+  const [lossReasonNote, setLossReasonNote] = useState("");
   const [validationError, setValidationError] = useState("");
+  const { reasons, error: reasonsError } = useLossReasons();
   const target = useMemo(() => targets.find((stage) => stage.id === targetId) ?? null, [targetId, targets]);
   const requirement = pipelineTransitionRequirement(target?.technical_status ?? "");
   const firstTargetId = targets[0]?.id;
+  const noteRequired = lossReasonRequiresNote(reasons, lossReason);
 
   useEffect(() => {
     setTargetId(initialTarget?.id ?? firstTargetId ?? "");
@@ -47,6 +51,7 @@ export function PipelineTransitionDialog({
     setNextAction("");
     setNextActionAt("");
     setLossReason("");
+    setLossReasonNote("");
     setValidationError("");
   }, [firstTargetId, initialTarget?.id, lead.id]);
 
@@ -78,7 +83,14 @@ export function PipelineTransitionDialog({
         setValidationError("Informe o motivo da perda.");
         return;
       }
-      commercial = { loss_reason: lossReason.trim() };
+      if (noteRequired && !lossReasonNote.trim()) {
+        setValidationError("Descreva o motivo no campo de observação.");
+        return;
+      }
+      commercial = {
+        loss_reason: lossReason.trim(),
+        ...(lossReasonNote.trim() ? { loss_reason_note: lossReasonNote.trim() } : {})
+      };
     }
     void onSubmit(target, commercial);
   }
@@ -129,21 +141,31 @@ export function PipelineTransitionDialog({
           </label>
         </> : null}
 
-        {requirement === "loss" ? (
+        {requirement === "loss" ? <>
           <label className="field">
-            <span className="label">Motivo da perda</span>
-            <select className="input" value={lossReason} onChange={(event) => setLossReason(event.target.value)} disabled={pending} required>
+            <span className="label">Motivo da desqualificação</span>
+            <select className="input" value={lossReason} onChange={(event) => { setLossReason(event.target.value); setValidationError(""); }} disabled={pending} required>
               <option value="">Selecione um motivo</option>
-              <option value="preco">Preço</option>
-              <option value="sem_interesse">Sem interesse</option>
-              <option value="sem_momento">Sem momento</option>
-              <option value="nao_qualificado">Não qualificado</option>
-              <option value="concorrente">Escolheu um concorrente</option>
-              <option value="sem_retorno">Sem retorno</option>
-              <option value="outro">Outro</option>
+              {reasons.map((reason) => <option key={reason.id} value={reason.chave}>{reason.rotulo}</option>)}
             </select>
+            {reasonsError ? <span className="text-[10px] text-[var(--urgent)]">{reasonsError}</span> : null}
           </label>
-        ) : null}
+          <label className="field">
+            <span className="label">Observação{noteRequired ? "" : " (opcional)"}</span>
+            <textarea
+              className="input min-h-20 resize-y"
+              value={lossReasonNote}
+              onChange={(event) => { setLossReasonNote(event.target.value); setValidationError(""); }}
+              maxLength={500}
+              disabled={pending}
+              required={noteRequired}
+              placeholder="Detalhe o que o cliente disse"
+            />
+            <span className="text-[10px] text-[var(--muted)]">
+              {noteRequired ? "Obrigatório para este motivo." : "Contexto extra para o closer."}
+            </span>
+          </label>
+        </> : null}
 
         {validationError ? <p className="error" role="alert">{validationError}</p> : null}
         {error ? <p className="error" role="alert">{error}</p> : null}

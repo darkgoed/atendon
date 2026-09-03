@@ -13,6 +13,8 @@ import {
   bulkPreviewSchema,
   leadStageParams,
   leadTagParams,
+  lossReasonCreateSchema,
+  lossReasonUpdateSchema,
   moveLeadStageSchema,
   organizationIdParams,
   parseSavedViewFilters,
@@ -26,6 +28,12 @@ import {
   tagCreateSchema,
   tagUpdateSchema
 } from "./schemas.js";
+import {
+  createLossReason,
+  listLossReasons,
+  lossReasonMapper,
+  updateLossReason
+} from "../commercial-journey/loss-reasons.js";
 import {
   applyBulkOperation,
   archivePipelineStage,
@@ -147,6 +155,33 @@ export async function registerOrganizationRoutes(app: FastifyInstance) {
     if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
     const { leadId,tagId } = leadTagParams.parse(request.params);
     return { assignment: await setLeadTag(session.tenantId,leadId,tagId,false,await caseAccess(session),actor(request,session)) };
+  });
+
+  // Motivos de perda pertencem à jornada comercial, não à organização de
+  // casos: o diálogo de pipeline e os formulários da agenda que consomem este
+  // catálogo não estão atrás de `case_organization_v1`. Usar
+  // `requireOrganization` aqui deixaria o select vazio (409) e impediria
+  // qualquer desqualificação nos workspaces com a flag desligada.
+  app.get("/organization/loss-reasons", async (request) => {
+    const session = await requireWorkspace(request);
+    const { include_archived } = includeArchivedQuery.parse(request.query);
+    if (include_archived) assertSessionPermission(session,"loss_reasons.manage");
+    const reasons = await listLossReasons(session.tenantId,Boolean(include_archived));
+    return { motivos: reasons.map(lossReasonMapper) };
+  });
+
+  app.post("/organization/loss-reasons", async (request, reply) => {
+    const session = await requirePermission(request,"loss_reasons.manage");
+    const body = lossReasonCreateSchema.parse(request.body);
+    const created = await createLossReason(session.tenantId,body);
+    return reply.status(201).send({ motivo: lossReasonMapper(created) });
+  });
+
+  app.patch("/organization/loss-reasons/:id", async (request) => {
+    const session = await requirePermission(request,"loss_reasons.manage");
+    const { id } = organizationIdParams.parse(request.params);
+    const body = lossReasonUpdateSchema.parse(request.body);
+    return { motivo: lossReasonMapper(await updateLossReason(session.tenantId,id,body)) };
   });
 
   app.get("/organization/saved-views", async (request) => {

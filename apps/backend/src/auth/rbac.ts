@@ -56,6 +56,7 @@ export const PERMISSIONS = [
   { key: "tags.apply", module: "organization", action: "tags_apply", description: "Aplicar e remover etiquetas de leads" },
   { key: "tags.manage", module: "organization", action: "tags_manage", description: "Administrar o catalogo de etiquetas" },
   { key: "pipeline.manage", module: "organization", action: "pipeline_manage", description: "Administrar etapas e transicoes do Pipeline" },
+  { key: "loss_reasons.manage", module: "organization", action: "loss_reasons_manage", description: "Administrar o catalogo de motivos de perda" },
   { key: "saved_views.publish", module: "organization", action: "saved_views_publish", description: "Publicar visoes compartilhadas" },
   { key: "post_sales.use", module: "post_sales", action: "use", description: "Visualizar e operar a carteira de pós-venda" },
   { key: "post_sales.manage", module: "post_sales", action: "manage", description: "Configurar o checklist de pós-venda" },
@@ -97,6 +98,7 @@ export const SUPERVISOR_PERMISSIONS: PermissionKey[] = [
   ...OPERATOR_PERMISSIONS,
   "tags.manage",
   "pipeline.manage",
+  "loss_reasons.manage",
   "saved_views.publish",
   "leads.delete"
 ];

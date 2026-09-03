@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "../../db/client.js";
 import { APPOINTMENT_STATUS_REACTIONS } from "../scheduling/status-reaction.js";
 import { OUTCOME_PIPELINE_STAGE, STAGES_REQUIRING_NEXT_ACTION, type CommercialOutcome } from "./domain.js";
+import { resolveLossReason } from "./loss-reasons.js";
 import type {
   CancellationInput,
   CommercialTransitionPayload,
@@ -297,6 +298,7 @@ export async function applyStructuredStageEffects(
   let outcome: CommercialOutcome | null = null;
   let saleValue: number | null = null;
   let lossReason: string | null = null;
+  let lossReasonNote: string | null = null;
   let nextAction: string | null = null;
   let nextActionAt: Date | null = null;
   if (targetStatus === "fechado") {
@@ -304,7 +306,8 @@ export async function applyStructuredStageEffects(
     outcome="fechado"; saleValue=payload.sale_value;
   } else if (targetStatus === "perdido") {
     if (!payload?.loss_reason || payload.sale_value || payload.next_action || payload.next_action_at) throw httpError(400,"Informe somente o motivo da perda");
-    outcome="nao_avancou"; lossReason=payload.loss_reason;
+    const resolved = await resolveLossReason(client,input.tenantId,payload.loss_reason,payload.loss_reason_note);
+    outcome="nao_avancou"; lossReason=resolved.key; lossReasonNote=resolved.note;
   } else if (STAGES_REQUIRING_NEXT_ACTION.has(targetStatus)) {
     if (!payload?.next_action || !payload.next_action_at || payload.sale_value || payload.loss_reason) throw httpError(400,"Informe somente a próxima ação e sua data");
     outcome=targetStatus as CommercialOutcome;
@@ -314,7 +317,7 @@ export async function applyStructuredStageEffects(
   const result = await client.query<LeadRow>(
     `UPDATE scheduling_leads SET
        status=$3,pipeline_stage_id=$4,
-       commercial_outcome=$5,sale_value=$6,loss_reason=$7,
+       commercial_outcome=$5,sale_value=$6,loss_reason=$7,loss_reason_note=$11,
        next_action=$8,next_action_at=$9,
        commercial_updated_at=CASE WHEN $5::text IS NULL THEN commercial_updated_at ELSE now() END,
        commercial_updated_by_user_id=CASE WHEN $5::text IS NULL THEN commercial_updated_by_user_id ELSE $10 END,
@@ -323,7 +326,7 @@ export async function applyStructuredStageEffects(
        updated_at=now()
      WHERE tenant_id=$1 AND id=$2
      RETURNING id,status,pipeline_stage_id,assigned_member_id,sdr_member_id,closer_member_id`,
-    [input.tenantId,input.lead.id,targetStatus,input.targetStageId,outcome,saleValue,lossReason,nextAction,nextActionAt,input.actor.userId]
+    [input.tenantId,input.lead.id,targetStatus,input.targetStageId,outcome,saleValue,lossReason,nextAction,nextActionAt,input.actor.userId,lossReasonNote]
   );
   if (targetStatus === "fechado") {
     await captureClosedSalePostSaleClient(
@@ -352,29 +355,34 @@ export async function concludeAppointmentJourney(
     const nextAction = "next_action" in input ? input.next_action : null;
     const nextActionAt = "next_action_at" in input ? assertFuture(input.next_action_at) : null;
     const saleValue = "sale_value" in input ? input.sale_value : null;
-    const lossReason = "loss_reason" in input ? input.loss_reason : null;
+    const resolvedLoss = "loss_reason" in input
+      ? await resolveLossReason(client,tenantId,input.loss_reason,"loss_reason_note" in input ? input.loss_reason_note : null)
+      : null;
+    const lossReason = resolvedLoss?.key ?? null;
+    const lossReasonNote = resolvedLoss?.note ?? null;
     const updated = (await client.query<AppointmentRow>(
       `UPDATE scheduling_appointments SET
          status='concluido',result_pending_at=NULL,commercial_outcome=$3,
          sale_value=$4,loss_reason=$5,outcome_next_action=$6,outcome_next_action_at=$7,
-         outcome_metadata=$8,cancellation_disposition=NULL,
+         outcome_metadata=$8,cancellation_disposition=NULL,loss_reason_note=$10,
          finalized_by_user_id=$9,finalized_at=now(),updated_at=now()
        WHERE tenant_id=$1 AND id=$2 RETURNING *`,
-      [tenantId,appointmentId,input.outcome,saleValue,lossReason,nextAction,nextActionAt,input.outcome_metadata ?? {},actor.userId]
+      [tenantId,appointmentId,input.outcome,saleValue,lossReason,nextAction,nextActionAt,input.outcome_metadata ?? {},actor.userId,lossReasonNote]
     )).rows[0];
     await client.query(
       `UPDATE scheduling_leads SET
          status=$3,pipeline_stage_id=$4,commercial_outcome=$5,sale_value=$6,loss_reason=$7,
+         loss_reason_note=$12,
          next_action=$8,next_action_at=$9,recovery_required=false,recovery_member_id=NULL,
          assigned_member_id=COALESCE($11::uuid,assigned_member_id),
          commercial_updated_at=now(),commercial_updated_by_user_id=$10,updated_at=now()
        WHERE tenant_id=$1 AND id=$2`,
-      [tenantId,lead.id,targetStatus,stageId,input.outcome,saleValue,lossReason,nextAction,nextActionAt,actor.userId,appointment.assigned_member_id]
+      [tenantId,lead.id,targetStatus,stageId,input.outcome,saleValue,lossReason,nextAction,nextActionAt,actor.userId,appointment.assigned_member_id,lossReasonNote]
     );
     if (input.outcome === "fechado") {
       await captureClosedSalePostSaleClient(client,tenantId,lead.id,actor.userId,actor.actorScope ?? "workspace");
     }
-    const details = { appointment_id: appointmentId,previous_appointment_status: appointment.status,outcome: input.outcome,sale_value: saleValue,loss_reason: lossReason,next_action: nextAction,next_action_at: nextActionAt };
+    const details = { appointment_id: appointmentId,previous_appointment_status: appointment.status,outcome: input.outcome,sale_value: saleValue,loss_reason: lossReason,loss_reason_note: lossReasonNote,next_action: nextAction,next_action_at: nextActionAt };
     await insertEvent(client,tenantId,lead,actor,"resultado_comercial_registrado",targetStatus,details);
     await insertAudit(client,tenantId,actor,"scheduling.appointment.outcome.recorded",appointmentId,details);
     return { appointment: { ...appointment,...updated },reactionNotificationId: await reserveReaction(client,tenantId,appointmentId,"concluido") };
@@ -436,7 +444,11 @@ export async function cancelAppointmentJourney(
     const targetStatus: LeadTechnicalStatus = recovering ? "follow_up" : "perdido";
     const stageId = await defaultStageId(client,tenantId,targetStatus);
     const nextActionAt = recovering ? assertFuture(input.next_action_at) : null;
-    const lossReason = recovering ? null : input.loss_reason;
+    const resolvedLoss = recovering
+      ? null
+      : await resolveLossReason(client,tenantId,input.loss_reason,input.loss_reason_note);
+    const lossReason = resolvedLoss?.key ?? null;
+    const lossReasonNote = resolvedLoss?.note ?? null;
     const recoveryMemberId = recovering
       ? await deterministicRecoveryMemberId(client,tenantId,[
           lead.sdr_member_id,lead.assigned_member_id,appointment.assigned_member_id,lead.closer_member_id
@@ -444,22 +456,22 @@ export async function cancelAppointmentJourney(
       : null;
     const updated = (await client.query<AppointmentRow>(
       `UPDATE scheduling_appointments SET status='cancelado',result_pending_at=NULL,
-         cancellation_disposition=$3,loss_reason=$4,outcome_next_action=$5,
+         cancellation_disposition=$3,loss_reason=$4,outcome_next_action=$5,loss_reason_note=$8,
          outcome_next_action_at=$6,finalized_by_user_id=$7,finalized_at=now(),updated_at=now()
        WHERE tenant_id=$1 AND id=$2 RETURNING *`,
-      [tenantId,appointmentId,input.disposition,lossReason,recovering ? input.next_action : null,nextActionAt,actor.userId]
+      [tenantId,appointmentId,input.disposition,lossReason,recovering ? input.next_action : null,nextActionAt,actor.userId,lossReasonNote]
     )).rows[0];
     await client.query(
       `UPDATE scheduling_leads SET status=$3,pipeline_stage_id=$4,
          recovery_required=$5,recovery_member_id=$6,
          assigned_member_id=COALESCE($6,assigned_member_id),next_action=$7,next_action_at=$8,
-         commercial_outcome=$9,loss_reason=$10,sale_value=NULL,
+         commercial_outcome=$9,loss_reason=$10,sale_value=NULL,loss_reason_note=$12,
          commercial_updated_at=now(),commercial_updated_by_user_id=$11,updated_at=now()
        WHERE tenant_id=$1 AND id=$2`,
-      [tenantId,lead.id,targetStatus,stageId,recovering,recoveryMemberId,recovering ? input.next_action : null,nextActionAt,recovering ? null : "nao_avancou",lossReason,actor.userId]
+      [tenantId,lead.id,targetStatus,stageId,recovering,recoveryMemberId,recovering ? input.next_action : null,nextActionAt,recovering ? null : "nao_avancou",lossReason,actor.userId,lossReasonNote]
     );
     if (recoveryMemberId) await deliverRecoveryContext(client,tenantId,lead.id,recoveryMemberId,appointmentId);
-    const details = { appointment_id: appointmentId,disposition: input.disposition,recovery_member_id: recoveryMemberId,next_action_at: nextActionAt,loss_reason: lossReason };
+    const details = { appointment_id: appointmentId,disposition: input.disposition,recovery_member_id: recoveryMemberId,next_action_at: nextActionAt,loss_reason: lossReason,loss_reason_note: lossReasonNote };
     await insertEvent(client,tenantId,lead,actor,"agendamento_cancelado",targetStatus,details);
     await insertAudit(client,tenantId,actor,"scheduling.appointment.cancelled",appointmentId,details);
     return { appointment: { ...appointment,...updated },reactionNotificationId: await reserveReaction(client,tenantId,appointmentId,"cancelado") };

@@ -1,8 +1,15 @@
 import { z } from "zod";
-import { COMMERCIAL_OUTCOMES, LOSS_REASONS } from "./domain.js";
+import { COMMERCIAL_OUTCOMES } from "./domain.js";
 
 export const commercialOutcomeSchema = z.enum(COMMERCIAL_OUTCOMES);
-export const lossReasonSchema = z.enum(LOSS_REASONS);
+/**
+ * A chave do motivo é validada contra o catálogo do tenant
+ * (`lead_loss_reasons`, migration 0129), não contra um enum global: cada
+ * cliente tem o seu próprio vocabulário comercial. Aqui só garantimos o
+ * formato da chave; `resolveLossReason` faz a validação semântica.
+ */
+export const lossReasonSchema = z.string().trim().regex(/^[a-z0-9_]{2,40}$/, "Motivo de perda inválido");
+export const lossReasonNoteSchema = z.string().trim().min(1).max(500);
 const instant = z.string().datetime({ offset: true });
 const metadata = z.record(z.string(),z.unknown()).optional();
 const nextAction = z.string().trim().min(1).max(500);
@@ -10,6 +17,7 @@ const nextAction = z.string().trim().min(1).max(500);
 export const commercialTransitionPayloadSchema = z.object({
   sale_value: z.number().positive().finite().optional(),
   loss_reason: lossReasonSchema.optional(),
+  loss_reason_note: lossReasonNoteSchema.optional(),
   next_action: nextAction.optional(),
   next_action_at: instant.optional(),
   outcome_metadata: metadata
@@ -33,6 +41,7 @@ function continuingOutcome<T extends "proposta_enviada" | "em_negociacao" | "fol
 const lostOutcomeSchema = z.object({
   outcome: z.literal("nao_avancou"),
   loss_reason: lossReasonSchema,
+  loss_reason_note: lossReasonNoteSchema.optional(),
   outcome_metadata: metadata
 }).strict();
 
@@ -52,7 +61,8 @@ export const cancellationSchema = z.discriminatedUnion("disposition", [
   }).strict(),
   z.object({
     disposition: z.literal("lost"),
-    loss_reason: lossReasonSchema
+    loss_reason: lossReasonSchema,
+    loss_reason_note: lossReasonNoteSchema.optional()
   }).strict()
 ]);
 
