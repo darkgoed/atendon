@@ -68,6 +68,39 @@ async function caseFor(memberId = memberA) {
 }
 
 describe("appointment assignees", () => {
+  it("remove um agendamento e seu outbox de confirmação", async () => {
+    const contactPhone = phone();
+    const lead = (await pool.query<{ id: string }>(
+      "INSERT INTO scheduling_leads(tenant_id,phone,name,source) VALUES($1,$2,'Outbox lead','test') RETURNING id",
+      [tenantId, contactPhone]
+    )).rows[0].id;
+    const appointment = (await pool.query<{ id: string }>(
+      `INSERT INTO scheduling_appointments(lead_id,tenant_id,unit_id,start_at,end_at,status)
+       VALUES($1,$2,'unit',now()+interval '1 day',now()+interval '1 day 1 hour','confirmado') RETURNING id`,
+      [lead, tenantId]
+    )).rows[0].id;
+    const conversation = (await pool.query<{ id: string }>(
+      `INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name)
+       VALUES($1,$2,$3,'Outbox lead') RETURNING id`, [tenantId, sessionId, contactPhone]
+    )).rows[0].id;
+    await pool.query(
+      `INSERT INTO scheduling_meeting_confirmation_outbox(
+         tenant_id,appointment_id,conversation_id,session_id,contact_phone,moment,message_text
+       ) VALUES($1,$2,$3,$4,$5,'pos_agendamento','Confirme')`,
+      [tenantId, appointment, conversation, sessionId, contactPhone]
+    );
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: `/scheduling/appointments/${appointment}/remove`,
+      headers: { cookie }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect((await pool.query("SELECT 1 FROM scheduling_appointments WHERE id=$1", [appointment])).rows).toHaveLength(0);
+    expect((await pool.query("SELECT 1 FROM scheduling_meeting_confirmation_outbox WHERE appointment_id=$1", [appointment])).rows).toHaveLength(0);
+  });
+
   it("keeps a new agenda contact with the closer who created it", async () => {
     const contactPhone = phone();
     const createdLead = await app.inject({

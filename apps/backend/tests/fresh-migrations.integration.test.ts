@@ -29,7 +29,7 @@ describe("migrations on a clean database", () => {
       try {
         await fresh.connect();
         const result = await runMigrations(fresh, fileURLToPath(new URL("../src/db/migrations", import.meta.url)), () => undefined);
-        expect(result.applied.at(-1)).toBe("0130_newave_sales_script_prompt.sql");
+        expect(result.applied.at(-1)).toBe("0131_cascade_meeting_confirmation_outbox.sql");
         expect((await runMigrations(
           fresh,
           fileURLToPath(new URL("../src/db/migrations", import.meta.url)),
@@ -284,7 +284,7 @@ describe("migrations on a clean database", () => {
           const snapshot = await recordDeploymentFeatureFlagSnapshot(snapshotPool, deployVersion);
           expect(snapshot).toMatchObject({
             deployVersion,
-            latestMigration: "0130_newave_sales_script_prompt.sql",
+            latestMigration: "0131_cascade_meeting_confirmation_outbox.sql",
             created: true
           });
           expect(snapshot.globalFlags.case_organization_v1.enabled).toBe(true);

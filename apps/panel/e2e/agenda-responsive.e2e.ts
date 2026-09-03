@@ -209,6 +209,59 @@ test("a agenda escala em telas pequenas sem corte, overflow inalcançável ou so
       await page.locator(".agenda-grid, .agenda-month, .agenda-empty").first().waitFor({ state: "visible", timeout: 15_000 });
       await page.waitForTimeout(350);
 
+      const headerButtonDefects = await page.locator(".agenda-head__actions button").evaluateAll((buttons) => buttons.flatMap((button) => {
+        const range = document.createRange();
+        range.selectNodeContents(button);
+        const text = range.getBoundingClientRect();
+        const box = button.getBoundingClientRect();
+        const actions = button.closest(".agenda-head__actions")?.getBoundingClientRect();
+        const outsideButton = text.left < box.left - 1 || text.right > box.right + 1 || text.top < box.top - 1 || text.bottom > box.bottom + 1;
+        const outsideActions = !actions || box.left < actions.left - 1 || box.right > actions.right + 1;
+        return outsideButton || outsideActions
+          ? [{ label: (button.textContent ?? "").trim(), text: `${text.x},${text.y},${text.width},${text.height}`, button: `${box.x},${box.y},${box.width},${box.height}`, actions: actions ? `${actions.x},${actions.y},${actions.width},${actions.height}` : "missing" }]
+          : [];
+      }));
+      for (const defect of headerButtonDefects) failures.push(`${viewport.name} · ${mode} · header-button-outside · ${defect.label} · text ${defect.text} vs button ${defect.button} vs actions ${defect.actions}`);
+
+      const appointment = page.locator(".agenda-appointment__contact").first();
+      if (mode !== "Mês") {
+        expect(await appointment.count(), `${viewport.name} · ${mode} precisa de ao menos um agendamento da fixture`).toBeGreaterThan(0);
+        await appointment.click();
+        const detailActions = page.locator(".agenda-detail-actions");
+        await expect(detailActions).toBeVisible();
+        const buttonTextDefects = await detailActions.locator(".btn").evaluateAll((buttons) => buttons.flatMap((button) => {
+          const range = document.createRange();
+          range.selectNodeContents(button);
+          const text = range.getBoundingClientRect();
+          const box = button.getBoundingClientRect();
+          const dialog = button.closest(".agenda-detail-dialog")?.getBoundingClientRect();
+          const outsideButton = text.left < box.left - 1 || text.right > box.right + 1 || text.top < box.top - 1 || text.bottom > box.bottom + 1;
+          const outsideDialog = !dialog || box.left < dialog.left - 1 || box.right > dialog.right + 1;
+          return outsideButton || outsideDialog
+            ? [{ label: (button.textContent ?? "").trim(), text: `${text.x},${text.y},${text.width},${text.height}`, button: `${box.x},${box.y},${box.width},${box.height}`, dialog: dialog ? `${dialog.x},${dialog.y},${dialog.width},${dialog.height}` : "missing" }]
+            : [];
+        }));
+        for (const defect of buttonTextDefects) failures.push(`${viewport.name} · ${mode} · button-text-outside · ${defect.label} · text ${defect.text} vs button ${defect.button} vs dialog ${defect.dialog}`);
+        await page.getByRole("button", { name: "Fechar detalhes" }).click();
+        await expect(detailActions).toBeHidden();
+        await page.locator(".agenda-scroll").evaluate((scroller) => scroller.scrollTo({ top: 0, left: 0 }));
+      }
+
+      if (mode !== "Mês") {
+        for (const selector of [".agenda-cell--open:not(:has(.agenda-appointment))", ".agenda-cell--open:has(.agenda-appointment)"]) {
+          const slot = page.locator(selector).first();
+          expect(await slot.count(), `${viewport.name} · ${mode} precisa exercitar ${selector}`).toBeGreaterThan(0);
+          const backgroundBeforeHover = await slot.evaluate((element) => getComputedStyle(element).backgroundColor);
+          await slot.hover({ force: true });
+          await expect(slot.getByRole("button", { name: /agendar/i })).toHaveCount(0);
+          await expect.poll(() => slot.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(backgroundBeforeHover);
+        }
+      }
+      const agendaScroller = page.locator(".agenda-scroll");
+      if (await agendaScroller.count()) {
+        await agendaScroller.evaluate((scroller) => scroller.scrollTo({ top: 0, left: 0 }));
+      }
+
       const defects = await measureAgenda(page);
       for (const defect of defects) {
         failures.push(`${viewport.name} · ${mode} · ${defect.kind} · ${defect.selector} · ${defect.evidence}`);

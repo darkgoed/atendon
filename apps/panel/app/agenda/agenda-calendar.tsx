@@ -1,8 +1,7 @@
 import { Fragment } from "react";
-import { Plus } from "@phosphor-icons/react";
 import { isAppointmentResultPending } from "./agenda-appointment-state";
 import type { Appointment, Slot } from "./agenda-types";
-import { APPOINTMENT_STATUS_LABELS, dayKey, formatSlot, isActiveAppointment } from "./agenda-utils";
+import { APPOINTMENT_STATUS_LABELS, dayKey, isActiveAppointment } from "./agenda-utils";
 
 export type AgendaTimeGrid = {
   byDay: Map<string, Map<string, Slot>>;
@@ -124,7 +123,6 @@ function SlotCell({ slot, timezone, isToday, availabilityFailed, items, dragging
       {nowPosition !== null ? <span className="agenda-now-indicator" style={{ "--agenda-now": `${nowPosition}%` } as React.CSSProperties} aria-hidden="true" /> : null}
       <div className="agenda-cell__meta">
         <span className="sr-only mono agenda-cell__vagas" aria-label={`Disponibilidade: ${availabilityLabel}`}>{availabilityLabel}</span>
-        {canSchedule ? <button type="button" className="agenda-cell__add" aria-label={`Opções para ${formatSlot(slot, timezone)}`} onClick={() => onSelectSlot?.(slot)}><Plus size={12} aria-hidden="true" />Agendar</button> : null}
       </div>
       <div className={`agenda-cell__appointments ${items.length > 1 ? "agenda-cell__appointments--shared" : ""}`} style={{ "--appointment-columns": Math.max(items.length, 1) } as React.CSSProperties}>
         {items.map((item) => (
