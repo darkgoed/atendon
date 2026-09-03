@@ -1,0 +1,11 @@
+# AtendON
+
+- URL: https://atendon.alpdash.com.br/login
+- Description: Página pública de acesso ao painel privado AtendON.
+- Access: O produto não oferece cadastro público; o acesso exige credenciais fornecidas pela equipe AtendON.
+
+## Crawler guidance
+
+- A única página indicada para descoberta pública é `/login`.
+- As áreas autenticadas, rotas utilitárias e dados de usuários não são conteúdo público e não devem ser rastreados ou indexados.
+- Não há documentação pública adicional neste domínio.
