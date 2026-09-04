@@ -27,6 +27,7 @@ import { registerSchedulingRoutes } from "./modules/scheduling/routes.js";
 import { registerMeetRoutes } from "./modules/meet/routes.js";
 import { registerWorkspaceRoutes } from "./modules/workspaces/routes.js";
 import { registerRootRoutes } from "./modules/root/routes.js";
+import { registerSaasRoutes } from "./modules/saas/routes.js";
 import { getVersionInfo } from "./modules/root/version.js";
 import { registerQualificationRoutes } from "./modules/qualification/routes.js";
 import { QualificationService } from "./modules/qualification/service.js";
@@ -76,6 +77,8 @@ import {
   httpRateLimitKey
 } from "./security/http-rate-limit.js";
 import { enforceRequestCapability } from "./capabilities/gate.js";
+import { enforceRequestEntitlement } from "./billing/entitlement-gate.js";
+import { processBillingWebhook } from "./billing/webhook-service.js";
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
@@ -376,7 +379,7 @@ export function buildApp() {
   });
 
   app.addHook("onRequest", async (request, reply) => {
-    if (["GET", "HEAD", "OPTIONS"].includes(request.method) || request.url.startsWith("/webhooks/evolution")) return;
+    if (["GET", "HEAD", "OPTIONS"].includes(request.method) || request.url.startsWith("/webhooks/evolution") || request.url.startsWith("/webhooks/billing")) return;
     const origin = request.headers.origin;
     const fetchSite = request.headers["sec-fetch-site"];
     if ((origin && origin !== config.PANEL_ORIGIN) || fetchSite === "cross-site") {
@@ -385,6 +388,7 @@ export function buildApp() {
   });
 
   app.addHook("preHandler", enforceRequestCapability);
+  app.addHook("preHandler", enforceRequestEntitlement);
 
   app.addHook("onSend", async (_request, reply, payload) => {
     if (!reply.hasHeader("cache-control")) {
@@ -405,6 +409,7 @@ export function buildApp() {
       code?: string;
       feature?: string;
       existingId?: string;
+      details?: unknown;
     };
     const status = typeof typed.statusCode === "number" ? typed.statusCode : error instanceof z.ZodError ? 400 : 500;
     if (status >= 500) app.log.error(error);
@@ -419,7 +424,8 @@ export function buildApp() {
       error: status === 500 ? "Erro interno" : typed.message,
       ...(status < 500 && typed.code ? { code: typed.code } : {}),
       ...(status < 500 && typed.feature ? { feature: typed.feature } : {}),
-      ...(status < 500 && typed.existingId ? { existing_id: typed.existingId } : {})
+      ...(status < 500 && typed.existingId ? { existing_id: typed.existingId } : {}),
+      ...(status < 500 && typed.details ? { details: typed.details } : {})
     });
   });
 
@@ -451,6 +457,39 @@ export function buildApp() {
     await panelPresence.close();
     await aiTurnProgressStore.close();
     await distributedRateLimit?.close();
+  });
+
+  /**
+   * Webhook de cobrança (§18). Público e sem sessão, como o da Evolution.
+   *
+   * O corpo é recebido como STRING crua num escopo isolado (`register`), porque o
+   * HMAC do gateway é calculado sobre os bytes originais — reparsear o JSON mudaria
+   * a assinatura. O parser fica confinado a este plugin e não afeta as demais rotas.
+   */
+  void app.register(async (scope) => {
+    scope.addContentTypeParser("application/json", { parseAs: "string" }, (_request, body, done) => done(null, body));
+    scope.post<{ Params: { providerCode: string } }>("/webhooks/billing/:providerCode", {
+      bodyLimit: 1024 * 1024,
+      config: { rateLimit: HTTP_RATE_LIMITS.webhook }
+    }, async (request, reply) => {
+      const rawBody = typeof request.body === "string" ? request.body : JSON.stringify(request.body ?? {});
+      try {
+        const outcome = await processBillingWebhook(
+          request.params.providerCode,
+          rawBody,
+          request.headers as Record<string, string | string[] | undefined>,
+          config.DATA_ENCRYPTION_KEY
+        );
+        // Evento repetido responde 200 sem reprocessar: o provider para de reenviar.
+        return reply.status(200).send({ ok: true, status: outcome.status });
+      } catch (error) {
+        const typed = error as Error & { statusCode?: number; code?: string };
+        const status = typeof typed.statusCode === "number" ? typed.statusCode : 500;
+        if (status >= 500) app.log.error({ err: error, provider: request.params.providerCode }, "Billing webhook processing failed");
+        else app.log.warn({ provider: request.params.providerCode, code: typed.code }, "Billing webhook rejected");
+        return reply.status(status).send({ error: status >= 500 ? "Erro interno" : typed.message, ...(typed.code ? { code: typed.code } : {}) });
+      }
+    });
   });
 
   app.post("/webhooks/evolution", {
@@ -2575,6 +2614,7 @@ export function buildApp() {
 
   void app.register(registerWorkspaceRoutes);
   void app.register(registerRootRoutes);
+  void app.register(registerSaasRoutes);
   void app.register(registerOperationsRoutes);
   void app.register(registerDashboardWidgetRoutes);
   void app.register(registerOrganizationRoutes);

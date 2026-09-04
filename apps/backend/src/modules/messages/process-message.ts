@@ -62,6 +62,7 @@ import {
   safeAiToolLabel
 } from "../realtime/ai-turn-contract.js";
 import { capabilityForAiTool, filterAiToolsByCapabilities } from "../../capabilities/ai-tools.js";
+import { reserveAiInteraction } from "../../billing/ai-metering.js";
 import type { CapabilityKey } from "../operations/feature-flags.js";
 import type {
   AiTurnProgressPublisher,
@@ -2492,6 +2493,16 @@ export class MessageProcessor {
     };
     let result: Awaited<ReturnType<typeof sendReply>>;
     try {
+      // Reserva atômica: lê o saldo e grava o consumo na MESMA transação,
+      // serializada por tenant. Uma checagem solta permitiria que duas mensagens
+      // simultâneas do mesmo tenant lessem o mesmo saldo e estourassem a franquia.
+      // A chave é derivada do turno lógico, então retentativa do mesmo job não
+      // consome duas vezes.
+      if (!await reserveAiInteraction(message.tenantId, "inbound_reply", requestId, { conversationId: context.conversationId, messageId: context.messageId })) {
+        logger.warn({ event: "ai_interaction_quota_reached", tenantId: message.tenantId, conversationId: context.conversationId, purpose: "inbound_reply" }, "AI inbound reply skipped because the billing quota was reached");
+        await this.repository.markInboundProcessed(message);
+        return "fallback";
+      }
       result = await sendReply();
     } catch (error) {
       await recordQualitySignal();

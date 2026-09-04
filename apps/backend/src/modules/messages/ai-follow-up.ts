@@ -24,6 +24,8 @@ import {
 } from "./humanizer.js";
 import type { MessageGateway } from "./types.js";
 import type { FollowUpDelivery } from "./follow-up-media.js";
+import { reserveAiInteraction } from "../../billing/ai-metering.js";
+import { logger } from "../../logger.js";
 
 const HISTORY_MAX_MESSAGES = 40;
 const HISTORY_MAX_CHARACTERS = 12_000;
@@ -864,6 +866,14 @@ export class AiFollowUpProcessor {
       console.error("Follow-up conversation lock heartbeat failed", { conversationId, error });
     }), 20_000);
     try {
+      // Reserva atômica da franquia (mesma razão do inbound_reply): a checagem e
+      // o consumo ocorrem na mesma transação serializada por tenant. A chave usa
+      // conversationId + sequenceVersion, estável entre retentativas do follow-up.
+      if (!await reserveAiInteraction(claim.tenantId, "follow_up", `${claim.conversationId}:${claim.sequenceVersion}`, { conversationId: claim.conversationId })) {
+        logger.warn({ event: "ai_interaction_quota_reached", tenantId: claim.tenantId, conversationId: claim.conversationId, purpose: "follow_up" }, "AI follow-up skipped because the billing quota was reached");
+        await this.repository.cancelClaim(claim, "ai_quota_reached");
+        return "cancelled";
+      }
       const previousAssistantMessages = claim.history
         .filter((message) => message.role === "assistant")
         .map((message) => message.content);

@@ -1,399 +1,1291 @@
-"SCRIPT DE AGENDAMENTO — NEWAVE PAY
+# Objetivo
 
-OBJETIVO: qualificar o lojista e agendar uma apresentação com o responsável pela decisão.
+Transformar o AtendON atual em uma arquitetura SaaS multiempresa com:
 
-1. PRIMEIRO CONTATO
+* gestão central de planos pelo usuário ROOT;
+* planos Básico, Médio e Pro pré-configurados;
+* limites por empresa;
+* liberação/bloqueio automático de funcionalidades;
+* controle de consumo;
+* assinatura e cobrança;
+* múltiplos meios de pagamento;
+* estrutura preparada para futura venda automática pelo site;
+* sem desenvolver o site público de vendas nesta etapa.
 
-Olá, [nome]! Tudo bem?
+O sistema atual deve continuar funcionando durante a implementação.
 
-Sou [atendente], da equipe Newave Pay.
+Antes de alterar qualquer código, analise completamente o projeto existente, banco de dados, models, serviços, autenticação, permissões, multiempresa, frontend, backend e integrações.
 
-Você preencheu nosso formulário para conhecer novas soluções financeiras para sua loja. Quero entender rapidamente sua operação e verificar se temos uma solução compatível.
+Não faça refatorações grandes que não sejam necessárias para o SaaS.
 
-Posso fazer algumas perguntas rápidas? Leva menos de dois minutos.
+---
 
-2. QUALIFICAÇÃO
-3. Qual é o segmento da sua empresa e em qual cidade ela está localizada?
-4. Qual é o valor médio das suas vendas?
-5. Aproximadamente quantas vendas sua loja realiza por mês?
-6. Quais formas de pagamento e financiamento vocês oferecem atualmente?
-7. Quantos clientes deixam de comprar por falta de limite no cartão, dinheiro à vista ou acesso ao crédito tradicional?
-8. Vocês já trabalham com alguma financeira? Onde acontece a maior quantidade de recusas?
-9. Quantas pessoas fazem parte da equipe comercial?
-10. Você é a pessoa responsável por avaliar e contratar novas soluções financeiras?
+# 1. Conceito principal
 
-Se não for:
+Cada empresa/tenant cadastrada no AtendON deverá possuir:
 
-Perfeito. Quem participa dessa decisão com você?
+* um plano;
+* uma assinatura;
+* um status de cobrança;
+* limites de utilização;
+* funcionalidades habilitadas;
+* consumo atual do período;
+* datas de início e renovação;
+* histórico de mudanças de plano.
 
-O ideal é que essa pessoa esteja presente na apresentação, porque mostraremos o funcionamento, a implantação e o investimento.
+A empresa nunca deverá decidir suas próprias permissões.
 
-3. IDENTIFICAÇÃO DA OPORTUNIDADE
+Somente ROOT poderá:
 
-Entendi, [nome].
+* criar planos;
+* editar planos;
+* alterar limites;
+* alterar preços;
+* habilitar/desabilitar funcionalidades;
+* vincular plano a uma empresa;
+* trocar plano;
+* conceder exceções;
+* suspender assinatura;
+* visualizar consumo;
+* visualizar cobrança.
 
-Pelo que você me contou, sua loja vende em média [quantidade/ticket], mas perde oportunidades principalmente por [dor relatada].
+---
 
-A Newave Pay pode complementar as formas de pagamento que você já utiliza e oferecer novas possibilidades para diferentes perfis de clientes, sempre conforme as regras e a análise de cada modalidade.
+# 2. Não usar verificações fixas por nome de plano
 
-4. GERAR INTERESSE
+NÃO implementar regras espalhadas como:
 
-Na Imagine recuperar apenas [número conservador] das vendas que sua loja perde todos os meses.
+```typescript
+if (company.plan === "PRO")
+```
 
-Com um ticket médio de R$ [valor], isso poderia representar aproximadamente R$ [valor potencial] em faturamento adicional.
+Criar uma arquitetura de:
 
-Na apresentação, nosso especialista vai analisar essa oportunidade e mostrar:
+* plans;
+* features;
+* entitlements;
+* limits;
+* usage.
 
-* Quais modalidades podem fazer sentido para sua loja;
-* Como as simulações são realizadas;
-* Como funciona a implantação;
-* Como sua equipe será treinada;
-* Qual é o investimento;
-* E qual pode ser o potencial comercial da operação.
+Exemplo:
 
-5. AGENDAMENTO
+```text
+conversations.enabled = true
+pipeline.enabled = true
+calendar.enabled = false
+ai.enabled = false
 
-A apresentação dura aproximadamente [tempo] minutos e pode ser feita por videochamada.
+users.max = 3
+whatsappConnections.max = 1
+pipelines.max = 1
+aiInteractions.monthly = 0
+```
 
-Tenho disponibilidade hoje às [horário 1] ou amanhã às [horário 2]. Qual funciona melhor para você?
+Assim o ROOT poderá futuramente criar:
 
-Evitar perguntar apenas: “Quando você pode?”. Sempre oferecer duas opções.
+* Enterprise;
+* Trial;
+* Plano personalizado;
+* Plano legado;
+* parceiros;
+* condições comerciais específicas;
 
-6. CONFIRMAÇÃO
+sem precisar alterar código.
 
-Perfeito, ficou agendado:
+---
 
-Data: [data]
-Horário: [horário]
-Formato: videochamada
-Link: [link]
+# 3. Planos iniciais
+
+Criar automaticamente três planos.
+
+## BÁSICO — R$ 497/mês
+
+Objetivo:
+empresa que quer CRM/atendimento sem IA.
+
+Inicialmente:
+
+* Conversas: habilitado
+* Pipeline: habilitado
+* Agenda: bloqueada
+* IA: bloqueada
+* Follow-up automático: bloqueado
+* Automações avançadas: bloqueadas
+* Relatórios: básicos
+* Usuários: até 3
+* WhatsApps: até 1
+* Pipelines: até 1
+* IA mensal: 0
+* Permissões avançadas: bloqueadas
+
+---
+
+## MÉDIO — R$ 897/mês
+
+Deve ser o plano comercial principal.
+
+Inicialmente:
+
+* Conversas: habilitado
+* Pipeline: habilitado
+* Agenda: habilitada
+* IA: habilitada
+* Follow-up automático: habilitado
+* Automações: limitadas
+* Relatórios: completos
+* Usuários: até 8
+* WhatsApps: até 2
+* Pipelines: até 3
+* IA: até 10.000 interações mensais
+* Cargos/permissões: habilitado
+* Suporte: prioritário
+
+---
+
+## PRO — R$ 1.097/mês
+
+Deve possuir grande vantagem em relação ao Médio.
 
-É importante participar de um local tranquilo e, se houver outro responsável pela decisão, convidá-lo para a reunião.
+Inicialmente:
 
-Posso contar com sua presença?
+* Conversas: habilitado
+* Pipeline: habilitado
+* Agenda: habilitada
+* IA: habilitada
+* Follow-up completo
+* Automações completas
+* Relatórios avançados
+* Usuários: até 20
+* WhatsApps: até 5
+* Pipelines: até 10
+* IA: inicialmente 40.000 interações mensais
+* Permissões avançadas
+* Recursos administrativos avançados
+* Suporte prioritário
 
-7. LEMBRETE NO DIA ANTERIOR
+Esses números NÃO deverão ficar hardcoded.
 
-Olá, [nome]!
+O ROOT deverá conseguir editar todos eles.
 
-Passando para confirmar nossa apresentação da Newave Pay amanhã, às [horário].
+---
 
-Vamos mostrar como a solução pode ser aplicada à operação da sua loja e avaliar o potencial de novas vendas.
+# 4. Features
 
-Está confirmado para você?
+Analise o projeto inteiro e liste todas as funcionalidades existentes no AtendON.
 
-8. LEMBRETE 30 MINUTOS ANTES
+Transforme tudo que puder ser comercialmente limitado em feature ou entitlement.
 
-Olá, [nome]!
+Exemplos:
 
-Nossa apresentação começa em 30 minutos.
+```text
+CONVERSATIONS
+PIPELINE
+CALENDAR
+AI
+AI_FOLLOWUP
+AUTOMATIONS
+REPORTS
+ADVANCED_REPORTS
+MULTIPLE_PIPELINES
+ROLES_PERMISSIONS
+WHATSAPP_CONNECTIONS
+CONTACT_IMPORT
+CONTACT_EXPORT
+CUSTOM_FIELDS
+WEBHOOKS
+API_ACCESS
+INTEGRATIONS
+TAGS
+SCHEDULE
+LEAD_DISTRIBUTION
+SDR_PIPELINE
+CLOSER_PIPELINE
+AI_CONFIGURATION
+CUSTOM_AI_PROMPT
+```
 
-Este é o link para participar: [link]
+Não invente funcionalidades existentes.
 
-O especialista [nome do vendedor] estará esperando você no horário combinado.
+Se identificar uma funcionalidade interessante que ainda não existe, marque como:
 
-9. SE O LEAD PERGUNTAR O PREÇO
+```text
+FUTURE_FEATURE
+```
 
-Vou explicar como o investimento funciona.
+e não implemente agora.
 
-Antes, precisamos entender quais modalidades são compatíveis com sua empresa e o potencial da operação. Por isso, o especialista apresenta os valores durante a reunião, já relacionando o investimento com a realidade da sua loja.
+---
 
-Tenho [horário 1] ou [horário 2]. Qual é melhor?
+# 5. Entitlements
 
-10. SE PEDIR MATERIAL
+Criar uma camada central para resolver:
 
-Envio, sim.
+```text
+Empresa X pode utilizar recurso Y?
+Empresa X atingiu limite Z?
+```
 
-Mas o material apresenta apenas uma visão geral. Na reunião, conseguimos analisar sua loja, explicar a operação e responder às dúvidas sobre investimento e implantação.
+Exemplo conceitual:
 
-Podemos fazer uma apresentação de [tempo] minutos e, depois, envio o material completo.
+```typescript
+entitlements.can(companyId, "CALENDAR")
 
-Você prefere [horário 1] ou [horário 2]?
+entitlements.getLimit(companyId, "USERS")
 
-11. OBJEÇÃO: “ESTOU SEM TEMPO”
+entitlements.getUsage(companyId, "AI_INTERACTIONS")
 
-Entendo. Por isso, a apresentação é objetiva e já direcionada para a realidade da sua loja.
+entitlements.hasReachedLimit(
+  companyId,
+  "WHATSAPP_CONNECTIONS"
+)
+```
 
-Se hoje estiver complicado, posso reservar [dia/horário 1] ou [dia/horário 2]. Qual gera menos impacto na sua rotina?
+Toda aplicação deverá consultar a mesma fonte de verdade.
 
-12. OBJEÇÃO: “SÓ QUERO SABER COMO FUNCIONA”
+---
 
-Perfeito. É exatamente isso que o especialista mostrará: modalidades, simulação, implantação, treinamento e investimento.
+# 6. Enforcement obrigatório no backend
 
-Como cada operação possui uma necessidade diferente, a apresentação evita que eu envie uma informação genérica e sem aplicação prática.
+Bloquear somente visualmente no frontend NÃO é suficiente.
 
-Tenho [opção 1] e [opção 2]. Qual você prefere?
+Toda funcionalidade restrita deverá possuir validação no backend.
 
-13. FOLLOW-UP SEM RESPOSTA — 24 HORAS
+Exemplo:
 
-Olá, [nome]!
+Empresa Básico tenta acessar diretamente:
 
-Você solicitou informações sobre a Newave Pay e tentei contato para conhecer sua operação.
+```text
+POST /calendar/events
+```
 
-Ainda faz sentido avaliar novas formas de pagamento para aumentar as possibilidades de venda da sua loja?
+Resultado esperado:
 
-14. FOLLOW-UP — 3 DIAS
+```text
+403 FEATURE_NOT_AVAILABLE
+```
 
-Olá, [nome]!
+Empresa atingiu limite:
 
-Serei objetivo: se sua loja perde clientes por falta de limite, dinheiro à vista ou acesso ao crédito tradicional, vale conhecer a operação da Newave Pay.
+```text
+409 PLAN_LIMIT_REACHED
+```
 
-Tenho uma apresentação disponível em [opção 1] ou [opção 2]. Posso reservar uma delas para você?
+Nunca confiar apenas na interface.
 
-15. FOLLOW-UP FINAL
+---
 
-Olá, [nome]!
+# 7. Frontend
 
-Como não consegui falar com você, vou encerrar o atendimento neste momento.
+No frontend:
 
-Quando ampliar as formas de pagamento voltar a ser uma prioridade para sua loja, podemos retomar a análise.
+* esconder funcionalidades quando fizer sentido;
+* mostrar recursos bloqueados quando isso ajudar no upsell;
+* apresentar indicação do plano necessário;
+* bloquear ações que ultrapassam limite.
 
-Caso queira conhecer agora, ainda consigo reservar [dia e horário].
+Exemplo:
 
-SCRIPT DE APRESENTAÇÃO E FECHAMENTO — NEWAVE PAY
+```text
+Agenda
 
-OBJETIVO: diagnosticar a oportunidade, apresentar a solução adequada e conduzir o lojista a uma decisão.
+Disponível a partir do plano Médio.
 
-1. ABERTURA
+[Ver plano]
+```
 
-Olá, [nome]! Obrigado por reservar este horário.
+Mas NÃO desenvolver nesta etapa o checkout público.
 
-O [nome do agendador] me passou algumas informações sobre sua loja. Pelo que entendi, vocês trabalham com [segmento], possuem um ticket médio de aproximadamente R$ [valor] e hoje enfrentam [dor identificada].
+---
 
-Está correto?
+# 8. Painel ROOT
 
-Nossa conversa terá três partes:
+Criar uma área:
 
-1. Entender melhor sua operação;
-2. Mostrar como a Newave Pay pode ser aplicada;
-3. Avaliar investimento e próximos passos.
+```text
+ROOT
+ └── SaaS
+      ├── Planos
+      ├── Empresas
+      ├── Assinaturas
+      ├── Cobranças
+      ├── Consumo
+      ├── Gateways
+      └── Histórico
+```
 
-Se fizer sentido para os dois lados, podemos avançar hoje. Tudo bem?
+## Planos
 
-2. DIAGNÓSTICO COMERCIAL
+ROOT deverá conseguir:
 
-Antes de apresentar a solução, quero aprofundar alguns pontos.
+* criar;
+* editar;
+* arquivar;
+* duplicar;
+* definir preço;
+* definir periodicidade;
+* habilitar features;
+* definir limites.
 
-* Qual é o faturamento médio mensal da loja?
-* Qual é o principal produto ou serviço vendido?
-* Qual é o ticket médio?
-* Quantos atendimentos acontecem por mês?
-* Qual é a taxa aproximada de fechamento?
-* Quantos clientes não compram por falta de crédito?
-* Quais financeiras ou modalidades vocês utilizam?
-* Onde ocorre a maior quantidade de reprovações?
-* Sua equipe oferece alternativas ou encerra o atendimento depois da primeira recusa?
-* Quem realizará as simulações?
-* Qual resultado você espera gerar com uma nova solução?
-* Se encontrar uma solução viável, existe intenção de implantar agora?
+Evitar apagar definitivamente plano que já tenha histórico.
 
-3. RESUMO DA DOR
+Usar arquivamento.
 
-Deixe-me confirmar se compreendi corretamente.
+---
 
-Hoje sua loja atende aproximadamente [quantidade] clientes, possui ticket médio de R$ [valor] e perde cerca de [quantidade] oportunidades por [motivo].
+# 9. Empresa
 
-Além da venda perdida, existe investimento em divulgação, estrutura e equipe para trazer esse cliente até a loja, mas a operação não consegue aproveitar toda a demanda.
+Na administração de uma empresa mostrar:
 
-É esse o principal problema que você quer resolver?
+```text
+Empresa
+Plano atual
+Valor
+Status
+Gateway
+Data da próxima cobrança
+Usuários: 5 / 8
+WhatsApps: 2 / 2
+Pipelines: 2 / 3
+IA: 7.823 / 10.000
+```
 
-4. APRESENTAÇÃO DA NEWAVE PAY
+Permitir:
 
-A Newave Pay ajuda empresas a ampliarem suas possibilidades de venda por meio de diferentes modalidades financeiras.
+* trocar plano;
+* definir plano personalizado;
+* aplicar desconto;
+* conceder limite adicional;
+* suspender;
+* reativar;
+* consultar cobrança.
 
-A proposta não é substituir cartão, Pix ou as financeiras que sua loja já utiliza. É acrescentar alternativas para clientes que não conseguem concluir a compra pelos meios tradicionais.
+---
 
-Com a implantação, sua loja recebe:
+# 10. Overrides
 
-* Acesso às modalidades contratadas;
-* Processo estruturado para realização das simulações;
-* Treinamento comercial e operacional;
-* Orientação para identificar o perfil adequado;
-* Suporte durante a operação;
-* Estratégia para transformar recusas em novas oportunidades.
+Criar possibilidade de exceções por empresa.
 
-Cada proposta depende das regras, disponibilidade e análise da modalidade utilizada. Portanto, não existe promessa de aprovação para todos os clientes.
+Exemplo:
 
-5. DEMONSTRAÇÃO PRÁTICA
+Empresa está no Médio:
 
-Agora vou mostrar como sua equipe realizará o atendimento.
+```text
+users.max = 8
+```
 
-Situação:
+Mas ROOT concede:
 
-O cliente escolhe um produto de R$ [valor], mas não possui dinheiro à vista ou limite no cartão.
+```text
+users.max = 12
+```
 
-Em vez de encerrar a venda, o vendedor identifica o perfil do cliente, apresenta as modalidades disponíveis e realiza a simulação conforme o procedimento da Newave Pay.
+Não criar um novo plano só por causa disso.
 
-O objetivo é criar uma nova possibilidade de fechamento sem abandonar as formas de pagamento que a loja já utiliza.
+Estrutura:
 
-6. CÁLCULO DO POTENCIAL
+```text
+Plan
+      ↓
+Entitlements
+      ↓
+Company Overrides
+      ↓
+Effective Entitlements
+```
 
-Você informou que perde aproximadamente [quantidade] vendas por mês e possui ticket médio de R$ [valor].
+---
 
-Se a operação recuperar apenas [quantidade conservadora] dessas vendas, o potencial será:
+# 11. Assinaturas
 
-[quantidade] vendas × R$ [ticket médio] = R$ [faturamento potencial]
+Criar entidade própria de subscription.
 
-Não é uma garantia de resultado. É uma projeção baseada nos números informados por você.
+Possíveis estados:
 
-Diante desse potencial, fazer essa recuperação teria impacto relevante na sua loja?
+```text
+TRIALING
+ACTIVE
+PAST_DUE
+GRACE_PERIOD
+SUSPENDED
+CANCELED
+EXPIRED
+```
 
-7. APRESENTAÇÃO DO INVESTIMENTO
+Uma empresa não deve perder acesso imediatamente por uma falha pontual de pagamento.
 
-Para implantar a operação, o investimento é de [valor e condições].
+Criar período de tolerância configurável.
 
-Esse investimento contempla:
+Exemplo:
 
-* [item];
-* [item];
-* [item];
-* [item];
-* [item].
+```text
+Vencimento
+↓
+Pagamento falhou
+↓
+PAST_DUE
+↓
+Grace period
+↓
+Nova tentativa
+↓
+SUSPENDED
+```
 
-Além do valor, sua loja precisa definir um responsável pela operação e garantir que a equipe participe do treinamento.
+O ROOT poderá reativar manualmente.
 
-Até aqui, o funcionamento e o investimento fazem sentido para você?
+---
 
-8. FECHAMENTO DIRETO
+# 12. Pagamentos
 
-Considerando a necessidade que identificamos e o potencial da sua operação, minha recomendação é avançarmos com a implantação.
+Não acoplar assinatura diretamente ao Mercado Pago ou Stripe.
 
-Para começar, precisamos:
+Criar abstração:
 
-1. Confirmar os dados da empresa;
-2. Receber a documentação;
-3. Formalizar a contratação;
-4. Agendar o treinamento;
-5. Iniciar a operação.
+```typescript
+BillingProvider
+```
 
-Podemos avançar agora com o cadastro da empresa?
+Exemplo conceitual:
 
-Depois da pergunta, aguardar a resposta. Não continuar falando para preencher o silêncio.
+```typescript
+interface BillingProvider {
+  createCustomer()
+  createSubscription()
+  cancelSubscription()
+  createPayment()
+  getPayment()
+  handleWebhook()
+}
+```
 
-9. OBJEÇÃO: “PRECISO PENSAR”
+Providers poderão ser:
 
-Compreendo. Para que sua análise seja objetiva, qual ponto ainda impede sua decisão?
+```text
+MercadoPagoProvider
+StripeProvider
+PagBankProvider
+ManualPixProvider
+```
 
-É o investimento, o funcionamento, o momento da empresa ou a expectativa de retorno?
+Assim novos meios de pagamento podem ser adicionados futuramente.
 
-Após a resposta:
+---
 
-Além desse ponto, existe alguma outra questão que impediria você de começar?
+# 13. Mercado Pago
 
-10. OBJEÇÃO: “ESTÁ CARO”
+Preparar integração para:
 
-Entendo. Quando você diz que está caro, está comparando com outra solução ou com o valor disponível para investir neste momento?
+* cartão;
+* assinatura recorrente, quando aplicável;
+* boleto, se utilizado;
+* Pix;
+* webhook;
+* atualização automática da assinatura.
 
-Retomar o cálculo:
+Credenciais nunca deverão ficar expostas no frontend.
 
-Hoje estimamos que sua loja pode recuperar [quantidade] vendas, representando aproximadamente R$ [valor] em faturamento.
+---
 
-Quantas vendas seriam necessárias para recuperar o investimento?
+# 14. Stripe
 
-Se o investimento ainda não couber no caixa, verificar somente condições comerciais oficialmente autorizadas. Nunca inventar desconto.
+Preparar arquitetura para:
 
-11. OBJEÇÃO: “NÃO TENHO CERTEZA SE VAI FUNCIONAR”
+* Customer;
+* Subscription;
+* Payment Intent;
+* webhook;
+* recorrência;
+* cancelamento;
+* falha de cobrança.
 
-É uma preocupação legítima.
+Mesmo que Stripe não seja ativado imediatamente, a arquitetura deverá aceitá-lo.
 
-Nenhuma empresa séria deve garantir vendas ou aprovações. O resultado depende do fluxo de clientes, perfil do público, oferta da equipe e critérios das modalidades.
+---
 
-O que conseguimos garantir é a entrega da estrutura, do treinamento e do suporte definidos na contratação.
+# 15. PagBank
 
-Pelos números que você apresentou, existe demanda suficiente para justificar a implantação?
+Seguir a mesma abstraction do BillingProvider.
 
-12. OBJEÇÃO: “JÁ TENHO OUTRAS FINANCEIRAS”
+Não espalhar chamadas específicas do PagBank pelo projeto.
 
-Isso é positivo, porque sua equipe já está acostumada a trabalhar com crédito.
+---
 
-A questão é: quando essas opções recusam o cliente, sua loja ainda possui outra possibilidade ou perde a venda?
+# 16. PIX manual / QR Code
 
-A Newave Pay entra como complemento para ampliar sua cobertura, conforme o perfil e as regras de cada modalidade.
+Também permitir cobrança sem gateway recorrente.
 
-13. OBJEÇÃO: “PRECISO FALAR COM MEU SÓCIO”
+Exemplo:
 
-Sem problema. Qual informação seu sócio precisará para tomar a decisão?
+ROOT configura:
 
-O melhor caminho é fazermos uma conversa rápida com vocês dois, evitando que você precise reproduzir toda a apresentação.
+```text
+Tipo: PIX
+Chave PIX
+Nome recebedor
+Cidade
+```
 
-Ele consegue participar hoje às [horário] ou amanhã às [horário]?
+Sistema poderá gerar:
 
-14. OBJEÇÃO: “MANDA A PROPOSTA”
+* QR Code;
+* PIX Copia e Cola;
+* valor;
+* vencimento.
 
-Envio, sim.
+No pagamento manual deverá existir:
 
-Antes, quero confirmar: se a proposta registrar exatamente as condições apresentadas e não surgir nenhuma informação diferente, você estará preparado para avançar?
+```text
+Aguardando confirmação
+Pago
+Rejeitado
+Expirado
+```
 
-Se não estiver, identificar a objeção real antes de enviar.
+ROOT poderá confirmar pagamento manualmente.
 
-15. OBJEÇÃO: “AGORA NÃO É O MOMENTO”
+Se posteriormente houver API do provedor, poderá ser automatizado.
 
-Entendo. O que precisa acontecer para se tornar o momento certo?
+---
 
-* Melhorar o caixa?
-* Aumentar o fluxo de clientes?
-* Organizar a equipe?
-* Encerrar outro contrato?
+# 17. Configuração de gateways
 
-Definir um motivo e uma data real de retomada. Não aceitar “mais para frente” sem prazo.
+ROOT deverá possuir configuração central:
 
-16. FECHAMENTO POR ESCOLHA
+```text
+Gateway ativo
+Ambiente sandbox/produção
+Credenciais
+Webhook status
+Última comunicação
+Métodos aceitos
+```
 
-Para sua operação, temos duas possibilidades autorizadas:
+Segredos precisam ser armazenados de forma segura.
 
-* [opção/plano 1];
-* [opção/plano 2].
+Nunca retornar secret keys via API para frontend.
 
-Pelo volume da sua loja, recomendo [opção] porque [justificativa].
+No frontend mostrar algo como:
 
-Você prefere iniciar por essa opção ou pela alternativa [outra opção]?
+```text
+••••••••••7HsA
+```
 
-17. CONFIRMAÇÃO DA VENDA
+---
 
-Excelente, [nome].
+# 18. Webhooks
 
-Vamos formalizar os próximos passos:
+Implementar corretamente:
 
-Empresa: [razão social]
-CNPJ: [CNPJ]
-Responsável: [nome]
-Plano/modalidade: [opção]
-Investimento: [valor]
-Condição: [forma de pagamento]
-Treinamento: [data prevista]
-Início da operação: [previsão]
+* validação de assinatura;
+* idempotência;
+* prevenção de evento duplicado;
+* logs;
+* retry seguro;
+* associação com empresa/assinatura.
 
-Agora enviarei [contrato/link/documentação]. Assim que concluir, me avise para confirmarmos a implantação.
+Um webhook repetido nunca poderá:
 
-18. FOLLOW-UP APÓS A REUNIÃO
+* duplicar pagamento;
+* duplicar assinatura;
+* renovar duas vezes;
+* alterar plano incorretamente.
 
-Olá, [nome]!
+Criar tabela/event log apropriada.
 
-Com base em nossa reunião, identificamos que sua loja:
+---
 
-* Possui ticket médio de R$ [valor];
-* Perde aproximadamente [quantidade] vendas;
-* Precisa melhorar [dor];
-* Tem potencial estimado de R$ [valor] em oportunidades.
+# 19. Cobranças
 
-A proposta apresentada foi [resumo].
+Criar histórico de:
 
-Qual ponto precisamos resolver para confirmar a implantação?
+```text
+Invoices / Charges
+```
 
-19. FOLLOW-UP COM PRAZO
+Guardar pelo menos:
 
-Olá, [nome]!
+* companyId;
+* subscriptionId;
+* provider;
+* externalId;
+* valor;
+* moeda;
+* status;
+* vencimento;
+* pagamento;
+* método;
+* metadata.
 
-Ficamos de concluir sua decisão sobre a Newave Pay hoje.
+---
 
-Você conseguiu avaliar a proposta?
+# 20. Controle de IA
 
-Se existir alguma dúvida, podemos resolvê-la agora. Caso esteja de acordo, avanço com sua implantação.
+Não controlar apenas quantidade de mensagens.
 
-20. ENCERRAMENTO PROFISSIONAL
+Registrar também:
 
-Olá, [nome]!
+```text
+aiInteractions
+inputTokens
+outputTokens
+cachedTokens
+estimatedCostUsd
+model
+companyId
+timestamp
+```
 
-Como não avançamos dentro do prazo combinado, vou encerrar esta negociação por enquanto.
+A franquia comercial poderá continuar sendo mostrada ao cliente como:
 
-Se ampliar as formas de pagamento voltar a ser uma prioridade, podemos reavaliar sua operação e as condições disponíveis naquele momento."
+```text
+10.000 interações de IA/mês
+```
+
+Mas internamente o sistema precisa conhecer o custo real.
+
+Criar contador por billing period.
+
+---
+
+# 21. Definição de interação de IA
+
+Definir uma interação como uma geração/resposta realizada pela IA.
+
+Exemplo:
+
+Lead envia:
+
+```text
+Oi
+Tenho interesse
+Quanto custa?
+```
+
+O AtendON processa tudo e gera uma única resposta.
+
+Resultado:
+
+```text
+1 AI interaction
+```
+
+Não 4 mensagens.
+
+Verifique a arquitetura atual antes de definir o ponto exato de contabilização.
+
+---
+
+# 22. Limites
+
+Criar infraestrutura genérica para limites.
+
+Exemplos:
+
+```text
+MAX_USERS
+MAX_WHATSAPP_CONNECTIONS
+MAX_PIPELINES
+MAX_AI_INTERACTIONS
+MAX_AUTOMATIONS
+MAX_CONTACTS
+MAX_STORAGE
+MAX_CUSTOM_FIELDS
+```
+
+Nem todos precisam ser comercializados agora.
+
+Mas a arquitetura deverá permitir adicionar limites novos facilmente.
+
+---
+
+# 23. Controle de concorrência
+
+Limites não podem sofrer race conditions.
+
+Exemplo:
+
+Limite:
+
+```text
+5 WhatsApps
+```
+
+Duas requisições simultâneas não podem criar WhatsApp 6 e 7.
+
+Aplicar validação transacional quando necessário.
+
+---
+
+# 24. Upgrade
+
+Upgrade:
+
+```text
+Básico → Médio
+Médio → Pro
+```
+
+Deve liberar features automaticamente.
+
+Não apagar configurações anteriores.
+
+---
+
+# 25. Downgrade
+
+Downgrade precisa ser tratado cuidadosamente.
+
+Exemplo:
+
+Empresa Pro possui:
+
+```text
+15 usuários
+```
+
+Downgrade para Médio:
+
+```text
+limite = 8
+```
+
+NÃO apagar 7 usuários automaticamente.
+
+Marcar:
+
+```text
+OVER_LIMIT
+```
+
+Bloquear criação de novos recursos e permitir que administrador escolha quais manter/arquivar.
+
+Mesma regra para:
+
+* WhatsApps;
+* pipelines;
+* automações;
+* integrações;
+* outros limites.
+
+---
+
+# 26. Cancelamento
+
+Cancelamento não deve destruir dados.
+
+Empresa cancelada:
+
+```text
+subscription = CANCELED
+```
+
+Dados permanecem armazenados conforme política definida.
+
+ROOT poderá reativar.
+
+Planejar futuramente retenção e exclusão de dados.
+
+---
+
+# 27. Auditoria
+
+Registrar alterações sensíveis:
+
+```text
+ROOT alterou plano
+ROOT alterou limite
+ROOT concedeu override
+ROOT suspendeu empresa
+Pagamento aprovado
+Pagamento recusado
+Plano alterado
+Gateway alterado
+```
+
+Guardar:
+
+* usuário;
+* empresa;
+* ação;
+* antes;
+* depois;
+* timestamp.
+
+---
+
+# 28. Segurança B2B
+
+Adicionar/garantir:
+
+* isolamento completo entre tenants;
+* autorização por empresa;
+* autorização por cargo;
+* rate limiting;
+* logs;
+* auditoria;
+* secrets fora do frontend;
+* validação server-side;
+* prevenção contra alteração de companyId;
+* prevenção contra privilege escalation.
+
+Um administrador de uma empresa nunca poderá modificar assinatura, plano ou limites por chamadas diretas à API.
+
+---
+
+# 29. Gestão de usuários
+
+Planos deverão limitar usuários ativos.
+
+Definir claramente estados:
+
+```text
+ACTIVE
+INVITED
+DISABLED
+```
+
+Decidir pelo código existente quais entram na franquia.
+
+Sugestão:
+
+somente usuários ACTIVE consomem limite.
+
+---
+
+# 30. Ciclo mensal
+
+Criar período de consumo:
+
+```text
+billingPeriodStart
+billingPeriodEnd
+```
+
+Ao iniciar novo período:
+
+* IA volta para zero;
+* demais métricas mensais voltam para zero;
+* histórico anterior permanece salvo.
+
+Não apagar dados históricos.
+
+---
+
+# 31. Métricas internas
+
+ROOT deverá conseguir visualizar posteriormente:
+
+```text
+MRR
+ARR
+Clientes ativos
+Clientes por plano
+Churn
+ARPU
+Receita
+Custo estimado de IA
+Margem estimada por empresa
+Uso médio de IA
+Uso médio por plano
+```
+
+Nesta etapa, implemente apenas aquilo que for simples e necessário para estruturar corretamente os dados.
+
+Não transforme esta fase em projeto de BI.
+
+---
+
+# 32. Cupons e descontos
+
+Preparar modelo para:
+
+```text
+desconto percentual
+desconto fixo
+valor personalizado
+data de expiração
+```
+
+Não precisa desenvolver sistema comercial completo de cupons agora se aumentar muito o escopo.
+
+Porém a assinatura não deve pressupor que todo cliente paga exatamente o preço padrão do plano.
+
+---
+
+# 33. Implantação/setup fee
+
+Separar:
+
+```text
+mensalidade
+```
+
+de:
+
+```text
+taxa de implantação
+```
+
+Plano poderá ter:
+
+```text
+monthlyPrice
+setupPrice
+```
+
+ROOT poderá substituir esses valores por empresa.
+
+---
+
+# 34. Add-ons
+
+Preparar a arquitetura para add-ons futuros.
+
+Exemplos:
+
+```text
++ usuários
++ números de WhatsApp
++ franquia de IA
++ pipelines
++ armazenamento
++ automações
+```
+
+Não é necessário comercializar add-ons agora.
+
+Mas não construir uma arquitetura que impeça isso depois.
+
+---
+
+# 35. Feature flags x plano
+
+Separar:
+
+### Feature flag
+
+Controla se determinada funcionalidade existe/está disponível no produto.
+
+### Plan entitlement
+
+Controla se determinada empresa tem direito ao recurso.
+
+Exemplo:
+
+```text
+Feature flag:
+AI_FOLLOWUP está operacional.
+
+Entitlement:
+Plano Básico não possui AI_FOLLOWUP.
+```
+
+---
+
+# 36. Banco de dados
+
+Após analisar o schema atual, proponha migrations compatíveis com a arquitetura existente.
+
+Entidades esperadas, ajustando nomes ao padrão atual:
+
+```text
+plans
+plan_features
+plan_limits
+company_subscriptions
+company_entitlement_overrides
+usage_records
+billing_accounts
+billing_providers
+payments
+invoices
+billing_events
+audit_logs
+```
+
+Evitar duplicação desnecessária.
+
+---
+
+# 37. Seed inicial
+
+Criar migration/seed seguro com:
+
+```text
+BASIC
+MEDIUM
+PRO
+```
+
+Não criar pelo nome visual como chave principal.
+
+Usar IDs/UUIDs ou códigos imutáveis apropriados.
+
+O nome mostrado:
+
+```text
+Básico
+Médio
+Pro
+```
+
+poderá mudar futuramente sem quebrar regras.
+
+---
+
+# 38. Compatibilidade das empresas atuais
+
+Existe empresa utilizando o AtendON atualmente.
+
+A migration NÃO pode remover ou bloquear acidentalmente sua operação.
+
+Antes da ativação:
+
+* identificar tenants existentes;
+* atribuir plano adequado;
+* preservar recursos atuais;
+* criar migration/backfill seguro.
+
+Se houver dúvida sobre o plano atual, utilizar um plano/override temporário que preserve todos os acessos até configuração manual pelo ROOT.
+
+---
+
+# 39. UX para limite atingido
+
+Nunca apresentar erro técnico bruto.
+
+Exemplo:
+
+```text
+Você atingiu o limite de 8 usuários do seu plano.
+
+Plano atual: Médio
+Uso: 8/8
+
+Para adicionar novos usuários, aumente seu limite ou faça upgrade.
+```
+
+Mesma ideia para:
+
+* IA;
+* WhatsApps;
+* pipelines;
+* etc.
+
+---
+
+# 40. Observabilidade
+
+Registrar erros relacionados a:
+
+* cobrança;
+* webhook;
+* entitlement;
+* limite;
+* reset de consumo;
+* pagamentos;
+* alteração de plano.
+
+Não registrar tokens, secrets ou informações financeiras sensíveis.
+
+---
+
+# 41. Testes obrigatórios
+
+Criar testes para pelo menos:
+
+### Planos
+
+* Básico não acessa IA.
+* Básico não acessa agenda.
+* Médio acessa IA.
+* Pro acessa tudo configurado.
+
+### Limites
+
+* usuário 4 no Básico é recusado;
+* segundo WhatsApp no Básico é recusado;
+* interação acima da franquia é recusada/tratada corretamente.
+
+### Overrides
+
+* limite personalizado prevalece sobre plano.
+
+### Assinatura
+
+* ACTIVE possui acesso;
+* PAST_DUE segue grace period;
+* SUSPENDED segue regras definidas.
+
+### Pagamentos
+
+* webhook duplicado não duplica pagamento;
+* aprovação atualiza assinatura;
+* falha não marca pagamento como aprovado.
+
+### Segurança
+
+* usuário de empresa A não consulta plano/consumo privado de B;
+* admin normal não altera subscription;
+* manipulação direta de endpoints não contorna entitlement.
+
+---
+
+# 42. Rollout
+
+Não ativar tudo de uma vez.
+
+Implementar aproximadamente nesta sequência:
+
+## Fase 1 — análise
+
+Mapear arquitetura atual.
+
+## Fase 2 — domínio SaaS
+
+Plans, features, limits, entitlements.
+
+## Fase 3 — ROOT
+
+Interface e endpoints de administração.
+
+## Fase 4 — enforcement
+
+Aplicar bloqueios no backend.
+
+## Fase 5 — frontend
+
+Aplicar UX de bloqueio e limites.
+
+## Fase 6 — usage
+
+Adicionar contadores e IA.
+
+## Fase 7 — billing
+
+Subscriptions, payments e providers.
+
+## Fase 8 — gateways
+
+Começar pelo gateway mais adequado à arquitetura atual e deixar os demais plugáveis.
+
+## Fase 9 — testes
+
+Cobrir plano, limites, cobrança e isolamento.
+
+## Fase 10 — migração
+
+Associar empresas atuais sem interrupção.
+
+---
+
+# 43. FORA DO ESCOPO DESTA IMPLEMENTAÇÃO
+
+IMPORTANTE:
+
+NÃO criar agora o site comercial público do AtendON.
+
+NÃO criar ainda:
+
+* landing page;
+* página pública de preços;
+* cadastro self-service;
+* checkout público;
+* onboarding automático;
+* criação automática da empresa após pagamento;
+* trial público;
+* aquisição automática sem vendedor.
+
+Apenas preparar o backend para que isso seja possível depois.
+
+Após esta implementação será criado um SEGUNDO PLANO específico para:
+
+```text
+AtendON Self-Service / Site Comercial
+```
+
+Esse segundo projeto deverá permitir futuramente:
+
+```text
+Visitante acessa atendon.com
+↓
+Compara Básico / Médio / Pro
+↓
+Escolhe plano
+↓
+Cria conta
+↓
+Escolhe pagamento
+↓
+Paga
+↓
+Empresa é criada
+↓
+Plano é vinculado
+↓
+Onboarding começa
+↓
+Cliente começa a utilizar o AtendON
+```
+
+NÃO implementar esse fluxo nesta tarefa.
+
+---
+
+# 44. Antes de escrever código
+
+Primeiro entregue um relatório contendo:
+
+1. Como o multi-tenant funciona atualmente.
+2. Como empresas são identificadas.
+3. Como usuários e cargos estão estruturados.
+4. Todos os módulos encontrados.
+5. Quais recursos podem virar entitlements.
+6. Quais recursos possuem limites naturais.
+7. Como a IA é chamada atualmente.
+8. Onde contabilizar corretamente uma interação.
+9. Como WhatsApps são vinculados.
+10. Como pipeline e agenda estão estruturados.
+11. Riscos de regressão.
+12. Models/tabelas que precisarão ser criados ou alterados.
+13. Endpoints novos.
+14. Telas novas.
+15. Estratégia de migration.
+16. Estratégia para preservar empresas existentes.
+
+Depois disso, apresente o plano de implementação detalhado por arquivos/componentes.
+
+Somente depois avance para implementação.
+
+---
+
+# Princípios obrigatórios
+
+Priorizar:
+
+* segurança;
+* isolamento entre empresas;
+* organização;
+* manutenção;
+* extensibilidade;
+* consistência;
+* transações;
+* idempotência;
+* tipagem;
+* testes;
+* baixo acoplamento.
+
+Evitar:
+
+* hardcode de planos;
+* permissões apenas no frontend;
+* lógica comercial espalhada;
+* gateway acoplado ao domínio;
+* exclusão automática em downgrade;
+* alteração destrutiva de empresas atuais;
+* duplicação de lógica;
+* migrations irreversíveis desnecessárias.
+
+O objetivo não é simplesmente adicionar três planos.
+
+O objetivo é transformar o AtendON em uma base SaaS profissional, onde planos, limites, consumo, cobrança e funcionalidades possam evoluir sem exigir reconstrução da aplicação.
