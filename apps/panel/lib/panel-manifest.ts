@@ -10,7 +10,8 @@ import {
   Sparkle,
   UsersThree,
   Vault,
-  Watch
+  Watch,
+  CreditCard
 } from "@phosphor-icons/react";
 import type { PanelSession } from "./session";
 import { canAccessRootWorkspace, canAccessWithSession } from "./session";
@@ -71,6 +72,7 @@ export const panelManifest: readonly PanelManifestItem[] = [
   { href: "/follow-ups", label: "Follow-ups", group: "Administração", Icon: Clock, rootWorkspaceOnly: true, menu: true, match: startsAt("/follow-ups") },
   { href: "/configuracoes", label: "Configurações", group: "Administração", Icon: GearSix, capability: "workspace_admin_v1", menu: true, match: (path) => administrationPaths.some((base) => startsAt(base)(path)) },
   { href: "/root/workspaces", label: "Empresas", group: "ROOT", Icon: Vault, rootOnly: true, menu: true, match: startsAt("/root/workspaces") },
+  { href: "/root/saas/planos", label: "Planos e cobrança", group: "ROOT", Icon: CreditCard, rootOnly: true, menu: true, match: startsAt("/root/saas/planos") },
   { href: "/root/audit", label: "Auditoria ROOT", group: "ROOT", Icon: Watch, rootOnly: true, menu: true, match: startsAt("/root/audit") },
   { href: "/perfil", label: "Perfil", group: "Administração", Icon: GearSix, match: startsAt("/perfil") },
   { href: "/alterar-senha", label: "Alterar senha", group: "Administração", Icon: GearSix, match: startsAt("/alterar-senha") }

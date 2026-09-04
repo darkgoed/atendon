@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 type SubscriptionRow = Record<string, unknown> & { id: string; plan_id: string; status: SubscriptionStatus };
-type PlanRow = { code: string; name: string };
+type PlanRow = { id: string; code: string; name: string; billing_period_months: number };
 type CountRow = { used: string };
 import { db } from "../../db/client.js";
 import { getEffectiveEntitlements } from "../../billing/entitlements.js";
@@ -13,7 +13,31 @@ async function audit(c: PoolClient, actor: string, tenant: string | null, action
 async function mutate(tenantId: string, actorUserId: string, action: string, fn: (c: PoolClient, s: SubscriptionRow) => Promise<unknown>) {
   const c = await db.connect(); try { await c.query("BEGIN"); const q = await c.query<SubscriptionRow>("SELECT * FROM tenant_subscriptions WHERE tenant_id=$1 FOR UPDATE", [tenantId]); if (!q.rows[0]) throw Object.assign(new Error("Assinatura não encontrada"), { statusCode: 404 }); const out = await fn(c, q.rows[0]); await audit(c, actorUserId, tenantId, action, "subscription", q.rows[0].id, q.rows[0], out); await c.query("COMMIT"); return out; } catch (e) { await c.query("ROLLBACK"); throw e; } finally { c.release(); }
 }
-export async function changePlan(tenantId: string, planId: string, actorUserId: string) { return mutate(tenantId, actorUserId, "saas.subscription.change_plan", async (c, s) => { const p = await c.query<PlanRow>("SELECT id,code,name FROM plans WHERE id=$1 AND status='active'", [planId]); if (!p.rows[0]) throw Object.assign(new Error("Plano não encontrado"), { statusCode: 404 }); await c.query("UPDATE tenant_subscriptions SET plan_id=$1,updated_at=now() WHERE id=$2", [planId, s.id]); await c.query(`INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_plan_id,to_plan_id,from_status,to_status,actor_user_id,metadata) VALUES($1,$2,'PLAN_CHANGED',$3,$4,$5,$5,$6,$7)`, [tenantId, s.id, s.plan_id, planId, s.status, actorUserId, {}]); return { ...s, plan_id: planId, plan_code: p.rows[0].code, plan_name: p.rows[0].name }; }); }
+export async function changePlan(tenantId: string, planId: string, actorUserId: string) {
+  const c = await db.connect();
+  try {
+    await c.query("BEGIN");
+    const tenant = await c.query("SELECT id FROM tenants WHERE id=$1 FOR UPDATE", [tenantId]);
+    if (!tenant.rows[0]) throw Object.assign(new Error("Workspace não encontrado"), { statusCode: 404 });
+    const p = await c.query<PlanRow>("SELECT id,code,name,billing_period_months FROM plans WHERE id=$1 AND status='active'", [planId]);
+    if (!p.rows[0]) throw Object.assign(new Error("Plano não encontrado"), { statusCode: 404 });
+    const existing = await c.query<SubscriptionRow>("SELECT * FROM tenant_subscriptions WHERE tenant_id=$1 FOR UPDATE", [tenantId]);
+    const before = existing.rows[0] ?? null;
+    let subscription: SubscriptionRow;
+    if (before) {
+      await c.query("UPDATE tenant_subscriptions SET plan_id=$1,updated_at=now() WHERE id=$2", [planId, before.id]);
+      subscription = { ...before, plan_id: planId };
+    } else {
+      const created = await c.query<SubscriptionRow>("INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,current_period_start,current_period_end) VALUES($1,$2,'ACTIVE',now(),now() + make_interval(months => $3)) RETURNING *", [tenantId, planId, p.rows[0].billing_period_months]);
+      subscription = created.rows[0];
+    }
+    await c.query("INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_plan_id,to_plan_id,from_status,to_status,actor_user_id,metadata) VALUES($1,$2,'PLAN_CHANGED',$3,$4,$5,$6,$7,$8)", [tenantId, subscription.id, before?.plan_id ?? null, planId, before?.status ?? null, subscription.status, actorUserId, { provisioned: !before }]);
+    const out = { ...subscription, plan_code: p.rows[0].code, plan_name: p.rows[0].name };
+    await audit(c, actorUserId, tenantId, "saas.subscription.change_plan", "subscription", subscription.id, before, out);
+    await c.query("COMMIT");
+    return out;
+  } catch (e) { await c.query("ROLLBACK"); throw e; } finally { c.release(); }
+}
 export async function changeStatus(tenantId: string, status: SubscriptionStatus, actorUserId: string) { return mutate(tenantId, actorUserId, `saas.subscription.${status.toLowerCase()}`, async (c, s) => { await c.query("UPDATE tenant_subscriptions SET status=$1,canceled_at=CASE WHEN $1='CANCELED' THEN now() ELSE canceled_at END,suspended_at=CASE WHEN $1='SUSPENDED' THEN now() ELSE suspended_at END,updated_at=now() WHERE id=$2", [status, s.id]); await c.query(`INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_plan_id,to_plan_id,from_status,to_status,actor_user_id,metadata) VALUES($1,$2,$3,$4,$4,$5,$6,$7,'{}')`, [tenantId, s.id, status, s.plan_id, s.status, status, actorUserId]); return { ...s, status }; }); }
 export async function getOverLimitReport(tenantId: string) {
   const e = await getEffectiveEntitlements(tenantId);

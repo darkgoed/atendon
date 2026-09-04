@@ -109,6 +109,17 @@ export async function registerRootRoutes(app: FastifyInstance) {
          RETURNING id,slug`,
         [body.name, `${baseSlug}-${randomBytes(3).toString("hex")}`, root.userId]
       );
+      const initialSubscription = await client.query(
+        `INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,current_period_start,current_period_end)
+         SELECT $1,p.id,'ACTIVE',now(),now() + make_interval(months => p.billing_period_months)
+         FROM plans p
+         WHERE p.code='LEGACY_UNLIMITED' AND p.status='active'
+         RETURNING id`,
+        [workspace.rows[0].id]
+      );
+      if (!initialSubscription.rows[0]) {
+        throw new Error("Plano técnico LEGACY_UNLIMITED não encontrado ou inativo; workspace não criado");
+      }
       await ensureWorkspaceDefaultRoles(client, workspace.rows[0].id);
       const ownerRole = await client.query<{ id: string }>(
         "SELECT id FROM workspace_roles WHERE workspace_id=$1 AND is_owner_role=true",

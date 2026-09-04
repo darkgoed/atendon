@@ -590,6 +590,17 @@ describe("SaaS foundation auth and RBAC", () => {
     expect(sentEmails.at(-1)?.text).toContain(created.json().token);
     expect((await pool.query("SELECT id FROM whatsapp_sessions WHERE tenant_id=$1", [rootCreatedTenant])).rowCount).toBe(1);
     expect((await pool.query("SELECT id FROM agent_configs WHERE tenant_id=$1", [rootCreatedTenant])).rowCount).toBe(1);
+    const initialSubscription = await pool.query<{ code: string; status: string }>("SELECT p.code,s.status FROM tenant_subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.tenant_id=$1", [rootCreatedTenant]);
+    expect(initialSubscription.rows).toEqual([{ code: "LEGACY_UNLIMITED", status: "ACTIVE" }]);
+
+    await pool.query("DELETE FROM tenant_subscriptions WHERE tenant_id=$1", [tenantC]);
+    const targetPlan = (await pool.query<{ id: string }>("SELECT id FROM plans WHERE status='active' AND code <> 'LEGACY_UNLIMITED' ORDER BY position LIMIT 1")).rows[0];
+    if (!targetPlan) throw new Error("No active commercial plan available for integration test");
+    const linked = await app.inject({ method: "POST", url: `/root/saas/tenants/${tenantC}/subscription`, headers: { cookie: rootCookie }, payload: { planId: targetPlan.id } });
+    expect(linked.statusCode).toBe(200);
+    expect((await pool.query("SELECT id FROM tenant_subscriptions WHERE tenant_id=$1", [tenantC])).rowCount).toBe(1);
+    expect((await pool.query("SELECT id FROM subscription_events WHERE tenant_id=$1 AND event_type='PLAN_CHANGED'", [tenantC])).rowCount).toBe(1);
+    expect((await pool.query("SELECT id FROM audit_logs WHERE workspace_id=$1 AND action='saas.subscription.change_plan'", [tenantC])).rowCount).toBe(1);
 
     const suspended = await app.inject({ method: "PATCH", url: `/root/workspaces/${rootCreatedTenant}`, headers: { cookie: rootCookie }, payload: { status: "suspended" } });
     expect(suspended.statusCode).toBe(200);

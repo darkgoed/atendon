@@ -2,53 +2,63 @@
 
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
+import { Shell } from "@/components/shell";
 import { Empty } from "@/components/page-state";
 import { ModalDialog } from "@/components/modal-dialog";
-import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
-import { canAccessRootWorkspace, type PanelSession } from "@/lib/session";
+import type { PanelSession } from "@/lib/session";
+import { duplicatePlanPayload, formatUsage, normalizePlan, reaisToCents, type Catalog, type Plan } from "@/lib/saas-plans";
 
-type Plan = { id: string; code?: string; name: string; priceCents?: number; price_cents?: number; status?: string; features?: Record<string, boolean>; limits?: Record<string, number | null> };
-type Catalog = { features?: Array<{ key: string; name?: string; displayName?: string }>; limits?: Array<{ key: string; name?: string; displayName?: string }> };
+type Usage = { MAX_USERS: number; MAX_WHATSAPP_CONNECTIONS: number; MAX_AI_INTERACTIONS: number };
+type Tenant = { id: string; name: string; status: string; subscription_status: string | null; plan_code: string | null; plan_name: string | null; entitlements: { limits?: Record<string, number | null> }; usage: Usage };
+type Event = { id: string; event_type: string; from_status?: string | null; to_status?: string | null; created_at: string; metadata?: Record<string, unknown> };
+type Tab = "plans" | "tenants" | "history" | "gateways" | "billing";
+type SelectedPlan = ReturnType<typeof normalizePlan>;
 const fetcher = <T,>(url: string) => api<T>(url);
-const price = (plan: Plan) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((plan.priceCents ?? plan.price_cents ?? 0) / 100);
+const money = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
+const eventLabel: Record<string, string> = { PLAN_CHANGED: "Plano alterado", SUSPENDED: "Suspenso", ACTIVE: "Ativo", CANCELED: "Cancelado", PAYMENT_APPROVED: "Pagamento aprovado", PAYMENT_REJECTED: "Pagamento rejeitado" };
 
 export default function RootPlansPage() {
   const { data: session } = useSWR<PanelSession>("/me", fetcher, { revalidateOnFocus: false });
-  const root = Boolean(session && canAccessRootWorkspace(session));
-  const { data, error, mutate } = useSWR<{ plans: Plan[] }>(root ? "/root/saas/plans" : null, fetcher, { revalidateOnFocus: false });
-  const { data: catalog } = useSWR<Catalog>(root ? "/root/saas/catalog" : null, fetcher, { revalidateOnFocus: false });
-  const [selected, setSelected] = useState<Plan | null>(null);
+  const root = Boolean(session?.user.isRoot);
+  const { data, error, mutate } = useSWR<{ plans: Plan[] }>(root ? "/root/saas/plans" : null, fetcher);
+  const { data: catalog } = useSWR<Catalog>(root ? "/root/saas/catalog" : null, fetcher);
+  const { data: tenantsData, error: tenantsError, mutate: mutateTenants } = useSWR<{ tenants: Tenant[] }>(root ? "/root/saas/tenants" : null, fetcher);
+  const { data: eventsData, error: eventsError } = useSWR<{ events: Event[] }>(root ? "/root/saas/events" : null, fetcher);
+  const [tab, setTab] = useState<Tab>("plans");
+  const [selected, setSelected] = useState<SelectedPlan | null>(null);
   const [archive, setArchive] = useState<Plan | null>(null);
+  const [duplicate, setDuplicate] = useState<Plan | null>(null);
+  const [choices, setChoices] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
-  const plans = data?.plans ?? [];
-
+  const [busy, setBusy] = useState<string | null>(null);
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!selected) return;
-    const form = new FormData(event.currentTarget);
+    const f = new FormData(event.currentTarget);
+    const payload = { code: String(f.get("code") ?? "").trim(), name: String(f.get("name") ?? "").trim(), description: String(f.get("description") ?? "").trim(), monthlyPriceCents: reaisToCents(String(f.get("price") ?? "0")), setupPriceCents: reaisToCents(String(f.get("setupPrice") ?? "0")), billingPeriodMonths: Number(f.get("billingPeriodMonths") ?? 1), trialDays: Number(f.get("trialDays") ?? 0), gracePeriodDays: Number(f.get("gracePeriodDays") ?? 0), features: selected.features, limits: selected.limits };
     try {
-      const payload = { name: String(form.get("name") ?? "").trim(), priceCents: Number(form.get("priceCents") ?? 0) };
-      await api(selected.id ? `/root/saas/plans/${selected.id}` : "/root/saas/plans", { method: selected.id ? "PATCH" : "POST", body: JSON.stringify(payload) });
+      if (selected.id) await api(`/root/saas/plans/${selected.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+      else { const response = await api<{ plan: Plan }>("/root/saas/plans", { method: "POST", body: JSON.stringify(payload) }); if (Object.keys(selected.features).length || Object.keys(selected.limits).length) await api(`/root/saas/plans/${response.plan.id}`, { method: "PATCH", body: JSON.stringify({ features: selected.features, limits: selected.limits }) }); setMessage("Plano criado. Edite-o para ajustar a matriz de features e limites."); }
       setSelected(null); await mutate();
-    } catch (saveError) { setMessage(saveError instanceof Error ? saveError.message : "Não foi possível salvar o plano."); }
+    } catch (e) { setMessage(e instanceof Error ? e.message : "Não foi possível salvar."); }
   }
-  async function archivePlan() {
-    if (!archive) return;
-    try { await api(`/root/saas/plans/${archive.id}/archive`, { method: "POST" }); setArchive(null); await mutate(); }
-    catch (archiveError) { setMessage(archiveError instanceof Error ? archiveError.message : "Não foi possível arquivar o plano."); }
+  // Real endpoints: POST /:id/archive and POST /:id/duplicate.
+  async function planAction(plan: Plan, action: "archive" | "duplicate", code?: string, name?: string) {
+    setBusy(plan.id); setMessage("");
+    try { await api(`/root/saas/plans/${plan.id}/${action}`, { method: "POST", ...(action === "duplicate" ? { body: JSON.stringify({ code, name }) } : {}) }); setArchive(null); setDuplicate(null); setMessage(action === "archive" ? "Plano arquivado." : "Plano duplicado."); await mutate(); }
+    catch (e) { setMessage(e instanceof Error ? e.message : "Não foi possível concluir a ação."); } finally { setBusy(null); }
   }
-  async function patchMatrix(key: string, kind: "feature" | "limit", value: boolean | number | null) {
-    if (!selected) return;
-    const features = { ...selected.features }; const limits = { ...selected.limits };
-    if (kind === "feature") features[key] = Boolean(value); else limits[key] = value as number | null;
-    try { await api(`/root/saas/plans/${selected.id}`, { method: "PATCH", body: JSON.stringify({ features, limits }) }); setSelected({ ...selected, features, limits }); await mutate(); }
-    catch (patchError) { setMessage(patchError instanceof Error ? patchError.message : "Não foi possível atualizar a matriz."); }
-  }
-
-  return <Shell><header className="pagehead" style={{ "--eyebrow": '"PAINEL · ROOT"' } as React.CSSProperties}><div><h1>Planos SaaS</h1><p>Catálogo comercial, preços e limites de uso.</p></div><button className="btn primary" type="button" onClick={() => setSelected({ id: "", name: "", priceCents: 0, features: {}, limits: {} })}>Criar plano</button></header>
-    {message ? <p className="error mb-4" role="alert">{message}</p> : null}
-    {!root ? <div className="card"><p>Esta área está disponível apenas para usuários ROOT.</p></div> : error ? <p className="error" role="alert">Não foi possível carregar os planos.</p> : !data ? <div className="card">Carregando…</div> : plans.length === 0 ? <Empty>Nenhum plano cadastrado.</Empty> : <section className="card admin-card"><div className="admin-table-wrap responsive-table-wrap"><table className="admin-table responsive-table"><thead><tr><th>Plano</th><th>Preço</th><th>Status</th><th>Features</th><th>Ações</th></tr></thead><tbody>{plans.map((plan) => <tr key={plan.id}><td data-label="Plano"><strong>{plan.name}</strong><span className="sub mono">{plan.code}</span></td><td data-label="Preço">{price(plan)}</td><td data-label="Status"><span className="admin-badge">{plan.status ?? "ativo"}</span></td><td data-label="Features">{Object.values(plan.features ?? {}).filter(Boolean).length}</td><td data-label="Ações"><div className="admin-actions"><button className="btn" type="button" onClick={() => setSelected(plan)}>Editar</button><button className="btn warn" type="button" onClick={() => setArchive(plan)}>Arquivar</button></div></td></tr>)}</tbody></table></div></section>}
-    {selected ? <ModalDialog labelledBy="plan-dialog-title" onClose={() => setSelected(null)}><form className="card admin-card" onSubmit={save}><div className="cardtitle"><span id="plan-dialog-title">{selected.id ? "Editar plano" : "Criar plano"}</span></div><div className="admin-form"><label className="field"><span className="label">Nome</span><input className="input" name="name" defaultValue={selected.name} required /></label><label className="field"><span className="label">Preço (centavos)</span><input className="input" name="priceCents" type="number" min="0" defaultValue={selected.priceCents ?? selected.price_cents ?? 0} required /></label>{selected.id ? <div className="border-y border-[var(--border)] py-3"><span className="label">Matriz de features e limites</span>{(catalog?.features ?? []).map((item) => <label className="field mt-2" key={item.key}><span>{item.displayName ?? item.name ?? item.key}</span><input type="checkbox" checked={selected.features?.[item.key] === true} onChange={(event) => void patchMatrix(item.key, "feature", event.target.checked)} /></label>)}{(catalog?.limits ?? []).map((item) => <label className="field mt-2" key={item.key}><span>{item.displayName ?? item.name ?? item.key}</span><input className="input" type="number" value={selected.limits?.[item.key] ?? ""} onChange={(event) => void patchMatrix(item.key, "limit", event.target.value === "" ? null : Number(event.target.value))} /></label>)}</div> : null}<div className="admin-actions"><button className="btn primary" type="submit">Salvar</button><button className="btn" type="button" onClick={() => setSelected(null)}>Cancelar</button></div></div></form></ModalDialog> : null}
-    {archive ? <ModalDialog labelledBy="archive-title" onClose={() => setArchive(null)}><div className="card"><h2 id="archive-title">Arquivar plano?</h2><p className="sub mt-2">O plano {archive.name} deixará de ser oferecido.</p><div className="admin-actions mt-4"><button className="btn warn" type="button" onClick={() => void archivePlan()}>Confirmar</button><button className="btn" type="button" onClick={() => setArchive(null)}>Cancelar</button></div></div></ModalDialog> : null}
+  async function tenantAction(id: string, action: string, planId?: string) { setBusy(id); try { await api(`/root/saas/tenants/${id}${action === "save" ? "/subscription" : `/subscription/${action}`}`, { method: "POST", body: action === "save" ? JSON.stringify({ planId }) : undefined }); await mutateTenants(); setMessage("Empresa atualizada com sucesso."); } catch (e) { setMessage(e instanceof Error ? e.message : "Não foi possível atualizar a empresa."); } finally { setBusy(null); } }
+  const plans = data?.plans ?? []; const commercial = plans.filter((p) => p.status === "active" && !p.is_internal && p.code !== "LEGACY_UNLIMITED");
+  if (!root) return <Shell><div className="card"><p>Esta área está disponível apenas para usuários ROOT.</p></div></Shell>;
+  return <Shell><header className="pagehead" style={{ "--eyebrow": '"PAINEL · ROOT · SAAS"' } as React.CSSProperties}><div><h1>Planos e cobrança</h1><p>Planos, empresas, assinaturas, consumo e histórico.</p></div>{tab === "plans" && <button type="button" className="btn primary" onClick={() => setSelected(normalizePlan({ id: "", code: "", name: "", monthly_price_cents: 0, status: "active", is_internal: false, features: [], limits: [] }))}>Criar plano</button>}</header>
+    <nav className="admin-actions mb-4" aria-label="Seções SaaS">{(["plans:Planos", "tenants:Empresas / Assinaturas / Consumo", "history:Histórico", "gateways:Gateways", "billing:Cobranças"] as const).map((x) => { const [key, label] = x.split(":") as [Tab, string]; return <button type="button" key={key} className={tab === key ? "btn primary" : "btn"} disabled={key === "gateways" || key === "billing"} onClick={() => setTab(key)}>{label}{key === "gateways" || key === "billing" ? " (sem endpoint de consulta)" : ""}</button>; })}</nav>
+    {message && <p className="accent mb-4" role="status">{message}</p>}
+    {tab === "plans" && (error ? <p className="error">Não foi possível carregar os planos.</p> : !data ? <div className="card">Carregando…</div> : plans.length === 0 ? <Empty>Nenhum plano.</Empty> : <section className="card admin-card"><div className="admin-table-wrap responsive-table-wrap"><table className="admin-table responsive-table"><thead><tr><th>Plano</th><th>Preço</th><th>Status</th><th>Ações</th></tr></thead><tbody>{plans.map((p) => <tr key={p.id}><td><strong>{p.name}</strong><span className="sub mono">{p.code}</span></td><td>{money(Number(p.monthly_price_cents))}</td><td>{p.status}</td><td><div className="admin-actions"><button type="button" className="btn" onClick={() => setSelected(normalizePlan(p))}>Editar</button><button type="button" className="btn" onClick={() => setDuplicate(p)}>Duplicar</button><button type="button" className="btn warn" onClick={() => setArchive(p)}>Arquivar</button></div></td></tr>)}</tbody></table></div></section>)}
+    {tab === "tenants" && (tenantsError ? <p className="error">Não foi possível carregar as empresas.</p> : !tenantsData ? <div className="card">Carregando…</div> : tenantsData.tenants.length === 0 ? <Empty>Nenhuma empresa.</Empty> : <section className="card admin-card"><div className="admin-table-wrap responsive-table-wrap"><table className="admin-table responsive-table"><tbody>{tenantsData.tenants.map((t) => <tr key={t.id}><td>{t.name}</td><td>{t.plan_name ?? "Legacy Unlimited (atual)"}<select className="input mt-2" value={choices[t.id] ?? ""} onChange={(e) => setChoices({ ...choices, [t.id]: e.target.value })}><option value="">Selecionar plano</option>{commercial.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></td><td>{t.subscription_status ?? "Sem assinatura"}</td><td>Usuários: {formatUsage({ used: t.usage.MAX_USERS, limit: t.entitlements.limits?.MAX_USERS ?? null })} · WhatsApps: {formatUsage({ used: t.usage.MAX_WHATSAPP_CONNECTIONS, limit: t.entitlements.limits?.MAX_WHATSAPP_CONNECTIONS ?? null })} · IA: {formatUsage({ used: t.usage.MAX_AI_INTERACTIONS, limit: t.entitlements.limits?.MAX_AI_INTERACTIONS ?? null })}</td><td><button type="button" className="btn primary" disabled={busy === t.id || !choices[t.id]} onClick={() => void tenantAction(t.id, "save", choices[t.id])}>Salvar plano</button><button type="button" className="btn warn" disabled={busy === t.id} onClick={() => void tenantAction(t.id, "suspend")}>Suspender</button><button type="button" className="btn" disabled={busy === t.id} onClick={() => void tenantAction(t.id, "reactivate")}>Reativar</button><button type="button" className="btn" disabled={busy === t.id} onClick={() => void tenantAction(t.id, "cancel")}>Cancelar</button></td></tr>)}</tbody></table></div></section>)}
+    {tab === "history" && (eventsError ? <p className="error">Não foi possível carregar o histórico.</p> : !eventsData ? <div className="card">Carregando…</div> : eventsData.events.length === 0 ? <Empty>Nenhum evento.</Empty> : <section className="card admin-card"><h2>Histórico</h2>{eventsData.events.map((e) => <p key={e.id} className="sub">{e.created_at} · {eventLabel[e.event_type] ?? e.event_type}{e.from_status || e.to_status ? ` (${e.from_status ?? "—"} → ${e.to_status ?? "—"})` : ""}</p>)}</section>)}
+    {selected && <ModalDialog labelledBy="plan-title" onClose={() => setSelected(null)}><form className="card admin-card" onSubmit={save}><h2 id="plan-title">{selected.id ? "Editar plano" : "Criar plano"}</h2>{(["code:Código:text", "name:Nome:text", "description:Descrição:text", "price:Preço mensal (R$):number", "setupPrice:Setup (R$):number", "billingPeriodMonths:Periodicidade (meses):number", "trialDays:Trial (dias):number", "gracePeriodDays:Carência (dias):number"] as const).map((x) => { const [name, label, type] = x.split(":"); const value = name === "price" ? selected.monthlyPriceCents / 100 : name === "setupPrice" ? selected.setupPriceCents / 100 : selected[name as keyof SelectedPlan]; return <label className="field" key={name}><span className="label">{label}</span><input className="input" name={name} type={type} defaultValue={String(value ?? "")} required={name !== "description"} /></label>; })}<div className="border-y border-[var(--border)] py-3"><span className="label">Features e limites</span>{(catalog?.feature_catalog ?? []).map((f) => <label className="field mt-2" key={f.feature_key}><span>{f.label}</span><input type="checkbox" checked={selected.features[f.feature_key] === true} onChange={(e) => setSelected({ ...selected, features: { ...selected.features, [f.feature_key]: e.target.checked } })} /></label>)}{(catalog?.limit_catalog ?? []).map((l) => <label className="field mt-2" key={l.limit_key}><span>{l.label}</span><input className="input" type="number" value={selected.limits[l.limit_key] ?? ""} onChange={(e) => setSelected({ ...selected, limits: { ...selected.limits, [l.limit_key]: e.target.value === "" ? null : Number(e.target.value) } })} /></label>)}</div><div className="admin-actions"><button type="submit" className="btn primary">Salvar</button><button type="button" className="btn" onClick={() => setSelected(null)}>Cancelar</button></div></form></ModalDialog>}
+    {archive && <ModalDialog labelledBy="archive-title" onClose={() => setArchive(null)}><div className="card"><h2 id="archive-title">Arquivar plano?</h2><p>Esta ação será registrada e o plano deixará de ser comercializado.</p><button type="button" className="btn warn" onClick={() => void planAction(archive, "archive")}>Confirmar arquivamento</button></div></ModalDialog>}
+    {duplicate && <ModalDialog labelledBy="duplicate-title" onClose={() => setDuplicate(null)}><form className="card" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); const payload = duplicatePlanPayload(String(f.get("code") ?? ""), String(f.get("name") ?? "")); void planAction(duplicate, "duplicate", payload.code, "name" in payload ? payload.name : undefined); }}><h2 id="duplicate-title">Duplicar plano</h2><input className="input" name="code" placeholder="Novo código" required /><input className="input mt-2" name="name" placeholder="Novo nome (opcional)" /><button type="submit" className="btn primary mt-2">Duplicar</button></form></ModalDialog>}
   </Shell>;
 }
