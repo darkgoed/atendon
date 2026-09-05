@@ -49,6 +49,7 @@ export const PERMISSIONS = [
   { key: "humanizer.manage", module: "humanizer", action: "manage", description: "Gerenciar humanizacao" },
   { key: "usage.read", module: "usage", action: "read", description: "Visualizar uso de IA" },
   { key: "usage.export", module: "usage", action: "export", description: "Exportar uso de IA" },
+  { key: "billing.manage", module: "billing", action: "manage", description: "Gerenciar assinatura e credito de uso" },
   { key: "signature.read", module: "signature", action: "read", description: "Visualizar configuracao de assinatura do atendente" },
   { key: "signature.manage", module: "signature", action: "manage", description: "Gerenciar configuracao de assinatura do atendente" },
   { key: "scheduling_notifications.read", module: "scheduling_notifications", action: "read", description: "Visualizar notificacao de agendamento no grupo de WhatsApp" },

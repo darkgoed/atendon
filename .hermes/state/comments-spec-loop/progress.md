@@ -464,3 +464,25 @@ casos é uma reprovação disfarçada de sucesso.
 Pendências remanescentes são otimização, não requisito:
   - cache curto de entitlements no caminho quente (hoje ~4-6 queries por mensagem)
   - 2 decisões de negócio com defaults conservadores (clarify expirou sem resposta)
+
+## RELEASE PUBLICADO E VERIFICADO EM PRODUÇÃO — 2026-09-04 20:40
+Commit local : 94b5998 (48 arquivos, escopo apps/atendon/** apenas)
+Commit remoto: 8ddd764 (graft sobre origin/main, push c36b751..8ddd764 SEM force)
+Deployment   : Coolify #30, status finished, commit 8ddd7640a95f (SHA exato)
+
+Publicação via graft (origin/main é subtree /atendon):
+- Provei bases idênticas ANTES de commitar: HEAD:apps/atendon == origin/main:atendon.
+- git mktree trocando só a entrada 'atendon'; irmãos crm-whatsapp e endopmmfc
+  preservados nos hashes originais (verificado com git cat-file -p).
+- Diff origin/main..novo commit provou: nenhum caminho fora de atendon/.
+
+VERIFICAÇÃO INDEPENDENTE EM PRODUÇÃO (não confiei no status verde):
+- Migrations: "Applied 0132/0133/0134" no log do database-migrate (Exited 0).
+- Backfill: 3 tenants, 3 com assinatura, 0 sem assinatura.
+  Meta Cell / Newave / Tripz Turismo -> LEGACY_UNLIMITED / ACTIVE, limites NULL.
+  => nenhum cliente em produção perdeu acesso, que era o risco principal da subida.
+- Containers api/panel/worker/evolution: todos healthy.
+- Painel público https://atendon.alpdash.com.br -> HTTP 200.
+- Rota nova provada VIVA: POST /api/webhooks/billing/<inexistente> devolveu
+  {"code":"BILLING_PROVIDER_NOT_FOUND"} — é o meu código respondendo, não 404 de rota.
+- Zero logs level>=50 e zero erros no worker após o deploy.

@@ -1,655 +1,244 @@
 # Objetivo
 
-Transformar o AtendON atual em uma arquitetura SaaS multiempresa com:
+Adicionar ao AtendON uma arquitetura profissional de cobrança por uso excedente de IA, integrada aos planos SaaS existentes.
 
-* gestão central de planos pelo usuário ROOT;
-* planos Básico, Médio e Pro pré-configurados;
-* limites por empresa;
-* liberação/bloqueio automático de funcionalidades;
-* controle de consumo;
-* assinatura e cobrança;
-* múltiplos meios de pagamento;
-* estrutura preparada para futura venda automática pelo site;
-* sem desenvolver o site público de vendas nesta etapa.
+O sistema deverá suportar:
 
-O sistema atual deve continuar funcionando durante a implementação.
+* franquia mensal de IA incluída em cada plano;
+* bloqueio automático ao atingir a franquia;
+* crédito de uso opcional para continuar utilizando IA;
+* limite adicional configurável em reais;
+* opção de crédito ilimitado;
+* contabilização real de consumo;
+* cobrança do excedente junto da próxima renovação;
+* histórico detalhado de uso;
+* mensal, trimestral e anual;
+* descontos por periodicidade;
+* alertas de consumo;
+* auditoria;
+* integração futura com os gateways já previstos.
 
-Antes de alterar qualquer código, analise completamente o projeto existente, banco de dados, models, serviços, autenticação, permissões, multiempresa, frontend, backend e integrações.
+Antes de implementar, analisar a arquitetura atual de planos, billing, IA, empresas, subscriptions e usage criada anteriormente.
 
-Não faça refatorações grandes que não sejam necessárias para o SaaS.
+Não duplicar estruturas existentes.
 
 ---
 
 # 1. Conceito principal
 
-Cada empresa/tenant cadastrada no AtendON deverá possuir:
+Cada plano possui uma franquia mensal de uso de IA.
 
-* um plano;
-* uma assinatura;
-* um status de cobrança;
-* limites de utilização;
-* funcionalidades habilitadas;
-* consumo atual do período;
-* datas de início e renovação;
-* histórico de mudanças de plano.
+Exemplo inicial:
 
-A empresa nunca deverá decidir suas próprias permissões.
+```text
+BÁSICO
+IA habilitada: não
+Franquia: 0
 
-Somente ROOT poderá:
+MÉDIO
+IA habilitada: sim
+Franquia: 10.000 interações/mês
 
-* criar planos;
-* editar planos;
-* alterar limites;
-* alterar preços;
-* habilitar/desabilitar funcionalidades;
-* vincular plano a uma empresa;
-* trocar plano;
-* conceder exceções;
-* suspender assinatura;
-* visualizar consumo;
-* visualizar cobrança.
+PRO
+IA habilitada: sim
+Franquia: 40.000 interações/mês
+```
+
+Esses valores devem ser totalmente configuráveis pelo ROOT.
+
+Não deixar nenhum limite hardcoded.
 
 ---
 
-# 2. Não usar verificações fixas por nome de plano
+# 2. Franquia mensal independente da periodicidade
 
-NÃO implementar regras espalhadas como:
+A franquia de IA deve continuar sendo mensal mesmo quando o cliente contratar:
 
-```typescript
-if (company.plan === "PRO")
+* mensal;
+* trimestral;
+* anual.
+
+Exemplo:
+
+Plano Médio anual:
+
+```text
+Pagamento:
+12 meses antecipados
+
+Franquia:
+10.000 interações por mês
 ```
 
-Criar uma arquitetura de:
+NÃO entregar 120.000 interações de uma vez.
 
-* plans;
-* features;
-* entitlements;
-* limits;
-* usage.
+Todo mês deve iniciar um novo UsagePeriod.
+
+---
+
+# 3. Crédito de uso
+
+Criar uma funcionalidade denominada:
+
+```text
+Crédito de uso
+```
+
+Descrição para usuário:
+
+"Continue utilizando a IA caso atinja a franquia incluída no seu plano."
+
+Configurações:
+
+```text
+enabled: true / false
+
+limitType:
+FIXED
+UNLIMITED
+
+monthlySpendingLimitBrl
+```
 
 Exemplo:
 
 ```text
-conversations.enabled = true
-pipeline.enabled = true
-calendar.enabled = false
-ai.enabled = false
+Crédito de uso: ATIVO
 
-users.max = 3
-whatsappConnections.max = 1
-pipelines.max = 1
-aiInteractions.monthly = 0
+Limite:
+R$ 20,00/mês
 ```
 
-Assim o ROOT poderá futuramente criar:
-
-* Enterprise;
-* Trial;
-* Plano personalizado;
-* Plano legado;
-* parceiros;
-* condições comerciais específicas;
-
-sem precisar alterar código.
-
 ---
 
-# 3. Planos iniciais
-
-Criar automaticamente três planos.
-
-## BÁSICO — R$ 497/mês
-
-Objetivo:
-empresa que quer CRM/atendimento sem IA.
-
-Inicialmente:
-
-* Conversas: habilitado
-* Pipeline: habilitado
-* Agenda: bloqueada
-* IA: bloqueada
-* Follow-up automático: bloqueado
-* Automações avançadas: bloqueadas
-* Relatórios: básicos
-* Usuários: até 3
-* WhatsApps: até 1
-* Pipelines: até 1
-* IA mensal: 0
-* Permissões avançadas: bloqueadas
-
----
-
-## MÉDIO — R$ 897/mês
-
-Deve ser o plano comercial principal.
-
-Inicialmente:
-
-* Conversas: habilitado
-* Pipeline: habilitado
-* Agenda: habilitada
-* IA: habilitada
-* Follow-up automático: habilitado
-* Automações: limitadas
-* Relatórios: completos
-* Usuários: até 8
-* WhatsApps: até 2
-* Pipelines: até 3
-* IA: até 10.000 interações mensais
-* Cargos/permissões: habilitado
-* Suporte: prioritário
-
----
-
-## PRO — R$ 1.097/mês
-
-Deve possuir grande vantagem em relação ao Médio.
-
-Inicialmente:
-
-* Conversas: habilitado
-* Pipeline: habilitado
-* Agenda: habilitada
-* IA: habilitada
-* Follow-up completo
-* Automações completas
-* Relatórios avançados
-* Usuários: até 20
-* WhatsApps: até 5
-* Pipelines: até 10
-* IA: inicialmente 40.000 interações mensais
-* Permissões avançadas
-* Recursos administrativos avançados
-* Suporte prioritário
-
-Esses números NÃO deverão ficar hardcoded.
-
-O ROOT deverá conseguir editar todos eles.
-
----
-
-# 4. Features
-
-Analise o projeto inteiro e liste todas as funcionalidades existentes no AtendON.
-
-Transforme tudo que puder ser comercialmente limitado em feature ou entitlement.
-
-Exemplos:
-
-```text
-CONVERSATIONS
-PIPELINE
-CALENDAR
-AI
-AI_FOLLOWUP
-AUTOMATIONS
-REPORTS
-ADVANCED_REPORTS
-MULTIPLE_PIPELINES
-ROLES_PERMISSIONS
-WHATSAPP_CONNECTIONS
-CONTACT_IMPORT
-CONTACT_EXPORT
-CUSTOM_FIELDS
-WEBHOOKS
-API_ACCESS
-INTEGRATIONS
-TAGS
-SCHEDULE
-LEAD_DISTRIBUTION
-SDR_PIPELINE
-CLOSER_PIPELINE
-AI_CONFIGURATION
-CUSTOM_AI_PROMPT
-```
-
-Não invente funcionalidades existentes.
-
-Se identificar uma funcionalidade interessante que ainda não existe, marque como:
-
-```text
-FUTURE_FEATURE
-```
-
-e não implemente agora.
-
----
-
-# 5. Entitlements
-
-Criar uma camada central para resolver:
-
-```text
-Empresa X pode utilizar recurso Y?
-Empresa X atingiu limite Z?
-```
-
-Exemplo conceitual:
-
-```typescript
-entitlements.can(companyId, "CALENDAR")
-
-entitlements.getLimit(companyId, "USERS")
-
-entitlements.getUsage(companyId, "AI_INTERACTIONS")
-
-entitlements.hasReachedLimit(
-  companyId,
-  "WHATSAPP_CONNECTIONS"
-)
-```
-
-Toda aplicação deverá consultar a mesma fonte de verdade.
-
----
-
-# 6. Enforcement obrigatório no backend
-
-Bloquear somente visualmente no frontend NÃO é suficiente.
-
-Toda funcionalidade restrita deverá possuir validação no backend.
+# 4. Comportamento sem crédito
 
 Exemplo:
 
-Empresa Básico tenta acessar diretamente:
+Plano Médio:
 
 ```text
-POST /calendar/events
+10.000 / 10.000
 ```
 
-Resultado esperado:
+Crédito de uso:
 
 ```text
-403 FEATURE_NOT_AVAILABLE
+DESATIVADO
 ```
 
-Empresa atingiu limite:
+Resultado:
 
-```text
-409 PLAN_LIMIT_REACHED
-```
-
-Nunca confiar apenas na interface.
-
----
-
-# 7. Frontend
-
-No frontend:
-
-* esconder funcionalidades quando fizer sentido;
-* mostrar recursos bloqueados quando isso ajudar no upsell;
-* apresentar indicação do plano necessário;
-* bloquear ações que ultrapassam limite.
+* IA deixa de executar novas gerações;
+* restante do AtendON continua funcionando normalmente;
+* não bloquear Conversas, Pipeline, Agenda etc.;
+* apresentar mensagem clara ao usuário.
 
 Exemplo:
 
 ```text
-Agenda
+Você atingiu a franquia mensal de IA do seu plano.
 
-Disponível a partir do plano Médio.
+Uso atual:
+10.000 / 10.000
 
-[Ver plano]
+Ative o Crédito de Uso ou aguarde a renovação da franquia.
 ```
-
-Mas NÃO desenvolver nesta etapa o checkout público.
 
 ---
 
-# 8. Painel ROOT
+# 5. Comportamento com crédito
 
-Criar uma área:
+Exemplo:
 
 ```text
-ROOT
- └── SaaS
-      ├── Planos
-      ├── Empresas
-      ├── Assinaturas
-      ├── Cobranças
-      ├── Consumo
-      ├── Gateways
-      └── Histórico
+Franquia:
+10.000 / 10.000
+
+Crédito adicional:
+ATIVO
+
+Limite mensal:
+R$ 20,00
 ```
 
-## Planos
+Depois da interação 10.000:
 
-ROOT deverá conseguir:
+* continuar utilizando IA;
+* contabilizar consumo como excedente;
+* converter consumo real em valor faturável;
+* descontar do limite adicional.
 
-* criar;
-* editar;
-* arquivar;
-* duplicar;
-* definir preço;
-* definir periodicidade;
-* habilitar features;
-* definir limites.
+Exemplo:
 
-Evitar apagar definitivamente plano que já tenha histórico.
+```text
+Crédito utilizado:
+R$ 8,37 / R$ 20,00
+```
 
-Usar arquivamento.
+Ao atingir R$20:
+
+* bloquear novas gerações;
+* não ultrapassar o spending cap;
+* permitir aumento de limite pelo administrador autorizado.
 
 ---
 
-# 9. Empresa
-
-Na administração de uma empresa mostrar:
-
-```text
-Empresa
-Plano atual
-Valor
-Status
-Gateway
-Data da próxima cobrança
-Usuários: 5 / 8
-WhatsApps: 2 / 2
-Pipelines: 2 / 3
-IA: 7.823 / 10.000
-```
+# 6. Crédito ilimitado
 
 Permitir:
 
-* trocar plano;
-* definir plano personalizado;
-* aplicar desconto;
-* conceder limite adicional;
-* suspender;
-* reativar;
-* consultar cobrança.
-
----
-
-# 10. Overrides
-
-Criar possibilidade de exceções por empresa.
-
-Exemplo:
-
-Empresa está no Médio:
-
 ```text
-users.max = 8
+limitType = UNLIMITED
 ```
 
-Mas ROOT concede:
+Neste modo:
+
+* não existe spending cap;
+* todo consumo excedente será faturado;
+* exibir alertas de gasto mesmo assim.
+
+Essa opção deve exigir confirmação explícita.
+
+Mostrar aviso:
 
 ```text
-users.max = 12
-```
-
-Não criar um novo plano só por causa disso.
-
-Estrutura:
-
-```text
-Plan
-      ↓
-Entitlements
-      ↓
-Company Overrides
-      ↓
-Effective Entitlements
+O uso adicional não possuirá limite mensal e será adicionado à próxima cobrança.
 ```
 
 ---
 
-# 11. Assinaturas
+# 7. Não utilizar preço fixo por mensagem internamente
 
-Criar entidade própria de subscription.
-
-Possíveis estados:
+NÃO assumir:
 
 ```text
-TRIALING
-ACTIVE
-PAST_DUE
-GRACE_PERIOD
-SUSPENDED
-CANCELED
-EXPIRED
+1 mensagem = R$ X
 ```
 
-Uma empresa não deve perder acesso imediatamente por uma falha pontual de pagamento.
+O custo real varia de acordo com:
 
-Criar período de tolerância configurável.
+* modelo;
+* tokens de entrada;
+* tokens de saída;
+* contexto;
+* ferramentas;
+* cache;
+* tamanho das respostas.
 
-Exemplo:
-
-```text
-Vencimento
-↓
-Pagamento falhou
-↓
-PAST_DUE
-↓
-Grace period
-↓
-Nova tentativa
-↓
-SUSPENDED
-```
-
-O ROOT poderá reativar manualmente.
+O sistema deve calcular o consumo real.
 
 ---
 
-# 12. Pagamentos
+# 8. Unidade comercial
 
-Não acoplar assinatura diretamente ao Mercado Pago ou Stripe.
-
-Criar abstração:
-
-```typescript
-BillingProvider
-```
-
-Exemplo conceitual:
-
-```typescript
-interface BillingProvider {
-  createCustomer()
-  createSubscription()
-  cancelSubscription()
-  createPayment()
-  getPayment()
-  handleWebhook()
-}
-```
-
-Providers poderão ser:
+Para o cliente, continuar apresentando uma unidade simples:
 
 ```text
-MercadoPagoProvider
-StripeProvider
-PagBankProvider
-ManualPixProvider
+Interações de IA
 ```
 
-Assim novos meios de pagamento podem ser adicionados futuramente.
-
----
-
-# 13. Mercado Pago
-
-Preparar integração para:
-
-* cartão;
-* assinatura recorrente, quando aplicável;
-* boleto, se utilizado;
-* Pix;
-* webhook;
-* atualização automática da assinatura.
-
-Credenciais nunca deverão ficar expostas no frontend.
-
----
-
-# 14. Stripe
-
-Preparar arquitetura para:
-
-* Customer;
-* Subscription;
-* Payment Intent;
-* webhook;
-* recorrência;
-* cancelamento;
-* falha de cobrança.
-
-Mesmo que Stripe não seja ativado imediatamente, a arquitetura deverá aceitá-lo.
-
----
-
-# 15. PagBank
-
-Seguir a mesma abstraction do BillingProvider.
-
-Não espalhar chamadas específicas do PagBank pelo projeto.
-
----
-
-# 16. PIX manual / QR Code
-
-Também permitir cobrança sem gateway recorrente.
-
-Exemplo:
-
-ROOT configura:
-
-```text
-Tipo: PIX
-Chave PIX
-Nome recebedor
-Cidade
-```
-
-Sistema poderá gerar:
-
-* QR Code;
-* PIX Copia e Cola;
-* valor;
-* vencimento.
-
-No pagamento manual deverá existir:
-
-```text
-Aguardando confirmação
-Pago
-Rejeitado
-Expirado
-```
-
-ROOT poderá confirmar pagamento manualmente.
-
-Se posteriormente houver API do provedor, poderá ser automatizado.
-
----
-
-# 17. Configuração de gateways
-
-ROOT deverá possuir configuração central:
-
-```text
-Gateway ativo
-Ambiente sandbox/produção
-Credenciais
-Webhook status
-Última comunicação
-Métodos aceitos
-```
-
-Segredos precisam ser armazenados de forma segura.
-
-Nunca retornar secret keys via API para frontend.
-
-No frontend mostrar algo como:
-
-```text
-••••••••••7HsA
-```
-
----
-
-# 18. Webhooks
-
-Implementar corretamente:
-
-* validação de assinatura;
-* idempotência;
-* prevenção de evento duplicado;
-* logs;
-* retry seguro;
-* associação com empresa/assinatura.
-
-Um webhook repetido nunca poderá:
-
-* duplicar pagamento;
-* duplicar assinatura;
-* renovar duas vezes;
-* alterar plano incorretamente.
-
-Criar tabela/event log apropriada.
-
----
-
-# 19. Cobranças
-
-Criar histórico de:
-
-```text
-Invoices / Charges
-```
-
-Guardar pelo menos:
-
-* companyId;
-* subscriptionId;
-* provider;
-* externalId;
-* valor;
-* moeda;
-* status;
-* vencimento;
-* pagamento;
-* método;
-* metadata.
-
----
-
-# 20. Controle de IA
-
-Não controlar apenas quantidade de mensagens.
-
-Registrar também:
-
-```text
-aiInteractions
-inputTokens
-outputTokens
-cachedTokens
-estimatedCostUsd
-model
-companyId
-timestamp
-```
-
-A franquia comercial poderá continuar sendo mostrada ao cliente como:
-
-```text
-10.000 interações de IA/mês
-```
-
-Mas internamente o sistema precisa conhecer o custo real.
-
-Criar contador por billing period.
-
----
-
-# 21. Definição de interação de IA
-
-Definir uma interação como uma geração/resposta realizada pela IA.
+Uma interação corresponde a uma geração/resposta da IA.
 
 Exemplo:
 
@@ -661,631 +250,1849 @@ Tenho interesse
 Quanto custa?
 ```
 
-O AtendON processa tudo e gera uma única resposta.
+IA agrupa e responde uma vez.
 
 Resultado:
 
 ```text
-1 AI interaction
+1 interação de IA
 ```
 
-Não 4 mensagens.
-
-Verifique a arquitetura atual antes de definir o ponto exato de contabilização.
+Não contar mensagens individuais recebidas como consumo.
 
 ---
 
-# 22. Limites
+# 9. Custos internos
 
-Criar infraestrutura genérica para limites.
-
-Exemplos:
+Registrar para cada geração:
 
 ```text
-MAX_USERS
-MAX_WHATSAPP_CONNECTIONS
-MAX_PIPELINES
-MAX_AI_INTERACTIONS
-MAX_AUTOMATIONS
-MAX_CONTACTS
-MAX_STORAGE
-MAX_CUSTOM_FIELDS
+companyId
+subscriptionId
+usagePeriodId
+interactionId
+
+model
+
+inputTokens
+outputTokens
+cachedTokens
+
+inputPricePerMillion
+outputPricePerMillion
+
+providerCostUsd
+providerCostBrl
+
+billableAmountBrl
+
+createdAt
 ```
 
-Nem todos precisam ser comercializados agora.
-
-Mas a arquitetura deverá permitir adicionar limites novos facilmente.
+Usar os dados reais retornados pelo provider sempre que possível.
 
 ---
 
-# 23. Controle de concorrência
-
-Limites não podem sofrer race conditions.
-
-Exemplo:
-
-Limite:
-
-```text
-5 WhatsApps
-```
-
-Duas requisições simultâneas não podem criar WhatsApp 6 e 7.
-
-Aplicar validação transacional quando necessário.
-
----
-
-# 24. Upgrade
-
-Upgrade:
-
-```text
-Básico → Médio
-Médio → Pro
-```
-
-Deve liberar features automaticamente.
-
-Não apagar configurações anteriores.
-
----
-
-# 25. Downgrade
-
-Downgrade precisa ser tratado cuidadosamente.
-
-Exemplo:
-
-Empresa Pro possui:
-
-```text
-15 usuários
-```
-
-Downgrade para Médio:
-
-```text
-limite = 8
-```
-
-NÃO apagar 7 usuários automaticamente.
-
-Marcar:
-
-```text
-OVER_LIMIT
-```
-
-Bloquear criação de novos recursos e permitir que administrador escolha quais manter/arquivar.
-
-Mesma regra para:
-
-* WhatsApps;
-* pipelines;
-* automações;
-* integrações;
-* outros limites.
-
----
-
-# 26. Cancelamento
-
-Cancelamento não deve destruir dados.
-
-Empresa cancelada:
-
-```text
-subscription = CANCELED
-```
-
-Dados permanecem armazenados conforme política definida.
-
-ROOT poderá reativar.
-
-Planejar futuramente retenção e exclusão de dados.
-
----
-
-# 27. Auditoria
-
-Registrar alterações sensíveis:
-
-```text
-ROOT alterou plano
-ROOT alterou limite
-ROOT concedeu override
-ROOT suspendeu empresa
-Pagamento aprovado
-Pagamento recusado
-Plano alterado
-Gateway alterado
-```
-
-Guardar:
-
-* usuário;
-* empresa;
-* ação;
-* antes;
-* depois;
-* timestamp.
-
----
-
-# 28. Segurança B2B
-
-Adicionar/garantir:
-
-* isolamento completo entre tenants;
-* autorização por empresa;
-* autorização por cargo;
-* rate limiting;
-* logs;
-* auditoria;
-* secrets fora do frontend;
-* validação server-side;
-* prevenção contra alteração de companyId;
-* prevenção contra privilege escalation.
-
-Um administrador de uma empresa nunca poderá modificar assinatura, plano ou limites por chamadas diretas à API.
-
----
-
-# 29. Gestão de usuários
-
-Planos deverão limitar usuários ativos.
-
-Definir claramente estados:
-
-```text
-ACTIVE
-INVITED
-DISABLED
-```
-
-Decidir pelo código existente quais entram na franquia.
-
-Sugestão:
-
-somente usuários ACTIVE consomem limite.
-
----
-
-# 30. Ciclo mensal
-
-Criar período de consumo:
-
-```text
-billingPeriodStart
-billingPeriodEnd
-```
-
-Ao iniciar novo período:
-
-* IA volta para zero;
-* demais métricas mensais voltam para zero;
-* histórico anterior permanece salvo.
-
-Não apagar dados históricos.
-
----
-
-# 31. Métricas internas
-
-ROOT deverá conseguir visualizar posteriormente:
-
-```text
-MRR
-ARR
-Clientes ativos
-Clientes por plano
-Churn
-ARPU
-Receita
-Custo estimado de IA
-Margem estimada por empresa
-Uso médio de IA
-Uso médio por plano
-```
-
-Nesta etapa, implemente apenas aquilo que for simples e necessário para estruturar corretamente os dados.
-
-Não transforme esta fase em projeto de BI.
-
----
-
-# 32. Cupons e descontos
-
-Preparar modelo para:
-
-```text
-desconto percentual
-desconto fixo
-valor personalizado
-data de expiração
-```
-
-Não precisa desenvolver sistema comercial completo de cupons agora se aumentar muito o escopo.
-
-Porém a assinatura não deve pressupor que todo cliente paga exatamente o preço padrão do plano.
-
----
-
-# 33. Implantação/setup fee
+# 10. Pricing de IA
 
 Separar:
 
 ```text
-mensalidade
+CUSTO DO PROVIDER
 ```
 
 de:
 
 ```text
-taxa de implantação
+PREÇO COBRADO PELO ATENDON
 ```
 
-Plano poderá ter:
+Criar uma configuração comercial.
+
+Exemplo conceitual:
 
 ```text
-monthlyPrice
-setupPrice
+providerCost = R$ 0,005
+
+markup/margem aplicada
+
+billableAmount = R$ 0,015
 ```
 
-ROOT poderá substituir esses valores por empresa.
+Não hardcodar markup.
+
+ROOT deverá conseguir editar a regra futuramente.
 
 ---
 
-# 34. Add-ons
+# 11. Estratégias de precificação
 
-Preparar a arquitetura para add-ons futuros.
-
-Exemplos:
+Preparar arquitetura para pelo menos:
 
 ```text
-+ usuários
-+ números de WhatsApp
-+ franquia de IA
-+ pipelines
-+ armazenamento
-+ automações
+COST_PLUS_MARKUP
+FIXED_PER_INTERACTION
+CUSTOM
 ```
 
-Não é necessário comercializar add-ons agora.
+Inicialmente utilizar a estratégia considerada mais adequada após analisar o projeto.
 
-Mas não construir uma arquitetura que impeça isso depois.
+A arquitetura deve permitir trocar depois sem perder histórico.
 
 ---
 
-# 35. Feature flags x plano
+# 12. Conversão aproximada para o cliente
 
-Separar:
+A interface poderá informar:
 
-### Feature flag
+```text
+R$20 em créditos ≈ 1.300 interações adicionais
+```
 
-Controla se determinada funcionalidade existe/está disponível no produto.
+Mas sempre apresentar como estimativa.
 
-### Plan entitlement
+Não prometer quantidade fixa caso a cobrança esteja baseada em consumo real.
 
-Controla se determinada empresa tem direito ao recurso.
+---
+
+# 13. Usage Period
+
+Criar uma entidade/período de consumo mensal.
 
 Exemplo:
 
 ```text
-Feature flag:
-AI_FOLLOWUP está operacional.
+UsagePeriod
 
-Entitlement:
-Plano Básico não possui AI_FOLLOWUP.
+companyId
+subscriptionId
+
+startAt
+endAt
+
+includedLimit
+includedUsage
+
+overageUsage
+overageAmountBrl
+
+status
+```
+
+Possíveis estados:
+
+```text
+OPEN
+CLOSED
+INVOICED
 ```
 
 ---
 
-# 36. Banco de dados
+# 14. Reset mensal
 
-Após analisar o schema atual, proponha migrations compatíveis com a arquitetura existente.
-
-Entidades esperadas, ajustando nomes ao padrão atual:
+Quando iniciar novo período:
 
 ```text
-plans
-plan_features
-plan_limits
-company_subscriptions
-company_entitlement_overrides
-usage_records
-billing_accounts
-billing_providers
-payments
-invoices
-billing_events
-audit_logs
+includedUsage = 0
+overageUsage = 0
+overageAmount = 0
 ```
 
-Evitar duplicação desnecessária.
+Nunca apagar o período anterior.
+
+Criar novo registro.
 
 ---
 
-# 37. Seed inicial
+# 15. Usage Ledger
 
-Criar migration/seed seguro com:
+Não guardar somente contador final.
+
+Criar ledger individual.
+
+Exemplo:
 
 ```text
-BASIC
-MEDIUM
+UsageLedger
+```
+
+Cada lançamento deve conter:
+
+* empresa;
+* período;
+* interação;
+* modelo;
+* tokens;
+* custo do provider;
+* valor faturável;
+* tipo de consumo.
+
+Tipo:
+
+```text
+INCLUDED
+OVERAGE
+```
+
+Isso permitirá auditoria completa.
+
+---
+
+# 16. Regra de transição para overage
+
+Ao executar IA:
+
+```text
+1. Resolver entitlement da empresa.
+2. Confirmar que AI está habilitada.
+3. Localizar UsagePeriod atual.
+4. Verificar franquia incluída.
+5. Se ainda houver franquia:
+   consumir INCLUDED.
+6. Se franquia acabou:
+   verificar Crédito de Uso.
+7. Se desativado:
+   recusar execução.
+8. Se ativado:
+   calcular custo projetado/real.
+9. Verificar spending cap.
+10. Executar e registrar OVERAGE.
+```
+
+---
+
+# 17. Evitar ultrapassar limite
+
+Exemplo:
+
+```text
+Limite:
+R$20
+
+Usado:
+R$19,98
+```
+
+Uma nova chamada estimada em R$0,05 não deve permitir consumo sem controle.
+
+Criar mecanismo seguro para impedir estouro significativo do spending cap.
+
+Considerar:
+
+* reserva estimada antes da geração;
+* reconciliação após receber o uso real.
+
+---
+
+# 18. Concorrência
+
+Tratar chamadas simultâneas.
+
+Duas respostas de IA executadas ao mesmo tempo não podem contornar:
+
+```text
+10.000 interações
+```
+
+ou:
+
+```text
+R$20 de limite
+```
+
+Usar transações, locks ou mecanismo equivalente compatível com a arquitetura existente.
+
+---
+
+# 19. Configuração pelo cliente
+
+Usuários administrativos autorizados da empresa poderão acessar:
+
+```text
+Assinatura
+→ Uso de IA
+→ Crédito de Uso
+```
+
+Opções:
+
+```text
+[ ] Ativar Crédito de Uso
+
+Limite mensal:
+R$20
+R$50
+R$100
+R$200
+Personalizado
+
+ou
+
+[ ] Sem limite
+```
+
+---
+
+# 20. Segurança
+
+Nem todo usuário da empresa poderá alterar gastos.
+
+Criar permission específica:
+
+```text
+MANAGE_BILLING
+```
+
+ou equivalente compatível com RBAC atual.
+
+Somente:
+
+* ROOT;
+* proprietário;
+* administrador financeiro autorizado;
+
+podem alterar crédito de uso.
+
+---
+
+# 21. Limites configuráveis pelo ROOT
+
+ROOT deverá conseguir definir:
+
+```text
+valor mínimo
+valor máximo
+opções sugeridas
+permitir personalizado
+permitir ilimitado
+```
+
+Exemplo:
+
+```text
+mínimo: R$10
+máximo configurável pelo cliente: R$1.000
+```
+
+ROOT poderá exceder esses limites manualmente.
+
+---
+
+# 22. Alertas da franquia
+
+Criar alertas em:
+
+```text
+80%
+90%
+100%
+```
+
+Exemplo:
+
+```text
+Você utilizou 8.000 das 10.000 interações de IA incluídas neste mês.
+```
+
+Evitar envio repetitivo.
+
+Registrar quais alertas já foram disparados no período.
+
+---
+
+# 23. Alertas de crédito
+
+Depois de entrar em overage, alertar em:
+
+```text
+50%
+80%
+100%
+```
+
+Exemplo:
+
+```text
+Você utilizou R$16,00 dos R$20,00 definidos para Crédito de Uso neste mês.
+```
+
+---
+
+# 24. Dashboard de consumo
+
+Criar área semelhante a:
+
+```text
+Uso de IA
+
+Plano Médio
+
+Franquia:
+8.412 / 10.000
+
+84%
+
+Renova em:
+18 dias
+
+Crédito de uso:
+Ativado
+
+Uso adicional:
+R$0,00 / R$20,00
+```
+
+Depois da franquia:
+
+```text
+Franquia:
+10.000 / 10.000
+
+Crédito adicional:
+R$7,82 / R$20,00
+```
+
+---
+
+# 25. Histórico
+
+Mostrar histórico mensal.
+
+Exemplo:
+
+```text
+Agosto/2026
+
+Franquia:
+10.000
+
+Uso:
+12.843
+
+Excedente:
+2.843
+
+Cobrança adicional:
+R$31,72
+```
+
+---
+
+# 26. Fatura
+
+A invoice deve discriminar:
+
+```text
+Plano
+Desconto
+Uso adicional
+Outros add-ons
+Total
+```
+
+Exemplo:
+
+```text
+AtendON Pro
+R$1.097,00
+
+Uso adicional de IA
+R$37,42
+
+Total
+R$1.134,42
+```
+
+---
+
+# 27. Billing cycle
+
+Adicionar suporte a:
+
+```text
+MONTHLY
+QUARTERLY
+YEARLY
+```
+
+A periodicidade de pagamento deve ser separada da periodicidade de consumo de IA.
+
+---
+
+# 28. PlanPrice
+
+Criar/ajustar arquitetura:
+
+```text
+Plan
+
+PlanPrice
+  MONTHLY
+  QUARTERLY
+  YEARLY
+```
+
+Um mesmo plano pode possuir diferentes preços.
+
+---
+
+# 29. Preços iniciais
+
+Utilizar inicialmente:
+
+## Básico
+
+```text
+Mensal:
+R$497
+```
+
+## Médio
+
+```text
+Mensal:
+R$897
+```
+
+## Pro
+
+```text
+Mensal:
+R$1.097
+```
+
+Todos os valores precisam ser editáveis pelo ROOT.
+
+---
+
+# 30. Desconto trimestral
+
+Inicialmente:
+
+```text
+10%
+```
+
+Valores aproximados:
+
+```text
+Básico:
+R$1.341,90 / trimestre
+
+Médio:
+R$2.421,90 / trimestre
+
+Pro:
+R$2.961,90 / trimestre
+```
+
+---
+
+# 31. Desconto anual
+
+Inicialmente:
+
+```text
+20%
+```
+
+Valores:
+
+```text
+Básico:
+R$4.771,20 / ano
+
+Médio:
+R$8.611,20 / ano
+
+Pro:
+R$10.531,20 / ano
+```
+
+NÃO utilizar 30% inicialmente.
+
+Mas ROOT deverá conseguir alterar o desconto.
+
+---
+
+# 32. Forma de cálculo
+
+Nunca salvar apenas:
+
+```text
+desconto = 10%
+```
+
+Guardar snapshot financeiro no momento da contratação:
+
+```text
+basePrice
+discountType
+discountValue
+finalPrice
+currency
+billingCycle
+```
+
+Assim uma alteração futura no preço não muda contratos já firmados sem decisão explícita.
+
+---
+
+# 33. Renovação
+
+Na renovação:
+
+## Mensal
+
+Cobrar:
+
+```text
+mensalidade
++
+overage do último período
++
+add-ons
+-
+créditos/descontos
+```
+
+## Trimestral/anual
+
+Definir de forma explícita no modelo se o plano já foi pré-pago.
+
+Uso excedente NÃO deve esperar necessariamente 12 meses para cobrança.
+
+---
+
+# 34. Regra recomendada para overage em contratos anuais/trimestrais
+
+Mesmo que o plano seja anual ou trimestral:
+
+```text
+Uso excedente deve ser fechado mensalmente.
+```
+
+Exemplo:
+
+Plano Pro anual já
+
+# 35. Rollover de franquia de IA
+
+Adicionar ao AtendON um sistema de rollover parcial da franquia mensal de IA.
+
+Objetivo:
+
+Quando uma empresa não utilizar toda a franquia mensal incluída no plano, parte do saldo restante poderá ser convertida em franquia adicional para o próximo período.
+
+Não converter esse saldo em dinheiro.
+
+Não chamar internamente de crédito financeiro.
+
+Utilizar conceitos separados:
+
+```text
+INCLUDED_USAGE
+ROLLOVER_USAGE
+OVERAGE_USAGE
+```
+
+---
+
+# 36. Regra inicial recomendada
+
+Utilizar inicialmente:
+
+```text
+rolloverRate = 50%
+```
+
+Exemplo:
+
+Plano Médio:
+
+```text
+Franquia mensal:
+10.000 interações
+
+Utilizadas:
+5.000
+
+Não utilizadas:
+5.000
+```
+
+Rollover:
+
+```text
+50% do saldo restante
+```
+
+Resultado:
+
+```text
+2.500 interações adicionais
+```
+
+No próximo ciclo:
+
+```text
+Franquia base:
+10.000
+
+Rollover:
+2.500
+
+Disponível:
+12.500 interações
+```
+
+O rollover NÃO altera permanentemente o limite do plano.
+
+No mês seguinte, o plano continua sendo originalmente de 10.000 interações.
+
+---
+
+# 37. O rollover só acontece após renovação válida
+
+Se a empresa possui vencimento no dia 5:
+
+```text
+Dia 5
+↓
+renovação confirmada
+↓
+fecha período anterior
+↓
+calcula saldo elegível
+↓
+aplica rollover
+↓
+cria novo UsagePeriod
+```
+
+Não liberar rollover antes da renovação estar válida.
+
+Se o pagamento estiver:
+
+```text
+PAST_DUE
+SUSPENDED
+CANCELED
+```
+
+seguir as regras de billing e não conceder novo rollover até regularização.
+
+---
+
+# 38. Teto de rollover
+
+NÃO permitir acumulação infinita.
+
+Criar configuração:
+
+```text
+rolloverMaxPercentage
+```
+
+Recomendação inicial:
+
+```text
+Máximo acumulável:
+50% da franquia base do plano
+```
+
+Exemplo:
+
+Plano Médio:
+
+```text
+Franquia:
+10.000
+
+Máximo de rollover armazenado:
+5.000
+```
+
+Mesmo que cálculos históricos gerem mais saldo, a empresa nunca começa um período com mais de:
+
+```text
+10.000 base
++
+5.000 rollover
+=
+15.000 disponíveis
+```
+
+Plano Pro:
+
+```text
+40.000 base
++
+máximo 20.000 rollover
+=
+60.000 disponíveis
+```
+
+Esse teto deve ser configurável pelo ROOT.
+
+---
+
+# 39. Ordem de consumo
+
+Definir explicitamente a ordem de consumo.
+
+Minha recomendação:
+
+```text
+1. ROLLOVER
+2. INCLUDED
+3. OVERAGE
+```
+
+Utilizar rollover primeiro porque ele é saldo temporário.
+
+Exemplo:
+
+```text
+Rollover:
+2.500
+
+Franquia do mês:
+10.000
+```
+
+As primeiras 2.500 interações consomem rollover.
+
+Depois passam a consumir as 10.000 incluídas.
+
+Somente depois entra Crédito de Uso / overage.
+
+---
+
+# 40. Expiração
+
+Rollover não deve permanecer indefinidamente.
+
+Recomendação:
+
+```text
+validade = 1 ciclo mensal
+```
+
+Exemplo:
+
+2.500 interações carregadas de setembro para outubro.
+
+Se outubro terminar e ainda houver 1.000 dessas interações:
+
+```text
+expiram
+```
+
+O cálculo do novo rollover será realizado com base na franquia elegível do período, conforme a regra definida.
+
+Isso evita acumulação de saldo durante meses.
+
+---
+
+# 41. Não permitir rollover sobre rollover
+
+Por padrão:
+
+```text
+rollover não gera novo rollover
+```
+
+Somente saldo não utilizado da franquia BASE do plano é elegível.
+
+Exemplo:
+
+```text
+Base:
+10.000
+
+Rollover recebido:
+2.500
+
+Uso total no mês:
+4.000
+```
+
+Não calcular sobra em cima de 12.500.
+
+Calcular conforme consumo elegível da franquia base.
+
+Isso impede crescimento artificial de saldo.
+
+---
+
+# 42. Overage não gera rollover
+
+Interações compradas através do Crédito de Uso:
+
+```text
+OVERAGE
+```
+
+nunca geram saldo para o próximo mês.
+
+São cobrança variável daquele período.
+
+---
+
+# 43. Configuração por plano
+
+Adicionar configurações como:
+
+```text
+rolloverEnabled
+
+rolloverRate
+
+rolloverMaxPercentage
+
+rolloverExpirationPeriods
+```
+
+Exemplo:
+
+```text
+BÁSICO
+rolloverEnabled = false
+
+MÉDIO
+rolloverEnabled = true
+rolloverRate = 50%
+rolloverMaxPercentage = 50%
+rolloverExpirationPeriods = 1
+
 PRO
+rolloverEnabled = true
+rolloverRate = 50%
+rolloverMaxPercentage = 50%
+rolloverExpirationPeriods = 1
 ```
 
-Não criar pelo nome visual como chave principal.
+ROOT deve conseguir modificar esses valores.
 
-Usar IDs/UUIDs ou códigos imutáveis apropriados.
+---
 
-O nome mostrado:
+# 44. Possível diferenciação comercial futura
+
+A arquitetura deve permitir futuramente algo como:
 
 ```text
-Básico
-Médio
-Pro
+Médio:
+25% de rollover
+
+Pro:
+50% de rollover
 ```
 
-poderá mudar futuramente sem quebrar regras.
+ou:
+
+```text
+Médio:
+validade de 1 mês
+
+Pro:
+validade de 2 meses
+```
+
+NÃO implementar obrigatoriamente essa diferenciação agora.
+
+Apenas deixar a estrutura preparada.
 
 ---
 
-# 38. Compatibilidade das empresas atuais
+# 45. Exibição para o usuário
 
-Existe empresa utilizando o AtendON atualmente.
+Na tela de consumo:
 
-A migration NÃO pode remover ou bloquear acidentalmente sua operação.
+```text
+Uso de IA
 
-Antes da ativação:
+Plano Médio
 
-* identificar tenants existentes;
-* atribuir plano adequado;
-* preservar recursos atuais;
-* criar migration/backfill seguro.
+Franquia do mês:
+10.000
 
-Se houver dúvida sobre o plano atual, utilizar um plano/override temporário que preserve todos os acessos até configuração manual pelo ROOT.
+Créditos acumulados:
+2.500
+
+Total disponível:
+12.500
+
+Utilizado:
+4.820
+```
+
+Evitar chamar de:
+
+```text
+R$ de crédito
+```
+
+Usar:
+
+```text
+Créditos de IA
+Interações acumuladas
+Franquia acumulada
+```
 
 ---
 
-# 39. UX para limite atingido
+# 46. Previsão de rollover
 
-Nunca apresentar erro técnico bruto.
+Antes do fechamento do período, poderá mostrar:
+
+```text
+Saldo atual:
+5.000 interações
+
+Se o período encerrasse hoje:
+2.500 interações seriam acumuladas para o próximo mês.
+```
+
+Isso melhora percepção de valor do plano.
+
+---
+
+# 47. Histórico de rollover
+
+Registrar:
+
+```text
+RolloverLedger
+
+companyId
+usagePeriodId
+sourcePeriodId
+
+unusedIncludedUsage
+rolloverRate
+generatedAmount
+expiredAmount
+consumedAmount
+
+createdAt
+expiresAt
+```
+
+O sistema deverá permitir explicar exatamente de onde veio o saldo.
+
+---
+
+# 48. Auditoria
+
+Registrar eventos:
+
+```text
+ROLLOVER_GENERATED
+ROLLOVER_CONSUMED
+ROLLOVER_EXPIRED
+ROLLOVER_ADJUSTED_BY_ROOT
+```
+
+Nunca alterar saldo silenciosamente.
+
+---
+
+# 49. Ajustes manuais pelo ROOT
+
+ROOT poderá conceder franquia promocional.
 
 Exemplo:
 
 ```text
-Você atingiu o limite de 8 usuários do seu plano.
-
-Plano atual: Médio
-Uso: 8/8
-
-Para adicionar novos usuários, aumente seu limite ou faça upgrade.
++5.000 interações
+Motivo:
+Crédito comercial / compensação
 ```
 
-Mesma ideia para:
+Separar isso de rollover.
 
-* IA;
-* WhatsApps;
-* pipelines;
-* etc.
-
----
-
-# 40. Observabilidade
-
-Registrar erros relacionados a:
-
-* cobrança;
-* webhook;
-* entitlement;
-* limite;
-* reset de consumo;
-* pagamentos;
-* alteração de plano.
-
-Não registrar tokens, secrets ou informações financeiras sensíveis.
-
----
-
-# 41. Testes obrigatórios
-
-Criar testes para pelo menos:
-
-### Planos
-
-* Básico não acessa IA.
-* Básico não acessa agenda.
-* Médio acessa IA.
-* Pro acessa tudo configurado.
-
-### Limites
-
-* usuário 4 no Básico é recusado;
-* segundo WhatsApp no Básico é recusado;
-* interação acima da franquia é recusada/tratada corretamente.
-
-### Overrides
-
-* limite personalizado prevalece sobre plano.
-
-### Assinatura
-
-* ACTIVE possui acesso;
-* PAST_DUE segue grace period;
-* SUSPENDED segue regras definidas.
-
-### Pagamentos
-
-* webhook duplicado não duplica pagamento;
-* aprovação atualiza assinatura;
-* falha não marca pagamento como aprovado.
-
-### Segurança
-
-* usuário de empresa A não consulta plano/consumo privado de B;
-* admin normal não altera subscription;
-* manipulação direta de endpoints não contorna entitlement.
-
----
-
-# 42. Rollout
-
-Não ativar tudo de uma vez.
-
-Implementar aproximadamente nesta sequência:
-
-## Fase 1 — análise
-
-Mapear arquitetura atual.
-
-## Fase 2 — domínio SaaS
-
-Plans, features, limits, entitlements.
-
-## Fase 3 — ROOT
-
-Interface e endpoints de administração.
-
-## Fase 4 — enforcement
-
-Aplicar bloqueios no backend.
-
-## Fase 5 — frontend
-
-Aplicar UX de bloqueio e limites.
-
-## Fase 6 — usage
-
-Adicionar contadores e IA.
-
-## Fase 7 — billing
-
-Subscriptions, payments e providers.
-
-## Fase 8 — gateways
-
-Começar pelo gateway mais adequado à arquitetura atual e deixar os demais plugáveis.
-
-## Fase 9 — testes
-
-Cobrir plano, limites, cobrança e isolamento.
-
-## Fase 10 — migração
-
-Associar empresas atuais sem interrupção.
-
----
-
-# 43. FORA DO ESCOPO DESTA IMPLEMENTAÇÃO
-
-IMPORTANTE:
-
-NÃO criar agora o site comercial público do AtendON.
-
-NÃO criar ainda:
-
-* landing page;
-* página pública de preços;
-* cadastro self-service;
-* checkout público;
-* onboarding automático;
-* criação automática da empresa após pagamento;
-* trial público;
-* aquisição automática sem vendedor.
-
-Apenas preparar o backend para que isso seja possível depois.
-
-Após esta implementação será criado um SEGUNDO PLANO específico para:
+Criar tipo:
 
 ```text
-AtendON Self-Service / Site Comercial
+BONUS_USAGE
 ```
 
-Esse segundo projeto deverá permitir futuramente:
+Assim existirão:
 
 ```text
-Visitante acessa atendon.com
-↓
-Compara Básico / Médio / Pro
-↓
-Escolhe plano
-↓
-Cria conta
-↓
-Escolhe pagamento
-↓
-Paga
-↓
-Empresa é criada
-↓
-Plano é vinculado
-↓
-Onboarding começa
-↓
-Cliente começa a utilizar o AtendON
+INCLUDED
+ROLLOVER
+BONUS
+OVERAGE
 ```
 
-NÃO implementar esse fluxo nesta tarefa.
+---
+
+# 50. Ordem completa de consumo
+
+Recomendação:
+
+```text
+1. ROLLOVER prestes a expirar
+2. BONUS prestes a expirar
+3. INCLUDED
+4. OVERAGE
+```
+
+Se existirem múltiplos saldos, utilizar primeiro o que expira antes.
 
 ---
 
-# 44. Antes de escrever código
+# 51. Grace period de pagamento
 
-Primeiro entregue um relatório contendo:
+Se o cliente tem vencimento dia 5 e o pagamento falha, não destruir saldo imediatamente.
 
-1. Como o multi-tenant funciona atualmente.
-2. Como empresas são identificadas.
-3. Como usuários e cargos estão estruturados.
-4. Todos os módulos encontrados.
-5. Quais recursos podem virar entitlements.
-6. Quais recursos possuem limites naturais.
-7. Como a IA é chamada atualmente.
-8. Onde contabilizar corretamente uma interação.
-9. Como WhatsApps são vinculados.
-10. Como pipeline e agenda estão estruturados.
-11. Riscos de regressão.
-12. Models/tabelas que precisarão ser criados ou alterados.
-13. Endpoints novos.
-14. Telas novas.
-15. Estratégia de migration.
-16. Estratégia para preservar empresas existentes.
+Seguir o grace period da assinatura.
 
-Depois disso, apresente o plano de implementação detalhado por arquivos/componentes.
+Exemplo:
 
-Somente depois avance para implementação.
+```text
+Dia 5:
+pagamento falhou
+
+Status:
+PAST_DUE
+
+Grace period:
+3 dias
+```
+
+Durante o período de tolerância, preservar contabilização e decidir conforme política existente se IA continua ou fica limitada.
+
+Quando o pagamento for aprovado:
+
+* fechar corretamente o período anterior;
+* conceder rollover elegível;
+* iniciar novo período.
 
 ---
 
-# Princípios obrigatórios
+# 52. Mudança de plano com rollover
 
-Priorizar:
+Tratar upgrade e downgrade.
 
-* segurança;
-* isolamento entre empresas;
-* organização;
-* manutenção;
-* extensibilidade;
-* consistência;
-* transações;
+## Upgrade
+
+Exemplo:
+
+```text
+Médio → Pro
+```
+
+Não perder rollover válido automaticamente.
+
+Aplicar regras do novo plano no próximo período ou conforme política de proration.
+
+## Downgrade
+
+Exemplo:
+
+```text
+Pro → Médio
+```
+
+O rollover existente deverá respeitar o teto do novo plano.
+
+Nunca apagar silenciosamente.
+
+Registrar ajuste em auditoria.
+
+---
+
+# 53. Cancelamento
+
+Ao cancelar assinatura:
+
+* impedir geração de novos rollovers;
+* definir expiração do saldo restante;
+* não transformar rollover em valor financeiro;
+* não permitir saque;
+* não permitir reembolso do rollover.
+
+Rollover é benefício de uso do SaaS, não moeda.
+
+---
+
+# 54. Regra financeira
+
+Rollover NÃO reduz a mensalidade.
+
+Exemplo:
+
+Cliente utilizou somente 5.000 de 10.000.
+
+Ele continua pagando:
+
+```text
+R$897
+```
+
+O benefício recebido é:
+
+```text
++2.500 interações para o próximo período
+```
+
+Nunca:
+
+```text
+desconto financeiro proporcional
+```
+
+---
+
+# 55. Métricas ROOT
+
+Adicionar métricas:
+
+```text
+franquia concedida
+franquia consumida
+rollover gerado
+rollover utilizado
+rollover expirado
+overage gerado
+receita de overage
+custo real de IA
+```
+
+Por:
+
+* empresa;
+* plano;
+* mês.
+
+Isso será importante para descobrir se 50% de rollover é financeiramente saudável.
+
+---
+
+# 56. Configuração global
+
+Criar configurações globais, sem hardcode:
+
+```text
+defaultRolloverRate = 50%
+
+defaultRolloverMaxPercentage = 50%
+
+defaultRolloverExpirationPeriods = 1
+```
+
+Planos poderão sobrescrever esses valores.
+
+---
+
+# 57. Testes obrigatórios de rollover
+
+Criar testes para:
+
+* cliente utiliza toda franquia → rollover 0;
+* cliente utiliza metade → rollover correto;
+* cliente não utiliza nada → respeita teto;
+* rollover expira corretamente;
+* rollover não gera rollover infinito;
+* overage não gera rollover;
+* bonus não é confundido com rollover;
+* pagamento não confirmado não gera rollover indevidamente;
+* renovação não duplica rollover;
+* webhook repetido não gera saldo duas vezes;
+* chamadas simultâneas não geram inconsistência;
+* mudança de plano respeita novo teto;
+* ROOT consegue auditar e ajustar.
+
+---
+
+# 58. Regra de produto recomendada inicialmente
+
+Começar com:
+
+```text
+ROLLOVER:
+50% do saldo mensal não utilizado
+
+TETO:
+50% da franquia base
+
+VALIDADE:
+1 mês
+
+OVERAGE:
+não acumula
+
+ROLLOVER:
+não gera novo rollover
+
+PAGAMENTO:
+renovação válida necessária
+```
+
+Não tornar essas regras permanentes no código.
+
+Tudo deve ser configurável.
+
+---
+
+# 59. Objetivo comercial
+
+Esse recurso deve melhorar:
+
+* percepção de justiça;
+* retenção;
+* valor percebido do plano;
+* redução da sensação de "perdi o que não usei";
+* incentivo à renovação;
+* diferenciação frente a CRMs tradicionais.
+
+Ao mesmo tempo, proteger:
+
+* margem;
+* infraestrutura;
+* custo de IA;
+* previsibilidade financeira.
+
+O sistema deve privilegiar sustentabilidade do SaaS, não apenas oferecer o máximo possível ao cliente.
+
+# 60. Billing Providers configuráveis pelo painel
+
+Adicionar uma área ROOT:
+
+```text
+ROOT
+→ SaaS
+→ Gateways de pagamento
+```
+
+O objetivo é evitar depender de:
+
+```text
+.env
+arquivos de configuração
+deploy
+edição manual no servidor
+```
+
+para alterar credenciais ou configurações comerciais dos gateways.
+
+---
+
+# 61. Mercado Pago primeiro
+
+Implementar inicialmente apenas:
+
+```text
+Mercado Pago
+```
+
+Preparar a arquitetura para futuramente receber:
+
+```text
+Stripe
+InfinitePay
+PagBank
+outros providers
+```
+
+Mas NÃO implementar as integrações completas desses providers nesta etapa.
+
+---
+
+# 62. Abstração
+
+Manter:
+
+```text
+BillingProvider
+```
+
+com providers independentes:
+
+```text
+MercadoPagoProvider
+StripeProvider // futuro
+InfinitePayProvider // futuro
+PagBankProvider // futuro
+```
+
+O restante do sistema não deve depender diretamente da SDK do Mercado Pago.
+
+---
+
+# 63. Configuração do Mercado Pago pelo painel
+
+Criar tela:
+
+```text
+Mercado Pago
+
+Status:
+Não conectado / Conectado / Erro
+
+Ambiente:
+Sandbox
+Produção
+
+[Conectar Mercado Pago]
+```
+
+Sempre que possível, preferir OAuth em vez de exigir que o ROOT copie tokens manualmente.
+
+---
+
+# 64. OAuth do Mercado Pago
+
+Investigar a documentação atual oficial do Mercado Pago antes da implementação.
+
+Implementar o fluxo OAuth adequado para integração de aplicações.
+
+Fluxo esperado:
+
+```text
+ROOT
+↓
+Conectar Mercado Pago
+↓
+redirecionamento para autorização
+↓
+Mercado Pago
+↓
+callback seguro
+↓
+troca do authorization code
+↓
+credenciais armazenadas com segurança
+↓
+status: CONECTADO
+```
+
+Implementar:
+
+* state anti-CSRF;
+* callback validation;
+* tratamento de erro;
+* refresh token, se fornecido;
+* renovação de token;
+* expiração;
+* revogação;
+* reconexão.
+
+Nunca confiar apenas no frontend para o fluxo OAuth.
+
+---
+
+# 65. Client ID / Client Secret
+
+Se o Mercado Pago exigir credenciais da aplicação para iniciar OAuth, permitir configuração inicial pelo painel ROOT.
+
+Exemplo:
+
+```text
+Client ID
+[________________]
+
+Client Secret
+[________________]
+```
+
+Mas aplicar proteção especial.
+
+Depois de salvo:
+
+```text
+Client ID:
+123456789
+
+Client Secret:
+••••••••••••••7F2A
+```
+
+Nunca devolver o secret completo novamente pela API.
+
+ROOT poderá:
+
+```text
+Substituir credencial
+```
+
+mas não visualizar o valor original.
+
+---
+
+# 66. Access Token manual como fallback
+
+Se tecnicamente necessário, oferecer:
+
+```text
+Configuração avançada
+→ Access Token manual
+```
+
+Mas OAuth deve ser preferido quando adequado.
+
+O painel poderá aceitar:
+
+```text
+Access Token
+Public Key
+Client ID
+Client Secret
+```
+
+somente conforme realmente necessário pela integração.
+
+Não criar campos desnecessários.
+
+---
+
+# 67. Armazenamento seguro
+
+Credenciais de gateway NÃO devem ficar em plaintext no banco.
+
+Criar serviço de secrets:
+
+```text
+BillingSecretsService
+```
+
+Armazenar credenciais utilizando criptografia autenticada.
+
+Exemplo conceitual:
+
+```text
+AES-256-GCM
+```
+
+ou solução equivalente segura disponível na stack.
+
+O banco deverá conter apenas o valor criptografado.
+
+---
+
+# 68. Chave mestra
+
+Existe uma diferença importante:
+
+As credenciais específicas dos gateways podem ficar no banco criptografadas.
+
+Porém deve existir uma **root encryption key** fora do próprio banco.
+
+Não armazenar:
+
+```text
+chave que criptografa secrets
++
+secrets criptografados
+```
+
+na mesma estrutura sem proteção adicional.
+
+Se a infraestrutura atual permitir secret manager, utilizar.
+
+Caso contrário, manter somente UMA chave de infraestrutura segura como requisito operacional.
+
+O objetivo é evitar dezenas de configurações no `.env`, mas não sacrificar segurança para eliminar completamente qualquer secret de infraestrutura.
+
+---
+
+# 69. Regra importante
+
+Não tentar tornar literalmente 100% das credenciais configuráveis pelo painel se isso exigir armazenar a chave mestra junto das próprias credenciais.
+
+O ideal é:
+
+```text
+ENV / Secret Manager:
+1 chave mestra da aplicação
+
+Banco criptografado:
+Mercado Pago
+Stripe
+InfinitePay
+PagBank
+etc.
+```
+
+Assim novas integrações não exigem editar `.env`.
+
+---
+
+# 70. Teste de conexão
+
+Adicionar:
+
+```text
+[Testar conexão]
+```
+
+Resultado:
+
+```text
+Mercado Pago conectado com sucesso.
+```
+
+ou:
+
+```text
+Falha na autenticação.
+
+Verifique as credenciais ou reconecte a conta.
+```
+
+Nunca mostrar token em logs ou mensagens de erro.
+
+---
+
+# 71. Dados do vínculo
+
+Mostrar:
+
+```text
+Mercado Pago
+Conectado
+
+Conta:
+<identificação retornada pela API>
+
+Ambiente:
+Produção
+
+Conectado em:
+04/09/2026
+
+Última validação:
+04/09/2026 21:30
+```
+
+Se a API disponibilizar com segurança:
+
+```text
+email da conta
+user ID
+country
+```
+
+poderá mostrar para ajudar o ROOT a saber qual conta está vinculada.
+
+---
+
+# 72. Desconectar
+
+Adicionar:
+
+```text
+[Desconectar Mercado Pago]
+```
+
+Exigir confirmação.
+
+Ao desconectar:
+
+* revogar token quando suportado;
+* apagar ou invalidar credenciais armazenadas;
+* manter histórico financeiro;
+* não apagar pagamentos existentes;
+* bloquear criação de novas cobranças pelo provider.
+
+---
+
+# 73. Webhooks
+
+Configurar webhooks do Mercado Pago de forma centralizada.
+
+Painel:
+
+```text
+Webhook
+
+Status:
+Ativo
+
+URL:
+https://.../billing/webhooks/mercadopago
+
+Último evento:
+...
+
+Último erro:
+...
+```
+
+Não exigir que o ROOT copie URL manualmente se a API permitir configuração automatizada.
+
+Se configuração manual for necessária, mostrar instruções claras no painel.
+
+---
+
+# 74. Segurança de webhook
+
+Implementar conforme documentação oficial atual do Mercado Pago:
+
+* validação de autenticidade;
 * idempotência;
-* tipagem;
-* testes;
-* baixo acoplamento.
+* deduplicação;
+* timestamp;
+* event ID;
+* logs;
+* retries seguros.
 
-Evitar:
+Nunca considerar um pagamento aprovado apenas porque o frontend informou sucesso.
 
-* hardcode de planos;
-* permissões apenas no frontend;
-* lógica comercial espalhada;
-* gateway acoplado ao domínio;
-* exclusão automática em downgrade;
-* alteração destrutiva de empresas atuais;
-* duplicação de lógica;
-* migrations irreversíveis desnecessárias.
+Sempre confirmar no backend/provider.
 
-O objetivo não é simplesmente adicionar três planos.
+---
 
-O objetivo é transformar o AtendON em uma base SaaS profissional, onde planos, limites, consumo, cobrança e funcionalidades possam evoluir sem exigir reconstrução da aplicação.
+# 75. Métodos de pagamento
+
+Depois da conexão, ROOT poderá habilitar os métodos realmente suportados:
+
+```text
+PIX
+Cartão
+Boleto
+Assinatura recorrente
+```
+
+Não assumir suporte sem validar a API atual.
+
+Mostrar apenas métodos disponíveis para aquela configuração.
+
+---
+
+# 76. Configuração comercial
+
+Separar credenciais de configurações.
+
+Exemplo:
+
+```text
+Credenciais
+OAuth / Tokens
+
+Configuração
+Moeda
+Métodos habilitados
+Prazo do PIX
+Prazo do boleto
+Grace period
+Cobrança automática
+```
+
+Assim alterar uma regra comercial não exige reconectar o gateway.
+
+---
+
+# 77. Ambientes
+
+Suportar:
+
+```text
+SANDBOX
+PRODUCTION
+```
+
+Nunca misturar transações dos ambientes.
+
+Cada ambiente deve possuir configuração própria.
+
+Exemplo:
+
+```text
+Mercado Pago Sandbox
+Mercado Pago Produção
+```
+
+---
+
+# 78. Status do provider
+
+Criar estados:
+
+```text
+NOT_CONFIGURED
+CONNECTED
+TOKEN_EXPIRING
+AUTH_ERROR
+DISCONNECTED
+DISABLED
+```
+
+O sistema deverá detectar quando a integração parar de funcionar.
+
+---
+
+# 79. Logs administrativos
+
+Registrar:
+
+```text
+GATEWAY_CONNECTED
+GATEWAY_DISCONNECTED
+GATEWAY_CREDENTIAL_ROTATED
+GATEWAY_AUTH_FAILED
+GATEWAY_WEBHOOK_RECEIVED
+GATEWAY_WEBHOOK_FAILED
+```
+
+Nunca registrar secrets.
+
+---
+
+# 80. Permissões
+
+Somente ROOT deverá inicialmente conseguir:
+
+* conectar gateway;
+* alterar credenciais;
+* trocar ambiente;
+* desconectar;
+* alterar configurações globais.
+
+Não permitir que admins normais das empresas modifiquem o gateway central do AtendON.
+
+---
+
+# 81. Stripe, InfinitePay e PagBank
+
+Criar apenas placeholders estruturais no painel:
+
+```text
+Stripe
+Em breve
+
+InfinitePay
+Em breve
+
+PagBank
+Em breve
+```
+
+ou simplesmente manter suporte no backend sem mostrar opções ao usuário.
+
+Não implementar OAuth nem APIs deles nesta tarefa.
+
+Apenas garantir que a arquitetura criada para Mercado Pago não impeça providers futuros.
+
+---
+
+# 82. Critério de conclusão
+
+Considerar esta parte concluída quando:
+
+* ROOT consegue configurar Mercado Pago sem editar código;
+* OAuth funciona se aplicável;
+* credenciais ficam protegidas;
+* conexão pode ser testada;
+* webhook funciona;
+* cobranças podem utilizar a configuração ativa;
+* tokens não aparecem no frontend;
+* alteração de credencial não exige deploy;
+* desconexão funciona;
+* sandbox/produção são separados;
+* testes automatizados cobrem autenticação, armazenamento, webhook e falhas.
