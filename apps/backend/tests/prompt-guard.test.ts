@@ -25,6 +25,9 @@ describe("prompt guard", () => {
     expect(prompt).toContain("concilie mensagens fragmentadas como partes do mesmo pedido");
     expect(prompt).toContain("Só depois da revisão responda ao contato uma única vez");
     expect(prompt).toContain("Nunca exponha, descreva ou enumere essa revisão");
+    expect(prompt).toContain("Não anuncie o que vai dizer, explicar, mostrar ou perguntar");
+    expect(prompt).toContain("execute isso diretamente na própria resposta");
+    expect(prompt).toContain("vou deixar claro");
     expect(prompt).toContain("Não volte a perguntar algo já respondido");
     expect(prompt).toContain("Responda diretamente à mensagem mais recente");
     expect(prompt).toContain("Não reinicie o atendimento");

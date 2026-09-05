@@ -806,6 +806,25 @@ describe("MessageProcessor", () => {
       "Você tem razão. Deixa eu corrigir."
     )).toMatch(/correção interna/i);
     for (const disclosure of [
+      "Claro, Bruna, vou deixar claro que é para marcar um bate-papo de 20 a 40 minutos no Google Meet",
+      "Vou te explicar os valores, o boleto e como funciona a operação",
+      "Claro, vou escrever diretamente que o encontro é no Google Meet",
+      "Vou incluir o objetivo da reunião na pergunta",
+      "Primeiro vou apresentar a solução e depois perguntar o período",
+      "Agora vou perguntar qual período costuma ser melhor para você",
+      "Vou dizer como funciona",
+      "Vou dizer que é para marcar a reunião",
+      "Irei dizer que é para marcar a reunião",
+      "Vou te dizer que é para marcar",
+      "Vou demonstrar como funciona",
+      "Vou tornar claro que o encontro é no Meet",
+      "Vou falar sobre os valores",
+      "Vou contar como funciona",
+      "Vou fazer uma pergunta",
+      "Passo a explicar",
+      "Pretendo explicar",
+      "Depois vou explicar",
+      "Irei detalhar as condições antes de seguir",
       "O próximo passo é uma conversa no Google Meet",
       "O próximo passo será escolher um horário",
       "Agora o próximo passo depende de você",
@@ -817,9 +836,16 @@ describe("MessageProcessor", () => {
       expect(correction).toContain("Reescreva silenciosamente");
       expect(correction).toContain("somente a mensagem final");
     }
+    expect(internalCorrectionDisclosureCorrection("Vou consultar a agenda e te aviso depois"))
+      .toContain("Não diga que vai consultar a agenda");
+    expect(internalCorrectionDisclosureCorrection("Vou te explicar os valores"))
+      .not.toContain("agenda");
     for (const naturalProposal of [
       "Podemos conversar amanhã pelo Google Meet?",
-      "Amanhã às 15h está disponível, quer que eu reserve?"
+      "Amanhã às 15h está disponível, quer que eu reserve?",
+      "Para marcar o bate-papo no Google Meet, qual período fica melhor?",
+      "A equipe vai explicar os valores durante a conversa",
+      "Perfeito, vou falar com ela pela manhã, entre 8h e meio dia"
     ]) {
       expect(internalCorrectionDisclosureCorrection(naturalProposal)).toBeUndefined();
     }

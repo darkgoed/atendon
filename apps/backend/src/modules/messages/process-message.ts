@@ -571,8 +571,16 @@ export function semanticOfferRepetitionCorrection(
 
 export function internalCorrectionDisclosureCorrection(text: string): string | undefined {
   const normalized = normalizeForEchoCheck(text);
-  const acknowledgesCorrection = /\b(?:vou|irei)\s+(?:corrigir|ajustar|reescrever)\b/u.test(normalized)
-    || /\b(?:vou|irei)\s+(?:seguir|continuar)\s+sem\s+repetir\b/u.test(normalized)
+  // Instruções de reescrita voltam ao modelo como mensagem e podem ser ecoadas em primeira pessoa;
+  // diferencie essa narração da ação concreta, como “vou falar com ela”.
+  // Bloqueia anúncios em primeira pessoa de uma ação futura da própria IA, sem
+  // enumerar verbos: pronomes e advérbios entre o auxiliar e o infinitivo são
+  // deliberadamente aceitos. Não confundir com ações concretas em nome de
+  // terceiros: "vou falar com ela" é a exceção comercial já permitida, mas
+  // "vou falar sobre..." continua sendo uma narração da resposta.
+  const announcesOwnFutureAction = /\b(?:eu\s+)?(?:vou|irei)\s+(?!(?:falar\s+com\s+ela)\b)(?:(?:te|lhe|me|nos|para\s+voce|pra\s+voce|so|apenas|agora|primeiro)\s+)*(?:[a-záàâãéêíóôõúç]+(?:ar|er|ir))\b/iu.test(normalized);
+  const acknowledgesCorrection = announcesOwnFutureAction
+    || /\b(?:passo\s+a|pretendo)\s+explicar\b/u.test(normalized)
     || /\b(?:resposta|mensagem)\s+anterior\b.{0,80}\b(?:corrig|ajust|reescrev|viola)\w*/u.test(normalized)
     || /\b(?:politica|instrucao|regra)\s+(?:interna|de\s+agenda)\b/u.test(normalized)
     || /\bvoce\s+tem\s+razao\b/u.test(normalized)
@@ -580,7 +588,10 @@ export function internalCorrectionDisclosureCorrection(text: string): string | u
     || /\b(?:agora\s+)?(?:o\s+)?proximo\s+passo\b/u.test(normalized)
     || /\b(?:a\s+)?proxima\s+etapa(?:\s+(?:do|no)\s+(?:fluxo|processo))?\b/u.test(normalized);
   if (!acknowledgesCorrection) return undefined;
-  return "Não exponha nem reconheça a correção interna ou o fluxo interno. Reescreva silenciosamente e entregue somente a mensagem final que o contato deveria receber. Proponha a ação comercial de forma natural, sem anunciá-la como próximo passo ou próxima etapa e sem mencionar resposta anterior, erro, regra, política, fluxo, processo, ajuste, correção, repetição ou reescrita.";
+  const agendaDisclosure = /\bconsultar\s+a\s+agenda\b/u.test(normalized)
+    ? "Não diga que vai consultar a agenda. "
+    : "";
+  return `${agendaDisclosure}Não exponha nem reconheça a correção interna ou o fluxo interno. Não narre o que vai dizer, explicar, mostrar ou perguntar: execute isso diretamente na resposta. Reescreva silenciosamente e entregue somente a mensagem final que o contato deveria receber, sem introduções como ‘vou deixar claro’, ‘vou explicar’, ‘vou mostrar’, ‘vou perguntar’ ou ‘irei detalhar’. Proponha a ação comercial de forma natural, sem anunciá-la como próximo passo ou próxima etapa e sem mencionar resposta anterior, erro, regra, política, fluxo, processo, ajuste, correção, repetição ou reescrita.`;
 }
 
 export function isConfirmedSchedulingTurn(

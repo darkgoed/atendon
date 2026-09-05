@@ -147,8 +147,13 @@ describe("política de oferta de horários", () => {
   });
 
   it("identifica o bate-papo, a faixa comercial e o Google Meet ao perguntar o período", () => {
-    expect(schedulingPeriodQuestionCorrection("Você prefere conversar de manhã ou à tarde?"))
-      .toContain("bate-papo de 20 a 40 minutos no Google Meet");
+    const correction = schedulingPeriodQuestionCorrection("Você prefere conversar de manhã ou à tarde?");
+    expect(correction).toContain("bate-papo de 20 a 40 minutos no Google Meet");
+    expect(correction).toContain("Escreva diretamente");
+    expect(correction).toContain("Não anuncie o que vai");
+    expect(correction).not.toMatch(/deixe claro/i);
+    expect(correction).toContain("Para marcarmos um bate-papo");
+    expect(correction).toContain("qual período fica melhor");
     expect(schedulingPeriodQuestionCorrection(
       "Para marcar nosso bate-papo de 20–40 minutos no Google Meet, você prefere de manhã ou à tarde?"
     )).toBeUndefined();

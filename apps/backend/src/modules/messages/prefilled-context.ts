@@ -275,7 +275,7 @@ export function schedulingPeriodQuestionCorrection(text: string): string | undef
     && new RegExp(`\\b${COMMERCIAL_RANGE_PATTERN}\\b`, "u").test(periodClause);
   if (identifiesMeeting) return undefined;
 
-  return "Ao perguntar se manhã ou tarde é melhor, deixe claro que é para marcar um bate-papo de 20 a 40 minutos no Google Meet. Não trate a pergunta como disponibilidade para uma conversa genérica nem omita o objetivo do encontro.";
+  return "Escreva diretamente a mensagem final usando este formato, adaptando somente o objetivo aos fatos da conversa: “Para marcarmos um bate-papo de 20 a 40 minutos no Google Meet, entender melhor sua operação e explicar como a solução funciona, qual período fica melhor, manhã ou tarde?” Não anuncie o que vai escrever, explicar ou perguntar, não trate a pergunta como disponibilidade para uma conversa genérica e entregue somente essa mensagem ao contato.";
 }
 
 /** Bloqueia duração comercial incorreta ou duração operacional em qualquer resposta final. */
