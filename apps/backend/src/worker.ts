@@ -21,7 +21,7 @@ import {
   WORKER_HEARTBEAT_TTL_MS
 } from "./readiness.js";
 import { AI_FOLLOW_UP_QUEUE, enqueueAiFollowUp, type AiFollowUpJob } from "./queue/ai-follow-up-queue.js";
-import { OpenRouterClient } from "./modules/ai-router/openrouter.js";
+
 import { config } from "./config.js";
 import {
   MEETING_PROVISIONING_QUEUE,
@@ -76,6 +76,12 @@ import {
 } from "./queue/meet-maintenance-queue.js";
 import { indexMeetRecordings } from "./modules/meet/recordings-indexer.js";
 import { deleteExpiredMeetRecordings } from "./modules/meet/retention.js";
+import { runBillingReconciliationBatch } from "./billing/reconciler.js";
+import {
+  OAUTH_TOKEN_RENEWAL_INTERVAL_MS,
+  runOAuthTokenRenewalBatch,
+} from "./billing/mercadopago-renewal.js";
+export { runOAuthTokenRenewalBatch } from "./billing/mercadopago-renewal.js";
 
 const { manager, processor, followUpProcessor, followUpRepository } = createWhatsAppRuntime();
 const webPushRuntime = startWebPushRuntime();
@@ -514,6 +520,17 @@ const pendingMeetingResultReconciler = setInterval(() => {
     })
     .catch((error) => logger.error({ error }, "Pending meeting result reconciliation failed"));
 }, 60_000);
+const billingReconciler = setInterval(() => {
+  void runBillingReconciliationBatch(100).then((result) => {
+    if (result.errors.length) logger.warn({ result }, "Billing reconciliation completed with errors");
+  }).catch((error) => logger.error({ error }, "Billing reconciliation failed"));
+}, Number(process.env.BILLING_RECONCILIATION_INTERVAL_MS ?? 60_000));
+billingReconciler.unref();
+const oauthTokenRenewalTimer = setInterval(() => {
+  void runOAuthTokenRenewalBatch()
+    .catch((error) => logger.error({ error }, "Mercado Pago OAuth token renewal batch failed"));
+}, Number(process.env.OAUTH_TOKEN_RENEWAL_INTERVAL_MS ?? OAUTH_TOKEN_RENEWAL_INTERVAL_MS));
+oauthTokenRenewalTimer.unref();
 const recordHeartbeat = async (): Promise<void> => {
   const redis = await worker.client;
   const value = String(Date.now());
@@ -559,6 +576,8 @@ async function shutdown(): Promise<void> {
   clearInterval(meetingConfirmationReconciler);
   clearInterval(appointmentStatusReactionReconciler);
   clearInterval(pendingMeetingResultReconciler);
+  clearInterval(billingReconciler);
+  clearInterval(oauthTokenRenewalTimer);
   clearInterval(heartbeatTimer);
   clearInterval(tripzAiReconciler);
   try {

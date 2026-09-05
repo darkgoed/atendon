@@ -49,6 +49,16 @@ describe("agent version snapshot", () => {
   });
 });
 
+const loggerMock = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }));
+vi.mock("../src/logger.js", () => ({ logger: loggerMock, sanitizeRequestUrl: (value: unknown) => value }));
+
+const consumeAiInteractionMock = vi.hoisted(() => vi.fn().mockResolvedValue({ allowed: true }));
+const reconcileAiTurnFromUsageLogsMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+vi.mock("../src/billing/ai-consumption.js", () => ({
+  consumeAiInteraction: consumeAiInteractionMock,
+  reconcileAiTurnFromUsageLogs: reconcileAiTurnFromUsageLogsMock
+}));
+
 const acquireConversationLockMock = vi.hoisted(() => vi.fn());
 const isConversationLockedMock = vi.hoisted(() => vi.fn());
 const releaseConversationLockMock = vi.hoisted(() => vi.fn());
@@ -157,6 +167,10 @@ function setup(contextOverrides = {}, aiTurnProgress?: ConstructorParameters<typ
 
 describe("MessageProcessor", () => {
   beforeEach(() => {
+    consumeAiInteractionMock.mockReset();
+    consumeAiInteractionMock.mockResolvedValue({ allowed: true });
+    reconcileAiTurnFromUsageLogsMock.mockReset();
+    reconcileAiTurnFromUsageLogsMock.mockResolvedValue(undefined);
     acquireConversationLockMock.mockReset();
     acquireConversationLockMock.mockResolvedValue({ redisKey: "conv-lock:test", token: "token" });
     isConversationLockedMock.mockReset();
@@ -3028,8 +3042,13 @@ Full name: Renan de Carvalho`;
     Object.assign(gateway, { downloadMedia });
     Object.assign(ai, { transcribe });
 
-    await expect(processor.process({ ...message, text: "", mediaType: "audio" })).resolves.toBe("answered");
+    const requestId = "00000000-0000-4000-8000-000000000201";
+    await expect(processor.process({ ...message, text: "", mediaType: "audio" }, { requestId })).resolves.toBe("answered");
 
+    expect(repository.recordAiUsage).toHaveBeenCalledWith(expect.objectContaining({
+      providerRequestId: "gen-transcription",
+      requestId
+    }));
     expect(downloadMedia).toHaveBeenCalledWith("session-1", "wamid-1");
     expect(transcribe).toHaveBeenCalledWith(expect.objectContaining({
       audioBase64: "T2dnUw==",
@@ -3913,6 +3932,46 @@ Full name: Renan de Carvalho`;
     await expect(processor.process({ ...message, kind: "human" })).resolves.toBe("human_recorded");
     expect(repository.recordHuman).toHaveBeenCalled();
     expect(gateway.sendText).not.toHaveBeenCalled();
+  });
+
+  it("blocks AI when billing is unavailable and records the warning reason", async () => {
+    consumeAiInteractionMock.mockResolvedValueOnce({ allowed: false, reason: "BILLING_UNAVAILABLE" });
+    loggerMock.warn.mockReset();
+    const warning = loggerMock.warn;
+    const { processor, repository, gateway, ai } = setup();
+    await expect(processor.process(message)).resolves.toBe("fallback");
+    expect(gateway.sendText).not.toHaveBeenCalled();
+    expect(ai.complete).not.toHaveBeenCalled();
+    expect(repository.markInboundProcessed).toHaveBeenCalledWith(message);
+    expect(warning).toHaveBeenCalledWith(expect.objectContaining({ reason: "BILLING_UNAVAILABLE" }), expect.any(String));
+  });
+
+  it("blocks AI when quota is exceeded and records the warning reason", async () => {
+    consumeAiInteractionMock.mockResolvedValueOnce({ allowed: false, reason: "QUOTA_EXCEEDED" });
+    loggerMock.warn.mockReset();
+    const warning = loggerMock.warn;
+    const { processor, repository, gateway, ai } = setup();
+    await expect(processor.process(message)).resolves.toBe("fallback");
+    expect(gateway.sendText).not.toHaveBeenCalled();
+    expect(ai.complete).not.toHaveBeenCalled();
+    expect(repository.markInboundProcessed).toHaveBeenCalledWith(message);
+    expect(warning).toHaveBeenCalledWith(expect.objectContaining({ reason: "QUOTA_EXCEEDED" }), expect.any(String));
+  });
+
+  it("keeps the allowed path and does not await reconciliation", async () => {
+    const { processor, gateway, ai } = setup();
+    await expect(processor.process(message)).resolves.toBe("answered");
+    expect(consumeAiInteractionMock).toHaveBeenCalledWith("tenant-1", "inbound_reply", expect.any(String), expect.any(Object));
+    expect(ai.complete).toHaveBeenCalled();
+    expect(gateway.sendText).toHaveBeenCalled();
+  });
+
+  it("still delivers the reply when reconciliation fails asynchronously", async () => {
+    reconcileAiTurnFromUsageLogsMock.mockRejectedValueOnce(new Error("reconcile unavailable"));
+    const { processor, gateway, ai } = setup();
+    await expect(processor.process(message)).resolves.toBe("answered");
+    expect(ai.complete).toHaveBeenCalled();
+    expect(gateway.sendText).toHaveBeenCalled();
   });
 
 });

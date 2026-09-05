@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { planLimitReachedError } from "./errors.js";
-import { getCurrentPeriod } from "./usage.js";
+
 
 type SubscriptionIdRow = { plan_id: string };
 type BoolRow = { is_enforced: boolean };
@@ -19,6 +19,6 @@ export async function assertLimitWithinTransaction(client: PoolClient, tenantId:
   let usage = 0;
   if (limitKey === "MAX_USERS") { const x = await client.query<UsedRow>("SELECT count(*)::int used FROM workspace_members WHERE workspace_id=$1 AND status='active'", [tenantId]); usage = Number(x.rows[0].used); }
   else if (limitKey === "MAX_WHATSAPP_CONNECTIONS") { const x = await client.query<UsedRow>("SELECT count(*)::int used FROM whatsapp_sessions WHERE tenant_id=$1", [tenantId]); usage = Number(x.rows[0].used); }
-  else if (limitKey === "MAX_AI_INTERACTIONS") { const period = await getCurrentPeriod(client, tenantId); const x = await client.query<UsedRow>("SELECT COALESCE(used,0) used FROM usage_counters WHERE tenant_id=$1 AND period_start=$2 AND metric_key=$3", [tenantId, period.period_start, limitKey]); usage = Number(x.rows[0]?.used ?? 0); }
+  else if (limitKey === "MAX_AI_INTERACTIONS") { const x = await client.query<UsedRow>("SELECT COALESCE(included_usage,0)+COALESCE(rollover_usage,0)+COALESCE(bonus_usage,0)+COALESCE(overage_usage,0) used FROM usage_periods WHERE tenant_id=$1 AND status='OPEN'", [tenantId]); usage = Number(x.rows[0]?.used ?? 0); }
   if (usage + delta > max) throw planLimitReachedError(limitKey, usage, max, r.rows[0]?.plan_name ?? "");
 }

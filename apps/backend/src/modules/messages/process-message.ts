@@ -62,7 +62,7 @@ import {
   safeAiToolLabel
 } from "../realtime/ai-turn-contract.js";
 import { capabilityForAiTool, filterAiToolsByCapabilities } from "../../capabilities/ai-tools.js";
-import { reserveAiInteraction } from "../../billing/ai-metering.js";
+import { consumeAiInteraction, reconcileAiTurnFromUsageLogs } from "../../billing/ai-consumption.js";
 import type { CapabilityKey } from "../operations/feature-flags.js";
 import type {
   AiTurnProgressPublisher,
@@ -1132,6 +1132,7 @@ export class MessageProcessor {
               tenantId: message.tenantId,
               conversationId: context.conversationId,
               messageId: context.messageId,
+              requestId,
               ...usage
             });
           const transcription = await this.ai.transcribe({
@@ -1167,6 +1168,7 @@ export class MessageProcessor {
               tenantId: message.tenantId,
               conversationId: context.conversationId,
               messageId: context.messageId,
+              requestId,
               ...usage
             });
           const analysis = await this.ai.analyzeMedia({
@@ -1438,6 +1440,7 @@ export class MessageProcessor {
         tenantId: message.tenantId,
         conversationId: context.conversationId,
         messageId: context.messageId,
+        requestId,
         ...usage
       });
 
@@ -2498,12 +2501,14 @@ export class MessageProcessor {
       // simultâneas do mesmo tenant lessem o mesmo saldo e estourassem a franquia.
       // A chave é derivada do turno lógico, então retentativa do mesmo job não
       // consome duas vezes.
-      if (!await reserveAiInteraction(message.tenantId, "inbound_reply", requestId, { conversationId: context.conversationId, messageId: context.messageId })) {
-        logger.warn({ event: "ai_interaction_quota_reached", tenantId: message.tenantId, conversationId: context.conversationId, purpose: "inbound_reply" }, "AI inbound reply skipped because the billing quota was reached");
+      const consumption = await consumeAiInteraction(message.tenantId, "inbound_reply", requestId, { conversationId: context.conversationId, messageId: context.messageId });
+      if (!consumption.allowed) {
+        logger.warn({ event: "ai_interaction_blocked", tenantId: message.tenantId, conversationId: context.conversationId, purpose: "inbound_reply", reason: consumption.reason }, consumption.reason === "BILLING_UNAVAILABLE" ? "AI inbound reply skipped because billing is unavailable" : "AI inbound reply skipped because the billing quota was reached");
         await this.repository.markInboundProcessed(message);
         return "fallback";
       }
       result = await sendReply();
+      void reconcileAiTurnFromUsageLogs(message.tenantId, "inbound_reply", requestId).catch(() => {});
     } catch (error) {
       await recordQualitySignal();
       try {

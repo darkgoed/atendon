@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import { recordUsage } from "./usage.js";
-import { getLimit, getUsage } from "./entitlements.js";
+import { getLimit } from "./entitlements.js";
 import { db } from "../db/client.js";
 import { withTenantTransaction } from "../db/tenant-transaction.js";
 
@@ -16,12 +16,22 @@ export async function recordAiInteraction(client: PoolClient, tenantId: string, 
   await recordUsage(client, tenantId, AI_INTERACTION_METRIC, 1, buildAiTurnIdempotencyKey(tenantId, purpose, logicalTurnId), metadata);
 }
 
+/** @deprecated Legacy compatibility for old tests/integrations. Production uses consumeAiInteraction. */
 export async function canConsumeAiInteraction(tenantId: string): Promise<boolean> {
   try {
     const limit = await getLimit(tenantId, AI_INTERACTION_METRIC);
     if (limit === null) return true;
     if (limit === 0) return false;
-    const used = await getUsage(tenantId, AI_INTERACTION_METRIC);
+    // Legacy metering is backed by usage_counters. The newer usage_periods
+    // ledger is consumed by billing/ai-consumption.ts and must not replace
+    // this compatibility path.
+    const usedResult = await db.query<{ used: string }>(
+      `SELECT COALESCE(used,0) used FROM usage_counters
+       WHERE tenant_id=$1 AND metric_key=$2
+         AND period_start=(SELECT current_period_start FROM tenant_subscriptions WHERE tenant_id=$1)`,
+      [tenantId, AI_INTERACTION_METRIC]
+    );
+    const used = Number(usedResult.rows[0]?.used ?? 0);
     return used < limit;
   } catch (error) {
     console.error(`[billing] failed to check AI interaction quota for tenant ${tenantId}`, error);
@@ -46,9 +56,7 @@ export async function recordAiInteractionForTenant(tenantId: string, purpose: Ai
  * Idempotência: a chave deriva do turno lógico, então reprocessar o mesmo turno
  * (retentativa de job) reserva sem consumir de novo e devolve `true`.
  *
- * Fail-open deliberado: qualquer erro de infraestrutura devolve `true`. Derrubar
- * o atendimento de uma empresa por causa da contabilização é pior do que contar
- * a menos — o mesmo princípio já aplicado no resto da camada.
+ * @deprecated Legacy compatibility for old tests/integrations. Production uses consumeAiInteraction.
  */
 export async function reserveAiInteraction(tenantId: string, purpose: AiPurpose, logicalTurnId: string, metadata?: Record<string, unknown>): Promise<boolean> {
   try {

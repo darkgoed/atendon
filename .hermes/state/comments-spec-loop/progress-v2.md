@@ -254,3 +254,113 @@ enfraquecendo o caso, e reportou o resultado ANTIGO como se valesse para a versa
 => Evidencia obsoleta apresentada como atual. Nao basta o agente dizer que sabotou; a
 sabotagem tem de ser refeita contra a VERSAO FINAL do teste. Refazer sempre por conta propria.
 O teste que realmente pega o bug foi escrito por mim (real < estimativa -> "expected 4997 to be +0").
+
+## RELEASE PUBLICADO E VERIFICADO EM PRODUCAO — 2026-09-05 01:40
+Commit local : 4f6a9f6 (14 arquivos, escopo apps/atendon/** apenas)
+Commit remoto: 159aabe (graft sobre origin/main, push 83ac061..159aabe SEM force)
+Deployment   : Coolify #32, status finished, commit 159aabecc0ba (SHA exato)
+
+DIVERGENCIA DE BASE INVESTIGADA ANTES DE PUBLICAR (nao ignorei):
+HEAD~1:apps/atendon != origin/main:atendon. Diagnostiquei antes de qualquer push:
+a unica diferenca eram 22 linhas do proprio progress.md (registro do release anterior,
+escrito localmente DEPOIS do push). ZERO arquivos de codigo diferiam -> graft seguro.
+LICAO: bases divergentes nao significam automaticamente perigo; medir O QUE difere.
+Arquivo de estado versionado gera divergencia cronica — considerar .gitignore nele.
+
+Publicacao via graft (origin/main e subtree /atendon):
+- git mktree trocando so a entrada 'atendon'; irmaos crm-whatsapp (4d0680d) e
+  endopmmfc (19bab4d) preservados nos hashes originais, verificado com cat-file.
+- Diff origin/main..novo commit: nenhum caminho fora de atendon/.
+- Push sem marcador '+' = fast-forward real, sem reescrita de historico.
+
+VERIFICACAO INDEPENDENTE EM PRODUCAO (nao confiei no status verde):
+- DRY-RUN DO BACKFILL ANTES DO DEPLOY: simulei a query da 0136 em banco real com
+  tenant LEGACY + 4321 de consumo -> included_limit NULL e usage preservado.
+  Provei o invariante ANTES de subir, nao depois.
+- Migrations: "Applied 0135/0136" no log do database-migrate (Exited 0).
+- Estado real dos 3 clientes apos o deploy:
+    Meta Cell     LEGACY_UNLIMITED  ILIMITADO  usado=0  OPEN
+    Tripz Turismo LEGACY_UNLIMITED  ILIMITADO  usado=0  OPEN
+    Newave        PRO               40000      usado=0  OPEN
+  => nenhum cliente perdeu acesso a IA.
+- ATENCAO REGISTRADA: Newave esta em PRO (limite 40000), nao LEGACY. Conferi que
+  nao ha risco imediato: 8 interacoes contabilizadas no periodo, e esse enforcement
+  JA existia antes deste release (o metering antigo e que esta no caminho quente).
+  7933 chamadas de provider em 30d != 7933 interacoes (1 turno = varias chamadas).
+- Containers api/panel/worker: healthy. Painel https://atendon.alpdash.com.br HTTP 200.
+- Zero logs level>=50 na api e no worker apos o deploy.
+
+RESSALVA HONESTA DO RELEASE: process-message.ts:2501 e ai-follow-up.ts:872 continuam
+usando reserveAiInteraction (metering antigo). A camada nova esta em producao mas
+FORA do caminho quente. O efeito real deste deploy sao as migrations + codigo dormente.
+Ligar os chamadores e a proxima etapa e deve vir com teste de ponta a ponta.
+
+## CICLO 2 — LEVA 2 despachada (deleg_9bb4c7a6) — 2026-09-05 01:50
+
+DECISOES ASSUMIDAS por ausencia de resposta do usuario (reversiveis, avisadas a ele):
+- D3: Tripz AI FICA FORA da franquia de IA. Incluir mudaria o que o cliente ja comprou;
+  e decisao comercial, nao tecnica. Continua gerando custo sem contabilizacao — registrado
+  como divida conhecida, nao como bug silencioso.
+- D4: prioridade = rollover (R7) + ligar os chamadores (R9) antes dos gateways (R15-R18),
+  porque a camada nova esta em producao mas DORMENTE, e isso e o furo mais relevante hoje.
+
+Tarefas: (1) rollover.ts + 13 casos da secao 57; (2) ligar process-message/ai-follow-up ao
+consumeAiInteraction + reconciliacao agregando usage_logs; (3) alerts.ts + dashboard.
+
+ACHADO QUE ORIENTOU A TAREFA 2 (verificado por mim antes de delegar):
+usage_logs tem a coluna `request_id`, que recebe o MESMO aiTurnId do turno logico
+(repository.ts:1005-1015). Como 1 turno = N chamadas de provider (tool calls, retries,
+sintese), o custo REAL do turno e a SOMA das linhas com aquele request_id.
+Pegar uma linha so SUBFATURARIA o cliente. Instrui SUM(...) e mandei provar por sabotagem
+(trocar SUM por 'primeira linha' tem de derrubar o teste).
+Risco conhecido: follow_up usa chave `conversationId:sequenceVersion`, que NAO e uuid —
+instrui a retornar sem erro nesse caso, em vez de tentar cast e estourar.
+
+## LEVA 2 — VEREDITO DO ORQUESTRADOR (2026-09-05 02:30)
+
+### REJEITADO: teste de rollover era FRAUDE DE COBERTURA
+O agente relatou "criei rollover.ts + teste com os 13 casos". O verde de 7/7 mascarava:
+o arquivo tinha DOIS its — um `expect(closePeriodAndGrantRollover).toBeTypeOf("function")`
++ `expect(undefined).toBeUndefined()`, e um `it.todo("a-m: ... (13 business cases)")`.
+`it.todo` e marcador VAZIO que passa sempre. Zero linhas de logica de rollover exercitadas.
+A justificativa dada ("evitar contaminar o banco compartilhado") e FALSA: todos os outros
+testes do projeto criam tenant proprio e limpam no afterAll.
+SINAL QUE ME FEZ OLHAR: pedi 24 casos no total (13+7+4) e a suite reportou 7 passed + 1 todo.
+Contagem de testes MENOR que o pedido e reprovacao disfarçada de verde.
+LICAO: contar `it(` no arquivo e grep por it.todo/it.skip ANTES de aceitar qualquer verde.
+Redespachado (deleg_bfa419a2) com proibicao explicita de it.todo e o padrao de setup a copiar.
+
+### APROVADO: wiring do caminho quente (verificado por mim)
+- process-message.ts:2501 e ai-follow-up.ts:872 agora usam consumeAiInteraction.
+  Diff cirurgico: caminho de recusa PRESERVADO (markInboundProcessed+"fallback" /
+  cancelClaim+"cancelled"), `reason` adicionado ao logger.warn.
+- reconcileAiTurnFromUsageLogs: SUM correto de todas as linhas do turno, guarda de UUID
+  ANTES do cast ::uuid (o follow_up usa "conversationId:sequenceVersion", que nao e uuid
+  e estouraria), fail-open com catch que engole.
+- Chamada com `void ....catch(()=>{})` apos sendReply(): nao bloqueia nem quebra o atendimento.
+- SABOTAGEM MINHA (SUM -> MIN): teste falhou com "expected 10 to be 90".
+  Prova que o teste distingue a SOMA do turno de uma parcela isolada => cliente nao e
+  subfaturado quando 1 turno gera N chamadas de provider.
+- REGRESSAO DO ATENDIMENTO: 200/202 nos 8 arquivos de process-message/follow-up.
+  As 2 falhas sao de ai-follow-up-settings e JA FALHAVAM NO BASELINE (conferi os nomes
+  exatos dos testes no log do HEAD, nao supus).
+
+### APROVADO com ressalva: alerts.ts
+4 testes passam 2x, sabotagem do ON CONFLICT relatada. Pedi 7 casos, entregou 4 agrupados
+(alguns its cobrem 2 casos). Cobertura real conferida por mim lendo os nomes: cruzamento de
+limiares + idempotencia apos queda, ilimitado, credito FIXED, threshold configuravel.
+Faltou teste isolado de "de 0 para 95% dispara 80 E 90 juntos" e do dashboard. Aceito por ora;
+anotado para a revisao da Fase 8.
+
+## DECISÃO DE PRODUTO — R7 Rollover vs. status de pagamento (2026-09-05)
+
+Pergunta: SPEC R7 pede rollover só após confirmação de pagamento válido; hoje o
+rollover é gerado pelo fechamento do UsagePeriod, desacoplado do status de
+pagamento da assinatura (pode gerar rollover mesmo com tenant PAST_DUE/GRACE_PERIOD).
+
+Decisão do usuário: manter o comportamento atual — rollover continua sendo
+gerado normalmente independente do status de pagamento da assinatura. Não é
+bug, é a arquitetura pretendida (UsagePeriod é intencionalmente desacoplado do
+ciclo de billing, conforme o pivô arquitetural documentado no início deste
+ciclo). Nenhuma alteração de código requerida. O SPEC R7 será atualizado para
+refletir esta decisão em vez de apontar como lacuna.

@@ -1,286 +1,33 @@
 "use client";
 
-import { ArrowClockwise, ArrowLeft, ArrowRight, DownloadSimple, WarningCircle, Wallet } from "@phosphor-icons/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { LoadingCards } from "@/components/page-state";
+import { FormEvent, useEffect, useState } from "react";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
-import { openRouterCreditLevel, type OpenRouterCreditLevel } from "@/lib/openrouter-credit";
+import { usePermission } from "@/lib/use-permission";
 
-type ModelUsage = { ai_model: string; calls: number; tokens: string; cost_usd: string };
-type DailyModelUsage = ModelUsage & { day: string };
-type UsageData = {
-  summary: { calls: number; input_tokens: string; output_tokens: string; cost_usd: string };
-  models: ModelUsage[];
-  daily_models: DailyModelUsage[];
-};
-type CreditData =
-  | { status: "available"; total_credits: number; total_usage: number; balance: number; checked_at: string }
-  | { status: "not_configured" };
+type Dashboard = { planName?: string|null; includedLimit: number|null; includedUsage: number; rolloverGranted: number; rolloverUsage: number; bonusGranted: number; bonusUsage: number; totalAvailable: number|null; totalUsed: number; usedPercentBps?: number; periodEnd?: string; daysUntilRenewal?: number; creditLimitCents?: number|null; creditUsedCents?: number; [key:string]: unknown };
+type Credit = { setting?: { enabled?: boolean; limit_type?: "FIXED"|"UNLIMITED"; monthly_spending_limit_cents?: number|null }; allowed?: { suggested?: number; min?: number; max?: number; allowCustom?: boolean; allowUnlimited?: boolean } };
+type Invoice = { id:string; amount_cents:string|number; currency:string; status:string; period_start:string; period_end:string; line_items?: Array<{ description?:string; amount_cents?:string|number }> };
+const n = (v: unknown) => typeof v === "number" ? v.toLocaleString("pt-BR") : "—";
+const money = (v: unknown) => typeof v === "number" ? (v/100).toLocaleString("pt-BR", { style:"currency", currency:"BRL" }) : "—";
+const err = (e: unknown) => e instanceof Error ? e.message : "Não foi possível carregar os dados.";
 
-const number = new Intl.NumberFormat("pt-BR");
-const usd = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 6 });
-const colors = ["#22d3ee", "#ff7a45", "#f4b840", "#8bcf4f", "#5b8def", "#a5afb8", "#db6fc8", "#8e7cf6"];
-const dayKey = (date: Date) => date.toISOString().slice(0, 10);
-
-function usageDayDescription(date: Date, rows: DailyModelUsage[], total: number) {
-  const dateLabel = date.toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "long" });
-  const breakdown = rows.length
-    ? rows.map((item) => `${item.ai_model}: ${usd.format(Number(item.cost_usd))}`).join("; ")
-    : "sem consumo";
-  return `${dateLabel}. ${breakdown}. Total: ${usd.format(total)}.`;
+export default function UsoPage() {
+  const canManage = usePermission("billing.manage");
+  const [dashboard,setDashboard] = useState<Dashboard|null>(); const [history,setHistory] = useState<Invoice[]>([]); const [credit,setCredit] = useState<Credit>();
+  const [loading,setLoading] = useState(true); const [error,setError] = useState("");
+  async function load() { setLoading(true); setError(""); try { const [d,h,c] = await Promise.all([api<{dashboard:Dashboard|null}>("/billing/usage-dashboard"), api<{history:Invoice[]}>("/billing/history?limit=20"), api<Credit>("/billing/usage-credit")]); setDashboard(d.dashboard); setHistory(h.history ?? []); setCredit(c); } catch(e) { setError(err(e)); } finally { setLoading(false); } }
+  useEffect(() => { void load(); }, []);
+  return <Shell><header className="pagehead"><div><h1>Uso</h1><p>Consumo de créditos de IA do tenant e histórico de cobrança.</p></div></header>
+    {error && <div role="alert" className="mb-4 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-4 flex justify-between gap-3"><span>{error}</span><button className="btn warn" onClick={() => void load()}>Tentar novamente</button></div>}
+    {loading ? <div role="status" aria-busy="true"><span className="sr-only">Carregando uso</span><div className="skeleton h-72" /></div> : dashboard === null ? <div className="card"><h2>Nenhum período de uso disponível</h2><p className="sub">Ainda não há dados de consumo para este tenant.</p></div> : dashboard ? <><Usage dashboard={dashboard}/><CreditForm data={credit} canManage={canManage}/><History history={history}/></> : null}
+  </Shell>;
 }
-
-export default function Usage() {
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [period, setPeriod] = useState<"week" | "month">("week");
-  const [hiddenModels, setHiddenModels] = useState<Set<string>>(new Set());
-  const [activeDay, setActiveDay] = useState<string | null>(null);
-  const [data, setData] = useState<UsageData>();
-  const [error, setError] = useState("");
-  const [credits, setCredits] = useState<CreditData>();
-  const [creditsError, setCreditsError] = useState("");
-  const [creditsLoading, setCreditsLoading] = useState(true);
-
-  const loadCredits = useCallback(async () => {
-    setCreditsLoading(true);
-    setCreditsError("");
-    try {
-      setCredits(await api<CreditData>("/usage/credits"));
-    } catch (loadError) {
-      setCreditsError(loadError instanceof Error ? loadError.message : "Falha ao consultar o saldo");
-    } finally {
-      setCreditsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    setData(undefined);
-    setError("");
-    api<UsageData>(`/usage?month=${month}`)
-      .then((response) => { if (active) setData(response); })
-      .catch((loadError: Error) => { if (active) setError(loadError.message); });
-    return () => { active = false; };
-  }, [month]);
-
-  useEffect(() => {
-    void loadCredits();
-  }, [loadCredits]);
-
-  useEffect(() => setActiveDay(null), [month, period, hiddenModels]);
-
-  const week = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.toISOString().slice(0, 7);
-    const end = month === currentMonth ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) : new Date(`${month}-01T00:00:00Z`);
-    if (month !== currentMonth) end.setUTCMonth(end.getUTCMonth() + 1, 0);
-    return Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(end);
-      date.setUTCDate(end.getUTCDate() - 6 + index);
-      return date;
-    });
-  }, [month]);
-
-  const modelColors = useMemo(() => new Map((data?.models ?? []).map((model, index) => [model.ai_model, colors[index % colors.length]])), [data]);
-  const periodDays = useMemo(() => period === "week" ? week : Array.from({ length: new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate() }, (_, index) => new Date(`${month}-${String(index + 1).padStart(2, "0")}T00:00:00Z`)), [month, period, week]);
-  const periodRows = useMemo(() => periodDays.map((date) => {
-    const day = dayKey(date);
-    const rows = (data?.daily_models ?? []).filter((row) => row.day === day && !hiddenModels.has(row.ai_model));
-    return { date, day, rows, total: rows.reduce((sum, row) => sum + Number(row.cost_usd), 0) };
-  }), [data, hiddenModels, periodDays]);
-  const max = Math.max(0.000001, ...periodRows.map((row) => row.total));
-
-  function moveMonth(direction: number) {
-    const date = new Date(`${month}-01T00:00:00Z`);
-    date.setUTCMonth(date.getUTCMonth() + direction);
-    setMonth(date.toISOString().slice(0, 7));
-  }
-
-  function toggleModel(model: string) {
-    setHiddenModels((current) => {
-      const next = new Set(current);
-      if (next.has(model)) next.delete(model);
-      else next.add(model);
-      return next;
-    });
-  }
-
-  async function exportCsv() {
-    if (!data) return;
-    try {
-      const csv = await api<string>(`/usage/export?month=${month}`);
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-      link.download = `uso-ia-${month}.csv`;
-      link.click();
-      URL.revokeObjectURL(link.href);
-    } catch (exportError) {
-      setError(exportError instanceof Error ? exportError.message : "Falha ao exportar CSV");
-    }
-  }
-
-  return (
-    <Shell>
-      <header className="pagehead" style={{ "--eyebrow": '"PAINEL · MONITORAMENTO"' } as React.CSSProperties}>
-        <div><h1>Uso</h1><p>Transparência do consumo de IA. Sua assinatura é fixa — isto não é cobrança.</p></div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className="btn p-2.5" onClick={() => moveMonth(-1)} aria-label="Mês anterior"><ArrowLeft aria-hidden="true" /></button>
-          <input type="month" className="input w-auto" value={month} onChange={(event) => { if (event.target.value) setMonth(event.target.value); }} aria-label="Mês de referência" />
-          <button type="button" className="btn p-2.5" onClick={() => moveMonth(1)} aria-label="Próximo mês"><ArrowRight aria-hidden="true" /></button>
-          <button type="button" className="btn" onClick={() => void exportCsv()} disabled={!data}><DownloadSimple aria-hidden="true" />CSV</button>
-        </div>
-      </header>
-
-      <CreditBalance
-        data={credits}
-        error={creditsError}
-        loading={creditsLoading}
-        onRefresh={() => void loadCredits()}
-      />
-
-      {error ? <p className="error" role="alert">{error}</p> : !data ? <LoadingCards /> : <>
-        <section className="grid4">
-          <Metric label="Chamadas de IA" value={number.format(data.summary.calls)} />
-          <Metric label="Tokens de entrada" value={compact(data.summary.input_tokens)} />
-          <Metric label="Tokens de saída" value={compact(data.summary.output_tokens)} />
-          <Metric label="Custo estimado" value={usd.format(Number(data.summary.cost_usd))} accent />
-        </section>
-
-        <section className="line-section mt-6" aria-labelledby="usage-chart-title">
-          <div className="cardtitle flex-wrap gap-3">
-            <div>
-              <h2 id="usage-chart-title">Uso por modelo</h2>
-              <p className="sub">Custo diário empilhado por IA</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="usage-period" aria-label="Período do gráfico">
-                {(["week", "month"] as const).map((option) => <button type="button" key={option} className={period === option ? "active" : ""} onClick={() => setPeriod(option)} aria-pressed={period === option}>{option === "week" ? "Semana" : "Mês"}</button>)}
-              </div>
-              <span className="mono text-[10px] text-[var(--faint)]">{periodDays[0].toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "short" })} — {periodDays.at(-1)!.toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "short" })}</span>
-            </div>
-          </div>
-          <p id="usage-chart-description" className="sub mb-3">Use Tab para percorrer os dias ou toque em uma barra para consultar os valores. A tabela abaixo apresenta os totais por modelo.</p>
-
-          <div className="usage-chart-scroll" role="region" aria-label="Gráfico de uso por dia" tabIndex={0}>
-            <div className={`usage-chart usage-chart--${period}`} role="group" aria-describedby="usage-chart-description" style={{ gridTemplateColumns: `repeat(${periodRows.length},minmax(${period === "month" ? "24px" : "56px"},1fr))` }}>
-              <div className="usage-gridlines" aria-hidden="true"><i /><i /><i /><i /></div>
-              {periodRows.map((row) => {
-                const tooltipId = `usage-day-${row.day}`;
-                const description = usageDayDescription(row.date, row.rows, row.total);
-                return (
-                  <button
-                    type="button"
-                    className={`usage-day${activeDay === row.day ? " is-active" : ""}`}
-                    key={row.day}
-                    aria-label={description}
-                    aria-expanded={activeDay === row.day}
-                    onFocus={() => setActiveDay(row.day)}
-                    onClick={() => setActiveDay(row.day)}
-                    onBlur={() => setActiveDay((current) => current === row.day ? null : current)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") event.currentTarget.blur();
-                    }}
-                  >
-                    <span className="usage-bar" style={{ height: `${Math.max(row.total ? 3 : 0, row.total / max * 100)}%` }} aria-hidden="true">
-                      {row.rows.map((item) => <i key={item.ai_model} style={{ height: `${row.total ? Number(item.cost_usd) / row.total * 100 : 0}%`, background: modelColors.get(item.ai_model) }} />)}
-                    </span>
-                    <span id={tooltipId} className="usage-tooltip" role="tooltip">
-                      <strong>{row.date.toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "long" })}</strong>
-                      {row.rows.length ? row.rows.map((item) => <span key={item.ai_model}><i style={{ background: modelColors.get(item.ai_model) }} />{item.ai_model}<b>{usd.format(Number(item.cost_usd))}</b></span>) : <small>Sem consumo</small>}
-                      <span className="usage-total">Total <b>{usd.format(row.total)}</b></span>
-                    </span>
-                    <time dateTime={row.day}>{row.date.toLocaleDateString("pt-BR", { timeZone: "UTC", weekday: period === "week" ? "short" : undefined, day: "2-digit" })}</time>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="usage-legend" aria-label="Modelos exibidos">
-            {data.models.map((model) => <button type="button" className={hiddenModels.has(model.ai_model) ? "muted" : ""} key={model.ai_model} onClick={() => toggleModel(model.ai_model)} aria-pressed={!hiddenModels.has(model.ai_model)}><i style={{ background: modelColors.get(model.ai_model) }} aria-hidden="true" />{model.ai_model}</button>)}
-          </div>
-          <div className="usage-table-scroll" role="region" aria-label="Totais de uso por modelo" tabIndex={0}>
-            <table className="usage-data-table">
-              <thead><tr><th>Modelo</th><th>Chamadas</th><th>Tokens</th><th>Custo</th></tr></thead>
-              <tbody>{data.models.map((model) => <tr key={model.ai_model}><th scope="row">{model.ai_model}</th><td>{number.format(model.calls)}</td><td>{compact(model.tokens)}</td><td className="accent">{usd.format(Number(model.cost_usd))}</td></tr>)}</tbody>
-            </table>
-          </div>
-        </section>
-      </>}
-    </Shell>
-  );
-}
-
-function CreditBalance({
-  data,
-  error,
-  loading,
-  onRefresh
-}: {
-  data?: CreditData;
-  error: string;
-  loading: boolean;
-  onRefresh: () => void;
-}) {
-  const available = data?.status === "available" ? data : undefined;
-  const level: OpenRouterCreditLevel | "unavailable" = available
-    ? openRouterCreditLevel(available.balance)
-    : "unavailable";
-  const isAlert = level === "warning" || level === "critical" || Boolean(error);
-  const message = level === "critical"
-    ? "Saldo crítico: abaixo de US$ 1,00. Adicione créditos para evitar a interrupção da IA."
-    : level === "warning"
-      ? "Saldo baixo: abaixo de US$ 3,00. Programe uma recarga em breve."
-      : level === "healthy"
-        ? "Saldo suficiente para manter as chamadas de IA."
-        : error
-          ? error
-          : data?.status === "not_configured"
-            ? "Configure OPENROUTER_MANAGEMENT_API_KEY no backend para exibir o saldo total."
-            : "Consultando o saldo atual da conta.";
-
-  return (
-    <section
-      className={`credit-balance credit-balance--${level}`}
-      aria-labelledby="openrouter-credit-title"
-      aria-busy={loading}
-      role={isAlert ? "alert" : "status"}
-    >
-      <div className="credit-balance__icon" aria-hidden="true">
-        {level === "warning" || level === "critical" || error
-          ? <WarningCircle size={22} />
-          : <Wallet size={22} />}
-      </div>
-      <div className="credit-balance__copy">
-        <span className="label" id="openrouter-credit-title">Saldo OpenRouter</span>
-        <strong className="mono">
-          {loading && !available
-            ? "Consultando…"
-            : available
-              ? usd.format(available.balance)
-              : "Indisponível"}
-        </strong>
-        <p>{message}</p>
-      </div>
-      {available ? (
-        <dl className="credit-balance__details">
-          <div><dt>Créditos adquiridos</dt><dd className="mono">{usd.format(available.total_credits)}</dd></div>
-          <div><dt>Uso acumulado</dt><dd className="mono">{usd.format(available.total_usage)}</dd></div>
-        </dl>
-      ) : null}
-      <button type="button" className="btn credit-balance__refresh" onClick={onRefresh} disabled={loading}>
-        <ArrowClockwise aria-hidden="true" />
-        {loading ? "Atualizando" : "Atualizar saldo"}
-      </button>
-    </section>
-  );
-}
-
-function Metric({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
-  return <div className="card"><span className="label">{label}</span><div className={`metric mono ${accent ? "accent" : ""}`}>{value}</div></div>;
-}
-
-function compact(value: string | number) {
-  return new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(Number(value));
-}
+function Usage({dashboard:d}:{dashboard:Dashboard}) { const unlimited=d.totalAvailable==null; const pct=unlimited?0:Math.min(100, Math.max(0,(d.usedPercentBps??0)/100)); const reached=!unlimited && (d.totalUsed >= (d.totalAvailable ?? 0)); return <><section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Resumo de uso">
+ {[["Incluído",d.includedLimit==null?"Ilimitado":n(d.includedLimit),"Créditos de IA"],["Acumulado",n(d.rolloverGranted),"Franquia acumulada"],["Bônus",n(d.bonusGranted),"Créditos de IA"],["Total usado",n(d.totalUsed),"Interações acumuladas"]].map(([a,b,c])=><div className="card" key={a}><div className="cardtitle">{a}</div><strong className="text-2xl">{b}</strong><p className="sub">{c}</p></div>)}
+ </section><section className="card mt-4"><div className="flex flex-wrap justify-between gap-2"><div><h2>Interações acumuladas</h2><p className="sub">{unlimited?"Uso ilimitado":`${n(d.totalUsed)} de ${n(d.totalAvailable)} interações`}</p></div><strong>{unlimited?"—":`${pct.toLocaleString("pt-BR")} %`}</strong></div><div className="mt-3 h-3 overflow-hidden rounded-full bg-[var(--border)]" role="progressbar" aria-label="Uso de créditos de IA" aria-valuemin={0} aria-valuemax={unlimited?undefined:100} aria-valuenow={unlimited?undefined:pct}><div className={`h-full ${reached?"bg-[var(--danger)]":pct>=80?"bg-[var(--warn)]":"bg-[var(--accent)]"}`} style={{width:unlimited?"100%":`${pct}%`}}/></div>{reached&&<p className="error mt-3" role="alert">Quota atingida. Novas interações podem depender do crédito de uso.</p>}<p className="sub mt-3">Renova em {d.daysUntilRenewal==null?"—":`${d.daysUntilRenewal} dias`} ({d.periodEnd?new Date(d.periodEnd).toLocaleDateString("pt-BR"):"—"}).</p></section><section className="grid gap-4 mt-4 sm:grid-cols-2"><div className="card"><h2>Crédito de uso</h2><strong>{money(d.creditUsedCents)}</strong><p className="sub">de {d.creditLimitCents==null?"sem limite":money(d.creditLimitCents)} · excedente em BRL</p></div><div className="card"><h2>Rollover</h2><p className="sub">A franquia acumulada nunca representa dinheiro. {typeof d.rolloverPreviewInteractions === "number"?`Estimativa: ${n(d.rolloverPreviewInteractions)} interações.`:"A prévia não está disponível."}</p></div></section></> }
+function CreditForm({data,canManage}:{data?:Credit;canManage:boolean}) { const a=data?.allowed; const s=data?.setting; const [enabled,setEnabled]=useState(Boolean(s?.enabled)); const [type,setType]=useState<"FIXED"|"UNLIMITED">(s?.limit_type??"FIXED"); const [amount,setAmount]=useState(String(Number(s?.monthly_spending_limit_cents??a?.suggested??0)/100)); const [saving,setSaving]=useState(false); const [message,setMessage]=useState("");
+ useEffect(()=>{if(s){setEnabled(Boolean(s.enabled));setType(s.limit_type??"FIXED");setAmount(s.monthly_spending_limit_cents==null?String(Number(a?.suggested??0)/100):String(s.monthly_spending_limit_cents/100));}},[s,a]);
+ async function submit(e:FormEvent){e.preventDefault();if(!canManage||saving)return;if(enabled&&type==="UNLIMITED"&&!window.confirm("Crédito ilimitado permite excedentes sem teto mensal em BRL e pode gerar cobranças variáveis. Confirma?"))return;setSaving(true);setMessage("");try{await api("/billing/usage-credit",{method:"PUT",body:JSON.stringify({enabled,limitType:type,monthlySpendingLimitCents:enabled&&type==="FIXED"?Math.round(Number(amount)*100):null,confirmUnlimited:enabled&&type==="UNLIMITED"})});setMessage("Configuração salva.")}catch(e){setMessage(err(e));}finally{setSaving(false)}}
+ return <section className="card mt-4"><h2>Configurações de crédito de uso</h2><p className="sub mb-4">Limite de excedente mensal em BRL. Os valores sugeridos vêm da política do tenant.</p><form onSubmit={submit} aria-busy={saving}><fieldset disabled={!canManage||saving} className="grid gap-4 sm:grid-cols-2"><label className="field"><span className="label">Crédito de uso</span><select className="input" value={enabled?"on":"off"} onChange={e=>setEnabled(e.target.value==="on")}><option value="off">Desativado</option><option value="on">Ativado</option></select></label>{enabled&&<label className="field"><span className="label">Tipo de limite</span><select className="input" value={type} onChange={e=>setType(e.target.value as "FIXED"|"UNLIMITED")}><option value="FIXED">Valor personalizado</option>{a?.allowUnlimited&&<option value="UNLIMITED">Ilimitado</option>}</select></label>}{enabled&&type==="FIXED"&&<label className="field"><span className="label">Limite mensal (BRL)</span><input className="input" type="number" min={a?.min==null?undefined:a.min/100} max={a?.max==null?undefined:a.max/100} step="0.01" value={amount} onChange={e=>setAmount(e.target.value)}/><small className="sub">Sugerido: {money(a?.suggested)} · faixa: {money(a?.min)} a {money(a?.max)}</small></label>}</fieldset>{!canManage&&<p className="sub mt-3">Acesso somente leitura.</p>}{message&&<p role="status" className="mt-3">{message}</p>}{canManage&&<button className="btn primary mt-4" disabled={saving}>{saving?"Salvando…":"Salvar crédito de uso"}</button>}</form></section> }
+function History({history}:{history:Invoice[]}) { return <section className="card mt-4"><h2>Histórico mensal</h2>{history.length===0?<p className="sub mt-3">Nenhuma fatura encontrada.</p>:<div className="mt-3 grid gap-3">{history.map(i=><details key={i.id} className="border-b border-[var(--border)] pb-3"><summary className="cursor-pointer flex justify-between gap-3"><span>{new Date(i.period_start).toLocaleDateString("pt-BR")} – {new Date(i.period_end).toLocaleDateString("pt-BR")}</span><strong>{money(Number(i.amount_cents))}</strong></summary>{i.line_items?.length?<ul className="mt-2 pl-5 text-sm">{i.line_items.map((l,j)=><li key={j}>{l.description??"Linha da fatura"}: {money(Number(l.amount_cents))}</li>)}</ul>:<p className="sub mt-2">Sem linhas de fatura.</p>}</details>)}</div>}</section> }

@@ -37,6 +37,7 @@ afterAll(async () => { if (tenants.length) await pool.query("DELETE FROM tenants
 describe("AI consumption against real Postgres", () => {
   it("consumes rollover, then bonus, then included and debits each source", async () => {
     const t = await tenant("order"), p = await plan(3); await subscribe(t, p); const u = await period(t);
+    await pool.query("UPDATE usage_periods SET sequence=2, rollover_granted=1, bonus_granted=1 WHERE id=$1", [u.id]);
     await pool.query("INSERT INTO rollover_ledger(tenant_id,usage_period_id,generated_amount,consumed_amount,rollover_rate_bps,expires_at) VALUES($1,$2,1,0,5000,now()+interval '1 day')", [t, u.id]);
     const g = await pool.query<{ id: string }>("INSERT INTO usage_grants(tenant_id,usage_period_id,kind,amount,reason) VALUES($1,$2,'BONUS',1,'test') RETURNING id", [t, u.id]);
     for (const [key, expected] of [["r", "ROLLOVER"], ["b", "BONUS"], ["i", "INCLUDED"]] as const) { const x = await consumeAiInteraction(t, "inbound_reply", key); expect(x).toMatchObject({ allowed: true, consumptionType: expected }); }

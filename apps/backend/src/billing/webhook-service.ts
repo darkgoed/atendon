@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { db } from "../db/client.js";
 import { getProvider } from "./providers/registry.js";
+import { getBillingSettings } from "./settings.js";
 import type { WebhookResult } from "./providers/types.js";
 
 /**
@@ -68,14 +69,10 @@ function classify(eventType: string, payload: unknown): "approved" | "rejected" 
   return "ignored";
 }
 
-function externalPaymentId(payload: unknown, fallback: string): string {
-  const data = (payload as { data?: { id?: unknown } })?.data;
-  return String(data?.id ?? (payload as { id?: unknown })?.id ?? fallback);
-}
 
 async function loadProvider(code: string): Promise<ProviderRow> {
   const result = await db.query<ProviderRow>(
-    "SELECT id,code,enabled,credentials_encrypted,webhook_secret_encrypted FROM billing_providers WHERE code=$1",
+    "SELECT id,code,enabled,credentials_encrypted,webhook_secret_encrypted FROM billing_providers WHERE code=$1 AND environment='production'",
     [code]
   );
   const provider = result.rows[0];
@@ -87,11 +84,17 @@ async function loadProvider(code: string): Promise<ProviderRow> {
 async function parseWebhook(provider: ProviderRow, rawBody: string, headers: Record<string, string | string[] | undefined>, encryptionKey: string): Promise<WebhookResult> {
   // O provider decripta as credenciais sozinho a partir do campo cifrado; nenhum
   // segredo em claro trafega por aqui.
+  const settings = await getBillingSettings();
+  const configuredTolerance = Number(settings.webhook_tolerance_seconds);
+  const signatureToleranceSeconds = Number.isFinite(configuredTolerance) && configuredTolerance > 0
+    ? configuredTolerance
+    : 300;
   const instance = getProvider(provider.code, {
     mercadopago: {
       credentialsEncrypted: provider.credentials_encrypted ?? "",
       webhookSecretEncrypted: provider.webhook_secret_encrypted ?? undefined,
-      encryptionKey
+      encryptionKey,
+      signatureToleranceSeconds
     }
   });
   return instance.handleWebhook(rawBody, headers, "");
@@ -99,15 +102,21 @@ async function parseWebhook(provider: ProviderRow, rawBody: string, headers: Rec
 
 /** Marca a fatura como paga, registra o pagamento e reativa a assinatura se aplicável. */
 async function applyApproved(client: PoolClient, provider: ProviderRow, result: WebhookResult): Promise<void> {
-  const externalId = externalPaymentId(result.payload, result.externalEventId);
+  const externalId = result.externalPaymentId ?? result.externalEventId;
+  const invoiceKey = result.externalInvoiceId ?? result.externalReference;
+  if (!invoiceKey) throw httpError(422, "Webhook sem vínculo inequívoco com fatura", "UNRECONCILED_WEBHOOK");
   const invoice = await client.query<InvoiceRow>(
     `SELECT id,tenant_id,subscription_id,amount_cents,currency,status FROM invoices
-     WHERE provider_id=$1 AND (external_id=$2 OR ($3::uuid IS NOT NULL AND tenant_id=$3::uuid AND status<>'paid'))
-     ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
-    [provider.id, externalId, result.tenantHint ?? null]
+     WHERE provider_id=$1 AND external_id=$2 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+    [provider.id, invoiceKey]
   );
   const row = invoice.rows[0];
-  if (!row) return; // Pagamento sem fatura correspondente: já registrado em billing_events.
+  if (!row) throw httpError(422, "Fatura do webhook não encontrada", "UNRECONCILED_WEBHOOK");
+  if (result.amountCents !== Number(row.amount_cents) || (result.currency ?? "").toUpperCase() !== row.currency.toUpperCase()) {
+    throw httpError(422, "Valor ou moeda do webhook não corresponde à fatura", "WEBHOOK_AMOUNT_MISMATCH");
+  }
+  const existing = await client.query("SELECT 1 FROM payments WHERE provider_id=$1 AND external_id=$2 FOR UPDATE", [provider.id, externalId]);
+  if (existing.rowCount) return;
 
   await client.query(
     `INSERT INTO payments(tenant_id,invoice_id,provider_id,external_id,amount_cents,currency,status,method,paid_at)
@@ -146,17 +155,20 @@ async function applyApproved(client: PoolClient, provider: ProviderRow, result: 
 
 /** Falha de pagamento não corta acesso na hora: entra em PAST_DUE com carência (§11). */
 async function applyRejected(client: PoolClient, provider: ProviderRow, result: WebhookResult): Promise<void> {
-  const externalId = externalPaymentId(result.payload, result.externalEventId);
+  const externalId = result.externalPaymentId ?? result.externalEventId;
+  const invoiceKey = result.externalInvoiceId ?? result.externalReference;
+  if (!invoiceKey) throw httpError(422, "Webhook sem vínculo inequívoco com fatura", "UNRECONCILED_WEBHOOK");
   const invoice = await client.query<InvoiceRow>(
     `SELECT id,tenant_id,subscription_id,amount_cents,currency,status FROM invoices
-     WHERE provider_id=$1 AND (external_id=$2 OR ($3::uuid IS NOT NULL AND tenant_id=$3::uuid AND status<>'paid'))
-     ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
-    [provider.id, externalId, result.tenantHint ?? null]
+     WHERE provider_id=$1 AND external_id=$2 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+    [provider.id, invoiceKey]
   );
   const row = invoice.rows[0];
-  if (!row) return;
+  if (!row) throw httpError(422, "Fatura do webhook não encontrada", "UNRECONCILED_WEBHOOK");
 
-  // Registra a tentativa recusada, mas NUNCA marca a fatura como paga.
+  const existing = await client.query("SELECT 1 FROM payments WHERE provider_id=$1 AND external_id=$2 FOR UPDATE", [provider.id, externalId]);
+  if (existing.rowCount) return;
+
   await client.query(
     `INSERT INTO payments(tenant_id,invoice_id,provider_id,external_id,amount_cents,currency,status,method)
      VALUES($1,$2,$3,$4,$5,$6,'rejected',$7)`,
@@ -191,6 +203,7 @@ export async function processBillingWebhook(
   headers: Record<string, string | string[] | undefined>,
   encryptionKey: string
 ): Promise<WebhookOutcome> {
+  // The legacy public route has no environment segment: it is production-only.
   const provider = await loadProvider(providerCode);
   const result = await parseWebhook(provider, rawBody, headers, encryptionKey);
 
@@ -211,7 +224,8 @@ export async function processBillingWebhook(
     const inserted = await client.query<{ id: string }>(
       `INSERT INTO billing_events(provider_id,external_event_id,event_type,payload,signature_valid,tenant_id)
        VALUES($1,$2,$3,$4,true,$5)
-       ON CONFLICT (provider_id,external_event_id) DO NOTHING
+       ON CONFLICT (provider_id,external_event_id) DO UPDATE SET processing_error=NULL
+       WHERE billing_events.processed_at IS NULL
        RETURNING id`,
       [provider.id, result.externalEventId, result.eventType, result.payload, result.tenantHint ?? null]
     );
@@ -234,8 +248,10 @@ export async function processBillingWebhook(
     await client.query("ROLLBACK");
     // O evento não fica marcado como processado: o provider pode reenviar com segurança.
     await db.query(
-      "UPDATE billing_events SET processing_error=$2 WHERE provider_id=$1 AND external_event_id=$3",
-      [provider.id, error instanceof Error ? error.message : "erro desconhecido", result.externalEventId]
+      `INSERT INTO billing_events(provider_id,external_event_id,event_type,payload,signature_valid,processing_error)
+       VALUES($1,$2,$3,$4,true,$5)
+       ON CONFLICT (provider_id,external_event_id) DO UPDATE SET processing_error=EXCLUDED.processing_error`,
+      [provider.id, result.externalEventId, result.eventType, result.payload, error instanceof Error ? error.message : "erro desconhecido"]
     ).catch(() => undefined);
     throw error;
   } finally {

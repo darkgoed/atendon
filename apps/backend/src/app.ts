@@ -28,6 +28,7 @@ import { registerMeetRoutes } from "./modules/meet/routes.js";
 import { registerWorkspaceRoutes } from "./modules/workspaces/routes.js";
 import { registerRootRoutes } from "./modules/root/routes.js";
 import { registerSaasRoutes } from "./modules/saas/routes.js";
+import { registerBillingRoutes } from "./modules/billing/routes.js";
 import { getVersionInfo } from "./modules/root/version.js";
 import { registerQualificationRoutes } from "./modules/qualification/routes.js";
 import { QualificationService } from "./modules/qualification/service.js";
@@ -336,7 +337,7 @@ async function auditLog(input: AuditLogInput) {
   await insertAuditLog(db, input);
 }
 
-export function buildApp() {
+export function buildApp(options: { billingOAuth?: import("./modules/billing/routes.js").BillingOAuthDependencies } = {}) {
   // Production traffic reaches Fastify through the loopback Nginx proxy. Trust
   // forwarded addresses only from that boundary so rate limits and audit logs
   // identify the real client without accepting spoofed headers from the network.
@@ -2615,6 +2616,7 @@ export function buildApp() {
   void app.register(registerWorkspaceRoutes);
   void app.register(registerRootRoutes);
   void app.register(registerSaasRoutes);
+  void app.register(registerBillingRoutes, options.billingOAuth ?? {});
   void app.register(registerOperationsRoutes);
   void app.register(registerDashboardWidgetRoutes);
   void app.register(registerOrganizationRoutes);

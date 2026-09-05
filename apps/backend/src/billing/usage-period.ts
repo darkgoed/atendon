@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { closePeriodAndGrantRollover } from "./rollover.js";
 
 export type UsagePeriodRow = {
   id: string;
@@ -32,19 +33,21 @@ type PeriodState = {
   latest: { start_at: string; end_at: string; sequence: number } | null;
 };
 
+export const AI_INTERACTION_LIMIT_KEY = "MAX_AI_INTERACTIONS";
+
 const periodColumns = `id, tenant_id, subscription_id, sequence, start_at, end_at,
   included_limit, included_usage, rollover_granted, rollover_usage, bonus_granted,
   bonus_usage, overage_usage, overage_amount_brl_cents, reserved_cents,
   provider_cost_usd_micros, status, closed_at, invoiced_at, created_at, updated_at`;
 
-async function effectiveLimit(client: PoolClient, tenantId: string, planId: string): Promise<number | null> {
+export async function effectiveLimit(client: PoolClient, tenantId: string, planId: string): Promise<number | null> {
   const result = await client.query<{ limit_value: string | null }>(
     `SELECT CASE WHEN o.tenant_id IS NOT NULL THEN o.int_value::text ELSE pl.limit_value::text END AS limit_value
        FROM plans p
-       LEFT JOIN plan_limits pl ON pl.plan_id = p.id AND pl.limit_key = 'MAX_AI_INTERACTIONS'
+       LEFT JOIN plan_limits pl ON pl.plan_id = p.id AND pl.limit_key = $3
        LEFT JOIN tenant_entitlement_overrides o ON o.tenant_id = $1 AND o.kind = 'limit'
-        AND o.entitlement_key = 'MAX_AI_INTERACTIONS' AND (o.expires_at IS NULL OR o.expires_at > now())
-      WHERE p.id = $2 LIMIT 1`, [tenantId, planId]
+        AND o.entitlement_key = $3 AND (o.expires_at IS NULL OR o.expires_at > now())
+      WHERE p.id = $2 LIMIT 1`, [tenantId, planId, AI_INTERACTION_LIMIT_KEY]
   );
   return result.rows[0]?.limit_value == null ? null : Number(result.rows[0].limit_value);
 }
@@ -80,8 +83,9 @@ export async function ensureOpenPeriod(client: PoolClient, tenantId: string): Pr
   let iterations = 0;
   while (true) {
     if (open && state.open_is_current === true) return open;
-    if (open) {
-      await client.query(`UPDATE usage_periods SET status='CLOSED', closed_at=now(), updated_at=now() WHERE id=$1 AND status='OPEN'`, [open.id]);
+    const source = open;
+    if (source) {
+      await client.query(`UPDATE usage_periods SET status='CLOSED', closed_at=now(), updated_at=now() WHERE id=$1 AND status='OPEN'`, [source.id]);
     }
     const prior = state.latest;
     const limit = await effectiveLimit(client, tenantId, sub.plan_id);
@@ -96,6 +100,7 @@ export async function ensureOpenPeriod(client: PoolClient, tenantId: string): Pr
       );
       await client.query("RELEASE SAVEPOINT sp_open_period");
       open = inserted.rows[0];
+      if (source) await closePeriodAndGrantRollover(client, tenantId, source.id, open.id);
     } catch (error) {
       await client.query("ROLLBACK TO SAVEPOINT sp_open_period");
       if ((error as { code?: string }).code !== "23505") throw error;

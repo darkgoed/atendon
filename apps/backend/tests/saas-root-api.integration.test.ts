@@ -83,6 +83,31 @@ describe("SaaS root authorization", () => {
     await pool.query("DELETE FROM plans WHERE id=$1", [id]);
   });
 
+  it("rolls back price/features/limits and audit when a catalog key is invalid", async () => {
+    const cookie = await login(rootEmail);
+    const feature = (await pool.query<{ feature_key: string }>("SELECT feature_key FROM feature_catalog LIMIT 1")).rows[0].feature_key;
+    const limit = (await pool.query<{ limit_key: string }>("SELECT limit_key FROM limit_catalog LIMIT 1")).rows[0].limit_key;
+    const before = await pool.query("SELECT monthly_price_cents FROM plans WHERE id=$1", [plan]);
+    const response = await app.inject({ method: "PATCH", url: `/root/saas/plans/${plan}`, headers: { cookie }, payload: { monthlyPriceCents: 99999, features: { [feature]: true, "invalid-feature": true }, limits: { [limit]: 99 } } });
+    expect(response.statusCode).toBe(400);
+    expect((await pool.query("SELECT monthly_price_cents FROM plans WHERE id=$1", [plan])).rows[0].monthly_price_cents).toBe(before.rows[0].monthly_price_cents);
+    expect((await pool.query("SELECT count(*)::int AS count FROM plan_features WHERE plan_id=$1 AND feature_key=$2", [plan, feature])).rows[0].count).toBe(0);
+    expect((await pool.query("SELECT count(*)::int AS count FROM plan_limits WHERE plan_id=$1 AND limit_key=$2", [plan, limit])).rows[0].count).toBe(0);
+    expect((await pool.query("SELECT count(*)::int AS count FROM audit_logs WHERE actor_user_id=(SELECT id FROM users WHERE email=$1) AND action='saas.plan.update' AND resource_id=$2", [rootEmail, plan])).rows[0].count).toBe(0);
+  });
+
+  it("commits plan fields/features/limits and audit together", async () => {
+    const cookie = await login(rootEmail);
+    const feature = (await pool.query<{ feature_key: string }>("SELECT feature_key FROM feature_catalog LIMIT 1")).rows[0].feature_key;
+    const limit = (await pool.query<{ limit_key: string }>("SELECT limit_key FROM limit_catalog LIMIT 1")).rows[0].limit_key;
+    const response = await app.inject({ method: "PATCH", url: `/root/saas/plans/${plan}`, headers: { cookie }, payload: { monthlyPriceCents: 2222, features: { [feature]: true }, limits: { [limit]: 99 } } });
+    expect(response.statusCode).toBe(200);
+    expect((await pool.query("SELECT monthly_price_cents FROM plans WHERE id=$1", [plan] )).rows[0].monthly_price_cents).toBe("2222");
+    expect((await pool.query("SELECT enabled FROM plan_features WHERE plan_id=$1 AND feature_key=$2", [plan, feature])).rows[0].enabled).toBe(true);
+    expect((await pool.query("SELECT limit_value FROM plan_limits WHERE plan_id=$1 AND limit_key=$2", [plan, limit] )).rows[0].limit_value).toBe("99");
+    expect((await pool.query("SELECT count(*)::int AS count FROM audit_logs WHERE actor_user_id=(SELECT id FROM users WHERE email=$1) AND action='saas.plan.update' AND resource_id=$2", [rootEmail, plan])).rows[0].count).toBe(1);
+  });
+
   it("isolates /billing/my-plan by tenant and records plan changes", async () => {
     // Isolamento: cada sessão só enxerga o próprio tenant (§41).
     const adminCookie = await login(adminEmail);

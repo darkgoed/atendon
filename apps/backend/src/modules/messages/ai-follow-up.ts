@@ -24,7 +24,8 @@ import {
 } from "./humanizer.js";
 import type { MessageGateway } from "./types.js";
 import type { FollowUpDelivery } from "./follow-up-media.js";
-import { reserveAiInteraction } from "../../billing/ai-metering.js";
+import { consumeAiInteraction, reconcileAiTurnFromUsageLogs } from "../../billing/ai-consumption.js";
+import { deriveBillingTurnId } from "../../billing/turn-id.js";
 import { logger } from "../../logger.js";
 
 const HISTORY_MAX_MESSAGES = 40;
@@ -869,8 +870,14 @@ export class AiFollowUpProcessor {
       // Reserva atômica da franquia (mesma razão do inbound_reply): a checagem e
       // o consumo ocorrem na mesma transação serializada por tenant. A chave usa
       // conversationId + sequenceVersion, estável entre retentativas do follow-up.
-      if (!await reserveAiInteraction(claim.tenantId, "follow_up", `${claim.conversationId}:${claim.sequenceVersion}`, { conversationId: claim.conversationId })) {
-        logger.warn({ event: "ai_interaction_quota_reached", tenantId: claim.tenantId, conversationId: claim.conversationId, purpose: "follow_up" }, "AI follow-up skipped because the billing quota was reached");
+      const billingTurnId = deriveBillingTurnId(
+        claim.tenantId,
+        "follow_up",
+        `${claim.conversationId}:${claim.sequenceVersion}`
+      );
+      const consumption = await consumeAiInteraction(claim.tenantId, "follow_up", billingTurnId, { conversationId: claim.conversationId });
+      if (!consumption.allowed) {
+        logger.warn({ event: "ai_interaction_blocked", tenantId: claim.tenantId, conversationId: claim.conversationId, purpose: "follow_up", reason: consumption.reason }, consumption.reason === "BILLING_UNAVAILABLE" ? "AI follow-up skipped because billing is unavailable" : "AI follow-up skipped because the billing quota was reached");
         await this.repository.cancelClaim(claim, "ai_quota_reached");
         return "cancelled";
       }
@@ -885,6 +892,14 @@ export class AiFollowUpProcessor {
         maxTokens: Math.min(400, claim.maxTokens),
         apiKey: claim.openRouterApiKey,
         history: claim.history,
+        trace: {
+          requestId: billingTurnId,
+          conversationId: claim.conversationId,
+          messageId: claim.conversationId,
+          processingAttempt: 1,
+          tenantId: claim.tenantId,
+          reason: "follow_up"
+        },
         validateFinalText: (text) => {
           const handoffCorrection = unauthorizedAgentHandoffCorrection(text);
           if (handoffCorrection) return handoffCorrection;
@@ -993,6 +1008,7 @@ export class AiFollowUpProcessor {
             mediaIsSticker: true
           } : {})
         });
+        void reconcileAiTurnFromUsageLogs(claim.tenantId, "follow_up", billingTurnId).catch(() => {});
       } finally {
         if (delivery.type !== "sticker") {
           await this.gateway.sendPresence(claim.sessionId, destination, "paused", 500);

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { deriveBillingTurnId } from "../src/billing/turn-id.js";
 import {
   AI_FOLLOW_UP_NOT_NEEDED_MARKER,
   AiFollowUpProcessor,
@@ -15,6 +16,13 @@ import {
 const acquireConversationLockMock = vi.hoisted(() => vi.fn());
 const releaseConversationLockMock = vi.hoisted(() => vi.fn());
 const extendConversationLockMock = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+const consumeAiInteractionMock = vi.hoisted(() => vi.fn().mockResolvedValue({ allowed: true }));
+const reconcileAiTurnFromUsageLogsMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+
+vi.mock("../src/billing/ai-consumption.js", () => ({
+  consumeAiInteraction: consumeAiInteractionMock,
+  reconcileAiTurnFromUsageLogs: reconcileAiTurnFromUsageLogsMock
+}));
 
 vi.mock("../src/modules/messages/conversation-lock.js", () => ({
   acquireConversationLock: acquireConversationLockMock,
@@ -82,6 +90,53 @@ describe("AI follow-ups", () => {
     acquireConversationLockMock.mockResolvedValue({ redisKey: "follow-up-lock", token: "token" });
     releaseConversationLockMock.mockReset();
     releaseConversationLockMock.mockResolvedValue(undefined);
+    consumeAiInteractionMock.mockReset();
+    consumeAiInteractionMock.mockResolvedValue({ allowed: true });
+    reconcileAiTurnFromUsageLogsMock.mockReset();
+    reconcileAiTurnFromUsageLogsMock.mockResolvedValue(undefined);
+  });
+
+  it("derives stable RFC UUID v5 identifiers and separates logical keys", () => {
+    const first = deriveBillingTurnId("tenant-1", "follow_up", "conversation-1:3");
+    expect(first).toBe(deriveBillingTurnId("tenant-1", "follow_up", "conversation-1:3"));
+    expect(first).not.toBe(deriveBillingTurnId("tenant-1", "follow_up", "conversation-1:4"));
+    expect(first).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  });
+
+  it("uses one stable billing turn id for consumption, provider trace, and reconciliation", async () => {
+    const { processor, ai } = setup();
+    await expect(processor.process(claim.conversationId)).resolves.toBe("sent");
+    const turnId = consumeAiInteractionMock.mock.calls[0]![2];
+    expect(turnId).toBe(deriveBillingTurnId(claim.tenantId, "follow_up", `${claim.conversationId}:${claim.sequenceVersion}`));
+    expect(ai.complete.mock.calls[0]![0].trace.requestId).toBe(turnId);
+    expect(reconcileAiTurnFromUsageLogsMock).toHaveBeenCalledWith(claim.tenantId, "follow_up", turnId);
+  });
+
+  it("keeps retry claims idempotent while changing sequence keys", async () => {
+    const first = setup();
+    await first.processor.process(claim.conversationId);
+    const second = setup();
+    await second.processor.process(claim.conversationId);
+    expect(consumeAiInteractionMock.mock.calls.map((call) => call[2])).toEqual([
+      deriveBillingTurnId(claim.tenantId, "follow_up", "conversation-1:3"),
+      deriveBillingTurnId(claim.tenantId, "follow_up", "conversation-1:3")
+    ]);
+  });
+
+  it("cancels quota-refused claims without provider or reconciliation", async () => {
+    const { processor, repository, ai } = setup();
+    consumeAiInteractionMock.mockResolvedValueOnce({ allowed: false, reason: "quota" });
+    await expect(processor.process(claim.conversationId)).resolves.toBe("cancelled");
+    expect(repository.cancelClaim).toHaveBeenCalledWith(claim, "ai_quota_reached");
+    expect(ai.complete).not.toHaveBeenCalled();
+    expect(reconcileAiTurnFromUsageLogsMock).not.toHaveBeenCalled();
+  });
+
+  it("does not reconcile when the provider fails", async () => {
+    const { processor, ai } = setup();
+    ai.complete.mockRejectedValueOnce(new Error("provider down"));
+    await expect(processor.process(claim.conversationId)).rejects.toThrow("provider down");
+    expect(reconcileAiTurnFromUsageLogsMock).not.toHaveBeenCalled();
   });
 
   it("prioritizes the latest exchange and records a contextual follow-up", async () => {

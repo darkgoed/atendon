@@ -15,20 +15,27 @@ import { encryptCredentials, encryptWebhookSecret } from "../src/billing/provide
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const app = buildApp();
 const suffix = randomUUID();
-const webhookSecret = "webhook-secret-de-teste";
+const webhookSecret = "webhook-secret-production";
+const sandboxWebhookSecret = "webhook-secret-sandbox";
+const originalFetch = globalThis.fetch;
 
 let providerId = "";
+let sandboxProviderId = "";
 let tenantId = "";
 let invoiceId = "";
 
-function sign(resourceId: string, requestId: string, ts: string) {
-  const manifest = `id:${resourceId};request-id:${requestId};ts:${ts};`;
-  return createHmac("sha256", webhookSecret).update(manifest).digest("hex");
+function signWithSecret(secret: string, resourceId: string, requestId: string, ts: string) {
+  const manifest = `id:${resourceId.toLowerCase().replace(/[^a-z0-9]/g, "")};request-id:${requestId};ts:${ts};`;
+  return createHmac("sha256", secret).update(manifest).digest("hex");
 }
 
-async function deliver(resourceId: string, status: string, signature?: string) {
+function sign(resourceId: string, requestId: string, ts: string) {
+  return signWithSecret(webhookSecret, resourceId, requestId, ts);
+}
+
+async function deliver(resourceId: string, status: string, signature?: string, timestamp = String(Math.floor(Date.now() / 1000))) {
   const requestId = `req-${resourceId}`;
-  const ts = "1700000000";
+  const ts = timestamp;
   const v1 = signature ?? sign(resourceId, requestId, ts);
   return app.inject({
     method: "POST",
@@ -38,7 +45,7 @@ async function deliver(resourceId: string, status: string, signature?: string) {
       "x-signature": `ts=${ts},v1=${v1}`,
       "x-request-id": requestId
     },
-    payload: JSON.stringify({ type: "payment", data: { id: resourceId, status }, external_reference: tenantId })
+    payload: JSON.stringify({ type: "payment", data: { id: resourceId, status, amount_cents: 89700, currency_id: "BRL", external_reference: tenantId, external_invoice_id: `pay-${suffix}` }, external_reference: tenantId })
   });
 }
 
@@ -50,15 +57,26 @@ async function subscription() {
 }
 
 beforeAll(async () => {
+  globalThis.fetch = (async (input: URL | RequestInfo) => new Response(JSON.stringify({ id: String(input).split("/").pop(), status: "approved", transaction_amount: 897, currency_id: "BRL", external_invoice_id: `pay-${suffix}` }), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
   await app.ready();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    providerId = (await client.query<{ id: string }>(
+    await client.query("DELETE FROM billing_providers WHERE code=$1 AND environment=$2", ["mercadopago", "sandbox"]);
+    await client.query("DELETE FROM billing_providers WHERE code=$1 AND environment=$2", ["mercadopago", "production"]);
+    sandboxProviderId = (await client.query<{ id: string }>(
       `INSERT INTO billing_providers(code,name,enabled,environment,credentials_encrypted,webhook_secret_encrypted)
        VALUES('mercadopago','Mercado Pago',true,'sandbox',$1,$2) RETURNING id`,
       [
-        encryptCredentials({ accessToken: "token-de-teste" }, config.DATA_ENCRYPTION_KEY),
+        encryptCredentials({ accessToken: "token-sandbox" }, config.DATA_ENCRYPTION_KEY),
+        encryptWebhookSecret(sandboxWebhookSecret, config.DATA_ENCRYPTION_KEY)
+      ]
+    )).rows[0].id;
+    providerId = (await client.query<{ id: string }>(
+      `INSERT INTO billing_providers(code,name,enabled,environment,credentials_encrypted,webhook_secret_encrypted)
+       VALUES('mercadopago','Mercado Pago',true,'production',$1,$2) RETURNING id`,
+      [
+        encryptCredentials({ accessToken: "token-production" }, config.DATA_ENCRYPTION_KEY),
         encryptWebhookSecret(webhookSecret, config.DATA_ENCRYPTION_KEY)
       ]
     )).rows[0].id;
@@ -87,9 +105,22 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await pool.query("DELETE FROM billing_events WHERE provider_id=$1", [providerId]);
-  await pool.query("DELETE FROM tenants WHERE id=$1", [tenantId]);
-  await pool.query("DELETE FROM billing_providers WHERE id=$1", [providerId]);
+  globalThis.fetch = originalFetch;
+  if (providerId) {
+    await pool.query("DELETE FROM billing_events WHERE provider_id=$1", [providerId]);
+  }
+  if (sandboxProviderId) {
+    await pool.query("DELETE FROM billing_events WHERE provider_id=$1", [sandboxProviderId]);
+  }
+  if (tenantId) {
+    await pool.query("DELETE FROM tenants WHERE id=$1", [tenantId]);
+  }
+  if (providerId) {
+    await pool.query("DELETE FROM billing_providers WHERE id=$1", [providerId]);
+  }
+  if (sandboxProviderId) {
+    await pool.query("DELETE FROM billing_providers WHERE id=$1", [sandboxProviderId]);
+  }
   await app.close();
   await pool.end();
 });
@@ -104,6 +135,20 @@ describe("webhook de cobrança (§18)", () => {
     expect(payments.rowCount).toBe(0);
   });
 
+  it("usa deterministicamente production: assinatura sandbox não altera finanças nem last_event_at sandbox", async () => {
+    const resourceId = `sandbox-${suffix}`;
+    const response = await deliver(resourceId, "approved", signWithSecret(sandboxWebhookSecret, resourceId, `req-${resourceId}`, "1700000000"));
+    expect(response.statusCode).toBe(401);
+    const rows = await pool.query<{ id: string; last_event_at: string | null }>(
+      "SELECT id,last_event_at FROM billing_providers WHERE code=$1 ORDER BY environment",
+      ["mercadopago"]
+    );
+    expect(rows.rows).toHaveLength(2);
+    expect(rows.rows.find((row) => row.id === sandboxProviderId)?.last_event_at).toBeNull();
+    expect(rows.rows.find((row) => row.id === providerId)?.last_event_at).toBeNull();
+    expect((await pool.query("SELECT 1 FROM payments WHERE invoice_id=$1", [invoiceId])).rowCount).toBe(0);
+  });
+
   it("processa aprovação, paga a fatura e reativa a assinatura", async () => {
     expect((await subscription()).status).toBe("PAST_DUE");
     const response = await deliver(`pay-${suffix}`, "approved");
@@ -115,6 +160,21 @@ describe("webhook de cobrança (§18)", () => {
     const payments = await pool.query("SELECT 1 FROM payments WHERE invoice_id=$1 AND status='paid'", [invoiceId]);
     expect(payments.rowCount).toBe(1);
     expect((await subscription()).status).toBe("ACTIVE");
+    const providerTimes = await pool.query<{ id: string; last_event_at: string | null }>(
+      "SELECT id,last_event_at FROM billing_providers WHERE code=$1",
+      ["mercadopago"]
+    );
+    expect(providerTimes.rows.find((row) => row.id === providerId)?.last_event_at).not.toBeNull();
+    expect(providerTimes.rows.find((row) => row.id === sandboxProviderId)?.last_event_at).toBeNull();
+  });
+
+  it("rejeita webhook fora da tolerância, mas aceita timestamp atual assinado", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const stale = await deliver(`stale-${suffix}`, "approved", undefined, String(now - 301));
+    expect(stale.statusCode).toBe(401);
+
+    const current = await deliver(`current-${suffix}`, "pending", undefined, String(now));
+    expect(current.statusCode).not.toBe(401);
   });
 
   it("evento REPETIDO não duplica pagamento nem renova de novo", async () => {

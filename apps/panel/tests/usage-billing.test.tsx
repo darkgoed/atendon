@@ -1,0 +1,30 @@
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { api } = vi.hoisted(() => ({ api: vi.fn() }));
+let canManage = true;
+vi.mock("../lib/api", () => ({ api }));
+vi.mock("../lib/use-permission", () => ({ usePermission: () => canManage }));
+vi.mock("../components/shell", () => ({ Shell: ({ children }: { children: React.ReactNode }) => <main>{children}</main> }));
+import UsoPage from "../app/uso/page";
+
+const dashboard = { planName: "Pro", includedLimit: 5000, includedUsage: 1200, rolloverGranted: 700, rolloverUsage: 100, bonusGranted: 200, bonusUsage: 10, totalAvailable: 5900, totalUsed: 1310, usedPercentBps: 2220, periodEnd: "2026-10-01T00:00:00Z", daysUntilRenewal: 12, creditLimitCents: 370000, creditUsedCents: 12300, rolloverPreviewInteractions: 3700 };
+const credit = { setting: { enabled: true, limit_type: "FIXED", monthly_spending_limit_cents: 10000 }, allowed: { suggested: 370000, min: 5000, max: 1000000, allowCustom: true, allowUnlimited: true } };
+const history = [{ id: "inv-1", amount_cents: "12300", currency: "BRL", status: "paid", period_start: "2026-08-01", period_end: "2026-09-01", line_items: [{ description: "Excedente IA", amount_cents: "12300" }] }];
+function setup(overrides: Record<string, unknown> = {}) { api.mockImplementation(async (path: string) => path === "/billing/usage-dashboard" ? { dashboard: { ...dashboard, ...overrides } } : path.startsWith("/billing/history") ? { history } : credit); return render(<UsoPage />); }
+
+describe("tenant usage and billing panel", () => {
+  beforeEach(() => { cleanup(); api.mockReset(); canManage = true; });
+  it("renders included, rollover, bonus, total, percent and renewal", async () => { setup(); expect(await screen.findByText("Incluído")).toBeTruthy(); expect(screen.getByText("Acumulado")).toBeTruthy(); expect(screen.getByText("Bônus")).toBeTruthy(); expect(screen.getByText("Total usado")).toBeTruthy(); expect(screen.getByText("22,2 %")).toBeTruthy(); expect(screen.getByText(/Renova em 12 dias/)).toBeTruthy(); });
+  it("renders unlimited usage accessibly", async () => { setup({ totalAvailable: null }); expect(await screen.findByText("Uso ilimitado")).toBeTruthy(); expect(screen.getByRole("progressbar")).not.toHaveAttribute("aria-valuemax"); });
+  it("uses API suggestion, including nonstandard 3700 value", async () => { setup(); expect((await screen.findAllByText(/3\.700,00/)).length).toBeGreaterThan(0); expect(screen.getByText(/Estimativa: 3\.700/)).toBeTruthy(); });
+  it("saves the fixed configuration with exact payload", async () => { setup(); const user = userEvent.setup(); await screen.findByText("Salvar crédito de uso"); await user.click(screen.getByRole("button", { name: "Salvar crédito de uso" })); await waitFor(() => expect(api).toHaveBeenCalledWith("/billing/usage-credit", expect.objectContaining({ method: "PUT", body: JSON.stringify({ enabled: true, limitType: "FIXED", monthlySpendingLimitCents: 10000, confirmUnlimited: false }) }))); });
+  it("requires confirmation and sends confirmation for unlimited", async () => { setup(); const user = userEvent.setup(); vi.stubGlobal("confirm", vi.fn(() => true)); await screen.findByText("Configurações de crédito de uso"); await user.selectOptions(screen.getByLabelText("Tipo de limite"), "UNLIMITED"); await user.click(screen.getByRole("button", { name: "Salvar crédito de uso" })); await waitFor(() => expect(api).toHaveBeenCalledWith("/billing/usage-credit", expect.objectContaining({ body: JSON.stringify({ enabled: true, limitType: "UNLIMITED", monthlySpendingLimitCents: null, confirmUnlimited: true }) }))); expect(window.confirm).toHaveBeenCalled(); });
+  it("is read-only without billing.manage", async () => { canManage = false; setup(); expect(await screen.findByText("Acesso somente leitura.")).toBeTruthy(); expect(screen.queryByRole("button", { name: /Salvar crédito/ })).toBeNull(); expect(screen.getByLabelText("Crédito de uso")).toBeDisabled(); });
+  it("does not send tenantId and shows invoice lines", async () => { setup(); expect(await screen.findByText("Histórico mensal")).toBeTruthy(); await userEvent.setup().click(screen.getByText(/01\/08\/2026/)); expect(screen.getByText(/Excedente IA/)).toBeTruthy(); expect(JSON.stringify(api.mock.calls)).not.toContain("tenantId"); });
+  it("shows loading and API errors as semantic status/alert", async () => { api.mockRejectedValue(new Error("Falha de rede")); render(<UsoPage />); expect(screen.getByRole("status").getAttribute("aria-busy")).toBe("true"); expect(await screen.findByRole("alert")).toHaveTextContent("Falha de rede"); });
+  it("keeps rollover vocabulary distinct from money", async () => { setup(); expect((await screen.findAllByText(/A franquia acumulada nunca representa dinheiro/)).length).toBeGreaterThan(0); expect(screen.queryByText(/R\$ de crédito/)).toBeNull(); });
+});

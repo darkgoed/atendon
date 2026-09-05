@@ -1,0 +1,26 @@
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { SWRConfig } from "swr";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+const { api } = vi.hoisted(() => ({ api: vi.fn() }));
+vi.mock("../lib/api", () => ({ api }));
+vi.mock("../components/shell", () => ({ Shell: ({ children }: { children: React.ReactNode }) => <main>{children}</main> }));
+import RootPlansPage from "../app/root/saas/planos/page";
+const plan = { id: "p1", code: "PRO", name: "Pro", description: "Plano", monthly_price_cents: "49700", quarterly_price_cents: "140000", yearly_price_cents: "500000", setup_price_cents: "0", billing_period_months: 1, trial_days: 7, grace_period_days: 3, status: "active", is_internal: false, features: [], limits: [] };
+const rootSession = { user: { id: "root", email: "root@example.com", isRoot: true, name: "Root" }, activeWorkspace: null, workspaces: [], permissions: [], actorScope: "root" };
+const tenant = { id: "t1", name: "Acme", status: "active", subscription_status: "active", plan_code: "PRO", plan_name: "Pro", entitlements: { limits: { MAX_USERS: 10 } }, usage: { MAX_USERS: 2, MAX_WHATSAPP_CONNECTIONS: 1, MAX_AI_INTERACTIONS: 3700 } };
+function setup(session: unknown = rootSession) { api.mockImplementation(async (path: string) => ({ "/me": session, "/root/saas/plans": { plans: [plan] }, "/root/saas/catalog": { feature_catalog: [], limit_catalog: [] }, "/root/saas/tenants": { tenants: [tenant] }, "/root/saas/events": { events: [{ id: "e", event_type: "PLAN_CHANGED", created_at: "2026-09-01" }] } }[path] ?? { plan })); return render(<SWRConfig value={{ provider: () => new Map() }}><RootPlansPage /></SWRConfig>); }
+
+describe("root SaaS billing panel", () => {
+  beforeEach(() => { cleanup(); api.mockReset(); });
+  it("guards non-root users", async () => { setup({ user: { isRoot: false }, activeWorkspace: null }); expect(await screen.findByText(/disponível apenas para usuários ROOT/)).toBeTruthy(); expect(api.mock.calls.map(([p]) => p)).not.toContain("/root/saas/plans"); });
+  it("keeps root providers sandbox/prod isolated in visible sections", async () => { setup(); expect(await screen.findByRole("heading", { name: "Planos e cobrança" })).toBeTruthy(); expect(screen.getByRole("button", { name: /Gateways/ })).toBeDisabled(); expect(screen.getByRole("button", { name: /Cobranças/ })).toBeDisabled(); });
+  it("never renders secret or ciphertext response fields", async () => { api.mockImplementation(async (path: string) => path === "/me" ? rootSession : { plans: [{ ...plan, description: "secret_token ciphertext password" }] }); setup(); expect(await screen.findByText("Pro")).toBeTruthy(); expect(screen.queryByText(/secret_token|ciphertext|password/)).toBeNull(); });
+  it("loads plan prices and cycles from API into edit form", async () => { setup(); const user = userEvent.setup(); await user.click((await screen.findAllByRole("button", { name: "Editar" }))[0]); expect(screen.getByDisplayValue("497")).toBeTruthy(); expect(screen.getByDisplayValue("1")).toBeTruthy(); });
+  it("saves edited plan with exact API payload", async () => { setup(); const user = userEvent.setup(); await user.click((await screen.findAllByRole("button", { name: "Editar" }))[0]); await user.clear(screen.getByRole("spinbutton", { name: "Preço trimestral (R$)" })); await user.type(screen.getByRole("spinbutton", { name: "Preço trimestral (R$)" }), "1400"); await user.clear(screen.getByRole("spinbutton", { name: "Preço anual (R$)" })); await user.type(screen.getByRole("spinbutton", { name: "Preço anual (R$)" }), "5000"); await user.click(await screen.findByRole("button", { name: "Salvar" })); await waitFor(() => expect(api).toHaveBeenCalledWith("/root/saas/plans/p1", expect.objectContaining({ method: "PATCH" }))); });
+  it("requires confirmation for destructive plan actions", async () => { setup(); const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "Arquivar" })); expect(screen.getByRole("heading", { name: "Arquivar plano?" })).toBeTruthy(); await user.click(screen.getByRole("button", { name: "Confirmar arquivamento" })); await waitFor(() => expect(api).toHaveBeenCalledWith("/root/saas/plans/p1/archive", expect.objectContaining({ method: "POST" }))); });
+  it("shows tenant metrics and sends subscription payload", async () => { setup(); const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: /Empresas/ })); expect(await screen.findByText(/IA:/)).toHaveTextContent("3700"); await user.selectOptions(screen.getByRole("combobox"), "p1"); await user.click(screen.getByRole("button", { name: "Salvar plano" })); await waitFor(() => expect(api).toHaveBeenCalledWith("/root/saas/tenants/t1/subscription", expect.objectContaining({ body: JSON.stringify({ planId: "p1" }) }))); });
+  it("renders backend event vocabulary without inventing unavailable OAuth/test buttons", async () => { setup(); const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "Histórico" })); expect(await screen.findByText(/Plano alterado/)).toBeTruthy(); expect(screen.queryByRole("button", { name: /OAuth|Teste/ })).toBeNull(); });
+});

@@ -79,6 +79,10 @@ describe("follow-up lock heartbeat", () => {
       const actual = await vi.importActual<any>("../src/modules/messages/humanizer.js");
       return { ...actual, acquireConversationLock: vi.fn(async () => "lock"), extendConversationLock: vi.fn(async () => { throw new Error("redis down"); }), releaseConversationLock: vi.fn(async () => undefined) };
     });
+    vi.doMock("../src/billing/ai-consumption.js", () => ({
+      consumeAiInteraction: vi.fn(async () => ({ allowed: true })),
+      reconcileAiTurnFromUsageLogs: vi.fn(async () => undefined)
+    }));
     const { AiFollowUpProcessor, AiFollowUpRepository } = await import("../src/modules/messages/ai-follow-up.js");
     const repository = new AiFollowUpRepository({ query: vi.fn(async () => ({ rows: [] })) } as any, {} as any);
     vi.spyOn(repository, "claimDue").mockResolvedValue({ conversationId: "c", tenantId: "t", sessionId: "s", contactPhone: "p", sequenceVersion: 1, history: [], model: "m", provider: "p", temperature: 1, maxTokens: 10 } as any);

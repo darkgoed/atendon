@@ -55,6 +55,14 @@ export async function getEffectiveEntitlements(tenantId: string, client?: Q): Pr
 }
 export async function can(tenantId: string, featureKey: string) { return (await getEffectiveEntitlements(tenantId)).features[featureKey] === true; }
 export async function getLimit(tenantId: string, limitKey: string) { return (await getEffectiveEntitlements(tenantId)).limits[limitKey] ?? null; }
-export async function getUsage(tenantId: string, metricKey: string) { const r = await db.query<UsageRow>(`SELECT COALESCE(used,0) used FROM usage_counters WHERE tenant_id=$1 AND metric_key=$2 AND period_start=(SELECT current_period_start FROM tenant_subscriptions WHERE tenant_id=$1)`, [tenantId, metricKey]); return Number(r.rows[0]?.used ?? 0); }
+export async function getUsage(tenantId: string, metricKey: string) {
+  if (metricKey === "MAX_AI_INTERACTIONS") {
+    const r = await db.query<{ used: string }>(`SELECT COALESCE(included_usage,0)+COALESCE(rollover_usage,0)+COALESCE(bonus_usage,0)+COALESCE(overage_usage,0) AS used
+      FROM usage_periods WHERE tenant_id=$1 AND status='OPEN'`, [tenantId]);
+    return Number(r.rows[0]?.used ?? 0);
+  }
+  const r = await db.query<UsageRow>(`SELECT COALESCE(used,0) used FROM usage_counters WHERE tenant_id=$1 AND metric_key=$2 AND period_start=(SELECT current_period_start FROM tenant_subscriptions WHERE tenant_id=$1)`, [tenantId, metricKey]);
+  return Number(r.rows[0]?.used ?? 0);
+}
 export async function hasReachedLimit(tenantId: string, limitKey: string) { const [l, u] = await Promise.all([getLimit(tenantId, limitKey), getUsage(tenantId, limitKey)]); return l !== null && u >= l; }
 export async function assertFeature(tenantId: string, featureKey: string) { if (await can(tenantId, featureKey)) return; const r = await db.query<{ code: string }>(`SELECT DISTINCT p.code FROM plans p JOIN plan_features f ON f.plan_id=p.id WHERE f.feature_key=$1 AND f.enabled=true`, [featureKey]); throw featureNotAvailableError(featureKey, r.rows.map(x => x.code)); }

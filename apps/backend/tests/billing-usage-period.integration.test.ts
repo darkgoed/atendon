@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 import { config } from "../src/config.js";
-import { ensureOpenPeriod, updatePeriodLimitSnapshot } from "../src/billing/usage-period.js";
+import { AI_INTERACTION_LIMIT_KEY, effectiveLimit, ensureOpenPeriod, updatePeriodLimitSnapshot } from "../src/billing/usage-period.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const tenants: string[] = [];
@@ -160,6 +160,27 @@ describe("billing usage periods integration", () => {
     await inTransaction(async (client) => updatePeriodLimitSnapshot(client, tenantId, 777));
     const result = await pool.query("SELECT included_limit FROM usage_periods WHERE tenant_id=$1 AND status='OPEN'", [tenantId]);
     expect(result.rows[0].included_limit).toBe("777");
+  });
+
+  it("aplica override de limite no periodo OPEN e reverte ao excluir", async () => {
+    const tenantId = await createTenant("override-route-semantics");
+    const planId = await createPlan(1, 10_000);
+    await subscribe(tenantId, planId);
+    await inTransaction((client) => ensureWithSubscriptionLock(client, tenantId));
+
+    await inTransaction(async (client) => {
+      await client.query("INSERT INTO tenant_entitlement_overrides(tenant_id,kind,entitlement_key,int_value) VALUES($1,'limit',$2,$3)", [tenantId, AI_INTERACTION_LIMIT_KEY, 777]);
+      await updatePeriodLimitSnapshot(client, tenantId, await effectiveLimit(client, tenantId, planId));
+    });
+    let result = await pool.query("SELECT included_limit FROM usage_periods WHERE tenant_id=$1 AND status='OPEN'", [tenantId]);
+    expect(result.rows[0].included_limit).toBe("777");
+
+    await inTransaction(async (client) => {
+      await client.query("DELETE FROM tenant_entitlement_overrides WHERE tenant_id=$1 AND kind='limit' AND entitlement_key=$2", [tenantId, AI_INTERACTION_LIMIT_KEY]);
+      await updatePeriodLimitSnapshot(client, tenantId, await effectiveLimit(client, tenantId, planId));
+    });
+    result = await pool.query("SELECT included_limit FROM usage_periods WHERE tenant_id=$1 AND status='OPEN'", [tenantId]);
+    expect(result.rows[0].included_limit).toBe("10000");
   });
 
   it("é idempotente quando o periodo ainda está vigente", async () => {
