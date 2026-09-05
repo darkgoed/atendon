@@ -18,7 +18,7 @@ export interface ProviderResult { externalId: string; status?: string; payload?:
 export interface WebhookResult {
   externalEventId: string; eventType: string; signatureValid: boolean;
   amountCents?: number; currency?: string; externalInvoiceId?: string;
-  externalReference?: string; externalPaymentId?: string; tenantHint?: string; payload: unknown;
+  externalReference?: string; externalPaymentId?: string; tenantHint?: string; status?: string; payload: unknown;
 }
 export interface BillingProvider {
   createCustomer(input: CustomerInput): Promise<ProviderResult>;

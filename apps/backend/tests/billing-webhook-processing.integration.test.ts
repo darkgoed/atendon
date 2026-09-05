@@ -25,7 +25,7 @@ let tenantId = "";
 let invoiceId = "";
 
 function signWithSecret(secret: string, resourceId: string, requestId: string, ts: string) {
-  const manifest = `id:${resourceId.toLowerCase().replace(/[^a-z0-9]/g, "")};request-id:${requestId};ts:${ts};`;
+  const manifest = `id:${resourceId.toLowerCase()};request-id:${requestId};ts:${ts};`;
   return createHmac("sha256", secret).update(manifest).digest("hex");
 }
 
@@ -57,7 +57,11 @@ async function subscription() {
 }
 
 beforeAll(async () => {
-  globalThis.fetch = (async (input: URL | RequestInfo) => new Response(JSON.stringify({ id: String(input).split("/").pop(), status: "approved", transaction_amount: 897, currency_id: "BRL", external_invoice_id: `pay-${suffix}` }), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+  globalThis.fetch = (async (input: URL | RequestInfo) => {
+    const id = String(input).split("/").pop();
+    const status = id?.startsWith("current-") ? "pending" : "approved";
+    return new Response(JSON.stringify({ id, status, transaction_amount: 897, currency_id: "BRL", external_invoice_id: `pay-${suffix}` }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
   await app.ready();
   const client = await pool.connect();
   try {

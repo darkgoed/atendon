@@ -7,6 +7,27 @@ import { reconcileAiTurnFromUsageLogs } from "./ai-consumption.js";
 import { createInvoiceForUsagePeriod } from "./invoices.js";
 import { createChargeForInvoice, type ChargeDeps } from "./charges.js";
 
+export type SubscriptionLifecycleResult = { suspended: number; errors: string[] };
+
+/** Suspende apenas inadimplência cuja carência já venceu; nunca reativa nem corta ACTIVE em dia. */
+export async function runSubscriptionLifecycleBatch(limit = 100): Promise<SubscriptionLifecycleResult> {
+  const result: SubscriptionLifecycleResult = { suspended: 0, errors: [] };
+  const candidates = await db.query<{ tenant_id: string }>(`SELECT tenant_id FROM tenant_subscriptions WHERE status IN ('PAST_DUE','GRACE_PERIOD') AND grace_period_ends_at IS NOT NULL AND grace_period_ends_at <= now() ORDER BY tenant_id LIMIT $1`, [limit]);
+  for (const { tenant_id } of candidates.rows) {
+    try {
+      await withTenantTransaction(db, tenant_id, async (client) => {
+        const locked = await client.query<{ id: string; status: string }>(`SELECT id,status FROM tenant_subscriptions WHERE tenant_id=$1 AND status IN ('PAST_DUE','GRACE_PERIOD') AND grace_period_ends_at IS NOT NULL AND grace_period_ends_at <= now() FOR UPDATE`, [tenant_id]);
+        for (const sub of locked.rows) {
+          await client.query(`UPDATE tenant_subscriptions SET status='SUSPENDED', suspended_at=now(), updated_at=now() WHERE id=$1`, [sub.id]);
+          await client.query(`INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_status,to_status,metadata) VALUES($1,$2,'LIFECYCLE_STATUS_CHANGED',$3,'SUSPENDED',$4)`, [tenant_id, sub.id, sub.status, { reason: "grace_period_expired" }]);
+          result.suspended++;
+        }
+      });
+    } catch (error) { result.errors.push(`subscription:${tenant_id}:${error instanceof Error ? error.message : "unknown"}`); }
+  }
+  return result;
+}
+
 export type BillingReconciliationResult = { periods: number; reconciled: number; expiredReservations: number; rolloverExpired: number; errors: string[] };
 
 export async function runBillingReconciliationBatch(limit = 100, chargeDeps: ChargeDeps = {}): Promise<BillingReconciliationResult> {

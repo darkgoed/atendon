@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { db } from "../db/client.js";
+import { truncateRolloverToPlanCap } from "./rollover.js";
 
 export type BillingCycle = "MONTHLY" | "QUARTERLY" | "YEARLY";
 export type DiscountType = "PERCENT" | "FIXED";
@@ -51,18 +52,23 @@ export async function contractPlanForTenant(tenantId: string, planId: string, bi
     if (!live) throw Object.assign(new Error("Preço ativo não encontrado"), { statusCode: 404 });
 
     const months = billingCycle === "MONTHLY" ? 1 : billingCycle === "QUARTERLY" ? 3 : 12;
+    const previous = sub.rows[0];
+    const preserveCycle = previous.current_period_end && new Date(previous.current_period_end).getTime() > Date.now();
+    const preserveStatus = ["CANCELED", "SUSPENDED", "PAST_DUE", "GRACE_PERIOD"].includes(previous.status);
     const updated = await client.query(
-      `UPDATE tenant_subscriptions SET plan_id=$1,billing_cycle=$2,base_price_cents=$3,snapshot_discount_type=$4,snapshot_discount_value=$5,final_price_cents=$6,snapshot_currency=$7,contracted_at=now(),current_period_start=now(),current_period_end=now()+make_interval(months => $8),status='ACTIVE',updated_at=now() WHERE id=$9 RETURNING *`,
-      [planId, billingCycle, live.base_price_cents, live.discount_type, live.discount_value, live.final_price_cents, live.currency, months, sub.rows[0].id]
+      `UPDATE tenant_subscriptions SET plan_id=$1,billing_cycle=$2,base_price_cents=$3,snapshot_discount_type=$4,snapshot_discount_value=$5,final_price_cents=$6,snapshot_currency=$7,contracted_at=now(),current_period_start=CASE WHEN $8 THEN current_period_start ELSE now() END,current_period_end=CASE WHEN $8 THEN current_period_end ELSE now()+make_interval(months => $9) END,status=CASE WHEN $10 THEN status ELSE 'ACTIVE' END,updated_at=now() WHERE id=$11 RETURNING *`,
+      [planId, billingCycle, live.base_price_cents, live.discount_type, live.discount_value, live.final_price_cents, live.currency, preserveCycle, months, preserveStatus, previous.id]
     );
     const subscription = updated.rows[0];
+    if (previous.plan_id !== planId) await truncateRolloverToPlanCap(client, tenantId, planId);
+
     await client.query(
       `INSERT INTO usage_periods(tenant_id,subscription_id,sequence,start_at,end_at,included_limit,status)
        SELECT $1,$2,COALESCE(max(sequence),0)+1,now(),now()+interval '1 month',NULL,'OPEN' FROM usage_periods WHERE tenant_id=$1 AND status='OPEN' HAVING count(*)=0`,
       [tenantId, subscription.id]
     );
-    const metadata = { snapshot: { plan_id: planId, billing_cycle: billingCycle, base_price_cents: live.base_price_cents, discount_type: live.discount_type, discount_value: live.discount_value, final_price_cents: live.final_price_cents, currency: live.currency }, actor_user_id: actorUserId };
-    await client.query("INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_plan_id,to_plan_id,from_status,to_status,actor_user_id,metadata) VALUES($1,$2,'PLAN_CONTRACTED',$3,$4,$5,'ACTIVE',$6,$7)", [tenantId, subscription.id, sub.rows[0].plan_id, planId, sub.rows[0].status, actorUserId || null, metadata]);
+    const metadata = { snapshot: { plan_id: planId, billing_cycle: billingCycle, base_price_cents: live.base_price_cents, discount_type: live.discount_type, discount_value: live.discount_value, final_price_cents: live.final_price_cents, currency: live.currency }, cycle: preserveCycle ? "preserved" : "restarted", actor_user_id: actorUserId };
+    await client.query("INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_plan_id,to_plan_id,from_status,to_status,actor_user_id,metadata) VALUES($1,$2,'PLAN_CONTRACTED',$3,$4,$5,$6,$7,$8)", [tenantId, subscription.id, sub.rows[0].plan_id, planId, sub.rows[0].status, subscription.status, actorUserId || null, metadata]);
     await client.query("COMMIT");
     return subscription;
   } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }

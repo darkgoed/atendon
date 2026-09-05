@@ -34,7 +34,11 @@ export class MercadoPagoProvider implements BillingProvider {
     const requestId = header(headers, "x-request-id");
     const parts = Object.fromEntries(signature.split(",").map((part) => { const [key, ...rest] = part.trim().split("="); return [key, rest.join("=")]; }));
     const resourceId = String((payload.data as Record<string, unknown> | undefined)?.id ?? payload.id ?? "");
-    const manifestId = resourceId.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const action = typeof payload.action === "string" ? payload.action : undefined;
+    // O manifesto do Mercado Pago é `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`
+    // com o data.id apenas em minúsculas. REMOVER caracteres (hífen, ponto) muda o
+    // valor assinado pelo provedor e faz webhooks legítimos caírem em 401 eterno.
+    const manifestId = resourceId.toLowerCase();
     const ts = parts.ts ?? "";
     const tolerance = this.options.signatureToleranceSeconds;
     const timestampSeconds = /^\d+$/.test(ts)
@@ -65,8 +69,9 @@ export class MercadoPagoProvider implements BillingProvider {
     const currency = data.currency_id ?? data.currency ?? payload.currency_id;
     const invoiceReference = data.invoice_id ?? data.external_invoice_id ?? payload.invoice_id ?? payload.external_invoice_id;
     return {
-      externalEventId: resourceId,
-      eventType: String(payload.type ?? payload.action ?? "unknown"),
+      externalEventId: String(payload.id ?? (action && resourceId ? `${action}:${resourceId}` : resourceId)),
+      eventType: action ?? String(payload.type ?? "unknown"),
+      status: typeof data.status === "string" ? data.status.toLowerCase() : undefined,
       signatureValid: valid,
       amountCents,
       currency: typeof currency === "string" ? currency : undefined,

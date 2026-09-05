@@ -66,7 +66,10 @@ describe("billing providers", () => {
     expect(valid.payload).toEqual({ data: { id: "ABC" }, type: "payment" });
   });
 
-  it("normalizes uppercase manifest data.id", async () => {
+  it("minusculiza o data.id do manifesto preservando os demais caracteres", async () => {
+    // A especificação do Mercado Pago manda apenas minusculizar o data.id no
+    // manifesto. Remover caracteres (hífen, ponto) altera o valor assinado pelo
+    // provedor e faz webhooks legítimos serem rejeitados com 401 em retry eterno.
     const calls: string[] = [];
     const fetchImpl: typeof fetch = async (input) => {
       calls.push(String(input));
@@ -76,10 +79,25 @@ describe("billing providers", () => {
     const raw = JSON.stringify({ data: { id: "Ab-C" }, type: "payment" });
     const result = await p.handleWebhook(raw, {
       "x-request-id": "req",
-      "x-signature": `ts=1,v1=${signatureFor("id:abc;request-id:req;ts:1;", "secret")}`,
+      "x-signature": `ts=1,v1=${signatureFor("id:ab-c;request-id:req;ts:1;", "secret")}`,
     }, "secret");
     expect(result.signatureValid).toBe(true);
     expect(calls).toEqual(["https://api.mercadopago.com/v1/payments/Ab-C"]);
+  });
+
+  it("rejeita assinatura calculada sobre um data.id com caracteres removidos", async () => {
+    // Guarda de regressão: o manifesto NÃO pode voltar a apagar caracteres.
+    const p = new MercadoPagoProvider({
+      credentialsEncrypted,
+      encryptionKey,
+      fetchImpl: async () => new Response(JSON.stringify({ id: "ABC", status: "approved" }), { status: 200 })
+    });
+    const raw = JSON.stringify({ data: { id: "Ab-C" }, type: "payment" });
+    const result = await p.handleWebhook(raw, {
+      "x-request-id": "req",
+      "x-signature": `ts=1,v1=${signatureFor("id:abc;request-id:req;ts:1;", "secret")}`,
+    }, "secret");
+    expect(result.signatureValid).toBe(false);
   });
 
   it("accepts a manifest without optional data.id", async () => {

@@ -76,7 +76,7 @@ import {
 } from "./queue/meet-maintenance-queue.js";
 import { indexMeetRecordings } from "./modules/meet/recordings-indexer.js";
 import { deleteExpiredMeetRecordings } from "./modules/meet/retention.js";
-import { runBillingReconciliationBatch } from "./billing/reconciler.js";
+import { runBillingReconciliationBatch, runSubscriptionLifecycleBatch } from "./billing/reconciler.js";
 import {
   OAUTH_TOKEN_RENEWAL_INTERVAL_MS,
   runOAuthTokenRenewalBatch,
@@ -526,6 +526,12 @@ const billingReconciler = setInterval(() => {
   }).catch((error) => logger.error({ error }, "Billing reconciliation failed"));
 }, Number(process.env.BILLING_RECONCILIATION_INTERVAL_MS ?? 60_000));
 billingReconciler.unref();
+const subscriptionLifecycleTimer = setInterval(() => {
+  void runSubscriptionLifecycleBatch(100).then((result) => {
+    if (result.errors.length) logger.warn({ result }, "Subscription lifecycle completed with errors");
+  }).catch((error) => logger.error({ error }, "Subscription lifecycle failed"));
+}, Number(process.env.SUBSCRIPTION_LIFECYCLE_INTERVAL_MS ?? 60_000));
+subscriptionLifecycleTimer.unref();
 const oauthTokenRenewalTimer = setInterval(() => {
   void runOAuthTokenRenewalBatch()
     .catch((error) => logger.error({ error }, "Mercado Pago OAuth token renewal batch failed"));

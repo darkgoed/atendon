@@ -51,21 +51,20 @@ type SubscriptionRow = {
 };
 
 const APPROVED = new Set(["payment.approved", "approved", "payment.updated.approved", "accredited"]);
-const REJECTED = new Set(["payment.rejected", "rejected", "cancelled", "charged_back"]);
+const REJECTED = new Set(["payment.rejected", "rejected", "cancelled", "refunded", "charged_back"]);
 
 function httpError(statusCode: number, message: string, code?: string) {
   return Object.assign(new Error(message), { statusCode, ...(code ? { code } : {}) });
 }
 
-/** Classifica o evento sem depender do nome comercial de um gateway específico. */
-function classify(eventType: string, payload: unknown): "approved" | "rejected" | "ignored" {
-  const status = String(
-    (payload as { data?: { status?: unknown }; status?: unknown })?.data?.status ??
-    (payload as { status?: unknown })?.status ?? ""
-  ).toLowerCase();
-  const key = eventType.toLowerCase();
-  if (APPROVED.has(key) || APPROVED.has(status)) return "approved";
-  if (REJECTED.has(key) || REJECTED.has(status)) return "rejected";
+/** Classifica usando primeiro o status autenticado retornado pela API. */
+function classify(result: Pick<WebhookResult, "eventType" | "payload" | "status">): "approved" | "rejected" | "ignored" {
+  const status = String(result.status ??
+    (result.payload as { data?: { status?: unknown }; status?: unknown })?.data?.status ??
+    (result.payload as { status?: unknown })?.status ?? "").toLowerCase();
+  const key = result.eventType.toLowerCase();
+  if (["approved", "accredited"].includes(status) || APPROVED.has(key)) return "approved";
+  if (["rejected", "cancelled", "refunded", "charged_back"].includes(status) || REJECTED.has(key)) return "rejected";
   return "ignored";
 }
 
@@ -115,14 +114,17 @@ async function applyApproved(client: PoolClient, provider: ProviderRow, result: 
   if (result.amountCents !== Number(row.amount_cents) || (result.currency ?? "").toUpperCase() !== row.currency.toUpperCase()) {
     throw httpError(422, "Valor ou moeda do webhook não corresponde à fatura", "WEBHOOK_AMOUNT_MISMATCH");
   }
-  const existing = await client.query("SELECT 1 FROM payments WHERE provider_id=$1 AND external_id=$2 FOR UPDATE", [provider.id, externalId]);
-  if (existing.rowCount) return;
-
-  await client.query(
-    `INSERT INTO payments(tenant_id,invoice_id,provider_id,external_id,amount_cents,currency,status,method,paid_at)
-     VALUES($1,$2,$3,$4,$5,$6,'paid',$7,now())`,
-    [row.tenant_id, row.id, provider.id, externalId, row.amount_cents, row.currency, "webhook"]
-  );
+  const existing = await client.query<{ status: string }>("SELECT status FROM payments WHERE provider_id=$1 AND external_id=$2 FOR UPDATE", [provider.id, externalId]);
+  if (existing.rows[0]?.status === "paid") return;
+  if (existing.rowCount) {
+    await client.query("UPDATE payments SET status='paid',paid_at=now() WHERE provider_id=$1 AND external_id=$2", [provider.id, externalId]);
+  } else {
+    await client.query(
+      `INSERT INTO payments(tenant_id,invoice_id,provider_id,external_id,amount_cents,currency,status,method,paid_at)
+       VALUES($1,$2,$3,$4,$5,$6,'paid',$7,now())`,
+      [row.tenant_id, row.id, provider.id, externalId, row.amount_cents, row.currency, "webhook"]
+    );
+  }
   await client.query("UPDATE invoices SET status='paid',paid_at=now(),updated_at=now() WHERE id=$1", [row.id]);
 
   const subscription = await client.query<SubscriptionRow>(
@@ -166,14 +168,20 @@ async function applyRejected(client: PoolClient, provider: ProviderRow, result: 
   const row = invoice.rows[0];
   if (!row) throw httpError(422, "Fatura do webhook não encontrada", "UNRECONCILED_WEBHOOK");
 
-  const existing = await client.query("SELECT 1 FROM payments WHERE provider_id=$1 AND external_id=$2 FOR UPDATE", [provider.id, externalId]);
-  if (existing.rowCount) return;
-
-  await client.query(
-    `INSERT INTO payments(tenant_id,invoice_id,provider_id,external_id,amount_cents,currency,status,method)
-     VALUES($1,$2,$3,$4,$5,$6,'rejected',$7)`,
-    [row.tenant_id, row.id, provider.id, externalId, row.amount_cents, row.currency, "webhook"]
-  );
+  const existing = await client.query<{ status: string }>("SELECT status FROM payments WHERE provider_id=$1 AND external_id=$2 FOR UPDATE", [provider.id, externalId]);
+  if (existing.rows[0]?.status === "rejected") return;
+  if (existing.rowCount) {
+    await client.query("UPDATE payments SET status='rejected',paid_at=NULL WHERE provider_id=$1 AND external_id=$2", [provider.id, externalId]);
+    if (existing.rows[0].status === "paid") {
+      await client.query("UPDATE invoices SET status='open',paid_at=NULL,updated_at=now() WHERE id=$1", [row.id]);
+    }
+  } else {
+    await client.query(
+      `INSERT INTO payments(tenant_id,invoice_id,provider_id,external_id,amount_cents,currency,status,method)
+       VALUES($1,$2,$3,$4,$5,$6,'rejected',$7)`,
+      [row.tenant_id, row.id, provider.id, externalId, row.amount_cents, row.currency, "webhook"]
+    );
+  }
 
   const subscription = await client.query<SubscriptionRow>(
     `SELECT s.id,s.status,s.current_period_end,s.plan_id,p.billing_period_months,p.grace_period_days
@@ -236,7 +244,7 @@ export async function processBillingWebhook(
     }
     eventId = inserted.rows[0].id;
 
-    const kind = classify(result.eventType, result.payload);
+    const kind = classify(result);
     if (kind === "approved") await applyApproved(client, provider, result);
     else if (kind === "rejected") await applyRejected(client, provider, result);
 
