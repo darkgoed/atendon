@@ -100,11 +100,11 @@ function matchTrigger(definition: FlowDefinition, input: QualificationInbound): 
   return null;
 }
 
-function attribution(input: QualificationInbound): Record<string, unknown> {
+function attribution(input: QualificationInbound, tenantProduct: string): Record<string, unknown> {
   return {
     provider: "meta",
     channel: "facebook",
-    product: "newave",
+    product: tenantProduct,
     ...(input.referral ? {
       source_type: input.referral.sourceType,
       source_id: input.referral.sourceId,
@@ -413,7 +413,11 @@ export class QualificationService {
         selector: { leadId },
         reason: "lead_criado"
       });
-      const assigned = attribution(input);
+      const tenant = await client.query<{ product: string }>(
+        "SELECT COALESCE(NULLIF(slug,''), NULLIF(name,''), id::text) AS product FROM tenants WHERE id=$1",
+        [input.tenantId]
+      );
+      const assigned = attribution(input, tenant.rows[0]?.product ?? input.tenantId);
       const inserted = await client.query<{ id: string }>(
         `INSERT INTO lead_qualifications
           (tenant_id,lead_id,flow_id,current_step,total_questions,last_inbound_external_id,definition_snapshot,trigger_type,attribution)

@@ -315,9 +315,6 @@ function hasCompleteMeetingInvitationContext(text: string, slotDurationMinutes?:
   const exposesOperationalDuration =
     /\b(?:agenda|calendario|slot|duracao operacional|tempo reservado|intervalo reservado)\b.{0,50}\b\d{1,4}\s*(?:min|minuto|minutos|minutinhos)\b/u.test(normalized);
   const recognizesCommercialNeed = /\b(?:problema|dificuldade|desafio|necessidade|objetivo|limite|cartao|sem cartao|perd\w*\s+vendas?|trav\w*\s+vendas?|crediario|boleto|vendas?)\b/u.test(normalized);
-  const presentsNewaveSolution = /\bnewave\b/u.test(normalized)
-    && /\b(?:credito|financiamento|solucao|crediario|boleto|vendas?)\b/u.test(normalized);
-  const explainsNewave = /\b(?:explicar|mostrar|apresentar|detalhar)\b.{0,100}\b(?:como\s+(?:a\s+)?newave\s+funciona|como\s+funciona|solucoes?\s+da\s+newave)\b/u.test(normalized);
   const understandsBusiness = /\b(?:entender|conhecer)\b.{0,100}\b(?:operacao|empresa|negocio|loja|cenario|momento|necessidade|processo|vendas?)\b/u.test(normalized);
   return identifiesMeeting
     && identifiesCommercialDuration
@@ -325,8 +322,6 @@ function hasCompleteMeetingInvitationContext(text: string, slotDurationMinutes?:
     && !exposesWrongMeetingRange
     && !exposesOperationalDuration
     && recognizesCommercialNeed
-    && presentsNewaveSolution
-    && explainsNewave
     && understandsBusiness;
 }
 
@@ -396,5 +391,5 @@ export function meetingInvitationContextCorrection(
   const prefilledReminder = Object.keys(attribution).length
     ? " Os dados do anúncio ou formulário já são contexto suficiente: não os repita como perguntas."
     : "";
-  return `Reescreva a resposta antes de enviá-la. Esta é a primeira oferta proativa de reunião: reconheça em uma frase curta a necessidade que o contato informou e conecte-a à Newave sem prometer aprovação ou resultado. Em seguida, faça um convite direto, humano e conversacional para um bate-papo de 20 a 40 minutos no Google Meet, com dois objetivos: explicar como a Newave funciona e entender a operação para avaliar como a solução pode funcionar nas vendas da loja. Use como referência de tom: “Vamos fazer um bate-papo de 20 a 40 minutos no Google Meet? Aí eu consigo te explicar melhor como a Newave funciona, entender um pouco da sua operação e você também consegue ver como isso pode funcionar nas vendas da sua loja.” Depois ofereça somente os horários concretos já consultados, de forma natural, como “Hoje tenho às 18h. Funciona pra você?”. Evite frases explicativas e robóticas como “O convite é para uma reunião”, não use tom corporativo e não exagere nas explicações antes do horário. Nunca troque a faixa de 20 a 40 minutos pela duração operacional da agenda nem exponha as duas durações.${prefilledReminder} Não faça nova pergunta de qualificação e não invente dados ou benefícios. Se o contato tiver pedido diretamente uma data ou horário, responda objetivamente sem reapresentar a reunião.`;
+  return `Reescreva a resposta antes de enviá-la. Esta é a primeira oferta proativa de reunião: reconheça em uma frase curta a necessidade que o contato informou e conecte-a à oferta configurada sem prometer aprovação ou resultado. Em seguida, faça um convite direto, humano e conversacional para um bate-papo de 20 a 40 minutos no Google Meet, com dois objetivos: explicar como a oferta configurada funciona e entender a operação para avaliar como a solução pode funcionar nas vendas da loja. Use como referência de tom: “Vamos fazer um bate-papo de 20 a 40 minutos no Google Meet? Aí eu consigo te explicar melhor como a oferta configurada funciona, entender um pouco da sua operação e você também consegue ver como isso pode funcionar nas vendas da sua loja.” Depois ofereça somente os horários concretos já consultados, de forma natural, como “Hoje tenho às 18h. Funciona pra você?”. Evite frases explicativas e robóticas como “O convite é para uma reunião”, não use tom corporativo e não exagere nas explicações antes do horário. Nunca troque a faixa de 20 a 40 minutos pela duração operacional da agenda nem exponha as duas durações.${prefilledReminder} Não faça nova pergunta de qualificação e não invente dados ou benefícios. Se o contato tiver pedido diretamente uma data ou horário, responda objetivamente sem reapresentar a reunião.`;
 }

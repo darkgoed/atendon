@@ -42,8 +42,10 @@ x-atendon-runtime-environment: &atendon-runtime-environment
   TRIPZ_AI_ALLOWED_MODELS: ${TRIPZ_AI_ALLOWED_MODELS:-openai/gpt-5.6-luna-pro,anthropic/claude-sonnet-4.6}
   TRIPZ_AI_PROVIDER: ${TRIPZ_AI_PROVIDER:-}
   TRIPZ_AI_REQUIRE_ZDR: ${TRIPZ_AI_REQUIRE_ZDR:-true}
-  TRIPZ_TENANT_SLUG: ${TRIPZ_TENANT_SLUG:-tripzturismo-a44ab4}
-  TRIPZ_OFFERS_GROUP_LINK: ${TRIPZ_OFFERS_GROUP_LINK:-https://chat.whatsapp.com/F2XZvKQaToNFf6cDFYKPDL}
+  # Configuracao tenant-specific: sem fallback de cliente no artefato.
+  # O tenant Tripz define ambos no Coolify; instalações novas ficam neutras.
+  TRIPZ_TENANT_SLUG: ${TRIPZ_TENANT_SLUG:-}
+  TRIPZ_OFFERS_GROUP_LINK: ${TRIPZ_OFFERS_GROUP_LINK:-}
   WEB_PUSH_PUBLIC_KEY: ${WEB_PUSH_PUBLIC_KEY:-}
   WEB_PUSH_PRIVATE_KEY: ${WEB_PUSH_PRIVATE_KEY:-}
   WEB_PUSH_SUBJECT: ${WEB_PUSH_SUBJECT:-}

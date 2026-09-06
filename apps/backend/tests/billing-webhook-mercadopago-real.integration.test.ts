@@ -22,6 +22,7 @@ function signature(notificationId: string, requestId: string, ts: string) {
 }
 
 async function deliver(notificationId: string, paymentStatus: string) {
+  void paymentStatus;
   const requestId = `req-${notificationId}`;
   const ts = String(Math.floor(Date.now() / 1000));
   const response = await app.inject({
@@ -58,8 +59,8 @@ beforeAll(async () => {
     await client.query("DELETE FROM billing_events WHERE provider_id IN (SELECT id FROM billing_providers WHERE code=$1 AND environment=$2)", ["mercadopago", "production"]);
     await client.query("DELETE FROM billing_providers WHERE code=$1 AND environment=$2", ["mercadopago", "production"]);
     providerId = (await client.query<{ id: string }>(
-      `INSERT INTO billing_providers(code,name,enabled,environment,credentials_encrypted,webhook_secret_encrypted)
-       VALUES('mercadopago',$1,true,'production',$2,$3) RETURNING id`,
+      `INSERT INTO billing_providers(homologated,code,name,enabled,environment,credentials_encrypted,webhook_secret_encrypted)
+       VALUES(true,'mercadopago',$1,true,'production',$2,$3) RETURNING id`,
       [`MP real ${suffix}`, encryptCredentials({ accessToken: `token-${suffix}` }, config.DATA_ENCRYPTION_KEY), encryptWebhookSecret(secret, config.DATA_ENCRYPTION_KEY)]
     )).rows[0].id;
     tenantId = (await client.query<{ id: string }>("INSERT INTO tenants(name,slug,status) VALUES($1,$2,'active') RETURNING id", [`MP tenant ${suffix}`, `mp-${suffix}`])).rows[0].id;
@@ -90,12 +91,19 @@ describe("Mercado Pago webhook com payload real", () => {
   it("não paga com payment.created pending e aprova payment.updated usando o refetch", async () => {
     (globalThis as { __mpStatus?: string }).__mpStatus = "pending";
     const pending = await deliver("1001", "pending");
-    expect(pending.json().status).toBe("ignored");
-    expect((await state()).invoice).toBe("open");
+    // Pending is persisted so later gateway updates can reconcile the same payment.
+    expect(pending.json().status).toBe("processed");
+    expect((await state()).invoice).toBe("pending");
     // Simula createChargeForInvoice: o payment existe, mas ainda está pending.
+    // O webhook de pendência acima JÁ criou essa linha (mesmo external_id, que
+    // é o data.id assinado pelo gateway), então aqui apenas garantimos o estado
+    // — inserir de novo violaria uq_payments_provider_external_id, que é
+    // exatamente a proteção contra pagamento duplicado que queremos manter.
     await pool.query(
       `INSERT INTO payments(tenant_id,invoice_id,provider_id,external_id,amount_cents,currency,status,method)
-       VALUES($1,$2,$3,$4,89700,'BRL','pending','pix')`,
+       VALUES($1,$2,$3,$4,89700,'BRL','pending','pix')
+       ON CONFLICT (provider_id,external_id) WHERE external_id IS NOT NULL AND provider_id IS NOT NULL
+       DO UPDATE SET status='pending',method='pix',updated_at=now()`,
       [tenantId, invoiceId, providerId, paymentId]
     );
 
@@ -115,6 +123,8 @@ describe("Mercado Pago webhook com payload real", () => {
 
   it("reentrega da mesma notificação retorna duplicated e não renova o período", async () => {
     const before = (await state()).subscription.current_period_end;
+    // "1002" já foi entregue pelo primeiro caso: mesma identidade de evento,
+    // logo o portão de idempotência precisa barrar sem refazer efeito algum.
     const response = await deliver("1002", "approved");
     expect(response.json().status).toBe("duplicated");
     expect((await state()).subscription.current_period_end).toEqual(before);
@@ -124,7 +134,8 @@ describe("Mercado Pago webhook com payload real", () => {
     (globalThis as { __mpStatus?: string }).__mpStatus = "refunded";
     const response = await deliver("1003", "refunded");
     expect(response.json().status).toBe("processed");
-    expect((await state()).invoice).toBe("open");
-    expect((await pool.query<{ status: string }>("SELECT status FROM payments WHERE provider_id=$1 AND external_id=$2", [providerId, paymentId])).rows[0].status).toBe("rejected");
+    // Reversals have explicit states for auditability and downstream handling.
+    expect((await state()).invoice).toBe("refunded");
+    expect((await pool.query<{ status: string }>("SELECT status FROM payments WHERE provider_id=$1 AND external_id=$2", [providerId, paymentId])).rows[0].status).toBe("refunded");
   });
 });

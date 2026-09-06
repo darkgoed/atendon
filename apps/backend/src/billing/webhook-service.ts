@@ -39,6 +39,8 @@ type InvoiceRow = {
   amount_cents: string;
   currency: string;
   status: string;
+  kind: string;
+  event_occurred_at?: string | null;
 };
 
 type SubscriptionRow = {
@@ -51,20 +53,34 @@ type SubscriptionRow = {
 };
 
 const APPROVED = new Set(["payment.approved", "approved", "payment.updated.approved", "accredited"]);
-const REJECTED = new Set(["payment.rejected", "rejected", "cancelled", "refunded", "charged_back"]);
+const REJECTED = new Set(["payment.rejected", "rejected", "cancelled"]);
+const REFUNDED = new Set(["refunded", "payment.refunded", "refund"]);
+const CHARGED_BACK = new Set(["charged_back", "chargeback", "payment.charged_back"]);
+
+type WebhookKind = "approved" | "rejected" | "pending" | "refunded" | "charged_back" | "ignored";
 
 function httpError(statusCode: number, message: string, code?: string) {
   return Object.assign(new Error(message), { statusCode, ...(code ? { code } : {}) });
 }
+function eventOccurredAt(result: WebhookResult): Date | null {
+  const payload = result.payload as { date_created?: unknown; created_at?: unknown; updated_at?: unknown; data?: { date_created?: unknown; created_at?: unknown; updated_at?: unknown } };
+  const raw = result.payload && typeof result.payload === "object" ? (payload.date_created ?? payload.created_at ?? payload.updated_at ?? payload.data?.date_created ?? payload.data?.created_at ?? payload.data?.updated_at) : null;
+  if (!raw) return null;
+  const date = new Date(String(raw));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 /** Classifica usando primeiro o status autenticado retornado pela API. */
-function classify(result: Pick<WebhookResult, "eventType" | "payload" | "status">): "approved" | "rejected" | "ignored" {
+function classify(result: Pick<WebhookResult, "eventType" | "payload" | "status">): WebhookKind {
   const status = String(result.status ??
     (result.payload as { data?: { status?: unknown }; status?: unknown })?.data?.status ??
     (result.payload as { status?: unknown })?.status ?? "").toLowerCase();
   const key = result.eventType.toLowerCase();
   if (["approved", "accredited"].includes(status) || APPROVED.has(key)) return "approved";
-  if (["rejected", "cancelled", "refunded", "charged_back"].includes(status) || REJECTED.has(key)) return "rejected";
+  if (["refunded", "refund"].includes(status) || REFUNDED.has(key)) return "refunded";
+  if (["charged_back", "chargeback"].includes(status) || CHARGED_BACK.has(key)) return "charged_back";
+  if (["pending", "in_process", "in_process_payment"].includes(status) || key.includes("pending") || key.includes("in_process")) return "pending";
+  if (REJECTED.has(key) || ["rejected", "cancelled"].includes(status)) return "rejected";
   return "ignored";
 }
 
@@ -105,7 +121,7 @@ async function applyApproved(client: PoolClient, provider: ProviderRow, result: 
   const invoiceKey = result.externalInvoiceId ?? result.externalReference;
   if (!invoiceKey) throw httpError(422, "Webhook sem vínculo inequívoco com fatura", "UNRECONCILED_WEBHOOK");
   const invoice = await client.query<InvoiceRow>(
-    `SELECT id,tenant_id,subscription_id,amount_cents,currency,status FROM invoices
+    `SELECT id,tenant_id,subscription_id,amount_cents,currency,status,kind FROM invoices
      WHERE provider_id=$1 AND external_id=$2 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
     [provider.id, invoiceKey]
   );
@@ -114,10 +130,25 @@ async function applyApproved(client: PoolClient, provider: ProviderRow, result: 
   if (result.amountCents !== Number(row.amount_cents) || (result.currency ?? "").toUpperCase() !== row.currency.toUpperCase()) {
     throw httpError(422, "Valor ou moeda do webhook não corresponde à fatura", "WEBHOOK_AMOUNT_MISMATCH");
   }
-  const existing = await client.query<{ status: string }>("SELECT status FROM payments WHERE provider_id=$1 AND external_id=$2 FOR UPDATE", [provider.id, externalId]);
+  // A pending webhook may arrive with the notification id while the approved
+  // refetch returns the gateway payment id. Reconcile by invoice first so a
+  // status transition cannot create a second payment row.
+  //
+  // Preferência: a linha que JÁ tem este external_id (é literalmente o mesmo
+  // pagamento); só então a mais recente da fatura, que é a criada pela cobrança
+  // e ainda carrega o id da notificação. Atualizar sempre "a mais recente"
+  // reescreveria o external_id por cima de outra linha e colidiria na unique
+  // parcial uq_payments_provider_external_id.
+  const existing = await client.query<{ id: string; status: string; external_id: string }>(
+    `SELECT id,status,external_id FROM payments
+      WHERE provider_id=$1 AND invoice_id=$2
+      ORDER BY (external_id = $3) DESC, created_at DESC
+      LIMIT 1 FOR UPDATE`,
+    [provider.id, row.id, externalId]
+  );
   if (existing.rows[0]?.status === "paid") return;
   if (existing.rowCount) {
-    await client.query("UPDATE payments SET status='paid',paid_at=now() WHERE provider_id=$1 AND external_id=$2", [provider.id, externalId]);
+    await client.query("UPDATE payments SET external_id=$1,status='paid',paid_at=now(),updated_at=now() WHERE id=$2", [externalId, existing.rows[0].id]);
   } else {
     await client.query(
       `INSERT INTO payments(tenant_id,invoice_id,provider_id,external_id,amount_cents,currency,status,method,paid_at)
@@ -138,6 +169,7 @@ async function applyApproved(client: PoolClient, provider: ProviderRow, result: 
 
   // Pagamento em dia só reativa quem estava inadimplente; não mexe em quem já está ACTIVE.
   if (sub.status === "PAST_DUE" || sub.status === "GRACE_PERIOD" || sub.status === "SUSPENDED") {
+    if (row.kind !== "subscription") return;
     await client.query(
       `UPDATE tenant_subscriptions
        SET status='ACTIVE', grace_period_ends_at=NULL,
@@ -155,13 +187,60 @@ async function applyApproved(client: PoolClient, provider: ProviderRow, result: 
   }
 }
 
-/** Falha de pagamento não corta acesso na hora: entra em PAST_DUE com carência (§11). */
+async function applyPending(client: PoolClient, provider: ProviderRow, result: WebhookResult): Promise<void> {
+  const externalId = result.externalPaymentId ?? result.externalEventId;
+  const invoiceKey = result.externalInvoiceId ?? result.externalReference;
+  if (!invoiceKey) throw httpError(422, "Webhook sem vínculo inequívoco com fatura", "UNRECONCILED_WEBHOOK");
+  const invoice = await client.query<InvoiceRow>(`SELECT id,tenant_id,subscription_id,amount_cents,currency,status,kind FROM invoices WHERE provider_id=$1 AND external_id=$2 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, [provider.id, invoiceKey]);
+  const row = invoice.rows[0];
+  if (!row) throw httpError(422, "Fatura do webhook não encontrada", "UNRECONCILED_WEBHOOK");
+  // Reconcilia pela FATURA, não pelo external_id: o evento de pendência chega
+  // com o id da notificação e o de aprovação com o id do pagamento no gateway.
+  // Casar por external_id criaria uma segunda linha para o mesmo pagamento.
+  const existing = await client.query<{ id: string; status: string }>(
+    "SELECT id,status FROM payments WHERE provider_id=$1 AND invoice_id=$2 ORDER BY created_at DESC LIMIT 1 FOR UPDATE",
+    [provider.id, row.id]
+  );
+  const settled = ["paid", "refunded", "charged_back"];
+  if (existing.rowCount && settled.includes(existing.rows[0].status)) return;
+  if (existing.rowCount) {
+    await client.query("UPDATE payments SET external_id=$1,status='pending',updated_at=now() WHERE id=$2", [externalId, existing.rows[0].id]);
+  } else {
+    await client.query(`INSERT INTO payments(tenant_id,invoice_id,provider_id,external_id,amount_cents,currency,status,method) VALUES($1,$2,$3,$4,$5,$6,'pending',$7)`, [row.tenant_id,row.id,provider.id,externalId,row.amount_cents,row.currency,"webhook"]);
+  }
+  await client.query("UPDATE invoices SET status='pending',updated_at=now() WHERE id=$1 AND status NOT IN ('paid','refunded','charged_back')", [row.id]);
+}
+
+async function applyReversal(client: PoolClient, provider: ProviderRow, result: WebhookResult, status: "refunded" | "charged_back"): Promise<void> {
+  const externalId = result.externalPaymentId ?? result.externalEventId;
+  const invoiceKey = result.externalInvoiceId ?? result.externalReference;
+  if (!invoiceKey) throw httpError(422, "Webhook sem vínculo inequívoco com fatura", "UNRECONCILED_WEBHOOK");
+  const invoice = await client.query<InvoiceRow>(`SELECT id,tenant_id,subscription_id,amount_cents,currency,status,kind FROM invoices WHERE provider_id=$1 AND external_id=$2 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, [provider.id, invoiceKey]);
+  const row = invoice.rows[0];
+  if (!row) throw httpError(422, "Fatura do webhook não encontrada", "UNRECONCILED_WEBHOOK");
+  // Mesma regra de applyPending/applyApproved: a identidade do pagamento é a
+  // FATURA. O estorno referencia o pagamento original, que pode ter sido criado
+  // com outro external_id.
+  const existing = await client.query<{ id: string }>(
+    "SELECT id FROM payments WHERE provider_id=$1 AND invoice_id=$2 ORDER BY created_at DESC LIMIT 1 FOR UPDATE",
+    [provider.id, row.id]
+  );
+  if (existing.rowCount) {
+    await client.query("UPDATE payments SET external_id=$1,status=$2,paid_at=NULL,updated_at=now() WHERE id=$3", [externalId, status, existing.rows[0].id]);
+  } else {
+    await client.query(`INSERT INTO payments(tenant_id,invoice_id,provider_id,external_id,amount_cents,currency,status,method) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [row.tenant_id,row.id,provider.id,externalId,row.amount_cents,row.currency,status,"webhook"]);
+  }
+  await client.query("UPDATE invoices SET status=$2,paid_at=NULL,updated_at=now() WHERE id=$1", [row.id,status]);
+  if (row.subscription_id) await client.query(`INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_plan_id,to_plan_id,from_status,to_status,metadata) SELECT $1,$2,$3,s.plan_id,s.plan_id,s.status,s.status,$4 FROM tenant_subscriptions s WHERE s.id=$2`, [row.tenant_id,row.subscription_id,status === "refunded" ? "PAYMENT_REFUNDED" : "PAYMENT_CHARGED_BACK", { invoiceId: row.id, reversal: true }]);
+}
+
+
 async function applyRejected(client: PoolClient, provider: ProviderRow, result: WebhookResult): Promise<void> {
   const externalId = result.externalPaymentId ?? result.externalEventId;
   const invoiceKey = result.externalInvoiceId ?? result.externalReference;
   if (!invoiceKey) throw httpError(422, "Webhook sem vínculo inequívoco com fatura", "UNRECONCILED_WEBHOOK");
   const invoice = await client.query<InvoiceRow>(
-    `SELECT id,tenant_id,subscription_id,amount_cents,currency,status FROM invoices
+    `SELECT id,tenant_id,subscription_id,amount_cents,currency,status,kind FROM invoices
      WHERE provider_id=$1 AND external_id=$2 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
     [provider.id, invoiceKey]
   );
@@ -230,12 +309,12 @@ export async function processBillingWebhook(
   try {
     await client.query("BEGIN");
     const inserted = await client.query<{ id: string }>(
-      `INSERT INTO billing_events(provider_id,external_event_id,event_type,payload,signature_valid,tenant_id)
-       VALUES($1,$2,$3,$4,true,$5)
+      `INSERT INTO billing_events(provider_id,external_event_id,event_type,payload,signature_valid,tenant_id,occurred_at)
+       VALUES($1,$2,$3,$4,true,$5,$6)
        ON CONFLICT (provider_id,external_event_id) DO UPDATE SET processing_error=NULL
        WHERE billing_events.processed_at IS NULL
        RETURNING id`,
-      [provider.id, result.externalEventId, result.eventType, result.payload, result.tenantHint ?? null]
+      [provider.id, result.externalEventId, result.eventType, result.payload, result.tenantHint ?? null, eventOccurredAt(result)]
     );
     // Portão de idempotência: se não inseriu, este evento já foi processado.
     if (!inserted.rowCount) {
@@ -247,6 +326,8 @@ export async function processBillingWebhook(
     const kind = classify(result);
     if (kind === "approved") await applyApproved(client, provider, result);
     else if (kind === "rejected") await applyRejected(client, provider, result);
+    else if (kind === "pending") await applyPending(client, provider, result);
+    else if (kind === "refunded" || kind === "charged_back") await applyReversal(client, provider, result, kind);
 
     await client.query("UPDATE billing_events SET processed_at=now() WHERE id=$1", [eventId]);
     await client.query("UPDATE billing_providers SET last_event_at=now() WHERE id=$1", [provider.id]);

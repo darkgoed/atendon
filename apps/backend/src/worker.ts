@@ -77,6 +77,9 @@ import {
 import { indexMeetRecordings } from "./modules/meet/recordings-indexer.js";
 import { deleteExpiredMeetRecordings } from "./modules/meet/retention.js";
 import { runBillingReconciliationBatch, runSubscriptionLifecycleBatch } from "./billing/reconciler.js";
+import { runMercadoPagoReconciliationBatch } from "./billing/mercadopago-reconciliation.js";
+import { runDunningBatch } from "./billing/dunning.js";
+import { applyScheduledDowngrades } from "./billing/proration.js";
 import {
   OAUTH_TOKEN_RENEWAL_INTERVAL_MS,
   runOAuthTokenRenewalBatch,
@@ -526,12 +529,36 @@ const billingReconciler = setInterval(() => {
   }).catch((error) => logger.error({ error }, "Billing reconciliation failed"));
 }, Number(process.env.BILLING_RECONCILIATION_INTERVAL_MS ?? 60_000));
 billingReconciler.unref();
+const mercadopagoReconciliationTimer = setInterval(() => {
+  void runMercadoPagoReconciliationBatch(100).then((result) => {
+    if (result.errors.length) logger.warn({ result }, "Mercado Pago reconciliation completed with errors");
+  }).catch((error) => logger.error({ error }, "Mercado Pago reconciliation failed"));
+}, Number(process.env.MERCADOPAGO_RECONCILIATION_INTERVAL_MS ?? 60_000));
+mercadopagoReconciliationTimer.unref();
+const dunningTimer = setInterval(() => {
+  void runDunningBatch(100).then((result) => {
+    if (result.errors.length) logger.warn({ result }, "Billing dunning completed with errors");
+  }).catch((error) => logger.error({ error }, "Billing dunning failed"));
+}, Number(process.env.DUNNING_INTERVAL_MS ?? 60_000));
+dunningTimer.unref();
 const subscriptionLifecycleTimer = setInterval(() => {
   void runSubscriptionLifecycleBatch(100).then((result) => {
     if (result.errors.length) logger.warn({ result }, "Subscription lifecycle completed with errors");
   }).catch((error) => logger.error({ error }, "Subscription lifecycle failed"));
 }, Number(process.env.SUBSCRIPTION_LIFECYCLE_INTERVAL_MS ?? 60_000));
 subscriptionLifecycleTimer.unref();
+/**
+ * Downgrade agendado (§U4): a troca para um plano menor é gravada em
+ * tenant_subscriptions.scheduled_plan_id e só vale quando o ciclo pago vira.
+ * Sem este timer a regra existiria no banco e nunca seria aplicada — o cliente
+ * continuaria no plano caro indefinidamente.
+ */
+const scheduledDowngradeTimer = setInterval(() => {
+  void applyScheduledDowngrades(100)
+    .then((applied) => { if (applied > 0) logger.info({ applied }, "Scheduled downgrades applied"); })
+    .catch((error) => logger.error({ error }, "Scheduled downgrade application failed"));
+}, Number(process.env.SCHEDULED_DOWNGRADE_INTERVAL_MS ?? 60_000));
+scheduledDowngradeTimer.unref();
 const oauthTokenRenewalTimer = setInterval(() => {
   void runOAuthTokenRenewalBatch()
     .catch((error) => logger.error({ error }, "Mercado Pago OAuth token renewal batch failed"));
@@ -583,6 +610,10 @@ async function shutdown(): Promise<void> {
   clearInterval(appointmentStatusReactionReconciler);
   clearInterval(pendingMeetingResultReconciler);
   clearInterval(billingReconciler);
+  clearInterval(mercadopagoReconciliationTimer);
+  clearInterval(dunningTimer);
+  clearInterval(subscriptionLifecycleTimer);
+  clearInterval(scheduledDowngradeTimer);
   clearInterval(oauthTokenRenewalTimer);
   clearInterval(heartbeatTimer);
   clearInterval(tripzAiReconciler);

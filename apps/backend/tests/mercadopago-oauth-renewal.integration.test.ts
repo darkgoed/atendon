@@ -21,7 +21,7 @@ describe("Mercado Pago OAuth token renewal batch", () => {
 
   it("does not refresh providers outside the window or permanent tokens", async () => {
     const refresh = vi.fn(async () => undefined);
-    const query = vi.fn(async (..._args: unknown[]) => ({ rows: [], rowCount: 0 }));
+    const query = vi.fn(async (...args: unknown[]) => { void args; return { rows: [], rowCount: 0 }; });
     const pool = { query };
 
     await runOAuthTokenRenewalBatch(pool, fetch, refresh);

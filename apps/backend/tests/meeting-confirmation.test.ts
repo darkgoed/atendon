@@ -9,13 +9,12 @@ import {
 } from "../src/modules/scheduling/meeting-confirmation.js";
 
 const startAt = new Date("2026-08-31T16:00:00Z");
-const moments: ConfirmationMoment[] = ["pos_agendamento", "duas_horas_antes", "quinze_minutos_antes"];
 
 describe("confirmação de reunião pelo contato", () => {
   it("expõe as 15 variações e interpola nome e horário", () => {
     const messages = [
       ...[0, 1, 2].map((variant) => buildConfirmationMessage({ appointmentId: `pos-${variant}`, moment: "pos_agendamento", name: "Ana", formattedTime: "16h", state: "nao_solicitada", variant })),
-      ...["duas_horas_antes", "quinze_minutos_antes"].flatMap((moment) => ["confirmada", "solicitada"].flatMap((state) => [0, 1, 2].map((variant) => buildConfirmationMessage({ appointmentId: `${moment}-${state}-${variant}`, moment: moment as ConfirmationMoment, name: "Ana", formattedTime: "16h", state: state as any, variant }))))
+      ...["duas_horas_antes", "quinze_minutos_antes"].flatMap((moment) => ["confirmada", "solicitada"].flatMap((state) => [0, 1, 2].map((variant) => buildConfirmationMessage({ appointmentId: `${moment}-${state}-${variant}`, moment: moment as ConfirmationMoment, name: "Ana", formattedTime: "16h", state: state as "confirmada" | "solicitada", variant }))))
     ];
     expect(messages).toHaveLength(15);
     expect(messages.every((message) => message.includes("Ana") || message.includes("16h"))).toBe(true);

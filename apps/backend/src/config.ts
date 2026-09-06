@@ -165,9 +165,12 @@ const schema = z.object({
   // disabled/configuration-independent for tenants that do not use Tripz.
   TRIPZ_OFFERS_GROUP_LINK: z.preprocess(
     (value) => value === "" ? undefined : value,
-    z.string().trim().url().default("https://chat.whatsapp.com/F2XZvKQaToNFf6cDFYKPDL")
+    z.string().trim().url().optional()
   ),
-  TRIPZ_TENANT_SLUG: z.string().trim().min(1).default("tripzturismo-a44ab4"),
+  TRIPZ_TENANT_SLUG: z.preprocess(
+    (value) => value === "" ? undefined : value,
+    z.string().trim().min(1).optional()
+  ),
   DEFAULT_SYSTEM_PROMPT: z.string()
     .refine((value) => value.trim().length > 0, "DEFAULT_SYSTEM_PROMPT não pode conter somente espaços")
     .default(defaultSystemPrompt),

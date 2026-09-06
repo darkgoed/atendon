@@ -334,8 +334,8 @@ echo "==> Ativando manutenção para migrations e troca do stack"
 enable_maintenance_page
 echo "==> Aplicando migrations principais com credencial separada"
 NODE_ENV=production APP_VERSION="${APP_VERSION}" DEPLOY_VERSION="${DEPLOY_VERSION}" npm run migrate -w @atendon/backend
-echo "==> Executando provisionamento idempotente"
-NODE_ENV=production APP_VERSION="${APP_VERSION}" DEPLOY_VERSION="${DEPLOY_VERSION}" npm run provision:tripz -w @atendon/backend
+# Provisionamentos de clientes são operações manuais; não fazem parte do build/deploy.
+# Para executar o Tripz sob demanda: npm run provision:tripz -w @atendon/backend
 echo "==> Registrando snapshot de flags"
 NODE_ENV=production APP_VERSION="${APP_VERSION}" DEPLOY_VERSION="${DEPLOY_VERSION}" npm run snapshot:deploy -w @atendon/backend
 

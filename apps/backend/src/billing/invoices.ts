@@ -59,11 +59,14 @@ async function createWithin(client: PoolClient, tenantId: string, periodId: stri
   const overage = Number(p.overage_amount_brl_cents);
   if (overage > 0) lines.push({ kind: "AI_OVERAGE", description: "Excedente de uso de IA", quantity: 1, unit: overage, amount: overage, metadata: { usage_period_id: periodId } });
   const amount = lines.reduce((sum, line) => sum + line.amount, 0);
+  // A fatura é de assinatura quando contém uma linha PLAN. O período de uso
+  // pode gerar somente excedente, e esse pagamento não deve renovar a assinatura.
+  const kind = lines.some(line => line.kind === "PLAN") ? "subscription" : "usage";
   const metadata = { usage_period_id: periodId, reference: `usage-period:${periodId}`, billing_cycle: s.billing_cycle };
   const invoiceResult = await client.query<Invoice>(
     `INSERT INTO invoices(tenant_id,subscription_id,kind,amount_cents,currency,status,due_date,period_start,period_end,metadata)
-     VALUES($1,$2,'usage', $3,$4,$5,$6,$7,$8,$9) RETURNING id,tenant_id,subscription_id,amount_cents,currency,status,kind,period_start,period_end,metadata`,
-    [tenantId, s.id, amount, s.snapshot_currency, options.status ?? "pending", options.dueDate ?? null, p.start_at, p.end_at, metadata]);
+     VALUES($1,$2,$10, $3,$4,$5,$6,$7,$8,$9) RETURNING id,tenant_id,subscription_id,amount_cents,currency,status,kind,period_start,period_end,metadata`,
+    [tenantId, s.id, amount, s.snapshot_currency, options.status ?? "pending", options.dueDate ?? null, p.start_at, p.end_at, metadata, kind]);
   const invoice = invoiceResult.rows[0];
   for (const line of lines) {
     await client.query(

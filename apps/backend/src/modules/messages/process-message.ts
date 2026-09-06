@@ -1604,8 +1604,7 @@ export class MessageProcessor {
     const schedulingRelevantTurn = (leadRegistrationRequired && !pureSocialTurn)
       || turnConcernsScheduling(effectiveMessage.text, context.history)
       || (leadReadyForScheduling && !commercialInformationTurn);
-    const isNewaveCommercialAgent = /\b(?:financeira\s+newave|newave\s+pay)\b/iu.test(context.systemPrompt);
-    const objectionRecoveryTurn = isNewaveCommercialAgent && needsObjectionRecovery(context.history);
+    const objectionRecoveryTurn = needsObjectionRecovery(context.history);
     const ambiguousSchedulingTurn = !hasActiveAppointment
       && isAmbiguousSchedulingConfirmation(effectiveMessage.text, context.history);
     const confirmedSchedulingTurn = leadReadyForScheduling

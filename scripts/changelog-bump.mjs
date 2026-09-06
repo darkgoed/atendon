@@ -14,7 +14,7 @@ const EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 const DIFF_EXCLUDES = [":!changelog.json", ":!package.json", ":!package-lock.json", ":!**/package-lock.json"];
 const DEFAULT_MINOR_MIN_KIB = 100;
 const DEFAULT_MAJOR_MIN_KIB = 1024;
-const DEFAULT_OPENROUTER_MODEL = "google/gemma-4-26b-a4b-it:free";
+const DEFAULT_OPENROUTER_MODEL = "openai/gpt-oss-120b";
 const BUMP_TYPES = new Set(["patch", "minor", "major"]);
 const GENERIC_CHANGE = "Melhorias internas e correções de estabilidade";
 const GENERIC_SCOPED_CHANGE = { text: GENERIC_CHANGE, tenant_slugs: [] };
@@ -224,15 +224,19 @@ export async function summarizeDiff(diffStat, diffText, options = {}) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify(body)
       });
-      let response = await makeRequest(structuredBody);
-      if (!response.ok) {
+      const compatibleBody = { ...structuredBody };
+      delete compatibleBody.provider;
+      delete compatibleBody.response_format;
+      // Uma vez confirmado que o endpoint não aceita parâmetros estruturados,
+      // as tentativas seguintes já pulam direto para o formato compatível —
+      // caso contrário toda 2ª tentativa reencontra o mesmo 404 (não retryable)
+      // e aborta o release estrito antes de reusar o fallback que já funcionava.
+      let response = await makeRequest(structuredFallbackUsed ? compatibleBody : structuredBody);
+      if (!response.ok && !structuredFallbackUsed) {
         const detail = await readOpenRouterError(response);
-        if (!structuredFallbackUsed && isStructuredEndpointError(response.status, detail)) {
+        if (isStructuredEndpointError(response.status, detail)) {
           structuredFallbackUsed = true;
           log("==> Endpoint sem suporte a parâmetros estruturados; tentando formato compatível");
-          const compatibleBody = { ...structuredBody };
-          delete compatibleBody.provider;
-          delete compatibleBody.response_format;
           response = await makeRequest(compatibleBody);
         }
       }
@@ -266,6 +270,39 @@ export async function summarizeDiff(diffStat, diffText, options = {}) {
   return [GENERIC_SCOPED_CHANGE];
 }
 
+function isAncestor(commit, headSha) {
+  try {
+    execFileSync("git", ["merge-base", "--is-ancestor", commit, headSha], { cwd: ROOT_DIR, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// O changelog.json pode ter sido gerado num checkout diferente do atual
+// (por exemplo, publicado via graft/subtree para origin/main, que reescreve
+// hashes de commit). Se o commit registrado na última entrada não for
+// ancestral do HEAD local, calcular o diff contra ele produz uma base
+// artificial e gigantesca (histórico inteiro), o que faz a IA falhar em
+// resumir e o release cair sempre no fallback genérico. Percorremos o
+// histórico até achar uma entrada cujo commit seja realmente ancestral.
+export function resolveLastCommit(changelog, headSha, deps = {}) {
+  const checkAncestor = deps.isAncestor || isAncestor;
+  const rescueHeadMinusOne = deps.rescueHeadMinusOne || (() => {
+    try { return git(["rev-parse", "HEAD~1"]); } catch { return EMPTY_TREE_SHA; }
+  });
+  const log = deps.log || ((message) => console.log(message));
+  for (const entry of changelog.history) {
+    if (typeof entry.commit === "string" && entry.commit && checkAncestor(entry.commit, headSha)) {
+      return entry.commit;
+    }
+  }
+  if (changelog.history.length > 0) {
+    log("==> Nenhum commit do changelog.json é ancestral do HEAD atual (histórico reescrito/graft); usando HEAD~1 como base");
+  }
+  return rescueHeadMinusOne();
+}
+
 async function main() {
   const pkg = JSON.parse(readFileSync(PACKAGE_JSON, "utf8"));
   const changelog = existsSync(CHANGELOG_JSON)
@@ -273,8 +310,7 @@ async function main() {
     : { current: pkg.version, history: [] };
 
   const headSha = git(["rev-parse", "HEAD"]);
-  const lastCommit = changelog.history[0]?.commit
-    || (() => { try { return git(["rev-parse", "HEAD~1"]); } catch { return EMPTY_TREE_SHA; } })();
+  const lastCommit = resolveLastCommit(changelog, headSha);
 
   const diffStat = git(["diff", "--stat", `${lastCommit}..${headSha}`, "--", ".", ...DIFF_EXCLUDES]);
   if (!diffStat) {

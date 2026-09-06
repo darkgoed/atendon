@@ -11,15 +11,6 @@ export interface ChangelogItem {
 type ScopedChange = { text: string; tenant_slugs: string[] };
 type StoredChangelogItem = Omit<ChangelogItem, "changes"> & { changes: Array<string | ScopedChange> };
 
-const LEGACY_BRAND_SCOPES: Array<{ pattern: RegExp; slug: string }> = [
-  { pattern: /\bnewave\b/i, slug: "newave-ia" },
-  { pattern: /\b(?:zulu|tripz)\b/i, slug: "tripzturismo-a44ab4" }
-];
-
-function brandScopes(text: string): string[] {
-  return LEGACY_BRAND_SCOPES.filter(({ pattern }) => pattern.test(text)).map(({ slug }) => slug);
-}
-
 export function filterChangelogHistory(history: StoredChangelogItem[], tenantSlug?: string): ChangelogItem[] {
   return history.map((item) => ({
     version: item.version,
@@ -27,14 +18,13 @@ export function filterChangelogHistory(history: StoredChangelogItem[], tenantSlu
     changes: (Array.isArray(item.changes) ? item.changes : []).flatMap((change) => {
       const text = typeof change === "string" ? change.trim() : typeof change?.text === "string" ? change.text.trim() : "";
       if (!text) return [];
-      const namedScopes = brandScopes(text);
       const declaredScopes = typeof change === "object" && Array.isArray(change.tenant_slugs)
         ? change.tenant_slugs
         : [];
-      // O nome explícito da empresa é autoridade mais restritiva que um item
-      // incorretamente marcado como global pelo gerador ou por histórico antigo.
-      const effectiveScopes = namedScopes.length ? namedScopes : declaredScopes;
-      return effectiveScopes.length === 0 || (tenantSlug && effectiveScopes.includes(tenantSlug)) ? [text] : [];
+      // O escopo é dado explícito do changelog, nunca inferido pelo nome de uma
+      // empresa no texto. Inferência por regex exigia editar código a cada
+      // tenant novo e transformava marca em lógica de produto.
+      return declaredScopes.length === 0 || (tenantSlug && declaredScopes.includes(tenantSlug)) ? [text] : [];
     })
   })).filter((item) => item.changes.length > 0);
 }

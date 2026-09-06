@@ -2,12 +2,13 @@ import type { Pool, PoolClient } from "pg";
 import { db } from "../db/client.js";
 import { config } from "../config.js";
 import { MercadoPagoProvider } from "./providers/mercadopago.js";
+import { assertAutomaticProvider, providerNotHomologated } from "./providers/homologation.js";
 import type { BillingProvider, PaymentInput, ProviderResult } from "./providers/types.js";
 
 type ProviderRow = { credentials_encrypted: string; webhook_secret_encrypted: string | null };
 type InvoiceRow = { id: string; tenant_id: string; amount_cents: number | string; currency: string; status: string; external_id: string | null; provider_id: string | null };
 type PaymentRow = { external_id: string; status: string; metadata: Record<string, unknown> | null };
-type ProviderConfigRow = ProviderRow & { id: string; enabled: boolean; environment: string; status: string; accepted_methods: string[] | null; commercial_config: Record<string, unknown> | null };
+type ProviderConfigRow = ProviderRow & { id: string; code: string; enabled: boolean; environment: string; status: string; homologated: boolean; accepted_methods: string[] | null; commercial_config: Record<string, unknown> | null };
 type PayerRow = { document?: string; email?: string };
 export type ChargeResult = { invoiceId: string; externalId: string; status: string; reference: string; payload?: Record<string, unknown> };
 export type ChargeDeps = { db?: Pool; provider?: BillingProvider; providerFactory?: (row: ProviderRow) => BillingProvider };
@@ -38,8 +39,12 @@ async function createChargeForInvoiceUncoalesced(invoiceId: string, method: stri
     }
     if (!["pending", "open"].includes(String(inv.status).toLowerCase())) throw new Error("Fatura não está aberta para cobrança");
     const amount = Number(inv.amount_cents); if (!Number.isFinite(amount) || amount <= 0) throw new Error("Valor da fatura inválido");
-    const p = (await c.query<ProviderConfigRow>(`SELECT id,code,enabled,environment,status,accepted_methods,commercial_config,credentials_encrypted,webhook_secret_encrypted FROM billing_providers WHERE id=COALESCE($1,(SELECT id FROM billing_providers WHERE environment='production' AND status='CONNECTED' AND enabled=true LIMIT 1)) FOR UPDATE`, [inv.provider_id])).rows[0];
+    const p = (await c.query<ProviderConfigRow>(`SELECT id,code,enabled,environment,status,homologated,accepted_methods,commercial_config,credentials_encrypted,webhook_secret_encrypted FROM billing_providers WHERE id=COALESCE($1,(SELECT id FROM billing_providers WHERE homologated=true AND environment='production' AND status='CONNECTED' AND enabled=true LIMIT 1)) FOR UPDATE`, [inv.provider_id])).rows[0];
     if (!p || p.environment !== "production" || !p.enabled || p.status !== "CONNECTED") throw new Error("Provedor de pagamento não está conectado");
+    // A homologação é dado da própria linha travada: um gateway não homologado
+    // nunca cobra, mesmo que alguém o tenha vinculado à fatura manualmente.
+    if (p.homologated !== true) throw providerNotHomologated(p.code);
+    assertAutomaticProvider(p.code);
     const accepted = Array.isArray(p.accepted_methods) ? p.accepted_methods : [];
     if (accepted.length && !accepted.includes(method)) throw new Error("Método de pagamento não aceito");
     const commercial = p.commercial_config && typeof p.commercial_config === "object" ? p.commercial_config : {};

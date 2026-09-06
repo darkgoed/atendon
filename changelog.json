@@ -1,6 +1,53 @@
 {
-  "current": "1.22.0",
+  "current": "2.0.0",
   "history": [
+    {
+      "version": "2.0.0",
+      "date": "2026-09-05",
+      "changes": [
+        {
+          "text": "Billing SaaS endurecido com Mercado Pago homologado, webhooks idempotentes, estados de pendência/reembolso/chargeback, reconciliação ativa e proteção contra cobranças duplicadas.",
+          "tenant_slugs": []
+        },
+        {
+          "text": "Planos comerciais agora suportam cupons, prorrata de upgrade, downgrade agendado, trial, dunning, limites concorrentes de gasto e ledger financeiro imutável.",
+          "tenant_slugs": []
+        },
+        {
+          "text": "Cadastro de empresas tornou-se genérico: plano padrão configurado por dados, capabilities derivadas do plano e nenhum acesso ilimitado gratuito concedido silenciosamente.",
+          "tenant_slugs": []
+        },
+        {
+          "text": "Painel ROOT ganhou operação de inadimplência, cupons, ledger, antifraude e divergências do Mercado Pago, sem expor ações remotas não implementadas.",
+          "tenant_slugs": []
+        },
+        {
+          "text": "Gateways não homologados foram bloqueados na UI, API, backend e banco; Mercado Pago é o único gateway automático habilitável nesta versão.",
+          "tenant_slugs": []
+        },
+        {
+          "text": "Novo skill “penetration-testing-with-strix” disponível, permitindo testes de penetração automatizados via Strix (CLI ou API cloud) diretamente no produto.",
+          "tenant_slugs": []
+        },
+        {
+          "text": "Variáveis de ambiente atualizadas: agora é obrigatório definir APP_VERSION e HOST; adicionada CONTAINER_RUNTIME para controle de runtime de contêineres.",
+          "tenant_slugs": []
+        },
+        {
+          "text": "Incluído TRANSFER_NOTIFICATION_WEBHOOK_HMAC_SECRET para assinatura HMAC de webhooks de transferência, aumentando a segurança das integrações.",
+          "tenant_slugs": []
+        },
+        {
+          "text": "Adicionado CHANGELOG_OPENROUTER_MODEL para escolher o modelo de IA usado na geração automática de changelogs.",
+          "tenant_slugs": []
+        },
+        {
+          "text": "Arquivos .dockerignore e .gitignore ampliados (ex.: strix_runs/ e ui-responsive-audit.json) para melhorar limpeza de artefatos e evitar versionamento de dados temporários.",
+          "tenant_slugs": []
+        }
+      ],
+      "commit": "3895091380d32dce0db4793fa262296ba2f71b84"
+    },
     {
       "version": "1.22.0",
       "date": "2026-08-27",
@@ -129,7 +176,12 @@
       "date": "2026-08-20",
       "changes": [
         "Transferência automática para humano se o cliente já mencionar o nome do proprietário no primeiro contato.",
-        "Novas diretrizes para o agente Zulu lidar com pós-venda, vagas, parcerias e concorrência.",
+        {
+          "text": "Novas diretrizes para o agente Zulu lidar com pós-venda, vagas, parcerias e concorrência.",
+          "tenant_slugs": [
+            "tripzturismo-a44ab4"
+          ]
+        },
         "Melhoria na gestão de conversas retomadas após longos períodos.",
         "Suporte para resposta em diferentes idiomas e identificação de troca de interlocutor no mesmo número."
       ],
@@ -155,7 +207,12 @@
       "version": "1.16.8",
       "date": "2026-08-19",
       "changes": [
-        "O Zulu agora tem um tom de conversa mais natural e humano, evitando parecer um robô ou formulário."
+        {
+          "text": "O Zulu agora tem um tom de conversa mais natural e humano, evitando parecer um robô ou formulário.",
+          "tenant_slugs": [
+            "tripzturismo-a44ab4"
+          ]
+        }
       ],
       "commit": "96bdadebb6a46e9e2c5773d7a0afcae037e91adb"
     },
@@ -163,7 +220,12 @@
       "version": "1.16.7",
       "date": "2026-08-19",
       "changes": [
-        "Atualização nas diretrizes de comportamento e personalidade da IA Zulu no WhatsApp.",
+        {
+          "text": "Atualização nas diretrizes de comportamento e personalidade da IA Zulu no WhatsApp.",
+          "tenant_slugs": [
+            "tripzturismo-a44ab4"
+          ]
+        },
         "Novas regras para coleta de informações e condução da conversa.",
         "Instruções detalhadas para classificação interna de leads e uso de ferramentas.",
         "Novas diretrizes para lidar com buscas por preço e convite para grupo de ofertas.",
@@ -483,7 +545,12 @@
         "A IA reconhece agradecimentos curtos como \"ok vlw\" após confirmação de reunião e permanece silenciosa, evitando reabrir opções de horário desnecessariamente.",
         "Ferramentas de consulta de agenda e disponibilidade são ocultadas quando já existe um agendamento ativo e o usuário não solicita mudança, reduzindo consultas redundantes.",
         "Melhoria no reconhecimento de mensagens de agradecimento combinadas, ampliando a compreensão de variações como \"ok vlw\", \"beleza obrigado\" etc.",
-        "No prompt Newave, a coleta de ticket médio passa a ser opcional e nunca obrigatória, limitando perguntas de qualificação a no máximo quatro durante a conversa.",
+        {
+          "text": "No prompt Newave, a coleta de ticket médio passa a ser opcional e nunca obrigatória, limitando perguntas de qualificação a no máximo quatro durante a conversa.",
+          "tenant_slugs": [
+            "newave-ia"
+          ]
+        },
         "Função `localHourMinute` passou a ser exportada, permitindo seu uso em outros módulos para exibir horários locais corretamente."
       ],
       "commit": "bdda9ac0c4c6b3703012108f4a388b9ff1e9fb1c"
@@ -545,7 +612,12 @@
       "date": "2026-08-06",
       "changes": [
         "Aumentado o limite de chamadas ao provedor de IA de 8 para 14 por turno, permitindo respostas mais elaboradas e uso de ferramentas adicionais antes de encerrar a conversa.",
-        "Ajustado o número máximo de palavras por bolha de mensagem do tenant Newave de 30 para 48, reduzindo quebras de frase e tornando as respostas mais fluidas.",
+        {
+          "text": "Ajustado o número máximo de palavras por bolha de mensagem do tenant Newave de 30 para 48, reduzindo quebras de frase e tornando as respostas mais fluidas.",
+          "tenant_slugs": [
+            "newave-ia"
+          ]
+        },
         "Introduzidos novos cenários de teste (gold suite) que melhoram a qualificação de leads sem exigir chamadas e continuam o acompanhamento via WhatsApp, resultando em respostas mais adequadas a esses fluxos.",
         "Adicionada validação de configuração para garantir que o número de requisições reservadas para a resposta final seja menor que o limite total, evitando erros de configuração.",
         "Aprimorada a lógica de controle de orçamento de tokens e custos, garantindo que o sistema não exceda os limites definidos e mantenha a estabilidade das respostas."
@@ -613,7 +685,12 @@
         "Quando a IA falha com erros como orçamento de turno esgotado, o sistema agora responde automaticamente com uma mensagem contextual em vez de transferir para um atendente humano.",
         "Mensagens de recuperação agora usam o primeiro nome do contato, quando disponível, para uma saudação mais pessoal.",
         "Leads registrados recebem uma resposta de fallback que reconhece o contexto e oferece continuar o atendimento de forma proativa.",
-        "Para leads comerciais da Newave registrados, o sistema exibe uma mensagem específica sobre redução de vendas perdidas por falta de limite no cartão.",
+        {
+          "text": "Para leads comerciais da Newave registrados, o sistema exibe uma mensagem específica sobre redução de vendas perdidas por falta de limite no cartão.",
+          "tenant_slugs": [
+            "newave-ia"
+          ]
+        },
         "O atendimento não é interrompido com handoff técnico em falhas determinísticas de IA, mantendo a conversa fluindo para o cliente.",
         "A recuperação de falhas de IA agora entrega respostas gravadas como respostas do agente, mantendo a consistência do histórico da conversa."
       ],
@@ -667,7 +744,12 @@
       "changes": [
         "A IA agora tenta mais uma vez antes de desistir em situações de restrição de política, melhorando a qualidade das respostas finais.",
         "Agendamentos diretos agora usam o horário exato retornado pela disponibilidade, evitando erros de horário no agendamento.",
-        "Foi adicionada a possibilidade de recuperar atendimentos travados por falha técnica da IA no workspace Newave.",
+        {
+          "text": "Foi adicionada a possibilidade de recuperar atendimentos travados por falha técnica da IA no workspace Newave.",
+          "tenant_slugs": [
+            "newave-ia"
+          ]
+        },
         "O campo de erro de handoff técnico é limpo automaticamente ao reativar a IA ou pausar manualmente, mantendo o estado do atendimento consistente.",
         "O motivo de handoff 'falha técnica' agora é suportado oficialmente no sistema, permitindo melhor rastreamento de problemas."
       ],

@@ -51,7 +51,18 @@ describe("AI consumption against real Postgres", () => {
   });
 
   it("enforces a fixed overage cap including reservations", async () => {
-    const t = await tenant("cap"), p = await plan(0); await subscribe(t, p); await period(t); await configureCredit(t, 8); const first = await consumeAiInteraction(t, "inbound_reply", "one"); expect(first).toMatchObject({ allowed: true, consumptionType: "OVERAGE" }); const second = await consumeAiInteraction(t, "inbound_reply", "two"); expect(second).toMatchObject({ allowed: false, reason: "CREDIT_CAP_REACHED" }); const r = await pool.query("SELECT overage_amount_brl_cents,reserved_cents FROM usage_periods WHERE tenant_id=$1", [t]); expect(Number(r.rows[0].overage_amount_brl_cents) + Number(r.rows[0].reserved_cents)).toBeLessThanOrEqual(8);
+    // A estimativa por interação é `min_overage_estimate_cents` (1 centavo, ver
+    // 0135) enquanto o tenant não tem histórico. Com cap 8 a segunda interação
+    // ainda cabe — por isso o cap aqui é 1: a primeira reserva o consome
+    // inteiro e a segunda tem de bater em CREDIT_CAP_REACHED por causa da
+    // RESERVA em voo, que é justamente o ponto do teste.
+    const t = await tenant("cap"), p = await plan(0); await subscribe(t, p); await period(t); await configureCredit(t, 1);
+    const first = await consumeAiInteraction(t, "inbound_reply", "one");
+    expect(first).toMatchObject({ allowed: true, consumptionType: "OVERAGE" });
+    const second = await consumeAiInteraction(t, "inbound_reply", "two");
+    expect(second).toMatchObject({ allowed: false, reason: "CREDIT_CAP_REACHED" });
+    const r = await pool.query("SELECT overage_amount_brl_cents,reserved_cents FROM usage_periods WHERE tenant_id=$1", [t]);
+    expect(Number(r.rows[0].overage_amount_brl_cents) + Number(r.rows[0].reserved_cents)).toBeLessThanOrEqual(1);
   });
 
   it("is idempotent, rejects disabled AI, and fails open without subscription", async () => {

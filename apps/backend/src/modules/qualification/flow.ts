@@ -77,8 +77,8 @@ export function renderQuestion(step: FlowStep): string {
 export function renderFinalMessage(step: FlowStep): string {
   const message = step.message ?? "";
   if (!/\{\{whatsapp_(?:principal|secundario)\}\}|wa\.me|especialista|falar com (?:a )?nossa equipe/i.test(message)) return message;
-  if (step.classificacao === "Perfil Newave — alto faturamento") {
-    return "Perfeito! Formulário concluído com sucesso. Pelo que você me contou, sua loja tem exatamente o perfil que a Newave procura. Obrigado por compartilhar essas informações! 🚀";
+  if (step.classificacao === "Perfil qualificado — alto faturamento") {
+    return "Perfeito! Formulário concluído com sucesso. Pelo que você me contou, sua loja tem exatamente o perfil que a oferta configurada procura. Obrigado por compartilhar essas informações! 🚀";
   }
   return "Obrigado pelas respostas! Formulário concluído com sucesso. As informações já ficaram registradas por aqui. 💪";
 }
@@ -103,7 +103,7 @@ export function remainingQuestions(definition: FlowDefinition, from: string): nu
 
 // O formulário é conduzido e encerrado integralmente pela IA nesta conversa.
 // A ativação exige apenas ao menos um gatilho configurado por organização.
-export const NEWAVE_FLOW = {
+export const DEFAULT_QUALIFICATION_FLOW = {
   start: "P1_TEMPO_DE_MERCADO",
   origem: "facebook",
   intro: "Oi! Que bom te ver por aqui 😊 Vou te fazer algumas perguntas rápidas pra entender o momento da sua loja, tudo bem?",
@@ -187,18 +187,21 @@ export const NEWAVE_FLOW = {
     },
     E1_PAGINA_FINAL: {
       kind: "final",
-      classificacao: "Perfil Newave — alto faturamento",
-      message: "Perfeito! Formulário concluído com sucesso. Pelo que você me contou, sua loja tem exatamente o perfil que a Newave procura. Obrigado por compartilhar essas informações! 🚀"
+      classificacao: "Perfil qualificado — alto faturamento",
+      message: "Perfeito! Formulário concluído com sucesso. Pelo que você me contou, sua loja tem exatamente o perfil que a oferta configurada procura. Obrigado por compartilhar essas informações! 🚀"
     },
     E2_PAGINA_FINAL: {
       kind: "final",
-      classificacao: "Perfil Newave — potencial com investimento",
+      classificacao: "Perfil qualificado — potencial com investimento",
       message: "Obrigado pelas respostas! Formulário concluído com sucesso. Sua loja tem muito potencial de crescimento, e as informações já ficaram registradas por aqui. 💪"
     },
     E3_ENCERRAMENTO: {
       kind: "final",
-      classificacao: "Sem perfil Newave no momento",
+      classificacao: "Sem perfil oferta configurada no momento",
       message: "Obrigado pelas respostas! No momento a gente não tem uma solução que encaixe no perfil da sua loja, mas vamos guardar seu contato pra futuras novidades. Sucesso por aí! 🙌"
     }
   }
 } satisfies z.input<typeof flowDefinitionSchema>;
+
+/** @deprecated Use DEFAULT_QUALIFICATION_FLOW; retained for client provisioners. */
+export const NEWAVE_FLOW = DEFAULT_QUALIFICATION_FLOW;

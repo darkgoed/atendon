@@ -16,7 +16,7 @@ async function scalar<T = string>(sql: string, params: unknown[] = []) { return 
 
 async function seed() {
   await pool.query("INSERT INTO users(id,email,status) VALUES($1,$2,'active')", [actor, `${actor}@r15.test`]);
-  const ids = await pool.query<{ id: string }>(`INSERT INTO billing_providers(code,name,enabled,environment) VALUES ($1,'R15',true,'sandbox'),($1,'R15',true,'production') RETURNING id`, [code]);
+  const ids = await pool.query<{ id: string }>(`INSERT INTO billing_providers(code,name,enabled,environment,homologated) VALUES ($1,'R15',false,'sandbox',true),($1,'R15',false,'production',true) RETURNING id`, [code]);
   providerIds = ids.rows.map((r) => r.id);
   await pool.query(`INSERT INTO tenants(name,slug,status) VALUES ('R15 tenant',$1,'active')`, [`r15-${randomUUID()}`]);
   await pool.query(`INSERT INTO invoices(tenant_id,provider_id,external_id,kind,amount_cents,currency,status,due_date) SELECT id,$1,$2,'subscription',100,'BRL','open',now() FROM tenants ORDER BY created_at DESC LIMIT 1`, [providerIds[0], `r15-invoice-${randomUUID()}`]);

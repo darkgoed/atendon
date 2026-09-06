@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { aiFollowUpSettingsSchema } from "../src/app.js";
-import { FollowUpMediaRepository } from "../src/modules/messages/follow-up-media.js";
+import { FollowUpMediaRepository, type FollowUpMediaDb } from "../src/modules/messages/follow-up-media.js";
 
 const uuid = "00000000-0000-0000-0000-000000000001";
 
@@ -17,7 +17,9 @@ describe("configuração de follow-up com áudio e vídeo", () => {
 
 describe("validação e remoção de mídia de follow-up", () => {
   it("rejeita asset inexistente de áudio e vídeo", async () => {
-    const db = { query: async () => ({ rows: [] }) } as any;
+    // O mock devolve a forma completa de QueryResult; tipar só `rows` não é
+    // atribuível à assinatura de `Pool["query"]`.
+    const db = { query: (async () => ({ rows: [], rowCount: 0, command: "SELECT", oid: 0, fields: [] })) as FollowUpMediaDb["query"] };
     const repository = new FollowUpMediaRepository(db);
     await expect(repository.validateDelivery(uuid, [{ type: "audio", assetId: uuid }])).rejects.toThrow("mídias");
     await expect(repository.validateDelivery(uuid, [{ type: "video", assetId: uuid }])).rejects.toThrow("mídias");
@@ -25,8 +27,10 @@ describe("validação e remoção de mídia de follow-up", () => {
 
   it("não remove mídia referenciada como áudio", async () => {
     const db = {
-      query: async (_sql: string, params: unknown[]) => params.length === 4 ? { rows: [{ used: true }] } : { rows: [] }
-    } as any;
+      query: (async (_sql: string, params?: unknown[]) => (params?.length === 4
+        ? { rows: [{ used: true }], rowCount: 1, command: "SELECT", oid: 0, fields: [] }
+        : { rows: [], rowCount: 0, command: "SELECT", oid: 0, fields: [] })) as FollowUpMediaDb["query"]
+    };
     await expect(new FollowUpMediaRepository(db).remove(uuid, uuid)).resolves.toBe("in_use");
   });
 });

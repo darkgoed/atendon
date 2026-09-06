@@ -1,0 +1,16 @@
+import { randomUUID } from "node:crypto";
+import pg from "pg";
+import { afterAll, describe, expect, it } from "vitest";
+import { config } from "../src/config.js";
+import { redeemCoupon } from "../src/billing/coupons.js";
+const pool = new pg.Pool({ connectionString: config.DATABASE_URL }); const tenants:string[]=[];
+async function q<T extends pg.QueryResultRow=pg.QueryResultRow>(s:string,v:unknown[]=[]){return (await pool.query<T>(s,v)).rows;}
+async function tenant(){const x=`coupon-${randomUUID()}`;const r=await q<{id:string}>("INSERT INTO tenants(name,slug,status) VALUES($1,$1,'active') RETURNING id",[x]);tenants.push(r[0].id);return r[0].id;}
+async function make(code:string,opt:Record<string,unknown>={}){await q("INSERT INTO promotional_coupons(code,discount_type,discount_value,starts_at,expires_at,max_redemptions,redemption_count,eligibility) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[code,opt.type??'FIXED',opt.value??1000,opt.starts??new Date(),opt.expires??null,opt.max??null,opt.count??0,opt.eligibility??{}]);}
+async function redeem(code:string,t:string,plan='p'){const c=await pool.connect();try{await c.query('BEGIN');const r=await redeemCoupon(c,{code,tenantId:t,planId:plan,priceCents:10000});await c.query('COMMIT');return r;}catch(e){await c.query('ROLLBACK');throw e}finally{c.release();}}
+afterAll(async()=>{if(tenants.length)await q("DELETE FROM tenants WHERE id=ANY($1::uuid[])",[tenants]);await pool.end();});
+describe('promotional coupons against Postgres',()=>{
+ it('applies percent and fixed discounts',async()=>{const t=await tenant();await make('P10',{type:'PERCENT',value:1000});await make('FIX',{value:2500});expect(Number((await redeem('P10',t)).discount_cents)).toBe(1000);expect(Number((await redeem('FIX',t)).discount_cents)).toBe(2500);});
+ it('rejects expired, not-yet-valid, exhausted and ineligible coupons',async()=>{const t=await tenant();await make('EXP',{expires:new Date(Date.now()-1000)});await make('FUT',{starts:new Date(Date.now()+86400000)});await make('MAX',{max:1,count:1});await make('PLAN',{eligibility:{plan_ids:['other']}});for(const [code,err] of [['EXP','COUPON_EXPIRED'],['FUT','COUPON_EXPIRED'],['MAX','COUPON_EXHAUSTED'],['PLAN','COUPON_NOT_ELIGIBLE']])await expect(redeem(code,t)).rejects.toMatchObject({code:err});});
+ it('is duplicate-idempotent and concurrent per tenant',async()=>{const t=await tenant();await make('ONCE');const a=await redeem('ONCE',t),b=await redeem('ONCE',t);expect(b.id).toBe(a.id);const t2=await tenant();const rs=await Promise.all([redeem('ONCE',t2),redeem('ONCE',t2)]);expect(new Set(rs.map(x=>x.id)).size).toBe(1);expect(Number((await q("SELECT redemption_count FROM promotional_coupons WHERE code='ONCE'"))[0].redemption_count)).toBe(2);expect(Number((await q("SELECT count(*) n FROM coupon_redemptions WHERE tenant_id=$1",[t2]))[0].n)).toBe(1);});
+});

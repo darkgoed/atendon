@@ -1,6 +1,6 @@
 import { parseIdempotencyKey, payloadFingerprint } from "./idempotency.js";
 
-export type FollowUpDb = { query: <T = any>(sql: string, params?: unknown[]) => Promise<{ rows: T[]; rowCount?: number }> };
+export type FollowUpDb = { query: <T = unknown>(sql: string, params?: unknown[]) => Promise<{ rows: T[]; rowCount?: number }> };
 export type FollowUpResult = { externalId: string; messageId: string | null };
 
 export async function enqueueFollowUpOnce(

@@ -1,16 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
-import { runFollowUpOnce } from "../src/modules/messages/follow-up-idempotency.js";
+import { runFollowUpOnce, type FollowUpDb } from "../src/modules/messages/follow-up-idempotency.js";
 import { payloadFingerprint } from "../src/modules/messages/idempotency.js";
 
-function fakeDb(rows: unknown[][] = []) {
+// O fake precisa satisfazer a assinatura GENÉRICA de FollowUpDb; um mock com
+// `rows: unknown[]` fixo não é atribuível a `<T>(...) => Promise<{ rows: T[] }>`.
+function fakeDb(rows: unknown[][] = []): FollowUpDb & { queries: string[] } {
   let i = 0;
   const queries: string[] = [];
+  // `vi.fn` fixa o tipo de retorno e perde o parâmetro genérico de FollowUpDb,
+  // então o espião fica por baixo e a função exposta mantém a assinatura real.
+  const spy = vi.fn((sql: string) => {
+    queries.push(sql);
+    return { rows: rows[i++] ?? [], rowCount: 1 };
+  });
   return {
     queries,
-    query: vi.fn(async (sql: string) => {
-      queries.push(sql);
-      return { rows: (rows[i++] ?? []) as any[], rowCount: 1 };
-    })
+    query: async <T = unknown>(sql: string) => spy(sql) as { rows: T[]; rowCount?: number }
   };
 }
 

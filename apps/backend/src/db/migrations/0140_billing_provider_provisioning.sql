@@ -16,6 +16,10 @@
 --
 -- Idempotente: ON CONFLICT DO NOTHING respeita a UNIQUE (code, environment) de
 -- 0138 e preserva qualquer provedor ja configurado.
+--
+-- A homologacao (quem pode ser habilitado) NAO e decidida aqui: a coluna
+-- `homologated` so passa a existir em 0142, que roda depois desta migration e
+-- marca o Mercado Pago como homologado.
 INSERT INTO billing_providers (code, name, enabled, environment, accepted_methods)
 VALUES
   ('mercadopago', 'Mercado Pago', false, 'sandbox',    ARRAY['pix','credit_card','boleto']),

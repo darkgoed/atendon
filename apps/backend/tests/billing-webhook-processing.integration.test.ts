@@ -69,16 +69,16 @@ beforeAll(async () => {
     await client.query("DELETE FROM billing_providers WHERE code=$1 AND environment=$2", ["mercadopago", "sandbox"]);
     await client.query("DELETE FROM billing_providers WHERE code=$1 AND environment=$2", ["mercadopago", "production"]);
     sandboxProviderId = (await client.query<{ id: string }>(
-      `INSERT INTO billing_providers(code,name,enabled,environment,credentials_encrypted,webhook_secret_encrypted)
-       VALUES('mercadopago','Mercado Pago',true,'sandbox',$1,$2) RETURNING id`,
+      `INSERT INTO billing_providers(homologated,code,name,enabled,environment,credentials_encrypted,webhook_secret_encrypted)
+       VALUES(true,'mercadopago','Mercado Pago',true,'sandbox',$1,$2) RETURNING id`,
       [
         encryptCredentials({ accessToken: "token-sandbox" }, config.DATA_ENCRYPTION_KEY),
         encryptWebhookSecret(sandboxWebhookSecret, config.DATA_ENCRYPTION_KEY)
       ]
     )).rows[0].id;
     providerId = (await client.query<{ id: string }>(
-      `INSERT INTO billing_providers(code,name,enabled,environment,credentials_encrypted,webhook_secret_encrypted)
-       VALUES('mercadopago','Mercado Pago',true,'production',$1,$2) RETURNING id`,
+      `INSERT INTO billing_providers(homologated,code,name,enabled,environment,credentials_encrypted,webhook_secret_encrypted)
+       VALUES(true,'mercadopago','Mercado Pago',true,'production',$1,$2) RETURNING id`,
       [
         encryptCredentials({ accessToken: "token-production" }, config.DATA_ENCRYPTION_KEY),
         encryptWebhookSecret(webhookSecret, config.DATA_ENCRYPTION_KEY)
@@ -183,6 +183,8 @@ describe("webhook de cobrança (§18)", () => {
 
   it("evento REPETIDO não duplica pagamento nem renova de novo", async () => {
     const before = await subscription();
+    // O caso "processa aprovação..." acima já entregou este mesmo evento, então
+    // esta é a REENTREGA — e ela precisa cair no portão de idempotência.
     const response = await deliver(`pay-${suffix}`, "approved");
     expect(response.statusCode).toBe(200);
     expect(response.json().status).toBe("duplicated");
@@ -209,7 +211,11 @@ describe("webhook de cobrança (§18)", () => {
       headers: { "content-type": "application/json", "x-signature": "ts=1,v1=abc", "x-request-id": "r" },
       payload: JSON.stringify({ type: "payment", data: { id: "x" } })
     });
-    expect(response.statusCode).toBe(404);
-    expect(response.json().code).toBe("BILLING_PROVIDER_NOT_FOUND");
+    // Desde a homologação de gateways, um código desconhecido é barrado na
+    // borda (400 PROVIDER_NOT_HOMOLOGATED) antes de qualquer consulta ao banco:
+    // a rota pública só aceita códigos homologados. O ponto do teste continua
+    // valendo — erro tratado, servidor de pé.
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe("PROVIDER_NOT_HOMOLOGATED");
   });
 });

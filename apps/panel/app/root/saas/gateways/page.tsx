@@ -8,7 +8,7 @@ import type { PanelSession } from "@/lib/session";
 
 type Gateway = { code: string; name: string; environment: "sandbox" | "production"; status: string; enabled?: boolean; credentials_hint?: string | null; commercial_config?: Record<string, string | number | boolean> };
 const fetcher = <T,>(url: string) => api<T>(url);
-const providers = ["Mercado Pago", "Stripe", "InfinitePay", "PagBank"];
+const providers = ["Mercado Pago", "Stripe", "PagBank"];
 // O backend identifica o provedor pelo CODE, nunca pelo nome de exibição:
 // montar a URL com o rótulo geraria um path com espaço ("/Stripe/...").
 const PROVIDER_CODES: Record<string, string> = { "Mercado Pago": "mercadopago", "PIX Manual": "manual_pix" };

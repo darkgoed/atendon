@@ -106,7 +106,7 @@ const META_CELL_TOOL_DEFINITIONS: ToolDefinition[] = [
   )
 ];
 
-const NEWAVE_TOOL_DEFINITIONS: ToolDefinition[] = [
+const QUALIFICATION_TOOL_DEFINITIONS: ToolDefinition[] = [
   tool(
     "pesquisar_contexto",
     "Pesquisa silenciosamente na web um nome de empresa, marca, produto ou termo comercial específico que pareça incerto, especialmente após áudio ou quando a grafia puder estar errada. Use somente quando a pesquisa ajudar a interpretar o que o contato disse. Não use para perguntas comuns nem revele resultados como se fossem dados fornecidos pelo contato.",
@@ -177,7 +177,7 @@ const NEWAVE_TOOL_DEFINITIONS: ToolDefinition[] = [
 ];
 
 export const DEFAULT_ENABLED_TOOL_NAMES = META_CELL_TOOL_DEFINITIONS.map((definition) => definition.function.name);
-export const NEWAVE_ENABLED_TOOL_NAMES = [
+export const QUALIFICATION_ENABLED_TOOL_NAMES = [
   "pesquisar_contexto",
   "registrar_lead",
   "qualificar_lead",
@@ -187,10 +187,12 @@ export const NEWAVE_ENABLED_TOOL_NAMES = [
   "reagendar_reuniao",
   "cancelar_reuniao"
 ] as const;
+/** @deprecated Provisioning compatibility alias. */
+export const NEWAVE_ENABLED_TOOL_NAMES = QUALIFICATION_ENABLED_TOOL_NAMES;
 
 export const SCHEDULING_TOOL_DEFINITIONS: ToolDefinition[] = [
   ...META_CELL_TOOL_DEFINITIONS,
-  ...NEWAVE_TOOL_DEFINITIONS
+  ...QUALIFICATION_TOOL_DEFINITIONS
 ];
 
 export const AVAILABLE_TOOL_NAMES = SCHEDULING_TOOL_DEFINITIONS.map((definition) => definition.function.name);

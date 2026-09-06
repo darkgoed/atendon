@@ -27,9 +27,9 @@ export async function registerSaasRoutes(app: FastifyInstance) {
   app.get("/root/saas/tenants/:tenantId", async (r) => { await requireRoot(r); const tenantId = uuid.parse((r.params as { tenantId: string }).tenantId); const e = await getEffectiveEntitlements(tenantId); return { tenantId, entitlements: e, usage: await usage(tenantId, e), overLimit: await getOverLimitReport(tenantId) }; });
   app.post("/root/saas/tenants/:tenantId/subscription", async (r) => {
     const root = await requireRoot(r);
-    const b = z.object({ planId: uuid }).parse(r.body);
+    const b = z.object({ planId: uuid, billingCycle: z.enum(["MONTHLY","QUARTERLY","YEARLY"]).default("MONTHLY"), couponCode: z.string().trim().min(1).max(100).optional() }).parse(r.body);
     const tenantId = uuid.parse((r.params as { tenantId: string }).tenantId);
-    const subscription = await contractPlanForTenant(tenantId, b.planId, "MONTHLY", root.userId);
+    const subscription = await contractPlanForTenant(tenantId, b.planId, b.billingCycle, root.userId, b.couponCode);
     // Keep the legacy endpoint's PLAN_CHANGED event contract. The contract service
     // records PLAN_CONTRACTED; this compatibility event is intentionally separate.
     await db.query(

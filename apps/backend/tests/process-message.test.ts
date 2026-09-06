@@ -3323,7 +3323,7 @@ Full name: Renan de Carvalho`;
     expect(objectionRecoveryCorrection(
       "Sou o Arthur, vamos continuar por aqui",
       history
-    )).toMatch(/assistente digital da Newave Pay/i);
+    )).toMatch(/assistente digital da empresa descrita no prompt ativo/i);
     expect(objectionRecoveryCorrection(
       "Sou o assistente digital da Newave Pay e atuo no atendimento comercial\n\nSe preferir, posso encaminhar para atendimento humano\n\nQuer marcar uma reunião?",
       history
@@ -3363,7 +3363,10 @@ Full name: Renan de Carvalho`;
     expect(gateway.sendText).toHaveBeenCalledWith(message.sessionId, message.contactPhone, reply);
     const completionInput = ai.complete.mock.calls[0][0];
     expect(completionInput.systemContext).toContain("TRANSPARÊNCIA DE IDENTIDADE OBRIGATÓRIA");
-    expect(completionInput.systemContext).toContain("assistente digital da Newave Pay");
+    // A instrução compartilhada é neutra; a marca vem do systemPrompt deste
+    // tenant (acima), nunca de um hardcode global.
+    expect(completionInput.systemContext).toContain("assistente digital da empresa descrita no prompt ativo");
+    expect(completionInput.systemContext).not.toContain("assistente digital da Newave Pay");
     expect(completionInput.tools.map((tool: { function: { name: string } }) => tool.function.name))
       .not.toContain("transferir_atendente");
     expect(completionInput.validateFinalText(reply)).toBeUndefined();

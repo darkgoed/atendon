@@ -12,12 +12,22 @@ export type SubscriptionLifecycleResult = { suspended: number; errors: string[] 
 /** Suspende apenas inadimplência cuja carência já venceu; nunca reativa nem corta ACTIVE em dia. */
 export async function runSubscriptionLifecycleBatch(limit = 100): Promise<SubscriptionLifecycleResult> {
   const result: SubscriptionLifecycleResult = { suspended: 0, errors: [] };
-  const candidates = await db.query<{ tenant_id: string }>(`SELECT tenant_id FROM tenant_subscriptions WHERE status IN ('PAST_DUE','GRACE_PERIOD') AND grace_period_ends_at IS NOT NULL AND grace_period_ends_at <= now() ORDER BY tenant_id LIMIT $1`, [limit]);
+  const candidates = await db.query<{ tenant_id: string }>(`SELECT tenant_id FROM tenant_subscriptions WHERE (status IN ('PAST_DUE','GRACE_PERIOD') AND grace_period_ends_at IS NOT NULL AND grace_period_ends_at <= now()) OR (status='TRIALING' AND trial_ends_at IS NOT NULL AND trial_ends_at <= now()) ORDER BY tenant_id LIMIT $1`, [limit]);
   for (const { tenant_id } of candidates.rows) {
     try {
       await withTenantTransaction(db, tenant_id, async (client) => {
-        const locked = await client.query<{ id: string; status: string }>(`SELECT id,status FROM tenant_subscriptions WHERE tenant_id=$1 AND status IN ('PAST_DUE','GRACE_PERIOD') AND grace_period_ends_at IS NOT NULL AND grace_period_ends_at <= now() FOR UPDATE`, [tenant_id]);
+        const locked = await client.query<{ id: string; status: string; paid: boolean }>(`SELECT s.id,s.status,EXISTS (SELECT 1 FROM invoices i JOIN payments p ON p.invoice_id=i.id WHERE i.subscription_id=s.id AND i.status IN ('paid','PAID') AND p.status IN ('paid','PAID')) AS paid FROM tenant_subscriptions s WHERE s.tenant_id=$1 AND ((s.status IN ('PAST_DUE','GRACE_PERIOD') AND s.grace_period_ends_at IS NOT NULL AND s.grace_period_ends_at <= now()) OR (s.status='TRIALING' AND s.trial_ends_at IS NOT NULL AND s.trial_ends_at <= now())) FOR UPDATE`, [tenant_id]);
         for (const sub of locked.rows) {
+          if (sub.status === 'TRIALING' && sub.paid) {
+            await client.query(`UPDATE tenant_subscriptions SET status='ACTIVE',grace_period_ends_at=NULL,updated_at=now() WHERE id=$1 AND status='TRIALING'`, [sub.id]);
+            await client.query(`INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_status,to_status,metadata) VALUES($1,$2,'LIFECYCLE_STATUS_CHANGED','TRIALING','ACTIVE',$3)`, [tenant_id, sub.id, { reason: "trial_converted_paid" }]);
+            continue;
+          }
+          if (sub.status === 'TRIALING') {
+            await client.query(`UPDATE tenant_subscriptions SET status='PAST_DUE',grace_period_ends_at=now() + (COALESCE((SELECT grace_period_days FROM plans WHERE id=tenant_subscriptions.plan_id),7) * interval '1 day'),updated_at=now() WHERE id=$1 AND status='TRIALING'`, [sub.id]);
+            await client.query(`INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_status,to_status,metadata) VALUES($1,$2,'LIFECYCLE_STATUS_CHANGED','TRIALING','PAST_DUE',$3)`, [tenant_id, sub.id, { reason: "trial_expired" }]);
+            continue;
+          }
           await client.query(`UPDATE tenant_subscriptions SET status='SUSPENDED', suspended_at=now(), updated_at=now() WHERE id=$1`, [sub.id]);
           await client.query(`INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_status,to_status,metadata) VALUES($1,$2,'LIFECYCLE_STATUS_CHANGED',$3,'SUSPENDED',$4)`, [tenant_id, sub.id, sub.status, { reason: "grace_period_expired" }]);
           result.suspended++;

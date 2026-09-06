@@ -4,6 +4,8 @@ import { buildAiTurnIdempotencyKey } from "./ai-metering.js";
 import { ensureOpenPeriod } from "./usage-period.js";
 import { estimateInteractionCents, getActivePricingRule, priceInteraction, type AiCostInput } from "./pricing.js";
 import { evaluateAlerts } from "./alerts.js";
+import { appendFinancialLedgerEntry, grantUsageCredit } from "./ledger.js";
+import { detectPaymentVelocity } from "./fraud-signals.js";
 
 type AiPurpose = "inbound_reply" | "follow_up";
 export type ConsumeResult = {
@@ -36,6 +38,18 @@ export async function consumeAiInteraction(
 
       const period = await ensureOpenPeriod(client, tenantId);
       if (!period) return { allowed: true };
+      // Serialize reservations on the period row; the subscription lock alone does
+      // not protect a period created/read by concurrent transactions.
+      //
+      // Relê os acumuladores DEPOIS do lock: `period` foi carregado por
+      // ensureOpenPeriod antes de a linha ser travada, então usar os valores
+      // dele para decidir o teto deixaria N transações concorrentes lendo o
+      // mesmo saldo antigo e todas aprovarem a reserva (estouro do hard cap).
+      const locked = await client.query<{ overage_amount_brl_cents: string; reserved_cents: string; included_usage: string }>(
+        "SELECT overage_amount_brl_cents, reserved_cents, included_usage FROM usage_periods WHERE id=$1 FOR UPDATE",
+        [period.id]
+      );
+      const current = locked.rows[0] ?? period;
       const interactionKey = buildAiTurnIdempotencyKey(tenantId, purpose, logicalTurnId);
       const existing = await client.query<{ id: string; usage_period_id: string; consumption_type: ConsumeResult["consumptionType"] }>(
         `SELECT id, usage_period_id, consumption_type FROM ai_usage_ledger WHERE tenant_id=$1 AND interaction_key=$2`, [tenantId, interactionKey],
@@ -57,7 +71,7 @@ export async function consumeAiInteraction(
             ORDER BY expires_at ASC NULLS LAST, created_at ASC LIMIT 1 FOR UPDATE`, [tenantId],
         );
         if (bonus.rows[0]) { type = "BONUS"; sourceId = bonus.rows[0].id; }
-        else if (period.included_limit === null || n(period.included_limit) > n(period.included_usage)) type = "INCLUDED";
+        else if (period.included_limit === null || n(period.included_limit) > n(current.included_usage)) type = "INCLUDED";
         else type = undefined;
       }
 
@@ -70,7 +84,7 @@ export async function consumeAiInteraction(
         if (!credit?.enabled) return { allowed: false, reason: "QUOTA_EXCEEDED" };
         if (credit.limit_type === "FIXED") {
           estimatedCents = await estimateInteractionCents(tenantId, client);
-          if (n(period.overage_amount_brl_cents) + n(period.reserved_cents) + estimatedCents > n(credit.monthly_spending_limit_cents)) return { allowed: false, reason: "CREDIT_CAP_REACHED" };
+          if (n(current.overage_amount_brl_cents) + n(current.reserved_cents) + estimatedCents > n(credit.monthly_spending_limit_cents)) return { allowed: false, reason: "CREDIT_CAP_REACHED" };
         } else if (credit.limit_type !== "UNLIMITED" || !credit.confirmed_unlimited_at) return { allowed: false, reason: "QUOTA_EXCEEDED" };
         type = "OVERAGE";
       }
@@ -83,6 +97,18 @@ export async function consumeAiInteraction(
       );
       const column = type === "INCLUDED" ? "included_usage" : type === "ROLLOVER" ? "rollover_usage" : type === "BONUS" ? "bonus_usage" : "overage_usage";
       await client.query(`UPDATE usage_periods SET ${column}=${column}+1, reserved_cents=reserved_cents+$2, updated_at=now() WHERE id=$1`, [period.id, type === "OVERAGE" ? estimatedCents : 0]);
+      if (type === "OVERAGE" && estimatedCents > 0) {
+        await appendFinancialLedgerEntry(client, tenantId, {
+          direction: "CREDIT",
+          amountCents: estimatedCents,
+          actorType: "AI_RESERVATION",
+          reason: "AI usage reservation",
+          sourceEventId: interactionKey,
+          correlationId: period.id,
+          metadata: { purpose, logicalTurnId, consumptionType: type },
+        });
+        await detectPaymentVelocity(client, tenantId);
+      }
       if (type === "ROLLOVER") await client.query("UPDATE rollover_ledger SET consumed_amount=consumed_amount+1 WHERE id=$1", [sourceId]);
       if (type === "BONUS") await client.query("UPDATE usage_grants SET consumed_amount=consumed_amount+1 WHERE id=$1", [sourceId]);
       await client.query("SAVEPOINT billing_alerts");
@@ -100,6 +126,27 @@ export async function consumeAiInteraction(
     // A subscribed tenant must not receive free AI when accounting is unhealthy.
     return { allowed: false, reason: "BILLING_UNAVAILABLE" };
   }
+}
+
+export async function grantAiUsageBonus(input: { tenantId: string; amount: number; reason: string; idempotencyKey: string; grantedByUserId?: string | null; expiresAt?: Date | null }) {
+  return withTenantTransaction(db, input.tenantId, async (client) => {
+    const period = await ensureOpenPeriod(client, input.tenantId);
+    if (!period) return null;
+    const grant = await grantUsageCredit(client, { ...input, usagePeriodId: period.id });
+    if (grant) {
+      await appendFinancialLedgerEntry(client, input.tenantId, {
+        direction: "CREDIT",
+        amountCents: input.amount,
+        actorType: "BONUS_GRANT",
+        actorId: input.grantedByUserId,
+        reason: input.reason,
+        sourceEventId: input.idempotencyKey,
+        correlationId: period.id,
+        metadata: { usageGrantId: grant.id },
+      });
+    }
+    return grant;
+  });
 }
 
 export async function reconcileAiInteraction(tenantId: string, purpose: AiPurpose, logicalTurnId: string, actual: AiCostInput): Promise<void> {

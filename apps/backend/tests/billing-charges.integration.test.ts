@@ -18,7 +18,7 @@ class FakeProvider implements BillingProvider {
 async function setup(status = "CONNECTED", enabled = true, environment = "production", accepted = ["pix"]) {
   const slug = `charge-${crypto.randomUUID()}`;
   const tenant = (await pool.query<{ id: string}>("INSERT INTO tenants(name,slug,status) VALUES($1,$1,'active') RETURNING id", [slug])).rows[0].id;
-  const provider = (await pool.query<{ id: string}>("INSERT INTO billing_providers(code,name,enabled,environment,status,accepted_methods,credentials_encrypted) VALUES($1,$2,$3,$4,$5,$6,'x') RETURNING id", [slug, "Fake", enabled, environment, status, accepted])).rows[0].id;
+  const provider = (await pool.query<{ id: string}>("INSERT INTO billing_providers(homologated,code,name,enabled,environment,status,accepted_methods,credentials_encrypted) VALUES(true,$1,$2,$3,$4,$5,$6,'x') RETURNING id", [slug, "Fake", enabled, environment, status, accepted])).rows[0].id;
   const invoice = (await pool.query<{ id: string}>("INSERT INTO invoices(tenant_id,provider_id,kind,amount_cents,currency,status,external_id) VALUES($1,$2,'ONE_OFF',8970,'BRL','open',$3) RETURNING id", [tenant, provider, `invoice:${slug}`])).rows[0].id;
   await pool.query("INSERT INTO billing_accounts(tenant_id,provider_id,email,document) VALUES($1,$2,'payer@example.com','123')", [tenant, provider]); ids.push(tenant); return { tenant, provider, invoice };
 }

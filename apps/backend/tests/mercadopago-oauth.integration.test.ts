@@ -13,7 +13,7 @@ const fetchFail = (body: unknown) => (async () => ({ ok: false, json: async () =
 
 async function seed(credentials: Record<string, unknown> = { clientId: "client", clientSecret: "secret", redirectUri: "http://localhost/callback", refreshToken: "old-refresh", accessToken: "old-access" }) {
   await pool.query("INSERT INTO users(id,email,status) VALUES($1,$2,'active')", [user, `${user}@oauth.test`]);
-  await pool.query("INSERT INTO billing_providers(code,name,enabled,environment,credentials_encrypted) VALUES($1,'OAuth',true,'sandbox',$2)", [code, encryptCredentials(credentials, config.DATA_ENCRYPTION_KEY)]);
+  await pool.query("INSERT INTO billing_providers(homologated,code,name,enabled,environment,credentials_encrypted) VALUES(true,$1,'OAuth',true,'sandbox',$2)", [code, encryptCredentials(credentials, config.DATA_ENCRYPTION_KEY)]);
 }
 async function cleanup() { await pool.query("DELETE FROM oauth_states WHERE provider_code=$1", [code]); await pool.query("DELETE FROM billing_providers WHERE code=$1", [code]); await pool.query("DELETE FROM users WHERE id=$1", [user]); }
 async function state() { return (await beginMercadoPagoOAuth(code, "sandbox", user, "http://localhost/callback")).state; }

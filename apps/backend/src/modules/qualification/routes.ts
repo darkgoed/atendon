@@ -4,7 +4,7 @@ import { requirePermission } from "../../auth/session.js";
 import { leadScopeCondition, resolveCaseScope } from "../../auth/case-scope.js";
 import { db } from "../../db/client.js";
 import { httpError, slug, uuid, withTransaction } from "../scheduling/service.js";
-import { activationIssues, flowDefinitionSchema, NEWAVE_FLOW } from "./flow.js";
+import { activationIssues, flowDefinitionSchema, DEFAULT_QUALIFICATION_FLOW } from "./flow.js";
 import { QualificationService } from "./service.js";
 
 const flowUpsertBody = z.object({
@@ -58,7 +58,7 @@ export async function registerQualificationRoutes(app: FastifyInstance) {
     const existing = body.definition ? null : await db.query<{ definition: Record<string, unknown> }>(
       "SELECT definition FROM qualification_flows WHERE tenant_id=$1 AND id=$2", [session.tenantId, id]
     );
-    const base = (body.definition ?? existing?.rows[0]?.definition ?? NEWAVE_FLOW) as Record<string, unknown>;
+    const base = (body.definition ?? existing?.rows[0]?.definition ?? DEFAULT_QUALIFICATION_FLOW) as Record<string, unknown>;
     const previousTriggers = typeof base.triggers === "object" && base.triggers ? base.triggers as Record<string, unknown> : {};
     const triggers = {
       ...previousTriggers,

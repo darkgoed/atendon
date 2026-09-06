@@ -29,7 +29,15 @@ describe("migrations on a clean database", () => {
       try {
         await fresh.connect();
         const result = await runMigrations(fresh, fileURLToPath(new URL("../src/db/migrations", import.meta.url)), () => undefined);
-        expect(result.applied.at(-1)).toBe("0140_billing_provider_provisioning.sql");
+        // A última migration aplicada tem de ser a última do diretório, em ordem
+        // lexicográfica (é como o runner ordena). Derivar do disco em vez de
+        // fixar o nome evita que este teste quebre a cada migration nova — o que
+        // ele realmente garante é que o runner aplicou TUDO, sem parar no meio.
+        const onDisk = (await readdir(fileURLToPath(new URL("../src/db/migrations", import.meta.url))))
+          .filter((file) => file.endsWith(".sql"))
+          .sort();
+        expect(result.applied.at(-1)).toBe(onDisk.at(-1));
+        expect(result.applied).toEqual(onDisk);
         expect((await runMigrations(
           fresh,
           fileURLToPath(new URL("../src/db/migrations", import.meta.url)),
@@ -282,9 +290,16 @@ describe("migrations on a clean database", () => {
         try {
           const deployVersion = `fresh-${randomUUID()}`;
           const snapshot = await recordDeploymentFeatureFlagSnapshot(snapshotPool, deployVersion);
+          // Mesmo motivo do início do teste: o snapshot registra a última
+          // migration aplicada, que é a última do diretório — derivada do disco,
+          // não fixada num nome que envelhece a cada release.
+          const latestOnDisk = (await readdir(fileURLToPath(new URL("../src/db/migrations", import.meta.url))))
+            .filter((file) => file.endsWith(".sql"))
+            .sort()
+            .at(-1);
           expect(snapshot).toMatchObject({
             deployVersion,
-            latestMigration: "0140_billing_provider_provisioning.sql",
+            latestMigration: latestOnDisk,
             created: true
           });
           expect(snapshot.globalFlags.case_organization_v1.enabled).toBe(true);

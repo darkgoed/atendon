@@ -29,6 +29,10 @@ beforeAll(async () => {
   // este teste independente da ordem de execução, em vez de depender de um
   // estado global que outra suíte pode ter destruído.
   await pool.query(await readFile(MIGRATION, "utf8"));
+  // 0140 recria as linhas sem opinar sobre homologação (a coluna só nasce em
+  // 0142). Reafirmamos aqui a regra de 0142 para que a suíte enxergue o mesmo
+  // estado de um banco totalmente migrado.
+  await pool.query("UPDATE billing_providers SET homologated=true WHERE code='mercadopago'");
 });
 
 afterAll(async () => {
@@ -68,17 +72,20 @@ describe("provisionamento de billing_providers", () => {
 
   it("é idempotente: reaplicar a migration não duplica nem sobrescreve", async () => {
     // Simula a reexecução da migration num banco que já a aplicou.
+    // Usa mercadopago porque, desde 0142, apenas um provedor homologado pode
+    // ficar enabled=true — habilitar manual_pix violaria a constraint.
     const sql = await readFile(new URL("../src/db/migrations/0140_billing_provider_provisioning.sql", import.meta.url), "utf8");
-    await pool.query("UPDATE billing_providers SET status='CONNECTED', enabled=true WHERE code='manual_pix' AND environment='production'");
+    await pool.query("UPDATE billing_providers SET status='CONNECTED', enabled=true WHERE code='mercadopago' AND environment='production'");
     await pool.query(sql);
     const rows = await pool.query<{ n: string; status: string; enabled: boolean }>(
       `SELECT count(*)::text n, max(status) status, bool_or(enabled) enabled
-         FROM billing_providers WHERE code='manual_pix' AND environment='production'`
+         FROM billing_providers WHERE code='mercadopago' AND environment='production'`
     );
     expect(rows.rows[0].n).toBe("1");
     // Um provedor já configurado não pode ser rebaixado por uma reexecução.
     expect(rows.rows[0].status).toBe("CONNECTED");
     expect(rows.rows[0].enabled).toBe(true);
+    await pool.query("UPDATE billing_providers SET status='NOT_CONFIGURED', enabled=false WHERE code='mercadopago' AND environment='production'");
   });
 
   it("nasce desabilitado e sem credencial: provisionar não coloca gateway em operação", async () => {

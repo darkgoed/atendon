@@ -11,7 +11,7 @@ describe("billing webhook idempotency", () => {
   it("rejects the duplicate event identity at the database boundary", async () => {
     const tenant = (await pool.query<{ id: string }>("INSERT INTO tenants(name,slug,status) VALUES($1,$2,'active') RETURNING id", [`webhook-${randomUUID()}`, `webhook-${randomUUID()}`])).rows[0].id;
     tenantIds.push(tenant);
-    const provider = (await pool.query<{ id: string }>("INSERT INTO billing_providers(code,name,environment) VALUES($1,'Test provider','sandbox') RETURNING id", [`test-${randomUUID()}`])).rows[0].id;
+    const provider = (await pool.query<{ id: string }>("INSERT INTO billing_providers(homologated,code,name,environment) VALUES(true,$1,'Test provider','sandbox') RETURNING id", [`test-${randomUUID()}`])).rows[0].id;
     const invoice = (await pool.query<{ id: string }>("INSERT INTO invoices(tenant_id,provider_id,kind,amount_cents,status) VALUES($1,$2,'subscription',1000,'pending') RETURNING id", [tenant, provider])).rows[0].id;
     expect(invoice).toBeTruthy();
     const eventId = `payment-approved-${randomUUID()}`;

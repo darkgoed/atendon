@@ -25,8 +25,8 @@ describe("version service", () => {
       date: "2026-08-20",
       changes: [
         "Correção global de segurança",
-        "A IA Zulu agora entende viagens",
-        "Ajuste específico no prompt Newave",
+        { text: "A IA Zulu agora entende viagens", tenant_slugs: ["tripzturismo-a44ab4"] },
+        { text: "Ajuste específico no prompt Newave", tenant_slugs: ["newave-ia"] },
         { text: "Novo fluxo da empresa sem citar o nome", tenant_slugs: ["tripzturismo-a44ab4"] }
       ]
     }];

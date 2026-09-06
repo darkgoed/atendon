@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   bumpVersion,
   parseChangelogResponse,
+  resolveLastCommit,
   sanitizeDiffForAi,
   selectBumpType,
   summarizeDiff
@@ -199,4 +200,66 @@ test("resposta inválida do fallback ainda falha em release estrito", async () =
     }
   }), /release estrito: OpenRouter falhou/);
   assert.equal(requests.length, 2);
+});
+
+test("mantém o formato compatível na 2ª tentativa após degradar uma vez", async () => {
+  // Regressão: sem lembrar que já degradou, a 2ª tentativa reenviava o corpo
+  // estruturado, recaía no mesmo 404 (não retryable) e abortava o release
+  // estrito mesmo com o fallback compatível já comprovadamente funcional.
+  const requests = [];
+  const changes = await summarizeDiff("1 file changed", "+ correção", {
+    env: { CHANGELOG_OPENROUTER_API_KEY: "test-key", CHANGELOG_STRICT_RELEASE: "1", CHANGELOG_OPENROUTER_MAX_ATTEMPTS: "2" },
+    sleep: async () => {},
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(init.body);
+      requests.push(body);
+      if (requests.length === 1) {
+        return {
+          ok: false, status: 404,
+          json: async () => ({ error: { message: "No endpoints found that can handle requested parameters" } })
+        };
+      }
+      if (requests.length === 2) {
+        // 1ª tentativa após degradar: resposta inválida força retry.
+        return { ok: true, json: async () => ({ choices: [{ message: { content: "" } }] }) };
+      }
+      return { ok: true, json: async () => ({ choices: [{ message: { content: '{"changes":[{"text":"Persistiu o fallback","tenant_slugs":[]}]}' } }] }) };
+    }
+  });
+  assert.equal(requests.length, 3);
+  assert.equal(requests[1].response_format, undefined, "2ª chamada já deveria pular direto pro formato compatível");
+  assert.equal(requests[2].response_format, undefined);
+  assert.deepEqual(changes, [{ text: "Persistiu o fallback", tenant_slugs: [] }]);
+});
+
+test("resolveLastCommit pula entradas cujo commit não é ancestral do HEAD (graft/subtree)", () => {
+  // Regressão: publicar via graft/subtree reescreve o hash do commit em
+  // origin/main; se o changelog.json trouxer esse hash reescrito e o
+  // checkout local nunca tiver visto esse commit, o diff era calculado
+  // contra uma base inexistente e virava o histórico inteiro do projeto.
+  const changelog = {
+    history: [
+      { version: "1.22.0", commit: "commit-reescrito-pelo-graft" },
+      { version: "1.21.0", commit: "commit-real-ancestral" },
+      { version: "1.20.0", commit: "outro-commit-real" }
+    ]
+  };
+  const checked = [];
+  const commit = resolveLastCommit(changelog, "HEAD_SHA", {
+    isAncestor: (c) => { checked.push(c); return c === "commit-real-ancestral"; }
+  });
+  assert.equal(commit, "commit-real-ancestral");
+  assert.deepEqual(checked, ["commit-reescrito-pelo-graft", "commit-real-ancestral"]);
+});
+
+test("resolveLastCommit cai para HEAD~1 quando nenhum commit do histórico é ancestral", () => {
+  const changelog = { history: [{ version: "1.0.0", commit: "commit-orfao" }] };
+  const logs = [];
+  const commit = resolveLastCommit(changelog, "HEAD_SHA", {
+    isAncestor: () => false,
+    rescueHeadMinusOne: () => "head-menos-um",
+    log: (m) => logs.push(m)
+  });
+  assert.equal(commit, "head-menos-um");
+  assert.match(logs.at(-1), /histórico reescrito.graft/);
 });

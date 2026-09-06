@@ -295,7 +295,7 @@ Qual o Instagram da sua empresa?: Não temos` }];
       [{ role: "user", content: "Quero marcar uma conversa" }],
       {},
       slotDurationMinutes
-    )).toMatch(/explicar como a Newave funciona/i);
+    )).toMatch(/explicar como a oferta configurada funciona/i);
   });
 
   it("responde diretamente quando o contato já pediu uma data e um horário", () => {
@@ -323,7 +323,7 @@ Qual o Instagram da sua empresa?: Não temos` }];
       organicHistory,
       {},
       slotDurationMinutes
-    )).toMatch(/dois objetivos: explicar como a Newave funciona e entender a operação/i);
+    )).toMatch(/dois objetivos: explicar como a oferta configurada funciona e entender a operação/i);
   });
 
   it("exige explicar a Newave e entender a operação, não apenas mencionar uma reunião", () => {
@@ -332,7 +332,7 @@ Qual o Instagram da sua empresa?: Não temos` }];
       history,
       {},
       slotDurationMinutes
-    )).toMatch(/explicar como a Newave funciona/i);
+    )).toMatch(/explicar como a oferta configurada funciona/i);
   });
 
   it("não manda repetir toda a contextualização quando o contato pede um horário mais tarde", () => {

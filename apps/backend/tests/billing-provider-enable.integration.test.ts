@@ -11,7 +11,7 @@ let code = "";
 beforeEach(async () => {
   code = `enable-${randomUUID()}`;
   await pool.query("INSERT INTO users(id,email,status) VALUES($1,$2,'active') ON CONFLICT (id) DO NOTHING", [actor, `${actor}@enable.test`]);
-  await pool.query("INSERT INTO billing_providers(code,name,enabled,environment) VALUES ($1,'Enable Test',false,'sandbox'),($1,'Enable Test',false,'production')", [code]);
+  await pool.query("INSERT INTO billing_providers(code,name,enabled,environment,homologated) VALUES ($1,'Enable Test',false,'sandbox',true),($1,'Enable Test',false,'production',true)", [code]);
 });
 
 afterAll(async () => {

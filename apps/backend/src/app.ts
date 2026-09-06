@@ -80,6 +80,7 @@ import {
 import { enforceRequestCapability } from "./capabilities/gate.js";
 import { enforceRequestEntitlement } from "./billing/entitlement-gate.js";
 import { processBillingWebhook } from "./billing/webhook-service.js";
+import { assertHomologatedProvider } from "./billing/providers/homologation.js";
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
@@ -475,6 +476,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     }, async (request, reply) => {
       const rawBody = typeof request.body === "string" ? request.body : JSON.stringify(request.body ?? {});
       try {
+        assertHomologatedProvider(request.params.providerCode);
         const outcome = await processBillingWebhook(
           request.params.providerCode,
           rawBody,

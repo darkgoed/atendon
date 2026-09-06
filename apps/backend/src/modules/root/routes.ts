@@ -20,8 +20,10 @@ const workspaceBody = z.object({
   name: z.string().trim().min(2).max(200),
   slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(120).optional(),
   ownerEmail: z.string().email(),
-  capabilityTemplateTenantId: z.string().uuid()
-});
+  capabilityTemplateTenantId: z.string().uuid().optional(),
+  planId: z.string().uuid().optional(),
+  planCode: z.string().trim().min(1).max(80).optional()
+}).refine((value) => !(value.planId && value.planCode), "Informe planId ou planCode, não ambos");
 const workspaceUpdateBody = z.object({
   name: z.string().trim().min(2).max(200).optional(),
   status: z.enum(["trial", "active", "suspended"]).optional(),
@@ -96,12 +98,27 @@ export async function registerRootRoutes(app: FastifyInstance) {
     try {
       await client.query("BEGIN");
       inTransaction = true;
-      const template = await client.query<{ id: string }>(
-        "SELECT id FROM tenants WHERE id=$1 FOR SHARE",
-        [body.capabilityTemplateTenantId]
+      const plan = await client.query<{ id: string; code: string; trial_days: number; billing_period_months: number }>(
+        `SELECT id,code,trial_days,billing_period_months FROM plans
+         WHERE status='active' AND (
+           ($1::uuid IS NOT NULL AND id=$1::uuid)
+           OR ($2::text IS NOT NULL AND code=$2::text)
+           OR ($1::uuid IS NULL AND $2::text IS NULL AND is_default=true)
+         )
+         ORDER BY CASE WHEN $1::uuid IS NOT NULL AND id=$1::uuid THEN 0 WHEN $2::text IS NOT NULL AND code=$2::text THEN 1 ELSE 2 END
+         LIMIT 1`,
+        [body.planId ?? null, body.planCode ?? null]
       );
-      if (!template.rows[0]) throw httpError(404, "Workspace-modelo não encontrado");
-      const templateCapabilities = await listEffectiveCapabilities(client, body.capabilityTemplateTenantId);
+      // O plano padrão é dado (`plans.is_default`), nunca um código conhecido
+      // pela aplicação. A constraint garante que seja público, ativo e pago.
+      if (!plan.rows[0]) throw httpError(404, "Plano não encontrado, inativo ou plano comercial padrão não configurado");
+      const templateCapabilities = body.capabilityTemplateTenantId
+        ? await (async () => {
+          const template = await client.query<{ id: string }>("SELECT id FROM tenants WHERE id=$1 FOR SHARE", [body.capabilityTemplateTenantId]);
+          if (!template.rows[0]) throw httpError(404, "Workspace-modelo não encontrado");
+          return listEffectiveCapabilities(client, body.capabilityTemplateTenantId!);
+        })()
+        : null;
       const baseSlug = body.slug ?? slugify(body.name);
       const workspace = await client.query<{ id: string; slug: string }>(
         `INSERT INTO tenants(name,slug,status,created_by_user_id)
@@ -109,17 +126,12 @@ export async function registerRootRoutes(app: FastifyInstance) {
          RETURNING id,slug`,
         [body.name, `${baseSlug}-${randomBytes(3).toString("hex")}`, root.userId]
       );
-      const initialSubscription = await client.query(
-        `INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,current_period_start,current_period_end)
-         SELECT $1,p.id,'ACTIVE',now(),now() + make_interval(months => p.billing_period_months)
-         FROM plans p
-         WHERE p.code='LEGACY_UNLIMITED' AND p.status='active'
+      await client.query(
+        `INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,current_period_start,current_period_end,trial_ends_at)
+         VALUES($1,$2,CASE WHEN $3 > 0 THEN 'TRIALING' ELSE 'ACTIVE' END,now(),now() + make_interval(months => $4),CASE WHEN $3 > 0 THEN now() + make_interval(days => $3) ELSE NULL END)
          RETURNING id`,
-        [workspace.rows[0].id]
+        [workspace.rows[0].id, plan.rows[0].id, plan.rows[0].trial_days, plan.rows[0].billing_period_months]
       );
-      if (!initialSubscription.rows[0]) {
-        throw new Error("Plano técnico LEGACY_UNLIMITED não encontrado ou inativo; workspace não criado");
-      }
       await ensureWorkspaceDefaultRoles(client, workspace.rows[0].id);
       const ownerRole = await client.query<{ id: string }>(
         "SELECT id FROM workspace_roles WHERE workspace_id=$1 AND is_owner_role=true",
@@ -150,9 +162,14 @@ export async function registerRootRoutes(app: FastifyInstance) {
            updated_at=now()`,
         [workspace.rows[0].id, DEFAULT_MEDIA_FALLBACK.audio, DEFAULT_MEDIA_FALLBACK.image, DEFAULT_MEDIA_FALLBACK.document, DEFAULT_HUMANIZER_CONFIG]
       );
-      const copiedCapabilities = templateCapabilities.filter((capability) =>
-        capability.supported && capability.availabilityMode === "all_tenants"
-      );
+      const copiedCapabilities = templateCapabilities
+        ? templateCapabilities.filter((capability) => capability.supported && capability.availabilityMode === "all_tenants")
+        : (await client.query<{ key: string; enabled: boolean }>(
+          `SELECT d.flag_key AS key, COALESCE(pf.enabled,false) AS enabled
+             FROM feature_flag_definitions d
+             LEFT JOIN plan_capability_flags pf ON pf.plan_id=$1 AND pf.flag_key=d.flag_key
+            WHERE d.kind='capability' ORDER BY d.ui_order NULLS LAST,d.flag_key`, [plan.rows[0].id]
+        )).rows;
       if (copiedCapabilities.length > 0) {
         await client.query(
           `INSERT INTO tenant_feature_flag_overrides(
@@ -184,15 +201,14 @@ export async function registerRootRoutes(app: FastifyInstance) {
           root.userId,
           workspace.rows[0].id,
           workspace.rows[0].id,
-          { name: body.name, slug: workspace.rows[0].slug, capabilityTemplateTenantId: body.capabilityTemplateTenantId },
+          { name: body.name, slug: workspace.rows[0].slug, planCode: plan.rows[0].code, capabilityTemplateTenantId: body.capabilityTemplateTenantId ?? null },
           invitation.rows[0].id,
           { email: body.ownerEmail },
           request.ip,
           typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : null,
           operationGroup,
           body.capabilityTemplateTenantId,
-          {
-            source_tenant_id: body.capabilityTemplateTenantId,
+          { source_tenant_id: body.capabilityTemplateTenantId,
             capabilities: copiedCapabilities.map((capability) => ({ key: capability.key, enabled: capability.enabled }))
           }
         ]

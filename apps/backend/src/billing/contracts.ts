@@ -1,75 +1,17 @@
 import type { PoolClient } from "pg";
 import { db } from "../db/client.js";
 import { truncateRolloverToPlanCap } from "./rollover.js";
-
+import { proratedAmountCents, createProrationInvoice } from "./proration.js";
+import { redeemCoupon } from "./coupons.js";
 export type BillingCycle = "MONTHLY" | "QUARTERLY" | "YEARLY";
-export type DiscountType = "PERCENT" | "FIXED";
-export type PlanPriceInput = {
-  planId: string;
-  billingCycle: BillingCycle;
-  basePriceCents: number;
-  discountType?: DiscountType | null;
-  discountValue?: number | null;
-  currency: string;
-};
-
-function price(input: PlanPriceInput) {
-  if (!Number.isInteger(input.basePriceCents) || input.basePriceCents < 0) throw new Error("basePriceCents inválido");
-  if (!/^[A-Z]{3}$/.test(input.currency)) throw new Error("currency deve ter 3 caracteres");
-  const value = input.discountValue ?? 0;
-  if (!Number.isInteger(value) || value < 0) throw new Error("discountValue inválido");
-  if (input.discountType !== null && input.discountType !== undefined && input.discountType !== "PERCENT" && input.discountType !== "FIXED") throw new Error("discountType inválido");
-  if (input.discountType === "PERCENT" && value > 10000) throw new Error("percentual inválido");
-  if (input.discountType === "FIXED" && value > input.basePriceCents) throw new Error("desconto excede preço");
-  const finalPriceCents = input.basePriceCents - (input.discountType === "PERCENT" ? Math.floor(input.basePriceCents * value / 10000) : input.discountType === "FIXED" ? value : 0);
-  if (finalPriceCents < 0) throw new Error("preço final negativo");
-  return { ...input, discountValue: input.discountType ? value : null, finalPriceCents };
-}
-
-export async function listPlanPrices(planId: string) {
-  return (await db.query("SELECT * FROM plan_prices WHERE plan_id=$1 ORDER BY billing_cycle, created_at DESC", [planId])).rows;
-}
-
-export async function upsertPlanPrice(client: PoolClient, input: PlanPriceInput, actor: string) {
-  const p = price(input);
-  await client.query("UPDATE plan_prices SET active=false, updated_at=now() WHERE plan_id=$1 AND billing_cycle=$2 AND active", [p.planId, p.billingCycle]);
-  const result = await client.query(
-    `INSERT INTO plan_prices(plan_id,billing_cycle,base_price_cents,discount_type,discount_value,final_price_cents,currency,active)
-     VALUES($1,$2,$3,$4,$5,$6,$7,true) RETURNING *`,
-    [p.planId, p.billingCycle, p.basePriceCents, p.discountType ?? null, p.discountValue, p.finalPriceCents, p.currency]
-  );
-  return { ...result.rows[0], actor };
-}
-
-export async function contractPlanForTenant(tenantId: string, planId: string, billingCycle: BillingCycle, actorUserId: string) {
-  const client = await db.connect();
-  try {
-    await client.query("BEGIN");
-    const sub = await client.query("SELECT * FROM tenant_subscriptions WHERE tenant_id=$1 FOR UPDATE", [tenantId]);
-    if (!sub.rows[0]) throw Object.assign(new Error("Assinatura não encontrada"), { statusCode: 404 });
-    const active = await client.query("SELECT * FROM plan_prices WHERE plan_id=$1 AND billing_cycle=$2 AND active FOR UPDATE", [planId, billingCycle]);
-    const live = active.rows[0];
-    if (!live) throw Object.assign(new Error("Preço ativo não encontrado"), { statusCode: 404 });
-
-    const months = billingCycle === "MONTHLY" ? 1 : billingCycle === "QUARTERLY" ? 3 : 12;
-    const previous = sub.rows[0];
-    const preserveCycle = previous.current_period_end && new Date(previous.current_period_end).getTime() > Date.now();
-    const preserveStatus = ["CANCELED", "SUSPENDED", "PAST_DUE", "GRACE_PERIOD"].includes(previous.status);
-    const updated = await client.query(
-      `UPDATE tenant_subscriptions SET plan_id=$1,billing_cycle=$2,base_price_cents=$3,snapshot_discount_type=$4,snapshot_discount_value=$5,final_price_cents=$6,snapshot_currency=$7,contracted_at=now(),current_period_start=CASE WHEN $8 THEN current_period_start ELSE now() END,current_period_end=CASE WHEN $8 THEN current_period_end ELSE now()+make_interval(months => $9) END,status=CASE WHEN $10 THEN status ELSE 'ACTIVE' END,updated_at=now() WHERE id=$11 RETURNING *`,
-      [planId, billingCycle, live.base_price_cents, live.discount_type, live.discount_value, live.final_price_cents, live.currency, preserveCycle, months, preserveStatus, previous.id]
-    );
-    const subscription = updated.rows[0];
-    if (previous.plan_id !== planId) await truncateRolloverToPlanCap(client, tenantId, planId);
-
-    await client.query(
-      `INSERT INTO usage_periods(tenant_id,subscription_id,sequence,start_at,end_at,included_limit,status)
-       SELECT $1,$2,COALESCE(max(sequence),0)+1,now(),now()+interval '1 month',NULL,'OPEN' FROM usage_periods WHERE tenant_id=$1 AND status='OPEN' HAVING count(*)=0`,
-      [tenantId, subscription.id]
-    );
-    const metadata = { snapshot: { plan_id: planId, billing_cycle: billingCycle, base_price_cents: live.base_price_cents, discount_type: live.discount_type, discount_value: live.discount_value, final_price_cents: live.final_price_cents, currency: live.currency }, cycle: preserveCycle ? "preserved" : "restarted", actor_user_id: actorUserId };
-    await client.query("INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_plan_id,to_plan_id,from_status,to_status,actor_user_id,metadata) VALUES($1,$2,'PLAN_CONTRACTED',$3,$4,$5,$6,$7,$8)", [tenantId, subscription.id, sub.rows[0].plan_id, planId, sub.rows[0].status, subscription.status, actorUserId || null, metadata]);
-    await client.query("COMMIT");
-    return subscription;
-  } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+export async function listPlanPrices(planId: string) { return (await db.query("SELECT * FROM plan_prices WHERE plan_id=$1 ORDER BY billing_cycle,created_at DESC", [planId])).rows; }
+export async function upsertPlanPrice(client: PoolClient, input: {planId:string;billingCycle:BillingCycle;basePriceCents:number;discountType?:string|null;discountValue?:number|null;currency:string}, actor:string) { const value=input.discountValue??0; if(!Number.isInteger(input.basePriceCents)||input.basePriceCents<0) throw new Error("basePriceCents inválido"); if(!Number.isInteger(value)||value<0) throw new Error("discountValue inválido"); if(input.discountType!==null&&input.discountType!==undefined&&input.discountType!=="PERCENT"&&input.discountType!=="FIXED") throw new Error("discountType inválido"); if(input.discountType==="PERCENT"&&value>10000) throw new Error("percentual inválido"); if(input.discountType==="FIXED"&&value>input.basePriceCents) throw new Error("desconto excede preço"); const final=input.basePriceCents-(input.discountType==="PERCENT"?Math.floor(input.basePriceCents*value/10000):input.discountType==="FIXED"?value:0); await client.query("UPDATE plan_prices SET active=false,updated_at=now() WHERE plan_id=$1 AND billing_cycle=$2 AND active",[input.planId,input.billingCycle]); const r=await client.query("INSERT INTO plan_prices(plan_id,billing_cycle,base_price_cents,discount_type,discount_value,final_price_cents,currency,active) VALUES($1,$2,$3,$4,$5,$6,$7,true) RETURNING *",[input.planId,input.billingCycle,input.basePriceCents,input.discountType??null,input.discountType?value:null,final,input.currency]); return {...r.rows[0],actor}; }
+export async function contractPlanForTenant(tenantId:string, planId:string, billingCycle:BillingCycle, actorUserId:string, couponCode?:string) {
+ const c=await db.connect(); try { await c.query("BEGIN"); const sr=await c.query("SELECT * FROM tenant_subscriptions WHERE tenant_id=$1 FOR UPDATE",[tenantId]); const previous=sr.rows[0]; if(!previous) throw Object.assign(new Error("Assinatura não encontrada"),{statusCode:404}); const pr=await c.query("SELECT * FROM plan_prices WHERE plan_id=$1 AND billing_cycle=$2 AND active FOR UPDATE",[planId,billingCycle]); const live=pr.rows[0]; if(!live) throw Object.assign(new Error("Preço ativo não encontrado"),{statusCode:404});
+ const oldPrice=Number(previous.final_price_cents??0), newPrice=Number(live.final_price_cents); const future=previous.current_period_end && new Date(previous.current_period_end).getTime()>Date.now();
+ if(future && previous.plan_id!==planId && newPrice<oldPrice) { await c.query("UPDATE tenant_subscriptions SET scheduled_plan_id=$1,scheduled_billing_cycle=$2,scheduled_at=now(),updated_at=now() WHERE id=$3",[planId,billingCycle,previous.id]); await c.query("INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_plan_id,to_plan_id,actor_user_id,metadata) VALUES($1,$2,'PLAN_DOWNGRADE_SCHEDULED',$3,$4,$5,$6)",[tenantId,previous.id,previous.plan_id,planId,actorUserId || null,{billing_cycle:billingCycle}]); await c.query("COMMIT"); return {...previous,scheduled_plan_id:planId,scheduled_billing_cycle:billingCycle}; }
+ const updated=await c.query(`UPDATE tenant_subscriptions SET plan_id=$1,billing_cycle=$2,base_price_cents=$3,snapshot_discount_type=$4,snapshot_discount_value=$5,final_price_cents=$6,snapshot_currency=$7,contracted_at=now(),current_period_start=CASE WHEN $8 THEN current_period_start ELSE now() END,current_period_end=CASE WHEN $8 THEN current_period_end ELSE now()+make_interval(months => $9) END,updated_at=now() WHERE id=$10 RETURNING *`,[planId,billingCycle,live.base_price_cents,live.discount_type,live.discount_value,live.final_price_cents,live.currency,Boolean(future),billingCycle==="MONTHLY"?1:billingCycle==="QUARTERLY"?3:12,previous.id]); const sub=updated.rows[0];
+ if(previous.plan_id!==planId) await truncateRolloverToPlanCap(c,tenantId,planId); await c.query(`INSERT INTO usage_periods(tenant_id,subscription_id,sequence,start_at,end_at,included_limit,status) SELECT $1,$2,COALESCE(max(sequence),0)+1,now(),now()+interval '1 month',NULL,'OPEN' FROM usage_periods WHERE tenant_id=$1 AND status='OPEN' HAVING count(*)=0`,[tenantId,sub.id]); let invoice=null; if(future && newPrice>oldPrice) { const amount=proratedAmountCents(newPrice-oldPrice,new Date(previous.current_period_start),new Date(previous.current_period_end)); invoice=await createProrationInvoice(c,tenantId,sub.id,amount,live.currency,{from_plan_id:previous.plan_id,to_plan_id:planId}); }
+ if(couponCode) await redeemCoupon(c,{code:couponCode,tenantId,subscriptionId:sub.id,planId,priceCents:newPrice}); await c.query("INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_plan_id,to_plan_id,from_status,to_status,actor_user_id,metadata) VALUES($1,$2,'PLAN_CONTRACTED',$3,$4,$5,$6,$7,$8)",[tenantId,sub.id,previous.plan_id,planId,previous.status,sub.status,actorUserId || null,{proration_invoice_id:invoice?.id??null,cycle:future?"preserved":"restarted"}]); await c.query("COMMIT"); return sub;
+ } catch(e){await c.query("ROLLBACK");throw e;} finally{c.release();}
 }

@@ -48,7 +48,7 @@ async function fixture(): Promise<Fixture> {
     const user = (await client.query<{ id: string }>("INSERT INTO users(email,password_hash,status,is_root) VALUES($1,$2,'active',false) RETURNING id", [userEmail, passwordHash])).rows[0].id;
     await ensureWorkspaceDefaultRoles(client, tenant);
     await client.query("INSERT INTO workspace_members(workspace_id,user_id,role_id,status,joined_at) SELECT $1,$2,id,'active',now() FROM workspace_roles WHERE workspace_id=$1 AND name='ADMIN'", [tenant, user]);
-    const provider = (await client.query<{ id: string }>("INSERT INTO billing_providers(code,name,enabled,environment,status,accepted_methods,commercial_config,credentials_encrypted) VALUES($1,'Fake',true,'production','CONNECTED',$2,'{}','x') RETURNING id", [ `fake-${id}`, ["pix"] ])).rows[0].id;
+    const provider = (await client.query<{ id: string }>("INSERT INTO billing_providers(homologated,code,name,enabled,environment,status,accepted_methods,commercial_config,credentials_encrypted) VALUES(true,$1,'Fake',true,'production','CONNECTED',$2,'{}','x') RETURNING id", [ `fake-${id}`, ["pix"] ])).rows[0].id;
     const subscription = (await client.query<{ id: string }>("INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,current_period_start,current_period_end) SELECT $1,id,'ACTIVE',now(),now()+interval '1 month' FROM plans WHERE code='BASIC' RETURNING id", [tenant])).rows[0].id;
     const period = (await ensureOpenPeriod(client, tenant))!.id;
     await client.query("UPDATE usage_periods SET subscription_id=$2,status='CLOSED',closed_at=now(),end_at=now()-interval '1 day',overage_amount_brl_cents=100 WHERE id=$1", [period, subscription]);

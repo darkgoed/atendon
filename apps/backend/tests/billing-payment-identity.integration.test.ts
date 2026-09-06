@@ -23,7 +23,7 @@ async function seed() {
     [`Payment identity ${suffix}`, `payment-identity-${suffix}`]
   )).rows[0].id;
   const providers = await pool.query<{ id: string }>(
-    "INSERT INTO billing_providers(code,name,environment) VALUES($1,'Identity test','sandbox'),($2,'Identity test 2','sandbox') RETURNING id",
+    "INSERT INTO billing_providers(homologated,code,name,environment) VALUES(true,$1,'Identity test','sandbox'),(true,$2,'Identity test 2','sandbox') RETURNING id",
     [`identity-${suffix}`, `identity-2-${suffix}`]
   );
   providerIds.push(...providers.rows.map((row) => row.id));

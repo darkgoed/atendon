@@ -110,8 +110,14 @@ export function decodeFollowUpImage(input: {
   return decodeFollowUpMedia(input);
 }
 
+/**
+ * O repositório só consulta: depender do `Pool` inteiro obrigaria qualquer
+ * chamador (e qualquer teste) a fabricar a superfície completa do pg.
+ */
+export type FollowUpMediaDb = Pick<Pool, "query">;
+
 export class FollowUpMediaRepository {
-  constructor(private readonly db: Pool) {}
+  constructor(private readonly db: FollowUpMediaDb) {}
 
   async list(tenantId: string): Promise<FollowUpMediaSummary[]> {
     const result = await this.db.query<FollowUpMediaSummary>(
