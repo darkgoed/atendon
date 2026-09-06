@@ -9,7 +9,7 @@ import { getBillingSettings, invalidateBillingSettingsCache } from "../../billin
 import { getRootBillingMetrics } from "../../billing/metrics.js";
 import { listPlanPrices, upsertPlanPrice, contractPlanForTenant } from "../../billing/contracts.js";
 import { invalidatePricingRuleCache } from "../../billing/pricing.js";
-import { listProviders, saveEncryptedCredentials, updateCommercialConfig, disconnect } from "../../billing/providers/store.js";
+import { listProviders, saveEncryptedCredentials, updateCommercialConfig, disconnect, setEnabled } from "../../billing/providers/store.js";
 import { beginMercadoPagoOAuth, completeMercadoPagoOAuth, refreshMercadoPagoToken, testMercadoPagoConnection } from "../../billing/providers/mercadopago-oauth.js";
 import { createChargeForInvoice, type ChargeDeps } from "../../billing/charges.js";
 
@@ -84,5 +84,6 @@ export async function registerBillingRoutes(app:FastifyInstance, dependencies: B
  app.post("/root/billing/providers/:environment/test-connection",async r=>{await requireRoot(r);const env=providerEnvironment.parse((r.params as {environment: unknown}).environment);try{return {connection:await testMercadoPagoConnection(mercadopagoCode,env,dependencies.fetchImpl)}}catch(error){throw safeError(error)}});
  app.put("/root/billing/providers/:code/:environment/credentials",async r=>{const root=await requireRoot(r);const params=r.params as {code: string; environment: string};const b=z.object({credentials:z.record(z.unknown())}).strict().parse(r.body);return {provider:await saveEncryptedCredentials(params.code,providerEnvironment.parse(params.environment),b.credentials,root.userId)}});
  app.patch("/root/billing/providers/:code/:environment/config",async r=>{await requireRoot(r);const params=r.params as {code: string; environment: string};const b=z.record(z.unknown()).parse(r.body);return {provider:await updateCommercialConfig(params.code,providerEnvironment.parse(params.environment),b)}});
+ app.post("/root/billing/providers/:code/:environment/enabled",async r=>{const root=await requireRoot(r);const params=r.params as {code: string; environment: string};const b=z.object({enabled:z.boolean()}).strict().parse(r.body);try{return {provider:await setEnabled(params.code,providerEnvironment.parse(params.environment),b.enabled,root.userId)}}catch(error){throw safeError(error)}});
  app.post("/root/billing/providers/:code/:environment/disconnect",async r=>{const root=await requireRoot(r);const params=r.params as {code: string; environment: string};const b=z.object({confirm:z.literal(true)}).parse(r.body);void b;const provider=await disconnect(params.code,providerEnvironment.parse(params.environment),root.userId);return {provider,remoteRevocation:"Mercado Pago não oferece API para revogação remota. Para revogar totalmente o acesso, o vendedor deve fazê-lo manualmente em sua conta do Mercado Pago, em Configurações > Suas integrações."}});
 }

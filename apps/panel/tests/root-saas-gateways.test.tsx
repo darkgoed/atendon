@@ -51,11 +51,11 @@ describe("root SaaS gateways", () => {
     const user = userEvent.setup();
     await user.click((await screen.findAllByRole("button", { name: "Conectar / credenciais" }))[0]);
     await user.type(screen.getByRole("textbox", { name: "Client ID" }), "client-123");
-    await user.type(screen.getByLabelText("Secret"), "secret-456");
+    await user.type(screen.getByLabelText("Client Secret"), "secret-456");
     await user.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(api).toHaveBeenCalledWith("/root/billing/providers/mercadopago/sandbox/credentials", {
       method: "PUT",
-      body: JSON.stringify({ credentials: { clientId: "client-123", secret: "secret-456" } }),
+      body: JSON.stringify({ credentials: { clientId: "client-123", clientSecret: "secret-456" } }),
     }));
   });
 
@@ -91,5 +91,28 @@ describe("root SaaS gateways", () => {
     const user = userEvent.setup();
     await user.click((await screen.findAllByRole("button", { name: "Testar conexão" }))[0]);
     await waitFor(() => expect(api).toHaveBeenCalledWith("/root/billing/providers/sandbox/test-connection", { method: "POST" }));
+  });
+
+  it("enables a connected gateway using the exact backend route", async () => {
+    setup();
+    const user = userEvent.setup();
+    await user.click((await screen.findAllByRole("button", { name: "Habilitar" }))[0]);
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/root/billing/providers/mercadopago/sandbox/enabled", {
+      method: "POST", body: JSON.stringify({ enabled: true }),
+    }));
+  });
+
+  it("disables an already-enabled gateway", async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path === "/me") return rootSession;
+      if (path === "/root/billing/providers") return { providers: providers.map((p) => (p.environment === "sandbox" ? { ...p, enabled: true } : p)) };
+      return {};
+    });
+    render(<SWRConfig value={{ provider: () => new Map() }}><GatewaysPage /></SWRConfig>);
+    const user = userEvent.setup();
+    await user.click((await screen.findAllByRole("button", { name: "Desabilitar" }))[0]);
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/root/billing/providers/mercadopago/sandbox/enabled", {
+      method: "POST", body: JSON.stringify({ enabled: false }),
+    }));
   });
 });
