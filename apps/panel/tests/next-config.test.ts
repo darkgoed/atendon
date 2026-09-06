@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
+import config, {
   createPanelContentSecurityPolicy,
   panelContentSecurityPolicy,
   panelProxyPaths,
@@ -36,6 +36,15 @@ describe("panel security headers", () => {
     const policy = createPanelContentSecurityPolicy("production", "https://meet.example.test");
     expect(policy).toContain("script-src 'self' 'unsafe-inline' https://meet.example.test");
     expect(policy).toContain("frame-src 'self' https://meet.example.test");
+  });
+
+  it("forwards the public Mercado Pago OAuth callback to the backend", async () => {
+    const rewrites = await config.rewrites!();
+    expect(Array.isArray(rewrites)).toBe(true);
+    if (!Array.isArray(rewrites)) throw new Error("Expected rewrite array");
+    const callback = rewrites.find(({ source }) => source === "/billing/providers/mercadopago/oauth/callback");
+    expect(callback).toBeDefined();
+    expect(callback?.destination).toBe(`${process.env.BACKEND_URL ?? "http://127.0.0.1:3110"}/billing/providers/mercadopago/oauth/callback`);
   });
 
   it("proxies both development and production API paths for direct panel starts", () => {

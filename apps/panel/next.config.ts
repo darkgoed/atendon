@@ -56,7 +56,14 @@ const config: NextConfig = {
     }];
   },
   async rewrites() {
-    return panelProxyPaths.map((source) => ({ source, destination: `${backendUrl}/:path*` }));
+    return [
+      // OAuth returns to the panel origin, but the callback is handled by the API.
+      {
+        source: "/billing/providers/mercadopago/oauth/callback",
+        destination: `${backendUrl}/billing/providers/mercadopago/oauth/callback`
+      },
+      ...panelProxyPaths.map((source) => ({ source, destination: `${backendUrl}/:path*` }))
+    ];
   }
 };
 
