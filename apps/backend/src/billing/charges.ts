@@ -4,9 +4,10 @@ import { config } from "../config.js";
 import { MercadoPagoProvider } from "./providers/mercadopago.js";
 import { assertAutomaticProvider, providerNotHomologated } from "./providers/homologation.js";
 import type { BillingProvider, PaymentInput, ProviderResult } from "./providers/types.js";
+import { CHARGEABLE_SUBSCRIPTION_STATUSES } from "./types.js";
 
 type ProviderRow = { credentials_encrypted: string; webhook_secret_encrypted: string | null };
-type InvoiceRow = { id: string; tenant_id: string; amount_cents: number | string; currency: string; status: string; external_id: string | null; provider_id: string | null };
+type InvoiceRow = { id: string; tenant_id: string; subscription_id: string | null; amount_cents: number | string; currency: string; status: string; external_id: string | null; provider_id: string | null };
 type PaymentRow = { external_id: string; status: string; metadata: Record<string, unknown> | null };
 type ProviderConfigRow = ProviderRow & { id: string; code: string; enabled: boolean; environment: string; status: string; homologated: boolean; accepted_methods: string[] | null; commercial_config: Record<string, unknown> | null };
 type PayerRow = { document?: string; email?: string };
@@ -31,11 +32,15 @@ async function createChargeForInvoiceUncoalesced(invoiceId: string, method: stri
   const pool = deps.db ?? db;
   const prepared = await tx(pool, async c => {
     await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [invoiceId]);
-    const inv = (await c.query<InvoiceRow>(`SELECT id,tenant_id,amount_cents,currency,status,external_id,provider_id FROM invoices WHERE id=$1 FOR UPDATE`, [invoiceId])).rows[0];
+    const inv = (await c.query<InvoiceRow>(`SELECT id,tenant_id,subscription_id,amount_cents,currency,status,external_id,provider_id FROM invoices WHERE id=$1 FOR UPDATE`, [invoiceId])).rows[0];
     if (!inv) throw Object.assign(new Error("Fatura não encontrada"), { statusCode: 404 });
+    if (inv.subscription_id) {
+      const sub = (await c.query<{ status: string }>("SELECT status FROM tenant_subscriptions WHERE id=$1 FOR SHARE", [inv.subscription_id])).rows[0];
+      if (!sub || !CHARGEABLE_SUBSCRIPTION_STATUSES.includes(sub.status as typeof CHARGEABLE_SUBSCRIPTION_STATUSES[number])) throw Object.assign(new Error("Assinatura não permite cobrança"), { code: "SUBSCRIPTION_NOT_CHARGEABLE", statusCode: 409 });
+    }
     if (inv.external_id) {
       const payment = (await c.query<PaymentRow>(`SELECT external_id,status,metadata FROM payments WHERE invoice_id=$1 AND external_id IS NOT NULL ORDER BY created_at DESC LIMIT 1`, [invoiceId])).rows[0];
-      if (payment) return { done: true as const, result: { invoiceId, externalId: payment.external_id, status: payment.status, reference: inv.external_id, payload: payment.metadata ?? undefined } };
+      if (payment && ["paid", "approved", "pending", "in_process", "authorized"].includes(payment.status)) return { done: true as const, result: { invoiceId, externalId: payment.external_id, status: payment.status, reference: inv.external_id, payload: payment.metadata ?? undefined } };
     }
     if (!["pending", "open"].includes(String(inv.status).toLowerCase())) throw new Error("Fatura não está aberta para cobrança");
     const amount = Number(inv.amount_cents); if (!Number.isFinite(amount) || amount <= 0) throw new Error("Valor da fatura inválido");
@@ -52,21 +57,26 @@ async function createChargeForInvoiceUncoalesced(invoiceId: string, method: stri
     const payer = (await c.query<PayerRow>(`SELECT document,email FROM billing_accounts WHERE tenant_id=$1 AND (provider_id=$2 OR provider_id IS NULL) LIMIT 1`, [inv.tenant_id, p.id])).rows[0] ?? {};
     const ext = inv.external_id ?? reference(invoiceId);
     if (!inv.external_id) await c.query("UPDATE invoices SET external_id=$1,provider_id=$2,updated_at=now() WHERE id=$3", [ext, p.id, invoiceId]);
-    return { done: false as const, invoiceId, tenantId: inv.tenant_id, amount, currency: inv.currency, ext, providerId: p.id, payer, provider: providerFrom(p, deps) };
+    const attempts = Number((await c.query<{ count: string }>("SELECT count(*) FROM payments WHERE invoice_id=$1", [invoiceId])).rows[0].count);
+    return { done: false as const, invoiceId, tenantId: inv.tenant_id, amount, currency: inv.currency, ext, providerId: p.id, payer, provider: providerFrom(p, deps), attempts };
   });
   if (prepared.done) return prepared.result;
   let result: ProviderResult;
   try {
-    const input: PaymentInput = { tenantId: prepared.tenantId, invoiceId, externalReference: prepared.ext, idempotencyKey: `atendon-invoice-${invoiceId}`, amountCents: prepared.amount, currency: prepared.currency, method, payer: { email: prepared.payer.email, identification: prepared.payer.document ? { type: "CPF", number: prepared.payer.document } : undefined } };
+    const input: PaymentInput = { tenantId: prepared.tenantId, invoiceId, externalReference: prepared.ext, idempotencyKey: prepared.attempts === 0 ? `atendon-invoice-${invoiceId}` : `atendon-invoice-${invoiceId}-retry-${prepared.attempts}`, amountCents: prepared.amount, currency: prepared.currency, method, payer: { email: prepared.payer.email, identification: prepared.payer.document ? { type: "CPF", number: prepared.payer.document } : undefined } };
     result = await prepared.provider.createPayment(input);
   } catch { throw safeError(); }
   return tx(pool, async c => {
     await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [invoiceId]);
     const inv = (await c.query<Pick<InvoiceRow, "external_id" | "provider_id" | "status">>("SELECT external_id,provider_id,status FROM invoices WHERE id=$1 FOR UPDATE", [invoiceId])).rows[0];
     if (!inv || inv.external_id !== prepared.ext || inv.provider_id !== prepared.providerId) throw new Error("Fatura foi alterada durante a cobrança");
-    const existing = (await c.query<PaymentRow>("SELECT external_id,status,metadata FROM payments WHERE invoice_id=$1 AND external_id IS NOT NULL LIMIT 1", [invoiceId])).rows[0];
+    const existing = (await c.query<PaymentRow>("SELECT external_id,status,metadata FROM payments WHERE invoice_id=$1 AND external_id=$2 LIMIT 1", [invoiceId, result.externalId])).rows[0];
     if (existing) return { invoiceId, externalId: existing.external_id, status: existing.status, reference: prepared.ext, payload: existing.metadata ?? undefined };
-    await c.query(`INSERT INTO payments(tenant_id,invoice_id,provider_id,external_id,amount_cents,currency,status,method,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [prepared.tenantId, invoiceId, prepared.providerId, result.externalId, prepared.amount, prepared.currency, result.status ?? "pending", method, result.payload ?? {}]);
+    const inserted = await c.query(`INSERT INTO payments(tenant_id,invoice_id,provider_id,external_id,amount_cents,currency,status,method,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (provider_id, external_id) WHERE external_id IS NOT NULL AND provider_id IS NOT NULL DO NOTHING`, [prepared.tenantId, invoiceId, prepared.providerId, result.externalId, prepared.amount, prepared.currency, result.status ?? "pending", method, result.payload ?? {}]);
+    if (!inserted.rowCount) {
+      const conflict = (await c.query<PaymentRow>("SELECT external_id,status,metadata FROM payments WHERE provider_id=$1 AND external_id=$2 LIMIT 1", [prepared.providerId, result.externalId])).rows[0];
+      if (conflict) return { invoiceId, externalId: conflict.external_id, status: conflict.status, reference: prepared.ext, payload: conflict.metadata ?? undefined };
+    }
     return { invoiceId, externalId: result.externalId, status: result.status ?? "pending", reference: prepared.ext, payload: result.payload };
   });
 }

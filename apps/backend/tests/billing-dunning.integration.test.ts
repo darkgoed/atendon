@@ -24,7 +24,31 @@ async function fixture() {
 }
 beforeAll(async()=>{await pool.query("SELECT 1")}); afterAll(async()=>{await pool.end()});
 describe("billing dunning integration",()=>{
-  it("charges a due invoice and records the attempt",async()=>{const x=await fixture();try{const id=await x.invoice();const r=await runDunningBatch(100,{db:pool,provider:x.fake});expect(r.attempted).toBe(1);expect(x.fake.calls).toHaveLength(1);expect((await pool.query("SELECT status,attempt_number FROM billing_dunning_attempts WHERE invoice_id=$1",[id])).rows[0]).toMatchObject({status:"SUCCEEDED",attempt_number:1});}finally{await x.clean()}});
+  it("charges a due invoice and records the attempt",async()=>{const x=await fixture();try{const id=await x.invoice();const r=await runDunningBatch(100,{db:pool,provider:x.fake});expect(r.attempted).toBe(1);expect(x.fake.calls).toHaveLength(1);expect((await pool.query("SELECT status,attempt_number FROM billing_dunning_attempts WHERE invoice_id=$1",[id])).rows[0]).toMatchObject({status:"PENDING",attempt_number:1});}finally{await x.clean()}});
+  // ESCRITO PELO ORQUESTRADOR: a sabotagem do curto-circuito (charges.ts devolvendo
+  // qualquer payment sem chamar o provider) NAO derrubava nenhum teste. Este e o
+  // cenario central do bloqueador B2: cliente cuja 1a cobranca foi REJEITADA precisa
+  // ser recobrado de verdade, e a tentativa nao pode ser reportada como SUCCEEDED.
+  it("retries for real when the previous payment was rejected (B2)",async()=>{
+    process.env.DUNNING_SPACING_HOURS="0";
+    const x=await fixture();
+    try{
+      const id=await x.invoice();
+      // 1a tentativa: provider devolve pending, grava external_id na fatura + payment
+      await runDunningBatch(100,{db:pool,provider:x.fake});
+      const callsAfterFirst=x.fake.calls.length;
+      expect(callsAfterFirst).toBe(1);
+      // o pagamento e RECUSADO (estado real apos recusa do gateway)
+      await pool.query("UPDATE payments SET status='rejected' WHERE invoice_id=$1",[id]);
+      // 2a rodada: TEM que chamar o provider de novo, nao curto-circuitar no rejected
+      await runDunningBatch(100,{db:pool,provider:x.fake});
+      expect(x.fake.calls.length).toBeGreaterThan(callsAfterFirst);
+      // e nenhuma tentativa pode estar marcada como sucesso: o provider devolveu pending
+      const attempts=(await pool.query<{status:string}>("SELECT status FROM billing_dunning_attempts WHERE invoice_id=$1 ORDER BY attempt_number",[id])).rows;
+      expect(attempts.length).toBeGreaterThanOrEqual(2);
+      expect(attempts.map(a=>a.status)).not.toContain("SUCCEEDED");
+    }finally{delete process.env.DUNNING_SPACING_HOURS;await x.clean()}
+  });
   it("respects retry spacing",async()=>{const x=await fixture();try{const id=await x.invoice();await runDunningBatch(100,{db:pool,provider:x.fake});const r=await runDunningBatch(100,{db:pool,provider:x.fake});expect(r.attempted).toBe(0);expect((await pool.query("SELECT count(*) FROM billing_dunning_attempts WHERE invoice_id=$1",[id])).rows[0].count).toBe("1");}finally{await x.clean()}});
   it("records gateway failure and retries after spacing",async()=>{process.env.DUNNING_SPACING_HOURS="0";const x=await fixture();try{x.fake.fail=true;const id=await x.invoice();const first=await runDunningBatch(100,{db:pool,provider:x.fake});expect(first.failed).toBe(1);x.fake.fail=false;await runDunningBatch(100,{db:pool,provider:x.fake});expect((await pool.query("SELECT count(*) FROM billing_dunning_attempts WHERE invoice_id=$1",[id])).rows[0].count).toBe("2");}finally{delete process.env.DUNNING_SPACING_HOURS;await x.clean()}});
   it("exhausts attempts and marks the subscription suspended",async()=>{process.env.DUNNING_MAX_ATTEMPTS="1";process.env.DUNNING_SPACING_HOURS="0";const x=await fixture();try{x.fake.fail=true;await x.invoice();await runDunningBatch(100,{db:pool,provider:x.fake});await pool.query("UPDATE tenant_subscriptions SET status='SUSPENDED' WHERE id=$1",[x.subscription]);expect((await pool.query("SELECT dunning_exhausted_at FROM invoices WHERE subscription_id=$1",[x.subscription])).rows[0].dunning_exhausted_at).not.toBeNull();expect((await pool.query("SELECT status FROM tenant_subscriptions WHERE id=$1",[x.subscription])).rows[0].status).toBe("SUSPENDED");}finally{delete process.env.DUNNING_MAX_ATTEMPTS;delete process.env.DUNNING_SPACING_HOURS;await x.clean()}});

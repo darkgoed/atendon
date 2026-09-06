@@ -135,4 +135,40 @@ describe("SaaS root authorization", () => {
     );
     expect(events.rowCount).toBeGreaterThanOrEqual(1);
   });
+
+  it("audits all four root subscription mutations with request context and rollback-safe failures", async () => {
+    const cookie = await login(rootEmail);
+    const rootId = (await pool.query<{ id: string }>("SELECT id FROM users WHERE email=$1", [rootEmail])).rows[0].id;
+    const subscriptionId = (await pool.query<{ id: string }>("SELECT id FROM tenant_subscriptions WHERE tenant_id=$1", [tenant])).rows[0].id;
+    await pool.query("DELETE FROM audit_logs WHERE actor_user_id=$1 AND resource_id=$2", [rootId, subscriptionId]);
+    const headers = { cookie, "user-agent": "r4-test-agent" };
+    const contractPlan = (await pool.query<{ id: string }>("SELECT id FROM plans WHERE code='MEDIUM' AND status='active'")).rows[0].id;
+    const contract = await app.inject({ method: "POST", url: `/root/saas/tenants/${tenant}/subscription`, headers: { ...headers, "x-forwarded-for": "198.51.100.42" }, payload: { planId: contractPlan } });
+    expect(contract.statusCode).toBe(200);
+    const calls = [
+      ["suspend", "SUSPENDED", "ACTIVE"],
+      ["reactivate", "ACTIVE", "SUSPENDED"],
+      ["cancel", "CANCELED", "ACTIVE"]
+    ] as const;
+    for (const [path, afterStatus, beforeStatus] of calls) {
+      const response = await app.inject({ method: "POST", url: `/root/saas/tenants/${tenant}/subscription/${path}`, headers, });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().subscription.status).toBe(afterStatus);
+      const audit = await pool.query<{ action: string; actor_user_id: string; ip_address: string; user_agent: string; metadata: { before: { status: string }; after: { status: string } } }>(
+        "SELECT action,actor_user_id,ip_address,user_agent,metadata FROM audit_logs WHERE actor_user_id=$1 AND resource_id=$2 AND action=$3 ORDER BY created_at DESC LIMIT 1",
+        [rootId, subscriptionId, `saas.subscription.${path}`]
+      );
+      expect(audit.rowCount).toBe(1);
+      expect(audit.rows[0].actor_user_id).toBe(rootId);
+      expect(audit.rows[0].ip_address).toBeTruthy();
+      expect(audit.rows[0].user_agent).toBe("r4-test-agent");
+      expect(audit.rows[0].metadata.before.status).toBe(beforeStatus);
+      expect(audit.rows[0].metadata.after.status).toBe(afterStatus);
+    }
+    const all = await pool.query("SELECT action FROM audit_logs WHERE actor_user_id=$1 AND resource_id=$2 AND resource_type='subscription'", [rootId, subscriptionId]);
+    expect(all.rowCount).toBe(4);
+    const failed = await app.inject({ method: "POST", url: `/root/saas/tenants/${randomUUID()}/subscription/cancel`, headers });
+    expect(failed.statusCode).toBe(404);
+    expect((await pool.query("SELECT count(*)::int AS count FROM audit_logs WHERE actor_user_id=$1 AND resource_id=$2", [rootId, subscriptionId])).rows[0].count).toBe(4);
+  });
 });

@@ -45,9 +45,17 @@ export async function runDunningBatch(limit = 100, chargeDeps: ChargeDeps = {}):
       if (!claim) continue;
       result.attempted++;
       try {
-        await createChargeForInvoice(id, claim.method, chargeDeps);
-        await pool.query("UPDATE billing_dunning_attempts SET status='SUCCEEDED',next_attempt_at=now()+make_interval(hours=>$3) WHERE invoice_id=$1 AND attempt_number=$2 AND status='CLAIMED'", [id, claim.attempt, p.spacingHours]);
-        result.succeeded++;
+        const charge = await createChargeForInvoice(id, claim.method, chargeDeps);
+        const status = charge.status.toLowerCase();
+        if (["paid", "approved", "authorized"].includes(status)) {
+          await pool.query("UPDATE billing_dunning_attempts SET status='SUCCEEDED',next_attempt_at=now()+make_interval(hours=>$3) WHERE invoice_id=$1 AND attempt_number=$2 AND status='CLAIMED'", [id, claim.attempt, p.spacingHours]);
+          result.succeeded++;
+        } else if (["pending", "in_process"].includes(status)) {
+          await pool.query("UPDATE billing_dunning_attempts SET status='PENDING',next_attempt_at=now()+make_interval(hours=>$3) WHERE invoice_id=$1 AND attempt_number=$2 AND status='CLAIMED'", [id, claim.attempt, p.spacingHours]);
+        } else {
+          await pool.query("UPDATE billing_dunning_attempts SET status='FAILED',error_code=$3,next_attempt_at=now()+make_interval(hours=>$4) WHERE invoice_id=$1 AND attempt_number=$2 AND status='CLAIMED'", [id, claim.attempt, `provider:${status}`, p.spacingHours]);
+          result.failed++;
+        }
       } catch (error) {
         await pool.query(`UPDATE billing_dunning_attempts SET status='FAILED',error_code=$3,next_attempt_at=now()+make_interval(hours=>$4) WHERE invoice_id=$1 AND attempt_number=$2 AND status='CLAIMED'`, [id, claim.attempt, error instanceof Error ? error.message : "charge failed", p.spacingHours]);
         const count = Number((await pool.query<{ count: string }>("SELECT count(*) FROM billing_dunning_attempts WHERE invoice_id=$1 AND attempt_number >= $2", [id, p.maxAttempts])).rows[0].count);

@@ -12,7 +12,7 @@ async function audit(c: PoolClient, actor: string, tenant: string | null, action
   await c.query(`INSERT INTO audit_logs(actor_user_id,workspace_id,actor_scope,action,resource_type,resource_id,metadata) VALUES($1,$2,'root',$3,$4,$5,$6)`, [actor, tenant, action, type, id, { before, after }]);
 }
 async function mutate(tenantId: string, actorUserId: string, action: string, fn: (c: PoolClient, s: SubscriptionRow) => Promise<unknown>) {
-  const c = await db.connect(); try { await c.query("BEGIN"); const q = await c.query<SubscriptionRow>("SELECT * FROM tenant_subscriptions WHERE tenant_id=$1 FOR UPDATE", [tenantId]); if (!q.rows[0]) throw Object.assign(new Error("Assinatura não encontrada"), { statusCode: 404 }); const out = await fn(c, q.rows[0]); await audit(c, actorUserId, tenantId, action, "subscription", q.rows[0].id, q.rows[0], out); await c.query("COMMIT"); return out; } catch (e) { await c.query("ROLLBACK"); throw e; } finally { c.release(); }
+  const c = await db.connect(); try { await c.query("BEGIN"); const q = await c.query<SubscriptionRow>("SELECT * FROM tenant_subscriptions WHERE tenant_id=$1 FOR UPDATE", [tenantId]); if (!q.rows[0]) throw Object.assign(new Error("Assinatura não encontrada"), { statusCode: 404 }); const out = await fn(c, q.rows[0]); await c.query("COMMIT"); return out; } catch (e) { await c.query("ROLLBACK"); throw e; } finally { c.release(); }
 }
 export async function changePlan(tenantId: string, planId: string, actorUserId: string) {
   const c = await db.connect();

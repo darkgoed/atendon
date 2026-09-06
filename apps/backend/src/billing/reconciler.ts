@@ -6,6 +6,7 @@ import { getBillingSettings } from "./settings.js";
 import { reconcileAiTurnFromUsageLogs } from "./ai-consumption.js";
 import { createInvoiceForUsagePeriod } from "./invoices.js";
 import { createChargeForInvoice, type ChargeDeps } from "./charges.js";
+import { CHARGEABLE_SUBSCRIPTION_STATUSES } from "./types.js";
 
 export type SubscriptionLifecycleResult = { suspended: number; errors: string[] };
 
@@ -47,16 +48,17 @@ export async function runBillingReconciliationBatch(limit = 100, chargeDeps: Cha
       SELECT ts.tenant_id
       FROM usage_periods u
       JOIN tenant_subscriptions ts ON ts.tenant_id = u.tenant_id
-      WHERE u.status = 'OPEN' AND u.end_at <= now()
+      WHERE u.status = 'OPEN' AND u.end_at <= now() AND ts.status = ANY($1)
       UNION
       SELECT ts.tenant_id
       FROM rollover_ledger l
       JOIN tenant_subscriptions ts ON ts.tenant_id = l.tenant_id
       WHERE l.expires_at <= now()
         AND l.generated_amount > l.consumed_amount + l.expired_amount
+        AND ts.status = ANY($1)
     ) candidates
     ORDER BY tenant_id
-    LIMIT $1`, [limit]);
+    LIMIT $2`, [CHARGEABLE_SUBSCRIPTION_STATUSES, limit]);
   for (const { tenant_id } of tenants.rows) {
     try {
       const closed = await withTenantTransaction(db, tenant_id, async (client) => {

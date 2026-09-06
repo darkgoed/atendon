@@ -29,6 +29,7 @@ export async function registerSaasRoutes(app: FastifyInstance) {
     const root = await requireRoot(r);
     const b = z.object({ planId: uuid, billingCycle: z.enum(["MONTHLY","QUARTERLY","YEARLY"]).default("MONTHLY"), couponCode: z.string().trim().min(1).max(100).optional() }).parse(r.body);
     const tenantId = uuid.parse((r.params as { tenantId: string }).tenantId);
+    const before = (await db.query("SELECT * FROM tenant_subscriptions WHERE tenant_id=$1", [tenantId])).rows[0] ?? null;
     const subscription = await contractPlanForTenant(tenantId, b.planId, b.billingCycle, root.userId, b.couponCode);
     // Keep the legacy endpoint's PLAN_CHANGED event contract. The contract service
     // records PLAN_CONTRACTED; this compatibility event is intentionally separate.
@@ -36,9 +37,17 @@ export async function registerSaasRoutes(app: FastifyInstance) {
       "INSERT INTO subscription_events(tenant_id,subscription_id,event_type,to_plan_id,to_status,actor_user_id,metadata) VALUES($1,$2,'PLAN_CHANGED',$3,$4,$5,$6)",
       [tenantId, subscription.id, b.planId, subscription.status, root.userId, { source: "legacy-saas-subscription", contractEvent: "PLAN_CONTRACTED" }]
     );
+    await rootAudit(r, root, "saas.subscription.contract", "subscription", subscription.id, before, subscription, tenantId);
     return { subscription };
   });
-  for (const [path, status] of [["suspend", "SUSPENDED"], ["reactivate", "ACTIVE"], ["cancel", "CANCELED"]] as const) app.post(`/root/saas/tenants/:tenantId/subscription/${path}`, async (r) => { const root = await requireRoot(r); return { subscription: await changeStatus(uuid.parse((r.params as { tenantId: string }).tenantId), status, root.userId) }; });
+  for (const [path, status] of [["suspend", "SUSPENDED"], ["reactivate", "ACTIVE"], ["cancel", "CANCELED"]] as const) app.post(`/root/saas/tenants/:tenantId/subscription/${path}`, async (r) => {
+    const root = await requireRoot(r);
+    const tenantId = uuid.parse((r.params as { tenantId: string }).tenantId);
+    const before = (await db.query("SELECT * FROM tenant_subscriptions WHERE tenant_id=$1", [tenantId])).rows[0] ?? null;
+    const subscription = await changeStatus(tenantId, status, root.userId);
+    await rootAudit(r, root, `saas.subscription.${path}`, "subscription", (subscription as { id: string }).id, before, subscription, tenantId);
+    return { subscription };
+  });
   app.put("/root/saas/tenants/:tenantId/overrides/:kind/:key", async (r) => { const root = await requireRoot(r); const tenantId = uuid.parse((r.params as { tenantId: string }).tenantId); const kind = z.enum(["feature", "limit"]).parse((r.params as { kind: string }).kind); const key = z.string().min(1).parse((r.params as { key: string }).key); const b = z.object({ boolValue: z.boolean().optional(), intValue: z.number().int().positive().nullable().optional(), unlimited: z.boolean().optional(), reason: z.string().max(500).optional(), expiresAt: z.string().datetime().nullable().optional() }).parse(r.body);
     // A chave precisa existir no catálogo: um typo gravaria um override silenciosamente
     // inerte, dando ao ROOT a falsa impressão de ter concedido algo.
