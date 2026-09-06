@@ -80,6 +80,12 @@ describe("root SaaS gateways", () => {
     expect(window.location.assign).toHaveBeenCalledWith("https://mercadopago.example/authorize");
   });
 
+  it("shows a visible OAuth failure message from the callback", async () => {
+    Object.defineProperty(window, "location", { configurable: true, value: { origin: "http://localhost", pathname: "/root/saas/gateways", search: "?mercadopago=error", assign: vi.fn() } });
+    setup();
+    expect(await screen.findByRole("status")).toHaveTextContent("Não foi possível concluir a conexão OAuth");
+  });
+
   it("tests the connection using the exact backend route", async () => {
     setup();
     const user = userEvent.setup();

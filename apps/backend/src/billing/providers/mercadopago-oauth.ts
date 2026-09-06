@@ -18,7 +18,7 @@ type TokenResponse = {
   live_mode?: boolean;
   expires_in?: number;
 };
-type OAuthState = { provider_code: string; environment: ProviderEnvironment; code_verifier: string };
+type OAuthState = { provider_code: string; environment: ProviderEnvironment; code_verifier: string; redirect_uri: string };
 type ConnectionResponse = { id?: string | number; email?: string; country_id?: string };
 
 const columns = "id,code,name,enabled,environment,status,credentials_hint,accepted_methods,commercial_config,account_metadata,connected_at,last_validated_at,last_error_code,last_error_at,token_expires_at,last_event_at,created_at,updated_at,credentials_encrypted,webhook_secret_encrypted";
@@ -77,8 +77,8 @@ export async function beginMercadoPagoOAuth(code: string, environment: string, a
   const verifier = randomBytes(32).toString("base64url");
   const challenge = createHash("sha256").update(verifier).digest("base64url");
   const stateResult = await db.query<{ expires_at: Date }>(
-    "INSERT INTO oauth_states(state,provider_code,environment,code_verifier,created_by_user_id,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '10 minutes') RETURNING expires_at",
-    [state, code, env, verifier, actorUserId],
+    "INSERT INTO oauth_states(state,provider_code,environment,code_verifier,redirect_uri,created_by_user_id,expires_at) VALUES($1,$2,$3,$4,$5,$6,now()+interval '10 minutes') RETURNING expires_at",
+    [state, code, env, verifier, configuredRedirect ?? redirectUri, actorUserId],
   );
   const url = new URL(AUTHORIZATION_URL);
   url.searchParams.set("client_id", clientId);
@@ -94,7 +94,7 @@ export async function beginMercadoPagoOAuth(code: string, environment: string, a
 
 async function claimOAuthState(state: string): Promise<OAuthState> {
   return transaction(async (client) => {
-    const claimed = await client.query<OAuthState>("UPDATE oauth_states SET consumed_at=now() WHERE state=$1 AND consumed_at IS NULL AND expires_at>now() RETURNING provider_code,environment,code_verifier", [state]);
+    const claimed = await client.query<OAuthState>("UPDATE oauth_states SET consumed_at=now() WHERE state=$1 AND consumed_at IS NULL AND expires_at>now() RETURNING provider_code,environment,code_verifier,redirect_uri", [state]);
     if (!claimed.rowCount) throw new Error("OAuth state is invalid, expired, or already used");
     return claimed.rows[0];
   });
@@ -102,13 +102,12 @@ async function claimOAuthState(state: string): Promise<OAuthState> {
 
 export async function completeMercadoPagoOAuth(state: string, code: string, fetchImpl: Fetcher = fetch) {
   const oauthState = await claimOAuthState(state);
+  if (!oauthState.redirect_uri) throw new Error("OAuth state has no bound redirect URI");
   const providerResult = await db.query<Record<string, unknown>>(`SELECT ${columns} FROM billing_providers WHERE code=$1 AND environment=$2`, [oauthState.provider_code, oauthState.environment]);
   if (!providerResult.rowCount) throw new Error("billing provider not found");
   const provider = providerResult.rows[0];
   const app = decryptCredentials<Credentials>(String(provider.credentials_encrypted), config.DATA_ENCRYPTION_KEY);
-  const redirectUri = configuredValue(app, "redirectUri", "redirect_uri");
-  const body: Record<string, string | boolean> = { client_id: configuredValue(app, "clientId", "client_id") ?? "", client_secret: configuredValue(app, "clientSecret", "client_secret") ?? "", code, grant_type: "authorization_code", code_verifier: oauthState.code_verifier };
-  if (redirectUri) body.redirect_uri = redirectUri;
+  const body: Record<string, string | boolean> = { client_id: configuredValue(app, "clientId", "client_id") ?? "", client_secret: configuredValue(app, "clientSecret", "client_secret") ?? "", code, grant_type: "authorization_code", code_verifier: oauthState.code_verifier, redirect_uri: oauthState.redirect_uri };
   if (oauthState.environment === "sandbox") body.test_token = true;
   const response = await fetchImpl(TOKEN_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const data: unknown = await response.json();

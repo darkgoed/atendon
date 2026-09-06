@@ -27,6 +27,13 @@ describe("Mercado Pago OAuth transaction boundaries", () => {
   it("rejects a replay", async () => { const s = await state(); await completeMercadoPagoOAuth(s, "code", fetchOk({ access_token: "a" })); await expect(completeMercadoPagoOAuth(s, "code", fetchOk({ access_token: "b" }))).rejects.toThrow("invalid"); });
   it("leaves state consumed after HTTP failure", async () => { const s = await state(); await expect(completeMercadoPagoOAuth(s, "code", fetchFail({ error: "bad" }))).rejects.toThrow(); expect((await pool.query("SELECT consumed_at FROM oauth_states WHERE state=$1", [s])).rows[0].consumed_at).not.toBeNull(); });
   it("does not replace credentials after exchange JSON failure", async () => { const before = await creds(); const s = await state(); await expect(completeMercadoPagoOAuth(s, "code", fetchOk({ nope: true }))).rejects.toThrow(); expect(await creds()).toEqual(before); });
+  it("binds the token exchange redirect URI to the URI used to begin OAuth", async () => {
+    const s = await state();
+    let requestBody = "";
+    const fetchExchange = (async (_url: string, init?: RequestInit) => { requestBody = String(init?.body); return { ok: true, json: async () => ({ access_token: "new" }) }; }) as typeof fetch;
+    await completeMercadoPagoOAuth(s, "code", fetchExchange);
+    expect(JSON.parse(requestBody)).toMatchObject({ redirect_uri: "http://localhost/callback" });
+  });
   it("stores exchanged access and refresh credentials", async () => { const s = await state(); await completeMercadoPagoOAuth(s, "code", fetchOk({ access_token: "new", refresh_token: "new-r", user_id: 7 })); expect(await creds()).toMatchObject({ accessToken: "new", refreshToken: "new-r", userId: 7 }); });
   it("refreshes access while preserving refresh token when omitted", async () => { await refreshMercadoPagoToken(code, "sandbox", fetchOk({ access_token: "fresh" })); expect(await creds()).toMatchObject({ accessToken: "fresh", refreshToken: "old-refresh" }); });
   it("does not replace credentials after refresh failure", async () => { const before = await creds(); await expect(refreshMercadoPagoToken(code, "sandbox", fetchFail({ error: "bad" }))).rejects.toThrow(); const after = await creds(); expect(after.refreshToken).toBe(before.refreshToken); expect(after.accessToken).toBe(before.accessToken); });

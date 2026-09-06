@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
@@ -18,6 +18,7 @@ export default function GatewaysPage() {
   const { data, mutate } = useSWR<{ providers: Gateway[] }>(root ? "/root/billing/providers" : null, fetcher);
   const [form, setForm] = useState<{ provider: string; environment: Gateway["environment"] } | null>(null);
   const [message, setMessage] = useState("");
+  useEffect(() => { const result = new URLSearchParams(window.location.search).get("mercadopago"); if (!result) return; setMessage(result === "connected" ? "Mercado Pago conectado via OAuth." : "Não foi possível concluir a conexão OAuth do Mercado Pago. Verifique as credenciais da aplicação e tente novamente."); window.history.replaceState({}, "", window.location.pathname); }, []);
   async function save(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); if (!form) return; const values = Object.fromEntries(new FormData(event.currentTarget)); const clientSecret = String(values.clientSecret ?? ""); try { await api(`/root/billing/providers/${PROVIDER_CODES[form.provider] ?? form.provider}/${form.environment}/credentials`, { method: "PUT", body: JSON.stringify({ credentials: { clientId: values.clientId, clientSecret, ...(values.redirectUri ? { redirectUri: values.redirectUri } : {}) } }) }); setForm(null); setMessage("Credenciais salvas. O segredo não é exibido novamente."); await mutate(); } catch (e) { setMessage(e instanceof Error ? e.message : "Não foi possível salvar."); } }
   async function disconnect(g: Gateway) { if (!window.confirm(`Desconectar ${g.name} (${g.environment})? Isso remove apenas as credenciais locais do AtendON. O Mercado Pago não oferece API para revogação remota; para revogar totalmente o acesso, faça isso manualmente na sua conta do Mercado Pago em Configurações > Suas integrações.`)) return; await api(`/root/billing/providers/${g.code}/${g.environment}/disconnect`, { method: "POST", body: JSON.stringify({ confirm: true }) }); setMessage("Gateway desconectado localmente. O Mercado Pago não oferece API para revogação remota. Para revogar totalmente o acesso, faça isso manualmente na sua conta do Mercado Pago em Configurações > Suas integrações."); await mutate(); }
   async function connectOAuth(environment: Gateway["environment"]) { try { const result = await api<{ authorizationUrl: string }>(`/root/billing/providers/${environment}/oauth/begin`, { method: "POST", body: JSON.stringify({ redirectUri: `${window.location.origin}/billing/providers/mercadopago/oauth/callback` }) }); window.location.assign(result.authorizationUrl); } catch (e) { setMessage(e instanceof Error ? e.message : "Não foi possível iniciar o OAuth."); } }
