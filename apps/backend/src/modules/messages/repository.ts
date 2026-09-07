@@ -19,7 +19,7 @@ import {
 import { isCapabilityEnabled, isFeatureFlagEnabled, type CapabilityKey } from "../operations/feature-flags.js";
 import { enqueueAiFollowUp } from "../../queue/ai-follow-up-queue.js";
 import { assignConversationToNamedAttendant, ensureCaseAssignment } from "../assignments/service.js";
-import { extractPrefilledFields } from "./prefilled-context.js";
+import { extractPrefilledFields } from "./prefilled-context-policy.js";
 
 function canonicalMessageAddress<T extends InboundMessage | HumanMessage>(message: T): T {
   const trustedProviderDigits = /^\d{8,15}$/.test(message.contactPhone)

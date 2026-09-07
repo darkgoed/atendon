@@ -1,5 +1,5 @@
-import type { Pool, PoolClient } from "pg";
 import { db } from "../db/client.js";
+import { withTransaction } from "../db/transaction.js";
 import { createChargeForInvoice, type ChargeDeps } from "./charges.js";
 
 export type DunningPolicy = { maxAttempts: number; spacingHours: number; gracePeriodDays: number };
@@ -12,11 +12,7 @@ function policy(): DunningPolicy {
     gracePeriodDays: Math.max(0, Number(process.env.DUNNING_GRACE_PERIOD_DAYS ?? 7)),
   };
 }
-async function tx<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await pool.connect();
-  try { await client.query("BEGIN"); const value = await fn(client); await client.query("COMMIT"); return value; }
-  catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
-}
+const tx = withTransaction;
 
 export async function runDunningBatch(limit = 100, chargeDeps: ChargeDeps = {}): Promise<DunningResult> {
   const result: DunningResult = { attempted: 0, succeeded: 0, failed: 0, exhausted: 0, reactivated: 0, errors: [] };

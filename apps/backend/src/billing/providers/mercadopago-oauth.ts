@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
 import { config } from "../../config.js";
 import { db } from "../../db/client.js";
+import { withTransaction } from "../../db/transaction.js";
 import { credentialsHint, decryptCredentials, encryptCredentials } from "./credentials.js";
 import type { Provider, ProviderEnvironment } from "./store.js";
 
@@ -47,18 +48,7 @@ function safeProvider(row: Record<string, unknown>): Provider {
 }
 
 async function transaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await db.connect();
-  try {
-    await client.query("BEGIN");
-    const result = await work(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  return withTransaction(db, work)
 }
 
 export async function beginMercadoPagoOAuth(code: string, environment: string, actorUserId: string, redirectUri: string, fetchImpl: Fetcher = fetch) {

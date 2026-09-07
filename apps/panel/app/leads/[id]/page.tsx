@@ -8,7 +8,10 @@ import useSWR from "swr";
 import { ContactAvatar } from "@/components/contact-avatar";
 import { Shell } from "@/components/shell";
 import { ApiError, api } from "@/lib/api";
-import { commercialPreparationAnswers, leadStatusLabel } from "@/lib/labels";
+import { fetchLead, fetchLeadFollowUp, updateLeadStatus, qualifyLeadContext,  addLeadNote, transferLead } from "@/lib/leads-api";
+import { formatLeadStatusLabel } from "@/lib/format";
+import { statusLabel } from "../lead-domain";
+import { commercialPreparationAnswers } from "@/lib/labels";
 import { lossReasonLabel, useLossReasons } from "@/lib/loss-reasons";
 import { useRealtimeSignals } from "@/lib/realtime";
 import {
@@ -87,10 +90,6 @@ type FollowUpData = {
   }>;
 };
 
-function statusLabel(status?: LeadStatus) {
-  return status ? leadStatusLabel(status) : "—";
-}
-
 function localDateTimeInput(value: string | null, timezone: string) {
   if (!value) return "";
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
@@ -158,7 +157,7 @@ export default function LeadDetail() {
   const load = useCallback(async () => {
     const requestEpoch = accessEpochRef.current;
     try {
-      const response = await api<LeadDetailData>(`/scheduling/leads/${id}`);
+      const response = await fetchLead<LeadDetailData>(id);
       if (requestEpoch !== accessEpochRef.current) return;
       hadAccessRef.current = true;
       setData(response);
@@ -176,7 +175,7 @@ export default function LeadDetail() {
     setFollowUpLoading(true);
     const requestEpoch = accessEpochRef.current;
     try {
-      const response = await api<FollowUpData>(`/scheduling/leads/${id}/follow-up`);
+      const response = await fetchLeadFollowUp<FollowUpData>(id);
       if (requestEpoch !== accessEpochRef.current) return;
       setFollowUpData(response);
     } catch (loadError) {
@@ -231,8 +230,8 @@ export default function LeadDetail() {
 
   async function refreshAfterFollowUpMutation(successMessage: string) {
     const [leadResult, followUpResult] = await Promise.allSettled([
-      api<LeadDetailData>(`/scheduling/leads/${id}`),
-      api<FollowUpData>(`/scheduling/leads/${id}/follow-up`)
+      fetchLead<LeadDetailData>(id),
+      fetchLeadFollowUp<FollowUpData>(id)
     ]);
     if (leadResult.status === "fulfilled") setData(leadResult.value);
     if (followUpResult.status === "fulfilled") setFollowUpData(followUpResult.value);
@@ -261,10 +260,7 @@ export default function LeadDetail() {
     setError("");
     setFeedback("");
     try {
-      await api(`/scheduling/leads/${id}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: nextStatus })
-      });
+      await updateLeadStatus(id, nextStatus);
       await load();
       setFeedback(`Status atualizado para ${statusLabel(nextStatus)}.`);
     } catch (updateError) {
@@ -296,10 +292,7 @@ export default function LeadDetail() {
     setError("");
     setFeedback("");
     try {
-      await api(`/scheduling/leads/${id}/identity`, {
-        method: "PATCH",
-        body: JSON.stringify({ nome, telefone })
-      });
+      await api(`/scheduling/leads/${id}/identity`, { method: "PATCH", body: JSON.stringify({ nome, telefone }) });
       await load();
       setEditingIdentity(false);
       setFeedback("Nome e telefone atualizados no lead e no contato vinculado.");
@@ -316,9 +309,7 @@ export default function LeadDetail() {
     setError("");
     setFeedback("");
     try {
-      const result = await api<{ mensagens_analisadas: number }>(`/scheduling/leads/${id}/qualify-context`, {
-        method: "POST"
-      });
+      const result = await qualifyLeadContext(id) as { mensagens_analisadas: number };
       await load();
       setFeedback(`Qualificação concluída pela IA com base em ${result.mensagens_analisadas} mensagem(ns) da conversa.`);
     } catch (qualificationError) {
@@ -390,7 +381,7 @@ export default function LeadDetail() {
     setError("");
     setFeedback("");
     try {
-      const persisted = await api<{ nota: FollowUpData["notas"][number] }>(`/scheduling/leads/${id}/notes`, { method: "POST", body: JSON.stringify({ nota: content }) });
+      const persisted = await addLeadNote(id, content) as { nota: FollowUpData["notas"][number] };
       setNote("");
       setFeedback("Nota interna adicionada.");
       setFollowUpData((current) => current ? { ...current, notas: [persisted.nota, ...current.notas] } : current);
@@ -412,7 +403,7 @@ export default function LeadDetail() {
     setError("");
     setFeedback("");
     try {
-      await api(`/scheduling/leads/${id}/transferir`, { method: "POST", body: JSON.stringify({ motivo }) });
+      await transferLead(id, motivo);
       form.reset();
       await load();
       setFeedback("Lead transferido para atendimento humano.");
@@ -654,7 +645,7 @@ export default function LeadDetail() {
                   {data.agendamentos.map((item) => (
                     <div key={item.id} className="mb-2 rounded border border-[var(--border)] p-3 text-xs">
                       <strong>{new Date(item.start).toLocaleString("pt-BR", { timeZone: data.timezone })}</strong>
-                      <span className="block text-[var(--muted)]">{leadStatusLabel(item.status)}</span>
+                      <span className="block text-[var(--muted)]">{formatLeadStatusLabel(item.status)}</span>
                       {item.result_pending_at ? <span className="mt-1 block font-semibold text-[var(--warn)]">Resultado pendente</span> : null}
                       <span className="block text-[var(--faint)]">
                         {item.responsavel?.email

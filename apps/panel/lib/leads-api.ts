@@ -1,0 +1,10 @@
+import { api } from "./api";
+export const fetchLead = <T>(id: string) => api<T>(`/scheduling/leads/${id}`);
+export const fetchLeadFollowUp = <T>(id: string) => api<T>(`/scheduling/leads/${id}/follow-up`);
+export const updateLeadStatus = (id: string, status: string) => api<unknown>(`/scheduling/leads/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
+export const updateLeadIdentity = (id: string, nome: string, telefone: string) => api<unknown>(`/scheduling/leads/${id}/identity`, { method: "PATCH", body: JSON.stringify({ nome, telefone }) });
+export const qualifyLeadContext = (id: string) => api<unknown>(`/scheduling/leads/${id}/qualify-context`, { method: "POST" });
+export const updateLeadFollowUp = (id: string, body: unknown) => api<unknown>(`/scheduling/leads/${id}/follow-up`, { method: "PATCH", body: JSON.stringify(body) });
+export const addLeadNote = (id: string, nota: string) => api<unknown>(`/scheduling/leads/${id}/notes`, { method: "POST", body: JSON.stringify({ nota }) });
+export const transferLead = (id: string, motivo: string) => api<unknown>(`/scheduling/leads/${id}/transferir`, { method: "POST", body: JSON.stringify({ motivo }) });
+export const updatePipelineStage = (id: string, payload: unknown) => api<unknown>(`/organization/leads/${id}/stage`, { method: "PATCH", body: JSON.stringify(payload) });

@@ -39,6 +39,7 @@ import { stageRequiresCommercialPayload } from "../commercial-journey/domain.js"
 import { resolveLossReason } from "../commercial-journey/loss-reasons.js";
 import { createMeetRoomIdentity, insertMeetRoom, participantJoinUrl } from "../meet/service.js";
 import { publicHttpsAgent, resolvePublicHttpsUrl, type LookupAll } from "../../security/outbound-url.js";
+import { loadSchedulingUnit, lockAndLoadOverlappingAppointments } from "./repository.js";
 
 export const slug = z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100);
 export const uuid = z.string().uuid();
@@ -467,12 +468,7 @@ export function assertFutureAppointmentStart(
 }
 
 export async function loadUnit(client: PoolClient, tenantId: string, unitId: string): Promise<UnitRow> {
-  const result = await client.query<UnitRow>(
-    `SELECT u.id,u.name,u.opening_time::text,u.closing_time::text,u.operating_days,u.slot_duration_min,u.simultaneous_capacity,t.timezone
-     FROM scheduling_units u
-     JOIN tenants t ON t.id=u.tenant_id
-     WHERE u.tenant_id=$1 AND u.id=$2`, [tenantId, unitId]
-  );
+  const result = await loadSchedulingUnit(client, tenantId, unitId);
   if (!result.rows[0]) throw httpError(404, "Unidade não encontrada");
   return result.rows[0];
 }
@@ -524,13 +520,7 @@ export async function assertCapacity(
   if (options.allowCapacityOverride) return;
   // Encaixes podem começar em qualquer minuto. O lock precisa cobrir a agenda
   // inteira para serializar também horários diferentes que se sobreponham.
-  await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`schedule:${tenantId}:${unit.id}`]);
-  const result = await client.query<{ start_at: Date; end_at: Date }>(
-    `SELECT start_at,end_at FROM scheduling_appointments
-     WHERE tenant_id=$1 AND unit_id=$2 AND status IN ('confirmado','reagendado')
-       AND start_at < $4 AND end_at > $3 AND ($5::uuid IS NULL OR id <> $5)`,
-    [tenantId, unit.id, start.toISOString(), end.toISOString(), exceptId ?? null]
-  );
+  const result = await lockAndLoadOverlappingAppointments(client, tenantId, unit.id, start, end, exceptId);
   if (peakConcurrentAppointments(result.rows, start, end) >= unit.simultaneous_capacity) {
     throw httpError(409, "Slot sem capacidade disponível");
   }

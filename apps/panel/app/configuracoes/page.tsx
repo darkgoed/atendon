@@ -7,6 +7,7 @@ import useSWR from "swr";
 import { Empty } from "@/components/page-state";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
+import { fetchWorkspaceTimezone, unmuteConversation } from "@/lib/settings-api";
 import { useCapabilities } from "@/lib/capabilities";
 import {
   attendantPoolAccess,
@@ -351,7 +352,7 @@ export default function ConfigPage() {
 function WorkspaceSettingsPanel() {
   const { data, error, isLoading, mutate } = useSWR<WorkspaceTimezoneResponse>(
     "/workspaces/current/timezone",
-    (url: string) => api<WorkspaceTimezoneResponse>(url),
+    fetchWorkspaceTimezone<WorkspaceTimezoneResponse>,
     { revalidateOnFocus: false, shouldRetryOnError: false }
   );
   const [timezone, setTimezone] = useState("");
@@ -492,7 +493,7 @@ const SIGNATURE_FORMAT_LABELS: Record<SignatureFormat, string> = {
 function SignatureSettingsPanel({ canManage }: { canManage: boolean }) {
   const { data, error, isLoading, mutate } = useSWR<SignatureSettingsResponse>(
     "/signature",
-    (url: string) => api<SignatureSettingsResponse>(url),
+    () => api<SignatureSettingsResponse>("/signature"),
     { revalidateOnFocus: false, shouldRetryOnError: false }
   );
   const [enabled, setEnabled] = useState(false);
@@ -613,7 +614,7 @@ type SchedulingGroupsResponse = { groups: SchedulingGroup[] };
 function PanelNotificationSettingsPanel() {
   const { data, error, isLoading, mutate } = useSWR<PanelNotificationPreferencesResponse>(
     "/me/notification-preferences",
-    (url: string) => api<PanelNotificationPreferencesResponse>(url),
+    () => api<PanelNotificationPreferencesResponse>("/me/notification-preferences"),
     { revalidateOnFocus: true }
   );
   const [saving, setSaving] = useState(false);
@@ -640,10 +641,7 @@ function PanelNotificationSettingsPanel() {
   async function unmute(conversationId: string) {
     setSaveError("");
     try {
-      await api(`/conversations/${conversationId}/notification-mute`, {
-        method: "PATCH",
-        body: JSON.stringify({ muted: false })
-      });
+      await unmuteConversation(conversationId);
       await mutate();
     } catch (caught) {
       setSaveError(caught instanceof Error ? caught.message : "Não foi possível reativar a conversa.");

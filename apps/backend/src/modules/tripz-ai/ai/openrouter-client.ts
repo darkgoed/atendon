@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TripzAiError } from "../domain.js";
+import { postOpenRouterChatCompletions } from "../../ai-router/openrouter-http.js";
 import {
   tripzAiResponseFormat,
   tripzAiProviderOutputSchema,
@@ -510,15 +511,8 @@ export class TripzOpenRouterClient {
         return usage;
       };
       try {
-        const response = await this.fetcher(`${this.config.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${this.config.apiKey}`,
-            "Content-Type": "application/json",
-            ...(this.config.appUrl ? { "HTTP-Referer": this.config.appUrl } : {}),
-            ...(this.config.appName ? { "X-OpenRouter-Title": this.config.appName } : {})
-          },
-          body: JSON.stringify({
+        const response = await postOpenRouterChatCompletions({
+          baseUrl: this.config.baseUrl, apiKey: this.config.apiKey, appUrl: this.config.appUrl, appName: this.config.appName, titleHeader: "X-OpenRouter-Title", timeoutMs: this.config.timeoutMs, fetcher: this.fetcher, body: JSON.stringify({
             model: this.config.model,
             ...tripzModelRequestParameters(this.config),
             max_tokens: Math.min(
@@ -537,9 +531,8 @@ export class TripzOpenRouterClient {
               zdr: true,
               ...(this.config.provider ? { order: [this.config.provider] } : {})
             }
-          }),
-          signal: AbortSignal.timeout(this.config.timeoutMs)
-        });
+          })
+        })
         if (!response.ok) {
           const retryable = RETRYABLE_STATUS_CODES.has(response.status) || response.status >= 500;
           let rawErrorBody: unknown;

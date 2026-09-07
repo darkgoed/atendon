@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { AppConfig } from "../../config.js";
 import { logger } from "../../logger.js";
 import { toolSafetyMetadata, type ToolDefinition } from "./tools.js";
+import { postOpenRouterChatCompletions } from "./openrouter-http.js";
 
 const toolCallSchema = z.object({
   id: z.string(),
@@ -720,15 +721,8 @@ export class OpenRouterClient implements AiRouter {
         (total, message) => total + (message.role === "tool" ? textContentCharacters(message.content) : 0),
         0
       );
-      const response = await this.fetcher(`${this.cfg.OPENROUTER_BASE_URL}/chat/completions`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": this.cfg.OPENROUTER_APP_URL,
-          "X-Title": this.cfg.OPENROUTER_APP_NAME
-        },
-        body: JSON.stringify({
+      const response = await postOpenRouterChatCompletions({
+        baseUrl: this.cfg.OPENROUTER_BASE_URL, apiKey, appUrl: this.cfg.OPENROUTER_APP_URL, appName: this.cfg.OPENROUTER_APP_NAME, timeoutMs: this.cfg.OPENROUTER_TIMEOUT_MS, fetcher: this.fetcher, body: JSON.stringify({
           model: input.model,
           temperature: input.temperature,
           max_tokens: currentMaxTokens,
@@ -747,9 +741,8 @@ export class OpenRouterClient implements AiRouter {
               allow_fallbacks: allowFallbacks
             }
           } : {})
-        }),
-        signal: AbortSignal.timeout(this.cfg.OPENROUTER_TIMEOUT_MS)
-      });
+        })
+      })
       if (!response.ok) {
         const retryable = response.status === 408 || response.status === 409 || response.status === 429 || response.status >= 500;
         const fields = {

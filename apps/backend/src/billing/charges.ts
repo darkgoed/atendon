@@ -1,5 +1,6 @@
-import type { Pool, PoolClient } from "pg";
+import type { Pool } from "pg";
 import { db } from "../db/client.js";
+import { withTransaction } from "../db/transaction.js";
 import { config } from "../config.js";
 import { MercadoPagoProvider } from "./providers/mercadopago.js";
 import { assertAutomaticProvider, providerNotHomologated } from "./providers/homologation.js";
@@ -14,7 +15,7 @@ type PayerRow = { document?: string; email?: string };
 export type ChargeResult = { invoiceId: string; externalId: string; status: string; reference: string; payload?: Record<string, unknown> };
 export type ChargeDeps = { db?: Pool; provider?: BillingProvider; providerFactory?: (row: ProviderRow) => BillingProvider };
 const safeError = () => Object.assign(new Error("Não foi possível criar a cobrança; tente novamente"), { code: "CHARGE_PROVIDER_ERROR", statusCode: 502 });
-async function tx<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>): Promise<T> { const c = await pool.connect(); try { await c.query("BEGIN"); const v = await fn(c); await c.query("COMMIT"); return v; } catch (e) { await c.query("ROLLBACK"); throw e; } finally { c.release(); } }
+const tx = withTransaction;
 function reference(id: string) { return `invoice:${id}`; }
 function providerFrom(row: ProviderRow, deps: ChargeDeps): BillingProvider { if (deps.provider) return deps.provider; return deps.providerFactory ? deps.providerFactory(row) : new MercadoPagoProvider({ credentialsEncrypted: row.credentials_encrypted, webhookSecretEncrypted: row.webhook_secret_encrypted ?? undefined, encryptionKey: config.DATA_ENCRYPTION_KEY, environment: "production" }); }
 

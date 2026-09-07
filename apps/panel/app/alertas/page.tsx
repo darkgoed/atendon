@@ -6,6 +6,7 @@ import useSWR from "swr";
 import { Empty } from "@/components/page-state";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
+import { formatPanelDateTime } from "@/lib/format";
 import { alertHistoryPollingDelay } from "@/lib/alerts";
 import { panelFeatureEnabled, type PanelFeatureFlagsResponse } from "@/lib/feature-flags";
 import { useRealtimeSignals } from "@/lib/realtime";
@@ -32,7 +33,7 @@ type AlertsResponse = {
 };
 
 const fetcher = <T,>(url: string) => api<T>(url);
-const dateTime = new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" });
+
 const PAGE_SIZE = 50;
 
 type MeetingAlertMetadata = {
@@ -67,7 +68,7 @@ function meetingDateTime(value: MeetingAlertMetadata): string {
       timeZone: value.timezone || "UTC"
     }).format(new Date(value.starts_at));
   } catch {
-    return dateTime.format(new Date(value.starts_at));
+    return formatPanelDateTime(value.starts_at, { dateStyle: "medium", timeStyle: "short" }, "pt-BR", "UTC");
   }
 }
 
@@ -231,7 +232,7 @@ export default function AlertsPage() {
                     ) : null}
                     <time className="mono mt-2 flex items-center gap-1.5 text-[11px] text-[var(--faint)]" dateTime={alert.created_at}>
                       <ClockCounterClockwise size={13} aria-hidden="true" />
-                      {dateTime.format(new Date(alert.created_at))}
+                      {formatPanelDateTime(alert.created_at, { dateStyle: "medium", timeStyle: "short" })}
                     </time>
                   </div>
                   {unread ? (

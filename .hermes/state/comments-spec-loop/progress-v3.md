@@ -347,3 +347,43 @@ R4    : PROVADO (7/7, sabotagem do agente derruba; teste forte: ator/IP/UA/befor
 - B4 (UI comercial completa): ciclo de produto próprio, toca apps/panel inteiro.
 - B5 (credenciais Mercado Pago produção): configuração com segredo real, só o usuário.
 - Backups Coolify, SHA implantado, rollback de migrations, RLS: operacional/arquitetural.
+
+## RELEASE PUBLICADO E VERIFICADO EM PRODUÇÃO — 2026-09-06 17:57 UTC
+
+Commit local : 49863f0 (15 arquivos, escopo apps/atendon/** apenas)
+Commit remoto: 8451f65 (graft sobre origin/main 9fdfdae, push 9fdfdae..8451f65 SEM force)
+Deployment   : Coolify b27455f5-2527-4f19-8623-a65a181ea590, status finished,
+               commit 8451f656bbcacc930c11e14a719183a40eb8a75e (SHA EXATO conferido)
+
+GRAFT (origin/main tem atendon na raiz; local é /var/www/apps/atendon):
+- git mktree trocando só a entrada 'atendon' (novo tree 3e75116).
+- Irmãos preservados nos hashes ORIGINAIS, conferido com ls-tree:
+    crm-whatsapp 4d0680d | endopmmfc 19bab4d
+- git diff --name-only origin/main <novo>: 15 arquivos, TODOS sob atendon/.
+- Push sem marcador '+' = fast-forward real, sem reescrita de histórico.
+
+VERIFICAÇÃO INDEPENDENTE (não parei no status verde do Coolify):
+- Containers: api/panel/worker/evolution-api/redis/postgres todos healthy.
+- Jobs one-shot: database-migrate Exited (0), database-provision Exited (0).
+- Migration REALMENTE aplicada no banco de PRODUÇÃO (não só "finished"):
+    SELECT filename FROM schema_migrations WHERE filename LIKE '015%'
+    => 0150_dunning_pending_status.sql
+- Constraint conferida no catálogo do Postgres de produção:
+    CHECK (status = ANY (ARRAY['CLAIMED','PENDING','SUCCEEDED','FAILED']))
+  => o valor PENDING que o R2 grava agora é aceito. Sem isso o dunning quebraria.
+- Painel https://atendon.alpdash.com.br => HTTP 200.
+- Zero logs level>=50 na api nos 5 minutos após o deploy.
+
+## O QUE ESTE RELEASE MUDA DE FATO
+- Assinatura CANCELED/SUSPENDED não é mais cobrada (2 camadas independentes).
+- Dunning volta a funcionar: retenta de verdade e para de reportar sucesso falso.
+- Saldo do ledger financeiro fica consistente sob concorrência.
+- Mutações ROOT de assinatura passam a gravar audit_logs com ator/IP/user-agent.
+
+## O QUE ESTE RELEASE NÃO MUDA (veredito NO-GO do comments.md continua de pé)
+B4: não existe UI para contratar+cobrar cliente; ainda depende de API/backend.
+B5: Mercado Pago de produção segue NOT_CONFIGURED, sem credenciais.
+=> Os DEFEITOS de cobrança foram corrigidos, mas o sistema ainda não está pronto
+   para começar a cobrar clientes reais. Isso exige B4 + B5, fora do escopo deste ciclo.
+Também permanecem: backups Coolify (scheduled_database_backups=0), rollback de
+migrations inexistente, RLS limitada.

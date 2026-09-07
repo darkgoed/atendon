@@ -13,6 +13,7 @@ import { PipelineViewPreferences } from "@/components/pipeline-view-preferences"
 import { SavedViewsControl } from "@/components/saved-views-control";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
+import { updateLeadStatus } from "@/lib/leads-api";
 import { useCaseOrganizationEnabled } from "@/lib/organization";
 import {
   applyPipelineSavedView,
@@ -221,7 +222,7 @@ export default function PipelinePage() {
     try {
       await mutate(async () => {
         if (stage.id.startsWith("fallback:")) {
-          await api(`/scheduling/leads/${lead.id}/status`, { method: "PATCH", body: JSON.stringify({ status: persistenceStage.technical_status }) });
+          await updateLeadStatus(lead.id, persistenceStage.technical_status);
         } else {
           await api(`/organization/leads/${lead.id}/stage`, {
             method: "PATCH",

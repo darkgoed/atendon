@@ -17,6 +17,21 @@ import { ModalDialog } from "@/components/modal-dialog";
 import { PopoverMenu } from "@/components/popover-menu";
 import { Shell } from "@/components/shell";
 import { ApiError, api } from "@/lib/api";
+import {
+  claimConversation as claimConversationApi,
+  deleteConversationMessages,
+  deleteMessage as deleteMessageApi,
+  editMessage as editMessageApi,
+  markConversationRead,
+  pauseConversation as pauseConversationApi,
+  reactToMessage as reactToMessageApi,
+  reactivateConversation as reactivateConversationApi,
+  reopenConversation as reopenConversationApi,
+  requestConversationAiReply,
+  resolveConversation as resolveConversationApi,
+  setConversationNotificationMute,
+  setConversationSignature
+} from "@/lib/conversations-api";
 import { useCapabilities } from "@/lib/capabilities";
 import {
   clearedConversationDeltaPagination,
@@ -595,7 +610,7 @@ export default function Conversations() {
     }
     if (markedReadRef.current !== selected) {
       markedReadRef.current = selected;
-      api(`/conversations/${selected}/read`, { method: "PATCH" })
+      markConversationRead(selected)
         .then(() => { void mutateList(); void mutateUnreadCounts(); })
         .catch(() => { markedReadRef.current = ""; });
     }
@@ -890,7 +905,7 @@ export default function Conversations() {
     setError("");
     setChangingAi(true);
     try {
-      await api(`/conversations/${selected}/reactivate`, { method: "PATCH" });
+      await reactivateConversationApi(selected);
       await Promise.all([mutateList(), mutateThread()]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao reativar a IA");
@@ -913,7 +928,7 @@ export default function Conversations() {
     setAiActionNotice("");
     setRequestingAiReply(true);
     try {
-      await api(`/conversations/${selectedRef.current}/reply-with-ai`, { method: "POST" });
+      await requestConversationAiReply(selectedRef.current);
       setAiActionNotice("Resposta da IA colocada na fila. Ela será enviada em instantes.");
       await Promise.all([mutateList(), mutateThread()]);
     } catch (e) {
@@ -936,7 +951,7 @@ export default function Conversations() {
     setError("");
     setChangingAi(true);
     try {
-      await api(`/conversations/${selectedRef.current}/pause`, { method: "PATCH" });
+      await pauseConversationApi(selectedRef.current);
       await Promise.all([mutateList(), mutateThread()]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao pausar a IA para este contato");
@@ -950,7 +965,7 @@ export default function Conversations() {
     setError("");
     setChangingOwner(true);
     try {
-      await api(`/conversations/${selected}/claim`, { method: "PATCH" });
+      await claimConversationApi(selected);
       await Promise.all([mutateList(), mutateThread()]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao assumir a conversa");
@@ -991,7 +1006,7 @@ export default function Conversations() {
     setError("");
     setChangingOwner(true);
     try {
-      await api(`/conversations/${selectedRef.current}/resolve`, { method: "PATCH" });
+      await resolveConversationApi(selectedRef.current);
       await Promise.all([mutateList(), mutateThread()]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao resolver a conversa");
@@ -1005,7 +1020,7 @@ export default function Conversations() {
     setError("");
     setChangingOwner(true);
     try {
-      await api(`/conversations/${selected}/reopen`, { method: "PATCH" });
+      await reopenConversationApi(selected);
       setFilter("human");
       await Promise.all([mutateList(), mutateThread()]);
     } catch (e) {
@@ -1020,10 +1035,7 @@ export default function Conversations() {
     const previous = messages;
     setMessages((current) => current.map((item) => item.id === messageId ? { ...item, reaction_emoji: emoji || null } : item));
     try {
-      await api(`/conversations/${selected}/messages/${messageId}/react`, {
-        method: "POST",
-        body: JSON.stringify({ emoji: emoji || null })
-      });
+      await reactToMessageApi(selected, messageId, emoji || null);
     } catch (e) {
       setMessages(previous);
       setError(e instanceof Error ? e.message : "Falha ao reagir à mensagem");
@@ -1033,7 +1045,7 @@ export default function Conversations() {
   async function editMessage(messageId: string, text: string) {
     if (!selected) return;
     try {
-      await api(`/conversations/${selected}/messages/${messageId}`, { method: "PATCH", body: JSON.stringify({ text }) });
+      await editMessageApi(selected, messageId, text);
       setMessages((current) => current.map((item) => item.id === messageId ? { ...item, content: text, edited_at: new Date().toISOString() } : item));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao editar a mensagem");
@@ -1044,7 +1056,7 @@ export default function Conversations() {
   async function deleteMessage(messageId: string, forEveryone: boolean) {
     if (!selected) return;
     try {
-      await api(`/conversations/${selected}/messages/${messageId}`, { method: "DELETE", body: JSON.stringify({ forEveryone }) });
+      await deleteMessageApi(selected, messageId, forEveryone);
       const deletedAt = new Date().toISOString();
       setMessages((current) => current.map((item) => item.id === messageId
         ? { ...item, deleted_at: deletedAt, deleted_for_everyone_at: forEveryone ? deletedAt : item.deleted_for_everyone_at }
@@ -1084,10 +1096,7 @@ export default function Conversations() {
     if (!selected) return;
     setError("");
     try {
-      await api(`/conversations/${selected}/signature`, {
-        method: "PATCH",
-        body: JSON.stringify({ enabled: value === "" ? null : value === "true" })
-      });
+      await setConversationSignature(selected, value === "" ? null : value === "true");
       await mutateThread();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao atualizar a assinatura desta conversa");
@@ -1099,10 +1108,7 @@ export default function Conversations() {
     const muted = notificationPreferences?.muted_conversations.some((conversation) => conversation.id === selected) ?? false;
     setError("");
     try {
-      await api(`/conversations/${selected}/notification-mute`, {
-        method: "PATCH",
-        body: JSON.stringify({ muted: !muted })
-      });
+      await setConversationNotificationMute(selected, !muted);
       await mutateNotificationPreferences();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Falha ao alterar os avisos desta conversa");
@@ -1137,7 +1143,7 @@ export default function Conversations() {
   async function clearContactConversationConfirmed() {
     setError("");
     try {
-      await api(`/conversations/${selectedRef.current}/messages`, { method: "DELETE" });
+      await deleteConversationMessages(selectedRef.current);
       setMessages([]);
       setContactAssets([]);
       setAiTurn(null);
