@@ -12,38 +12,46 @@ type InvoiceRow = { id: string; tenant_id: string; subscription_id: string | nul
 type PaymentRow = { external_id: string; status: string; metadata: Record<string, unknown> | null };
 type ProviderConfigRow = ProviderRow & { id: string; code: string; enabled: boolean; environment: string; status: string; homologated: boolean; accepted_methods: string[] | null; commercial_config: Record<string, unknown> | null };
 type PayerRow = { document?: string; email?: string };
-export type ChargeResult = { invoiceId: string; externalId: string; status: string; reference: string; payload?: Record<string, unknown> };
+export type ChargeResult = { invoiceId: string; externalId: string; status: string; reference: string; qr_code?: string; ticket_url?: string; payload?: Record<string, unknown> };
+function safeCharge(result: { invoiceId:string; externalId:string; status:string; reference:string; payload?: Record<string, unknown> }): ChargeResult {
+  const td = result.payload?.point_of_interaction && typeof result.payload.point_of_interaction === "object" ? (result.payload.point_of_interaction as Record<string, unknown>).transaction_data : undefined;
+  const data = td && typeof td === "object" ? td as Record<string, unknown> : {};
+  return { invoiceId: result.invoiceId, externalId: result.externalId, status: result.status, reference: result.reference, ...(typeof data.qr_code === "string" ? { qr_code: data.qr_code } : {}), ...(typeof data.ticket_url === "string" ? { ticket_url: data.ticket_url } : {}) };
+}
 export type ChargeDeps = { db?: Pool; provider?: BillingProvider; providerFactory?: (row: ProviderRow) => BillingProvider };
+export type ChargeOptions = { allowSuspended?: boolean; expectedTenantId?: string };
 const safeError = () => Object.assign(new Error("Não foi possível criar a cobrança; tente novamente"), { code: "CHARGE_PROVIDER_ERROR", statusCode: 502 });
 const tx = withTransaction;
 function reference(id: string) { return `invoice:${id}`; }
 function providerFrom(row: ProviderRow, deps: ChargeDeps): BillingProvider { if (deps.provider) return deps.provider; return deps.providerFactory ? deps.providerFactory(row) : new MercadoPagoProvider({ credentialsEncrypted: row.credentials_encrypted, webhookSecretEncrypted: row.webhook_secret_encrypted ?? undefined, encryptionKey: config.DATA_ENCRYPTION_KEY, environment: "production" }); }
 
-export async function createChargeForInvoice(invoiceId: string, method: string, deps: ChargeDeps = {}): Promise<ChargeResult> {
+export async function createChargeForInvoice(invoiceId: string, method: string, deps: ChargeDeps = {}, options: ChargeOptions = {}): Promise<ChargeResult> {
   const key = `${invoiceId}:${method}`;
   const active = inFlight.get(key);
   if (active) return active;
-  const promise = createChargeForInvoiceUncoalesced(invoiceId, method, deps);
+  const promise = createChargeForInvoiceUncoalesced(invoiceId, method, deps, options);
   inFlight.set(key, promise);
   try { return await promise; } finally { if (inFlight.get(key) === promise) inFlight.delete(key); }
 }
 
 const inFlight = new Map<string, Promise<ChargeResult>>();
-async function createChargeForInvoiceUncoalesced(invoiceId: string, method: string, deps: ChargeDeps = {}): Promise<ChargeResult> {
+async function createChargeForInvoiceUncoalesced(invoiceId: string, method: string, deps: ChargeDeps = {}, options: ChargeOptions = {}): Promise<ChargeResult> {
   const pool = deps.db ?? db;
   const prepared = await tx(pool, async c => {
     await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [invoiceId]);
     const inv = (await c.query<InvoiceRow>(`SELECT id,tenant_id,subscription_id,amount_cents,currency,status,external_id,provider_id FROM invoices WHERE id=$1 FOR UPDATE`, [invoiceId])).rows[0];
     if (!inv) throw Object.assign(new Error("Fatura não encontrada"), { statusCode: 404 });
+    if (options.expectedTenantId && inv.tenant_id !== options.expectedTenantId) throw Object.assign(new Error("Fatura não encontrada"), { statusCode: 404 });
     if (inv.subscription_id) {
       const sub = (await c.query<{ status: string }>("SELECT status FROM tenant_subscriptions WHERE id=$1 FOR SHARE", [inv.subscription_id])).rows[0];
-      if (!sub || !CHARGEABLE_SUBSCRIPTION_STATUSES.includes(sub.status as typeof CHARGEABLE_SUBSCRIPTION_STATUSES[number])) throw Object.assign(new Error("Assinatura não permite cobrança"), { code: "SUBSCRIPTION_NOT_CHARGEABLE", statusCode: 409 });
+      const chargeable = CHARGEABLE_SUBSCRIPTION_STATUSES.includes(sub?.status as typeof CHARGEABLE_SUBSCRIPTION_STATUSES[number]) || (options.allowSuspended === true && sub?.status === "SUSPENDED");
+      if (!sub || !chargeable) throw Object.assign(new Error("Assinatura não permite cobrança"), { code: "SUBSCRIPTION_NOT_CHARGEABLE", statusCode: 409 });
     }
     if (inv.external_id) {
       const payment = (await c.query<PaymentRow>(`SELECT external_id,status,metadata FROM payments WHERE invoice_id=$1 AND external_id IS NOT NULL ORDER BY created_at DESC LIMIT 1`, [invoiceId])).rows[0];
-      if (payment && ["paid", "approved", "pending", "in_process", "authorized"].includes(payment.status)) return { done: true as const, result: { invoiceId, externalId: payment.external_id, status: payment.status, reference: inv.external_id, payload: payment.metadata ?? undefined } };
+      if (payment && ["paid", "approved", "pending", "in_process", "authorized"].includes(payment.status)) return { done: true as const, result: safeCharge({ invoiceId, externalId: payment.external_id, status: payment.status, reference: inv.external_id!, payload: payment.metadata ?? undefined }) };
     }
-    if (!["pending", "open"].includes(String(inv.status).toLowerCase())) throw new Error("Fatura não está aberta para cobrança");
+    if (!["pending", "open", "overdue"].includes(String(inv.status).toLowerCase())) throw new Error("Fatura não está aberta para cobrança");
     const amount = Number(inv.amount_cents); if (!Number.isFinite(amount) || amount <= 0) throw new Error("Valor da fatura inválido");
     // Fallback determinístico: sem ORDER BY, "LIMIT 1" escolhe uma linha
     // arbitrária entre vários gateways conectados e uma cobrança real pode ir
@@ -75,12 +83,12 @@ async function createChargeForInvoiceUncoalesced(invoiceId: string, method: stri
     const inv = (await c.query<Pick<InvoiceRow, "external_id" | "provider_id" | "status">>("SELECT external_id,provider_id,status FROM invoices WHERE id=$1 FOR UPDATE", [invoiceId])).rows[0];
     if (!inv || inv.external_id !== prepared.ext || inv.provider_id !== prepared.providerId) throw new Error("Fatura foi alterada durante a cobrança");
     const existing = (await c.query<PaymentRow>("SELECT external_id,status,metadata FROM payments WHERE invoice_id=$1 AND external_id=$2 LIMIT 1", [invoiceId, result.externalId])).rows[0];
-    if (existing) return { invoiceId, externalId: existing.external_id, status: existing.status, reference: prepared.ext, payload: existing.metadata ?? undefined };
+    if (existing) return safeCharge({ invoiceId, externalId: existing.external_id, status: existing.status, reference: prepared.ext, payload: existing.metadata ?? undefined });
     const inserted = await c.query(`INSERT INTO payments(tenant_id,invoice_id,provider_id,external_id,amount_cents,currency,status,method,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (provider_id, external_id) WHERE external_id IS NOT NULL AND provider_id IS NOT NULL DO NOTHING`, [prepared.tenantId, invoiceId, prepared.providerId, result.externalId, prepared.amount, prepared.currency, result.status ?? "pending", method, result.payload ?? {}]);
     if (!inserted.rowCount) {
       const conflict = (await c.query<PaymentRow>("SELECT external_id,status,metadata FROM payments WHERE provider_id=$1 AND external_id=$2 LIMIT 1", [prepared.providerId, result.externalId])).rows[0];
-      if (conflict) return { invoiceId, externalId: conflict.external_id, status: conflict.status, reference: prepared.ext, payload: conflict.metadata ?? undefined };
+      if (conflict) return safeCharge({ invoiceId, externalId: conflict.external_id, status: conflict.status, reference: prepared.ext, payload: conflict.metadata ?? undefined });
     }
-    return { invoiceId, externalId: result.externalId, status: result.status ?? "pending", reference: prepared.ext, payload: result.payload };
+    return safeCharge({ invoiceId, externalId: result.externalId, status: result.status ?? "pending", reference: prepared.ext, payload: result.payload });
   });
 }

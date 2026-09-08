@@ -92,11 +92,12 @@ export async function createInvoiceForUsagePeriod(client: Client, tenantId: stri
   return createWithin(client as PoolClient, tenantId, usagePeriodId, options);
 }
 
-export async function getBillingHistory(tenantId: string, limit: number): Promise<Array<Invoice & { monthly: boolean; line_items: unknown[] }>> {
+export async function getBillingHistory(tenantId: string, limit: number): Promise<Array<Omit<Invoice, "metadata"> & { monthly: boolean; line_items: unknown[]; charge?: undefined }>> {
   const result = await db.query<Invoice & { monthly: boolean; line_items: unknown[] }>(
     `SELECT i.id,i.tenant_id,i.subscription_id,i.amount_cents,i.currency,i.status,i.kind,i.period_start,i.period_end,i.metadata,
        COALESCE((i.metadata->>'billing_cycle')='MONTHLY', false) monthly,
-       COALESCE((SELECT json_agg(l ORDER BY l.created_at) FROM invoice_line_items l WHERE l.invoice_id=i.id),'[]'::json) line_items
+       COALESCE((SELECT json_agg(l ORDER BY l.created_at) FROM invoice_line_items l WHERE l.invoice_id=i.id),'[]'::json) line_items,
+       (SELECT json_build_object('id',p.external_id,'status',p.status,'qr_code',p.metadata->'point_of_interaction'->'transaction_data'->>'qr_code','ticket_url',p.metadata->'point_of_interaction'->'transaction_data'->>'ticket_url') FROM payments p WHERE p.invoice_id=i.id AND p.method='pix' ORDER BY p.created_at DESC LIMIT 1) charge
        FROM invoices i WHERE i.tenant_id=$1 ORDER BY i.created_at DESC LIMIT $2`, [tenantId, Math.max(0, Math.min(100, Math.trunc(limit)))]);
-  return result.rows;
+  return result.rows.map(({ metadata: _metadata, ...invoice }) => ({ ...invoice, charge: undefined }));
 }
