@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { beforeAll, describe, expect, it } from "vitest";
 import { capabilitiesCacheKey, type EffectiveCapability } from "../lib/capabilities";
 import {
+  canExposeManifestItem,
   capabilityKeys,
   findPanelManifestItem,
   firstEnabledModulePath,
@@ -68,6 +69,19 @@ describe("panel capability manifest", () => {
     const removedAgentRoute = ["/agente/", "melhorias"].join("");
     expect(panelManifest.some((item) => item.href === removedAgentRoute)).toBe(false);
     expect(JSON.stringify(panelManifest)).not.toMatch(/tripz.*slug|slug.*tripz/i);
+  });
+
+  it("hides Follow-ups when the active plan does not include AI follow-up", () => {
+    const followUps = findPanelManifestItem("/follow-ups");
+    const rootWorkspaceSession: PanelSession = {
+      ...session,
+      user: { ...session.user, isRoot: true },
+      actorScope: "root",
+      rootWorkspaceAccess: true
+    };
+    expect(followUps?.requiredFeature).toBe("AI_FOLLOWUP");
+    expect(canExposeManifestItem(rootWorkspaceSession, followUps!, () => true, () => false)).toBe(false);
+    expect(canExposeManifestItem(rootWorkspaceSession, followUps!, () => true, (key) => key === "AI_FOLLOWUP")).toBe(true);
   });
 
   it("falls back from home to the first accessible enabled module", () => {

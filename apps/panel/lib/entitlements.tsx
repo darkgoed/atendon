@@ -30,8 +30,8 @@ const defaults: EntitlementsState = {
 };
 const EntitlementsContext = createContext<EntitlementsState>(defaults);
 
-export function useEntitlements(): EntitlementsState {
-  const { data, error, isLoading, mutate } = useSWR<EntitlementsResponse>("billing-my-plan", fetchMyPlan, {
+export function useEntitlements(enabled = true): EntitlementsState {
+  const { data, error, isLoading, mutate } = useSWR<EntitlementsResponse>(enabled ? "billing-my-plan" : null, fetchMyPlan, {
     revalidateOnFocus: false, dedupingInterval: 60_000, shouldRetryOnError: false
   });
   return useMemo(() => {
@@ -39,13 +39,13 @@ export function useEntitlements(): EntitlementsState {
     const limits = data?.limits ?? {};
     const usage = data?.usage ?? {};
     return { ...data, features, limits, usage,
-      isLoading: isLoading && !data,
+      isLoading: enabled && isLoading && !data,
       error: error instanceof Error ? error : error ? new Error("Falha ao carregar plano") : undefined,
       // Enquanto a consulta falha ou está pendente, o frontend permanece aberto.
       isFeatureEnabled: (key: string) => error || (isLoading && !data) ? true : features[key] === true,
       retry: async () => mutate()
     };
-  }, [data, error, isLoading, mutate]);
+  }, [data, enabled, error, isLoading, mutate]);
 }
 
 export function EntitlementsProvider({ children }: { children: ReactNode }) {

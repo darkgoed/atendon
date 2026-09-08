@@ -27,6 +27,7 @@ export const capabilityKeys = [
 ] as const;
 
 export type CapabilityKey = (typeof capabilityKeys)[number];
+export type PlanFeatureKey = "AI_FOLLOWUP";
 
 export type PanelManifestItem = {
   href: string;
@@ -35,6 +36,7 @@ export type PanelManifestItem = {
   Icon: typeof Gauge;
   requiredPermissions?: readonly string[];
   capability?: CapabilityKey;
+  requiredFeature?: PlanFeatureKey;
   rootOnly?: boolean;
   rootWorkspaceOnly?: boolean;
   menu?: boolean;
@@ -69,7 +71,7 @@ export const panelManifest: readonly PanelManifestItem[] = [
   { href: "/pos-venda/configurar", label: "Configurar checklist", group: "Pós-venda", Icon: ClipboardText, requiredPermissions: ["post_sales.manage"], capability: "post_sales_v1", menu: true, match: startsAt("/pos-venda/configurar") },
   { href: "/tripz-ai", label: "Tripz IA", group: "Copiloto", Icon: Sparkle, requiredPermissions: ["tripz_ai.use"], capability: "tripz_ai_v1", menu: true, match: startsAt("/tripz-ai") },
   { href: "/alertas", label: "Alertas", group: "Administração", Icon: Watch, capability: "workspace_admin_v1", rootOnly: true, match: startsAt("/alertas") },
-  { href: "/follow-ups", label: "Follow-ups", group: "Administração", Icon: Clock, rootWorkspaceOnly: true, menu: true, match: startsAt("/follow-ups") },
+  { href: "/follow-ups", label: "Follow-ups", group: "Administração", Icon: Clock, rootWorkspaceOnly: true, requiredFeature: "AI_FOLLOWUP", menu: true, match: startsAt("/follow-ups") },
   { href: "/configuracoes", label: "Configurações", group: "Administração", Icon: GearSix, capability: "workspace_admin_v1", menu: true, match: (path) => administrationPaths.some((base) => startsAt(base)(path)) },
   { href: "/root/workspaces", label: "Empresas", group: "ROOT", Icon: Vault, rootOnly: true, menu: true, match: startsAt("/root/workspaces") },
   { href: "/root/saas/planos", label: "Planos e cobrança", group: "ROOT", Icon: CreditCard, rootOnly: true, menu: true, match: startsAt("/root/saas/planos") },
@@ -90,6 +92,17 @@ export function canAccessManifestItem(session: PanelSession, item: PanelManifest
   if (item.rootWorkspaceOnly) return canAccessRootWorkspace(session);
   if (item.rootOnly) return session.user.isRoot;
   return canAccessWithSession(session, item.requiredPermissions);
+}
+
+export function canExposeManifestItem(
+  session: PanelSession,
+  item: PanelManifestItem,
+  capabilityEnabled: (capability: CapabilityKey) => boolean,
+  featureEnabled: (feature: PlanFeatureKey) => boolean
+): boolean {
+  return canAccessManifestItem(session, item)
+    && (!item.capability || capabilityEnabled(item.capability))
+    && (!item.requiredFeature || featureEnabled(item.requiredFeature));
 }
 
 export function firstEnabledModulePath(

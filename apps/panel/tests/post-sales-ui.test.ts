@@ -27,7 +27,8 @@ describe("post-sales UI contracts", () => {
     expect(manifest).toContain('requiredPermissions: ["post_sales.manage"]');
     expect(shell).toContain("panelManifest");
     expect(manifest).toContain('capability: "post_sales_v1"');
-    expect(shell).toContain("capabilities.isEnabled(item.capability)");
+    expect(shell).toContain("canExposeManifestItem(");
+    expect(shell).toContain("capabilities.isEnabled");
     expect(page).not.toContain("/crm");
   });
 

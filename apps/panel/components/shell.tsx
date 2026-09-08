@@ -13,9 +13,11 @@ import { VersionBanner } from "@/components/version-banner";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { ApiError, api, type VersionInfo } from "@/lib/api";
 import { useCapabilities } from "@/lib/capabilities";
+import { useEntitlements } from "@/lib/entitlements";
 import { accessStatusLabel } from "@/lib/labels";
 import {
   canAccessManifestItem,
+  canExposeManifestItem,
   findPanelManifestItem,
   panelManifest,
   panelManifestGroups,
@@ -124,6 +126,7 @@ export function Shell({
     dedupingInterval: 10_000
   });
   const capabilities = useCapabilities();
+  const entitlements = useEntitlements(Boolean(session?.activeWorkspace));
   const canReadDashboard = session
     ? canAccessWithSession(session, ["dashboard.read"]) && capabilities.isEnabled("dashboard_v1")
     : false;
@@ -184,14 +187,19 @@ export function Shell({
         label: group,
         items: panelManifest
           .filter((item) => item.menu && item.group === group)
-          .filter((item) => canAccessManifestItem(session, item) && (!item.capability || capabilities.isEnabled(item.capability)))
+          .filter((item) => canExposeManifestItem(
+            session,
+            item,
+            capabilities.isEnabled,
+            (feature) => entitlements.features[feature] === true
+          ))
           .map((item) => ({
             ...item,
             label: caseScopedNavigationLabel(session, item.href, item.label)
           }))
       }))
       .filter((group) => group.items.length > 0);
-  }, [capabilities, session]);
+  }, [capabilities, entitlements.features, session]);
   const canRenderCurrentPage = Boolean(session && (!currentItem || canAccessManifestItem(session, currentItem)));
   const paletteItems = useMemo<PaletteItem[]>(
     () => visibleGroups.flatMap((group) => group.items.map(({ href, label, Icon }) => ({ href, label, Icon, group: group.label }))),
