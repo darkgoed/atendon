@@ -50,8 +50,7 @@ const administrationPaths = [
   "/workspace/roles",
   "/workspace/audit",
   "/agente",
-  "/humanizacao",
-  "/uso"
+  "/humanizacao"
 ] as const;
 
 const startsAt = (base: string) => (path: string) => path === base || path.startsWith(`${base}/`);
@@ -72,6 +71,9 @@ export const panelManifest: readonly PanelManifestItem[] = [
   { href: "/tripz-ai", label: "Tripz IA", group: "Copiloto", Icon: Sparkle, requiredPermissions: ["tripz_ai.use"], capability: "tripz_ai_v1", menu: true, match: startsAt("/tripz-ai") },
   { href: "/alertas", label: "Alertas", group: "Administração", Icon: Watch, capability: "workspace_admin_v1", rootOnly: true, match: startsAt("/alertas") },
   { href: "/follow-ups", label: "Follow-ups", group: "Administração", Icon: Clock, rootWorkspaceOnly: true, requiredFeature: "AI_FOLLOWUP", menu: true, match: startsAt("/follow-ups") },
+  // Cobrança nunca pode depender de uma capability comercial: uma empresa
+  // suspensa precisa alcançar esta rota justamente para quitar e reativar.
+  { href: "/uso", label: "Uso e cobrança", group: "Administração", Icon: CreditCard, requiredPermissions: ["usage.read"], menu: true, match: startsAt("/uso") },
   { href: "/configuracoes", label: "Configurações", group: "Administração", Icon: GearSix, capability: "workspace_admin_v1", menu: true, match: (path) => administrationPaths.some((base) => startsAt(base)(path)) },
   { href: "/root/workspaces", label: "Empresas", group: "ROOT", Icon: Vault, rootOnly: true, menu: true, match: startsAt("/root/workspaces") },
   { href: "/root/saas/planos", label: "Planos e cobrança", group: "ROOT", Icon: CreditCard, rootOnly: true, menu: true, match: startsAt("/root/saas/planos") },

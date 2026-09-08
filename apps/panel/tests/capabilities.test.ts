@@ -60,6 +60,10 @@ describe("panel capability manifest", () => {
     expect(findPanelManifestItem("/perfil")?.capability).toBeUndefined();
     expect(findPanelManifestItem("/alterar-senha")?.capability).toBeUndefined();
     expect(findPanelManifestItem("/root/workspaces")?.capability).toBeUndefined();
+    const billing = findPanelManifestItem("/uso");
+    expect(billing?.label).toBe("Uso e cobrança");
+    expect(billing?.capability).toBeUndefined();
+    expect(billing?.requiredPermissions).toEqual(["usage.read"]);
   });
 
   it("matches direct and nested URLs without slug-based decisions", () => {
