@@ -308,13 +308,24 @@ export async function processBillingWebhook(
   let eventId: string | undefined;
   try {
     await client.query("BEGIN");
+    // O tenant do evento é resolvido pela FATURA, nunca pelo external_reference
+    // cru: ele vem como "invoice:<uuid>" (charges.ts) e o cast direto para uuid
+    // derrubava todo webhook de pagamento real com 22P02. Continua sendo apenas
+    // rastreabilidade — a reconciliação financeira usa a fatura travada adiante.
+    const referenceKey = result.externalReference ?? result.tenantHint ?? null;
+    const hintedTenant = referenceKey
+      ? (await client.query<{ tenant_id: string }>(
+          `SELECT tenant_id FROM invoices WHERE provider_id=$1 AND external_id=$2 ORDER BY created_at DESC LIMIT 1`,
+          [provider.id, referenceKey]
+        )).rows[0]?.tenant_id ?? null
+      : null;
     const inserted = await client.query<{ id: string }>(
       `INSERT INTO billing_events(provider_id,external_event_id,event_type,payload,signature_valid,tenant_id,occurred_at)
        VALUES($1,$2,$3,$4,true,$5,$6)
        ON CONFLICT (provider_id,external_event_id) DO UPDATE SET processing_error=NULL
        WHERE billing_events.processed_at IS NULL
        RETURNING id`,
-      [provider.id, result.externalEventId, result.eventType, result.payload, result.tenantHint ?? null, eventOccurredAt(result)]
+      [provider.id, result.externalEventId, result.eventType, result.payload, hintedTenant, eventOccurredAt(result)]
     );
     // Portão de idempotência: se não inseriu, este evento já foi processado.
     if (!inserted.rowCount) {

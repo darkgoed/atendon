@@ -17,7 +17,7 @@ function error(message: string, statusCode = 409, code?: string) {
   return Object.assign(new Error(message), { statusCode, ...(code ? { code } : {}) });
 }
 
-async function createWithin(client: PoolClient, tenantId: string, periodId: string, options: InvoiceOptions): Promise<Invoice> {
+async function createWithin(client: PoolClient, tenantId: string, periodId: string, options: InvoiceOptions): Promise<Invoice | null> {
   // The period is the serialization point: concurrent callers wait here and the
   // second caller observes the already-created invoice in the same transaction.
   const period = await client.query<{
@@ -59,6 +59,14 @@ async function createWithin(client: PoolClient, tenantId: string, periodId: stri
   const overage = Number(p.overage_amount_brl_cents);
   if (overage > 0) lines.push({ kind: "AI_OVERAGE", description: "Excedente de uso de IA", quantity: 1, unit: overage, amount: overage, metadata: { usage_period_id: periodId } });
   const amount = lines.reduce((sum, line) => sum + line.amount, 0);
+  // Período sem nada a cobrar (renovação não vencida em ciclo trimestral/anual e
+  // sem excedente) NÃO vira fatura: emitir R$0 polui o histórico do cliente e
+  // manda o gateway cobrar valor inválido.
+  //
+  // O status permanece CLOSED de propósito: marcá-lo INVOICED sem fatura faria a
+  // próxima chamada cair em "Período marcado como faturado sem fatura" (acima).
+  // CLOSED é reavaliado a cada ciclo e volta a valer assim que houver o que cobrar.
+  if (amount <= 0) return null;
   // A fatura é de assinatura quando contém uma linha PLAN. O período de uso
   // pode gerar somente excedente, e esse pagamento não deve renovar a assinatura.
   const kind = lines.some(line => line.kind === "PLAN") ? "subscription" : "usage";
@@ -79,7 +87,7 @@ async function createWithin(client: PoolClient, tenantId: string, periodId: stri
   return invoice;
 }
 
-export async function createInvoiceForUsagePeriod(client: Client, tenantId: string, usagePeriodId: string, options: InvoiceOptions = {}): Promise<Invoice> {
+export async function createInvoiceForUsagePeriod(client: Client, tenantId: string, usagePeriodId: string, options: InvoiceOptions = {}): Promise<Invoice | null> {
   if (isPool(client)) return withTenantTransaction(client, tenantId, c => createWithin(c, tenantId, usagePeriodId, options));
   return createWithin(client as PoolClient, tenantId, usagePeriodId, options);
 }

@@ -24,19 +24,21 @@ describe("billing invoices integration", () => {
     const x = await fixture("YEARLY", 1);
     await pool.query("UPDATE usage_periods SET rollover_granted=500,bonus_granted=500 WHERE id=$1", [x.period]);
     const invoice = await createInvoiceForUsagePeriod(pool, x.tenant, x.period);
-    const lines = await pool.query("SELECT kind,amount_cents FROM invoice_line_items WHERE invoice_id=$1", [invoice.id]);
+    expect(invoice).not.toBeNull();
+    const lines = await pool.query("SELECT kind,amount_cents FROM invoice_line_items WHERE invoice_id=$1", [invoice!.id]);
     expect(lines.rows).toHaveLength(1); expect(lines.rows[0]).toMatchObject({ kind: "AI_OVERAGE", amount_cents: "2500" });
-    expect(invoice.amount_cents).toBe("2500");
+    expect(invoice!.amount_cents).toBe("2500");
   });
   it("monthly due renewal discriminates PLAN/DISCOUNT/AI_OVERAGE and line sum", async () => {
     const x = await fixture("MONTHLY"); const invoice = await createInvoiceForUsagePeriod(pool, x.tenant, x.period);
-    const lines = await pool.query<{ kind: string; amount_cents: string }>("SELECT kind,amount_cents FROM invoice_line_items WHERE invoice_id=$1 ORDER BY kind", [invoice.id]);
+    expect(invoice).not.toBeNull();
+    const lines = await pool.query<{ kind: string; amount_cents: string }>("SELECT kind,amount_cents FROM invoice_line_items WHERE invoice_id=$1 ORDER BY kind", [invoice!.id]);
     expect(lines.rows.map(r => r.kind)).toEqual(["AI_OVERAGE", "DISCOUNT", "PLAN"]);
-    expect(lines.rows.reduce((n, r) => n + Number(r.amount_cents), 0)).toBe(Number(invoice.amount_cents)); expect(invoice.amount_cents).toBe("8500");
+    expect(lines.rows.reduce((n, r) => n + Number(r.amount_cents), 0)).toBe(Number(invoice!.amount_cents)); expect(invoice!.amount_cents).toBe("8500");
   });
   it("is idempotent and concurrent calls create one invoice and one overage line", async () => {
     const x = await fixture("YEARLY", 1); const [a, b] = await Promise.all([createInvoiceForUsagePeriod(pool, x.tenant, x.period), createInvoiceForUsagePeriod(pool, x.tenant, x.period)]);
-    expect(a.id).toBe(b.id); expect(await scalar<number>("SELECT count(*)::int AS value FROM invoices WHERE tenant_id=$1", [x.tenant])).toBe(1); expect(await scalar<number>("SELECT count(*)::int AS value FROM invoice_line_items WHERE invoice_id=$1 AND kind='AI_OVERAGE'", [a.id])).toBe(1);
+    expect(a!.id).toBe(b!.id); expect(await scalar<number>("SELECT count(*)::int AS value FROM invoices WHERE tenant_id=$1", [x.tenant])).toBe(1); expect(await scalar<number>("SELECT count(*)::int AS value FROM invoice_line_items WHERE invoice_id=$1 AND kind='AI_OVERAGE'", [a!.id])).toBe(1);
   });
   it("rejects wrong tenant and OPEN period without changing DB", async () => {
     const x = await fixture(); const other = await fixture(); await pool.query("UPDATE usage_periods SET status='OPEN' WHERE id=$1", [x.period]);

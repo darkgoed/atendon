@@ -45,7 +45,10 @@ async function createChargeForInvoiceUncoalesced(invoiceId: string, method: stri
     }
     if (!["pending", "open"].includes(String(inv.status).toLowerCase())) throw new Error("Fatura não está aberta para cobrança");
     const amount = Number(inv.amount_cents); if (!Number.isFinite(amount) || amount <= 0) throw new Error("Valor da fatura inválido");
-    const p = (await c.query<ProviderConfigRow>(`SELECT id,code,enabled,environment,status,homologated,accepted_methods,commercial_config,credentials_encrypted,webhook_secret_encrypted FROM billing_providers WHERE id=COALESCE($1,(SELECT id FROM billing_providers WHERE homologated=true AND environment='production' AND status='CONNECTED' AND enabled=true LIMIT 1)) FOR UPDATE`, [inv.provider_id])).rows[0];
+    // Fallback determinístico: sem ORDER BY, "LIMIT 1" escolhe uma linha
+    // arbitrária entre vários gateways conectados e uma cobrança real pode ir
+    // parar no provedor errado. A ordem fixa torna a escolha reproduzível.
+    const p = (await c.query<ProviderConfigRow>(`SELECT id,code,enabled,environment,status,homologated,accepted_methods,commercial_config,credentials_encrypted,webhook_secret_encrypted FROM billing_providers WHERE id=COALESCE($1,(SELECT id FROM billing_providers WHERE homologated=true AND environment='production' AND status='CONNECTED' AND enabled=true AND credentials_encrypted IS NOT NULL ORDER BY connected_at NULLS LAST,code,id LIMIT 1)) FOR UPDATE`, [inv.provider_id])).rows[0];
     if (!p || p.environment !== "production" || !p.enabled || p.status !== "CONNECTED") throw new Error("Provedor de pagamento não está conectado");
     // A homologação é dado da própria linha travada: um gateway não homologado
     // nunca cobra, mesmo que alguém o tenha vinculado à fatura manualmente.

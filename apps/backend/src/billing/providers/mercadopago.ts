@@ -26,7 +26,10 @@ export class MercadoPagoProvider implements BillingProvider {
   createCustomer(input: CustomerInput) { return this.request("/v1/customers", "POST", { email: input.email, first_name: input.name, identification: input.document ? { number: input.document } : undefined }); }
   createSubscription(input: SubscriptionInput) { return this.request("/preapproval", "POST", { payer_email: input.metadata?.payerEmail, auto_recurring: { transaction_amount: input.amountCents / 100, currency_id: input.currency ?? "BRL", frequency: input.intervalMonths ?? 1, frequency_type: "months" }, external_reference: input.tenantId }); }
   cancelSubscription(externalId: string) { return this.request(`/preapproval/${encodeURIComponent(externalId)}`, "PUT", { status: "cancelled" }); }
-  createPayment(input: PaymentInput) { return this.request("/v1/payments", "POST", { transaction_amount: input.amountCents / 100, currency_id: input.currency ?? "BRL", description: input.description, payment_method_id: input.method, payer: input.payer, external_reference: input.externalReference }, input.idempotencyKey); }
+  // A API /v1/payments infere a moeda da conta do vendedor e REJEITA `currency_id`
+  // com 400 "The name of the following parameters is wrong : currency_id".
+  // O campo só é válido em /preapproval (createSubscription), onde segue em uso.
+  createPayment(input: PaymentInput) { return this.request("/v1/payments", "POST", { transaction_amount: input.amountCents / 100, description: input.description, payment_method_id: input.method, payer: input.payer, external_reference: input.externalReference }, input.idempotencyKey); }
   getPayment(externalId: string) { return this.request(`/v1/payments/${encodeURIComponent(externalId)}`, "GET"); }
   async handleWebhook(rawBody: string, headers: Headers, secret: string): Promise<WebhookResult> {
     const payload = JSON.parse(rawBody) as Record<string, unknown>;

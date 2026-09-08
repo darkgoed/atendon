@@ -63,12 +63,18 @@ export async function runBillingReconciliationBatch(limit = 100, chargeDeps: Cha
     try {
       const closed = await withTenantTransaction(db, tenant_id, async (client) => {
         await client.query(`SELECT id FROM tenant_subscriptions WHERE tenant_id=$1 FOR UPDATE`, [tenant_id]);
-        const before = await client.query<{ id: string }>(`SELECT id FROM usage_periods WHERE tenant_id=$1 AND status IN ('CLOSED','INVOICED') AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.metadata->>'usage_period_id'=usage_periods.id::text AND EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id=i.id AND p.external_id IS NOT NULL))`, [tenant_id]);
-        await ensureOpenPeriod(client, tenant_id); result.periods++; result.rolloverExpired += await expireRollover(client, tenant_id); return before.rows.map(x => x.id);
+        // ensureOpenPeriod PRIMEIRO: é ele quem fecha o período vencido. Lendo a
+        // lista antes, o período recém-fechado nunca aparecia — e no ciclo seguinte
+        // o tenant já não era candidato, então a fatura de renovação nunca nascia.
+        await ensureOpenPeriod(client, tenant_id); result.periods++; result.rolloverExpired += await expireRollover(client, tenant_id);
+        const pending = await client.query<{ id: string }>(`SELECT id FROM usage_periods WHERE tenant_id=$1 AND status IN ('CLOSED','INVOICED') AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.metadata->>'usage_period_id'=usage_periods.id::text AND EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id=i.id AND p.external_id IS NOT NULL))`, [tenant_id]);
+        return pending.rows.map(x => x.id);
       });
       for (const periodId of closed) {
         try {
           const invoice = await createInvoiceForUsagePeriod(db, tenant_id, periodId);
+          // Período sem valor a cobrar não gera fatura; nada a faturar aqui.
+          if (!invoice) continue;
           await db.query("UPDATE invoices SET provider_id=(SELECT provider_id FROM billing_accounts WHERE tenant_id=$1 AND provider_id IS NOT NULL LIMIT 1) WHERE id=$2 AND provider_id IS NULL", [tenant_id, invoice.id]);
           const provider = await db.query<{ auto_charge: boolean | null; default_method: string | null; accepted_methods: string[] | null }>(
             `SELECT COALESCE((commercial_config->>'autoCharge')::boolean,false) auto_charge,
@@ -76,7 +82,7 @@ export async function runBillingReconciliationBatch(limit = 100, chargeDeps: Cha
                     accepted_methods
                FROM billing_providers
               WHERE id=COALESCE((SELECT provider_id FROM invoices WHERE id=$1),
-                (SELECT id FROM billing_providers WHERE environment='production' AND status='CONNECTED' AND enabled=true LIMIT 1))
+                (SELECT id FROM billing_providers WHERE environment='production' AND status='CONNECTED' AND enabled=true AND credentials_encrypted IS NOT NULL ORDER BY connected_at NULLS LAST,code,id LIMIT 1))
                 AND environment='production' AND status='CONNECTED' AND enabled=true`, [invoice.id]);
           const p = provider.rows[0];
           const method = p?.default_method;
