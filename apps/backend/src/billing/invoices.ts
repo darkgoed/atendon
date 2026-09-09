@@ -99,5 +99,12 @@ export async function getBillingHistory(tenantId: string, limit: number): Promis
        COALESCE((SELECT json_agg(l ORDER BY l.created_at) FROM invoice_line_items l WHERE l.invoice_id=i.id),'[]'::json) line_items,
        (SELECT json_build_object('id',p.external_id,'status',p.status,'qr_code',p.metadata->'point_of_interaction'->'transaction_data'->>'qr_code','ticket_url',p.metadata->'point_of_interaction'->'transaction_data'->>'ticket_url') FROM payments p WHERE p.invoice_id=i.id AND p.method='pix' ORDER BY p.created_at DESC LIMIT 1) charge
        FROM invoices i WHERE i.tenant_id=$1 ORDER BY i.created_at DESC LIMIT $2`, [tenantId, Math.max(0, Math.min(100, Math.trunc(limit)))]);
-  return result.rows.map(({ metadata: _metadata, ...invoice }) => ({ ...invoice, charge: undefined }));
+  // metadata sai do retorno público: contém dados internos da fatura e o
+  // painel só consome os campos abaixo. O destructuring descarta a coluna sem
+  // criar um binding ocioso (a regra no-unused-vars não ignora rest siblings).
+  return result.rows.map(row => {
+    const invoice = { ...row } as Partial<Invoice> & { monthly: boolean; line_items: unknown[] };
+    delete invoice.metadata;
+    return { ...(invoice as Omit<Invoice, "metadata"> & { monthly: boolean; line_items: unknown[] }), charge: undefined };
+  });
 }
