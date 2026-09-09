@@ -49,9 +49,14 @@ beforeAll(async () => {
     await ensureWorkspaceDefaultRoles(c, tenant);
     const role = (await c.query<{ id: string }>("SELECT id FROM workspace_roles WHERE workspace_id=$1 ORDER BY created_at LIMIT 1", [tenant])).rows[0].id;
     await c.query("INSERT INTO workspace_members(workspace_id,user_id,role_id,status) VALUES($1,$2,$3,'active')", [tenant, member, role]);
-    // Outras suítes apagam billing_providers no seu próprio setup; a migration
-    // 0140 é idempotente e devolve a linha de que este teste depende.
+    // Outras suítes (billing-oauth-api) apagam a linha global de
+    // billing_providers no seu próprio ciclo. A migration 0140 é idempotente e
+    // recria a linha, mas NÃO homologa: quem homologa mercadopago é a 0142, e
+    // a coluna nasce com DEFAULT false. Reaplicar só a 0140 devolveria um
+    // provedor não homologado e o PUT abaixo responderia 400 em vez de 200.
+    // Por isso reproduzimos aqui as duas etapas do estado pós-migração.
     await c.query(await readFile(new URL("../src/db/migrations/0140_billing_provider_provisioning.sql", import.meta.url), "utf8"));
+    await c.query("UPDATE billing_providers SET homologated=true, updated_at=now() WHERE code='mercadopago'");
     providerId = (await c.query<{ id: string }>("SELECT id FROM billing_providers WHERE code='mercadopago' AND environment='production'")).rows[0].id;
     invoiceId = (await c.query<{ id: string }>(
       `INSERT INTO invoices(tenant_id,kind,amount_cents,currency,status,due_date,period_start,period_end)
