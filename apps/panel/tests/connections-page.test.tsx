@@ -82,6 +82,20 @@ describe("multiple WhatsApp connections page", () => {
     expect(screen.getAllByText(/Conexão não-oficial/)).toHaveLength(2);
   });
 
+  it("renders connections when optional failed-message recovery is unavailable", async () => {
+    apiMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === "/connections" && !init) return { connections, limits: { used: 2, max: 3 } };
+      if (path === "/connection/failed-messages") throw new Error("Not Found");
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+
+    render(<ConnectionPage />);
+
+    expect(await screen.findByRole("group", { name: /Comercial/ })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /Suporte/ })).toBeInTheDocument();
+    expect(screen.queryByText("Not Found")).not.toBeInTheDocument();
+  });
+
   it("keeps the last rendered list when a polling request fails", async () => {
     let connectionLoads = 0;
     apiMock.mockImplementation(async (path: string) => {
@@ -112,7 +126,7 @@ describe("multiple WhatsApp connections page", () => {
     render(<ConnectionPage />);
 
     const addButton = await screen.findByRole("button", { name: "Adicionar número" });
-    expect(addButton).toBeDisabled();
+    await waitFor(() => expect(addButton).toBeDisabled());
     expect(addButton).toHaveAttribute("title", "Seu plano permite até 2 conexões de WhatsApp.");
   });
 

@@ -98,14 +98,16 @@ export default function Connection() {
       inFlight = true;
       if (manual) setPollingRetrying(true);
       try {
-        const [response, recoveryResponse] = await Promise.all([
-          listConnections(),
-          api<{ recovery: FailedMessageRecoveryState }>("/connection/failed-messages")
-        ]);
+        const response = await listConnections();
         if (!active || pollingPausedRef.current) return;
         consecutiveFailures = 0;
         applyConnections(response);
-        setRecovery(recoveryResponse.recovery);
+        try {
+          const recoveryResponse = await api<{ recovery: FailedMessageRecoveryState }>("/connection/failed-messages");
+          if (active && !pollingPausedRef.current) setRecovery(recoveryResponse.recovery);
+        } catch {
+          // Message recovery is optional and must not hide healthy WhatsApp connections.
+        }
         schedule(POLL_INTERVAL_MS);
       } catch (requestError) {
         if (!active || pollingPausedRef.current) return;
