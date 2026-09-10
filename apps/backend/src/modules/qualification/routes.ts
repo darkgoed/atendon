@@ -45,7 +45,9 @@ export async function registerQualificationRoutes(app: FastifyInstance) {
   app.get("/qualification/sessions", async (request) => {
     const session = await requirePermission(request, "agent.read");
     const result = await db.query(
-      "SELECT id,phone_number,status,created_at FROM whatsapp_sessions WHERE tenant_id=$1 ORDER BY created_at DESC",
+      `SELECT id,label,phone_number,is_primary,status,created_at FROM whatsapp_sessions
+       WHERE tenant_id=$1 AND archived_at IS NULL
+       ORDER BY is_primary DESC, created_at DESC`,
       [session.tenantId]
     );
     return { sessions: result.rows };

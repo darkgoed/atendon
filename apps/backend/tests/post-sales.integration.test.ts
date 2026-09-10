@@ -18,6 +18,7 @@ let operatorUserId = "";
 let limitedUserId = "";
 let foreignOwnerUserId = "";
 let operatorMemberId = "";
+let whatsappSessionId = "";
 let leadId = "";
 let conversationId = "";
 let ownerCookie = "";
@@ -44,6 +45,10 @@ beforeAll(async () => {
     )).rows[0].id;
     await ensureWorkspaceDefaultRoles(client, tenantId);
     await ensureWorkspaceDefaultRoles(client, foreignTenantId);
+    whatsappSessionId = (await client.query<{ id: string }>(
+      "INSERT INTO whatsapp_sessions(tenant_id,label,is_primary) VALUES($1,'Principal',true) RETURNING id",
+      [tenantId]
+    )).rows[0].id;
 
     const users = await client.query<{ id: string; email: string }>(
       `INSERT INTO users(email,status) VALUES
@@ -101,9 +106,9 @@ beforeAll(async () => {
       [tenantId, operatorMemberId]
     )).rows[0].id;
     conversationId = (await client.query<{ id: string }>(
-      `INSERT INTO conversations(tenant_id,contact_phone,contact_name,lead_id)
-       VALUES($1,'5511977100011','Cliente pós-venda',$2) RETURNING id`,
-      [tenantId, leadId]
+      `INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name,lead_id)
+       VALUES($1,$2,'5511977100011','Cliente pós-venda',$3) RETURNING id`,
+      [tenantId, whatsappSessionId, leadId]
     )).rows[0].id;
     await client.query("COMMIT");
   } catch (error) {

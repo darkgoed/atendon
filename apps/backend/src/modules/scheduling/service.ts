@@ -2427,22 +2427,25 @@ export async function openAppointmentConversation(
     }
     const session = await client.query<{ id: string }>(
       `SELECT id FROM whatsapp_sessions
-       WHERE tenant_id=$1 AND status='connected'
-       ORDER BY last_connected_at DESC NULLS LAST,created_at DESC
+       WHERE tenant_id=$1 AND status='connected' AND archived_at IS NULL
+       ORDER BY is_primary DESC,last_connected_at DESC NULLS LAST,created_at DESC
        LIMIT 1`,
       [tenantId]
     );
     if (!session.rows[0]) {
       throw httpError(409, "Conecte uma sessão do WhatsApp antes de iniciar a conversa");
     }
+    // A conversa reaproveitada tem de ser a DESTA conexão: com múltiplos
+    // números, buscar só por telefone traria a conversa do número errado.
     const existing = await client.query<{ id: string }>(
       `SELECT id FROM conversations
        WHERE tenant_id=$1
+         AND session_id=$3
          AND regexp_replace(contact_phone,'\\D','','g')=regexp_replace($2,'\\D','','g')
        ORDER BY created_at,id
        LIMIT 1
        FOR UPDATE`,
-      [tenantId, row.phone]
+      [tenantId, row.phone, session.rows[0].id]
     );
     const conversation = existing.rows[0]
       ? await client.query<{ id: string }>(

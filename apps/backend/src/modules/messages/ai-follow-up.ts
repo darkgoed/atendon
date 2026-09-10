@@ -316,8 +316,11 @@ export class AiFollowUpRepository {
            JOIN agent_config_versions v
              ON v.id=cfg.active_version_id AND v.tenant_id=cfg.tenant_id
             AND v.agent_config_id=cfg.id AND v.status='active'
-           WHERE cfg.tenant_id=f.tenant_id ORDER BY cfg.updated_at DESC LIMIT 1
-         ) a ON true
+           WHERE cfg.tenant_id=f.tenant_id
+             AND (cfg.session_id = c.session_id OR cfg.session_id IS NULL)
+           ORDER BY (cfg.session_id IS NOT NULL) DESC, cfg.updated_at DESC
+           LIMIT 1
+           ) a ON true
          LEFT JOIN LATERAL (
            SELECT id,sender FROM messages WHERE conversation_id=f.conversation_id
              AND NOT (sender='agent' AND media_is_sticker)

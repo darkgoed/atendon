@@ -421,7 +421,7 @@ export class MessageRepository {
            contact_presence, contact_presence_updated_at, contact_last_seen_at)
         SELECT $1, s.id, $3, $4, $5, $13::jsonb, 'available', now(), now() FROM whatsapp_sessions s
         WHERE s.id = $2 AND s.tenant_id = $1
-        ON CONFLICT (tenant_id, contact_phone) DO UPDATE
+        ON CONFLICT (tenant_id, session_id, contact_phone) DO UPDATE
         SET contact_name = COALESCE(
               (SELECT lead.name
                FROM scheduling_leads lead
@@ -500,7 +500,10 @@ export class MessageRepository {
          AND v.agent_config_id=a.id AND v.status='active'
         JOIN tenants t ON t.id=a.tenant_id
         LEFT JOIN tenant_ai_settings s ON s.tenant_id=a.tenant_id
-        WHERE a.tenant_id = $1 ORDER BY a.updated_at DESC LIMIT 1
+        WHERE a.tenant_id = $1
+          AND (a.session_id = $2 OR a.session_id IS NULL)
+        ORDER BY (a.session_id IS NOT NULL) DESC, a.updated_at DESC
+        LIMIT 1
       ),
       lead AS (
         SELECT id,name,interest_category_id,unit_id,partner_id,source,status,
@@ -1645,7 +1648,7 @@ export class MessageRepository {
         `WITH conv AS (
          INSERT INTO conversations (tenant_id, session_id, contact_phone, contact_jid)
          SELECT $1, s.id, $3, $4 FROM whatsapp_sessions s WHERE s.id = $2 AND s.tenant_id = $1
-         ON CONFLICT (tenant_id, contact_phone) DO UPDATE
+         ON CONFLICT (tenant_id, session_id, contact_phone) DO UPDATE
          SET contact_jid = COALESCE(EXCLUDED.contact_jid, conversations.contact_jid),
              ai_active=false,handoff_reason='manually_paused',handoff_error_code=NULL,last_message_at = now()
          RETURNING id

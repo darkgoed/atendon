@@ -18,6 +18,7 @@ let operatorMemberId = "";
 let operatorCookie = "";
 let outsiderUserId = "";
 let outsiderCookie = "";
+let whatsappSessionId = "";
 
 async function login(email: string) {
   const response = await app.inject({ method: "POST", url: "/auth/login", payload: { email, password } });
@@ -61,6 +62,10 @@ beforeAll(async () => {
   tenantId = (await pool.query<{ id: string }>(
     "INSERT INTO tenants(name,status,timezone) VALUES($1,'active','UTC') RETURNING id",
     [`Attendant Availability ${randomUUID()}`]
+  )).rows[0].id;
+  whatsappSessionId = (await pool.query<{ id: string }>(
+    "INSERT INTO whatsapp_sessions(tenant_id,label,is_primary) VALUES($1,'Principal',true) RETURNING id",
+    [tenantId]
   )).rows[0].id;
   const passwordHash = await hash(password, 4);
   const users = [
@@ -382,9 +387,9 @@ describe("attendant availability and redistribution", () => {
         [tenantId, leadId]
       )).rows[0].phone;
       await pool.query(
-        `INSERT INTO conversations(tenant_id,contact_phone,contact_name,status,assigned_user_id,claimed_at)
-         VALUES($1,$2,$3,'open',$4,now())`,
-        [tenantId, phone, label, ownerUserId]
+        `INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name,status,assigned_user_id,claimed_at)
+         VALUES($1,$2,$3,$4,'open',$5,now())`,
+        [tenantId, whatsappSessionId, phone, label, ownerUserId]
       );
     }
 

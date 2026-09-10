@@ -10,6 +10,7 @@ export class SessionRepository {
       `SELECT s.id, s.tenant_id, s.status, s.instance_name FROM whatsapp_sessions s
        JOIN tenants t ON t.id = s.tenant_id
        WHERE t.status IN ('trial', 'active') AND s.status IN ('connected', 'qr_pending')
+         AND s.archived_at IS NULL
        ORDER BY s.created_at`
     );
     return Promise.all(result.rows.map(async (row) => {
@@ -19,11 +20,46 @@ export class SessionRepository {
     }));
   }
 
-  async findByInstance(instanceName: string): Promise<{ id: string; tenantId: string } | null> {
-    const result = await this.db.query<{ id: string; tenant_id: string }>(
-      "SELECT id, tenant_id FROM whatsapp_sessions WHERE instance_name=$1", [instanceName]
+  async listByTenant(tenantId: string): Promise<Array<SessionRecord & {
+    label: string; phoneNumber: string | null; isPrimary: boolean;
+    qrCode: string | null; lastConnectedAt: string | null;
+    disconnectedReason: string | null; createdAt: string;
+  }>> {
+    const result = await this.db.query(
+      `SELECT id, tenant_id, status, instance_name, label, phone_number, is_primary,
+              qr_code, last_connected_at, disconnected_reason, created_at
+       FROM whatsapp_sessions
+       WHERE tenant_id=$1 AND archived_at IS NULL
+       ORDER BY is_primary DESC, created_at`, [tenantId]
     );
-    return result.rows[0] ? { id: result.rows[0].id, tenantId: result.rows[0].tenant_id } : null;
+    return result.rows.map((row) => ({
+      id: row.id, tenantId: row.tenant_id, status: row.status, instanceName: row.instance_name,
+      label: row.label, phoneNumber: row.phone_number, isPrimary: row.is_primary,
+      qrCode: row.qr_code, lastConnectedAt: row.last_connected_at,
+      disconnectedReason: row.disconnected_reason, createdAt: row.created_at
+    }));
+  }
+
+  async findByInstance(instanceName: string): Promise<{ id: string; tenantId: string; archivedAt: string | null } | null> {
+    const result = await this.db.query<{ id: string; tenant_id: string; archived_at: string | null }>(
+      "SELECT id, tenant_id, archived_at FROM whatsapp_sessions WHERE instance_name=$1", [instanceName]
+    );
+    return result.rows[0] ? {
+      id: result.rows[0].id,
+      tenantId: result.rows[0].tenant_id,
+      archivedAt: result.rows[0].archived_at
+    } : null;
+  }
+
+  /** Conexão padrão do tenant para fluxos que ainda não escolhem número. */
+  async primaryId(tenantId: string): Promise<string | null> {
+    const result = await this.db.query<{ id: string }>(
+      `SELECT id FROM whatsapp_sessions
+       WHERE tenant_id=$1 AND archived_at IS NULL
+       ORDER BY is_primary DESC, created_at DESC
+       LIMIT 1`, [tenantId]
+    );
+    return result.rows[0]?.id ?? null;
   }
 
   async tenantId(sessionId: string): Promise<string> {

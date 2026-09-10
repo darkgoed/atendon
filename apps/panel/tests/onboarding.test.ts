@@ -19,13 +19,13 @@ const fullAccess: OperationalChecklistAccess = {
 };
 
 const readyReality: OperationalChecklistReality = {
-  connectionStatus: "connected",
+  connections: { connected: 1, total: 2 },
   agentActive: true,
   catalog: { status: "ready", categories: 2, units: 1 }
 };
 
 describe("operational onboarding checklist", () => {
-  it("derives completion exclusively from real operational state", () => {
+  it("completes the WhatsApp step when at least one connection is connected", () => {
     const steps = buildOperationalChecklist(fullAccess, readyReality);
 
     expect(steps.map((step) => [step.id, step.status])).toEqual([
@@ -33,7 +33,19 @@ describe("operational onboarding checklist", () => {
       ["agent", "complete"],
       ["catalog", "complete"]
     ]);
+    expect(steps.find((step) => step.id === "connection")?.description).toContain("1 de 2 conexões conectada");
     expect(summarizeOperationalChecklist(steps)).toEqual({ complete: 3, pending: 0, unknown: 0, total: 3 });
+  });
+
+  it("keeps the WhatsApp step pending when every connection is disconnected", () => {
+    const steps = buildOperationalChecklist(fullAccess, {
+      ...readyReality,
+      connections: { connected: 0, total: 2 }
+    });
+    const connection = steps.find((step) => step.id === "connection");
+
+    expect(connection?.status).toBe("pending");
+    expect(connection?.description).toContain("0 de 2 conexões conectadas");
   });
 
   it("omits unavailable pages and never exposes their CTAs", () => {

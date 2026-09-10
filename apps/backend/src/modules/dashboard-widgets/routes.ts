@@ -118,9 +118,14 @@ async function loadWidgetData(
   const caseParams = [session.tenantId, workspaceScope, session.userId];
   if (key === "whatsapp_connection") {
     return (await db.query(
-      "SELECT status,last_connected_at FROM whatsapp_sessions WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 1",
+      `SELECT status,last_connected_at,
+              count(*) OVER ()::int total,
+              count(*) FILTER (WHERE status='connected') OVER ()::int connected
+       FROM whatsapp_sessions
+       WHERE tenant_id=$1 AND archived_at IS NULL
+       ORDER BY is_primary DESC, created_at DESC LIMIT 1`,
       [session.tenantId]
-    )).rows[0] ?? { status: "disconnected", last_connected_at: null };
+    )).rows[0] ?? { status: "disconnected", last_connected_at: null, total: 0, connected: 0 };
   }
   if (key === "open_conversations") {
     return (await db.query(

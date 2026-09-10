@@ -11,7 +11,10 @@ export type OperationalChecklistAccess = {
 };
 
 export type OperationalChecklistReality = {
-  connectionStatus: string;
+  connections: {
+    connected: number;
+    total: number;
+  };
   agentActive: boolean;
   catalog: {
     status: "loading" | "ready" | "error";
@@ -36,13 +39,14 @@ export function buildOperationalChecklist(
   const steps: OperationalChecklistStep[] = [];
 
   if (access.connection) {
-    const complete = reality.connectionStatus === "connected";
+    const complete = reality.connections.connected > 0;
+    const connectionCount = `${reality.connections.connected} de ${reality.connections.total} ${reality.connections.total === 1 ? "conexão conectada" : "conexões conectadas"}`;
     steps.push({
       id: "connection",
       title: "Conectar o WhatsApp",
       description: complete
-        ? "A sessão está conectada e pronta para receber mensagens."
-        : `A sessão está ${reality.connectionStatus || "desconectada"}. Confira o vínculo antes de iniciar a operação.`,
+        ? `${connectionCount}. Pelo menos uma conexão está pronta para receber mensagens.`
+        : `${connectionCount}. Conecte pelo menos um número antes de iniciar a operação.`,
       href: "/conexao",
       actionLabel: complete || !access.connectionManage ? "Abrir conexão" : "Conectar WhatsApp",
       status: complete ? "complete" : "pending"

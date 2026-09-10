@@ -449,3 +449,37 @@ describe("EvolutionClient webhook configuration", () => {
     });
   });
 });
+
+describe("EvolutionClient instance deletion", () => {
+  const createClient = () => new EvolutionClient({
+    EVOLUTION_API_URL: "http://evolution.test",
+    EVOLUTION_API_KEY: "api-key-with-enough-characters",
+    EVOLUTION_WEBHOOK_URL: "https://backend.example",
+    EVOLUTION_WEBHOOK_SECRET: "webhook-secret-with-enough-characters",
+    EVOLUTION_TIMEOUT_MS: 15_000
+  });
+
+  it("treats a missing instance as already deleted", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      response: { message: ["Instance not found"] }
+    }), { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createClient().deleteInstance("tenant-instance")).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://evolution.test/instance/delete/tenant-instance",
+      expect.objectContaining({ method: "DELETE" })
+    );
+  });
+
+  it("propagates provider failures other than a missing instance", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      response: { message: ["Provider unavailable"] }
+    }), { status: 500 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createClient().deleteInstance("tenant-instance")).rejects.toMatchObject({
+      upstreamStatus: 500
+    });
+  });
+});

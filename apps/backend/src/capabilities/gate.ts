@@ -44,6 +44,7 @@ function panelCapability(path: string, method: string): CapabilityKey | undefine
   if (path.startsWith("/scheduling/leads")) return "leads_v1";
 
   if (path === "/connection" || path.startsWith("/connection/")
+    || path === "/connections" || path.startsWith("/connections/")
     || path === "/agent" || path.startsWith("/agent/")
     || path === "/usage" || path.startsWith("/usage/")
     || path === "/humanizer" || path.startsWith("/humanizer/")

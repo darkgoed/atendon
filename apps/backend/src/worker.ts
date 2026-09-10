@@ -387,8 +387,14 @@ const reconcileBusinessHoursPresence = async (): Promise<void> => {
   const result = await db.query<{ id: string; timezone: string; business_hours_start: string; business_hours_end: string }>(
     `SELECT s.id, t.timezone, t.business_hours_start, t.business_hours_end
      FROM whatsapp_sessions s JOIN tenants t ON t.id = s.tenant_id
-     WHERE s.status = 'connected'`
+     WHERE s.status = 'connected' AND s.archived_at IS NULL`
   );
+  // Conexões removidas somem do resultado: esquecer o estado delas evita que o
+  // Map cresça indefinidamente ao longo da vida do worker.
+  const live = new Set(result.rows.map((row) => row.id));
+  for (const sessionId of businessHoursState.keys()) {
+    if (!live.has(sessionId)) businessHoursState.delete(sessionId);
+  }
   const now = new Date();
   await Promise.all(result.rows.map(async (row) => {
     const open = isWithinBusinessHours(now, { timezone: row.timezone, start: row.business_hours_start, end: row.business_hours_end });

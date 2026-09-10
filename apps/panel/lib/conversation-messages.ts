@@ -3,6 +3,34 @@ export interface CursorMessage {
   created_at: string;
 }
 
+export interface SessionScopedConversation {
+  session_id?: string | null;
+}
+
+export interface ConnectionLabel {
+  id: string;
+  label: string;
+}
+
+export function shouldShowConversationConnectionFilter(connections: readonly { id: string }[]): boolean {
+  return connections.length >= 2;
+}
+
+export function filterConversationsByConnection<T extends SessionScopedConversation>(
+  conversations: readonly T[],
+  sessionId: string
+): T[] {
+  return sessionId ? conversations.filter((conversation) => conversation.session_id === sessionId) : [...conversations];
+}
+
+export function conversationLabelForSession(
+  conversation: SessionScopedConversation | null | undefined,
+  connections: readonly ConnectionLabel[]
+): string | null {
+  if (!conversation?.session_id) return null;
+  return connections.find((connection) => connection.id === conversation.session_id)?.label ?? null;
+}
+
 const localDayFormatters = new Map<string, Intl.DateTimeFormat>();
 
 function messageLocalDay(createdAt: string, timezone: string): string {

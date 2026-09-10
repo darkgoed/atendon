@@ -32,6 +32,7 @@ import { QualificationService } from "./modules/qualification/service.js";
 import { DEFAULT_MEDIA_FALLBACK } from "./modules/ai-router/defaults.js";
 import { AVAILABLE_TOOL_NAMES } from "./modules/ai-router/tools.js";
 import { WhatsAppSessionManager } from "./modules/whatsapp/session-manager.js";
+import { registerWhatsAppConnectionRoutes } from "./modules/whatsapp/routes.js";
 import { migrateHumanizerConfig } from "./modules/messages/humanizer.js";
 import { checkReadiness } from "./readiness.js";
 import { AiFollowUpRepository } from "./modules/messages/ai-follow-up.js";
@@ -123,12 +124,15 @@ export const agentSchema = z.object({
   mediaFallbackAudio: z.string().trim().min(1).max(2_000).default(DEFAULT_MEDIA_FALLBACK.audio),
   mediaFallbackImage: z.string().trim().min(1).max(2_000).default(DEFAULT_MEDIA_FALLBACK.image),
   mediaFallbackDocument: z.string().trim().min(1).max(2_000).default(DEFAULT_MEDIA_FALLBACK.document),
+  // Conexão-alvo do prompt. Ausente/null = configuração compartilhada por todos
+  // os números (padrão); preenchida = prompt exclusivo daquele número.
+  sessionId: z.string().uuid().nullable().optional(),
   enabledTools: z.array(z.string()).min(1).max(AVAILABLE_TOOL_NAMES.length)
     .refine((names) => names.every((name) => AVAILABLE_TOOL_NAMES.includes(name)), "Há uma ferramenta desconhecida")
     .transform((names) => [...new Set(names)])
     .optional()
 });
-const agentStatusSchema = z.object({ isActive: z.boolean() });
+const agentStatusSchema = z.object({ isActive: z.boolean(), sessionId: z.string().uuid().nullable().optional() });
 const messageSchema = z.union([
   z.object({ text: z.string().trim().min(1).max(4_000), replyToMessageId: z.string().uuid().optional() }),
   z.object({
@@ -959,7 +963,12 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     const scopeParams = [session.tenantId, caseScope.type === "workspace", session.userId];
     const [tenant, wa, counts, agent, handoffs, commercial, appointmentsEnabled] = await Promise.all([
       db.query("SELECT name FROM tenants WHERE id = $1", [session.tenantId]),
-      db.query("SELECT status, last_connected_at FROM whatsapp_sessions WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 1", [session.tenantId]),
+      db.query(`SELECT status, last_connected_at,
+          count(*) OVER ()::int total,
+          count(*) FILTER (WHERE status='connected') OVER ()::int connected
+        FROM whatsapp_sessions
+        WHERE tenant_id = $1 AND archived_at IS NULL
+        ORDER BY is_primary DESC, created_at DESC LIMIT 1`, [session.tenantId]),
       db.query(`SELECT count(*) FILTER (WHERE c.status='open')::int open,
         count(*) FILTER (WHERE c.status='open' AND c.ai_active=false AND c.handoff_reason IS DISTINCT FROM 'manually_paused')::int handoff,
         count(*) FILTER (WHERE c.status='open' AND c.ai_active=false AND c.assigned_user_id IS NULL AND c.handoff_reason IS DISTINCT FROM 'manually_paused')::int handoff_unassigned,
@@ -987,7 +996,14 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     const canReadAgent = session.isRoot && session.rootWorkspaceAccess;
     return {
       tenant: tenant.rows[0],
-      connection: wa.rows[0] ?? { status: "disconnected" },
+      connection: wa.rows[0]
+        ? { status: wa.rows[0].status, last_connected_at: wa.rows[0].last_connected_at }
+        : { status: "disconnected" },
+      connections_summary: {
+        total: wa.rows[0]?.total ?? 0,
+        connected: wa.rows[0]?.connected ?? 0,
+        disconnected: (wa.rows[0]?.total ?? 0) - (wa.rows[0]?.connected ?? 0)
+      },
       counts: { ...counts.rows[0], messagesToday: today.rows[0].count },
       agent: canReadAgent ? agent.rows[0] : null,
       handoffs: handoffs.rows,
@@ -1011,14 +1027,16 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
   app.get("/connection", async (request) => {
     const session = await requirePermission(request, "connection.read");
     const result = await db.query(`SELECT id, phone_number, status, qr_code, last_connected_at, disconnected_reason, created_at
-      FROM whatsapp_sessions WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 1`, [session.tenantId]);
+      FROM whatsapp_sessions WHERE tenant_id=$1 AND archived_at IS NULL
+      ORDER BY is_primary DESC, created_at DESC LIMIT 1`, [session.tenantId]);
     return { connection: result.rows[0] ?? null };
   });
 
   app.post("/connection/reconnect", async (request, reply) => {
     const session = await requirePermission(request, "connection.manage");
     const result = await db.query<{ id: string }>(
-      "SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 1",
+      `SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 AND archived_at IS NULL
+       ORDER BY is_primary DESC, created_at DESC LIMIT 1`,
       [session.tenantId]
     );
     if (!result.rows[0]) return reply.status(404).send({ error: "Sessão de WhatsApp não encontrada" });
@@ -1028,20 +1046,28 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
 
   app.get("/agent", async (request) => {
     const session = await requireRootWorkspace(request);
-    const result = await db.query(`SELECT a.id, a.active_version_id, a.system_prompt, a.ai_model, a.model_params, a.enabled_tools, a.is_active, a.updated_at,
+    const query = z.object({ session_id: z.string().uuid().nullable().optional() })
+      .parse(request.query ?? {});
+    const requestedSessionId = query.session_id ?? null;
+    const result = await db.query(`SELECT a.id, a.active_version_id, a.session_id, a.system_prompt, a.ai_model, a.model_params, a.enabled_tools, a.is_active, a.updated_at,
         t.slug tenant_slug,
         s.openrouter_provider,
         (s.openrouter_api_key_encrypted IS NOT NULL) AS has_openrouter_api_key,
-        COALESCE(s.media_fallback_audio,$2) media_fallback_audio,
-        COALESCE(s.media_fallback_image,$3) media_fallback_image,
-        COALESCE(s.media_fallback_document,$4) media_fallback_document
+        COALESCE(s.media_fallback_audio,$3) media_fallback_audio,
+        COALESCE(s.media_fallback_image,$4) media_fallback_image,
+        COALESCE(s.media_fallback_document,$5) media_fallback_document
       FROM agent_configs a JOIN tenants t ON t.id=a.tenant_id
       LEFT JOIN tenant_ai_settings s ON s.tenant_id=a.tenant_id
-      WHERE a.tenant_id=$1 ORDER BY a.updated_at DESC LIMIT 1`,
-      [session.tenantId, DEFAULT_MEDIA_FALLBACK.audio, DEFAULT_MEDIA_FALLBACK.image, DEFAULT_MEDIA_FALLBACK.document]);
+      WHERE a.tenant_id=$1
+        AND (a.session_id = $2::uuid OR a.session_id IS NULL)
+      ORDER BY (a.session_id IS NOT NULL) DESC, a.updated_at DESC LIMIT 1`,
+      [session.tenantId, requestedSessionId, DEFAULT_MEDIA_FALLBACK.audio, DEFAULT_MEDIA_FALLBACK.image, DEFAULT_MEDIA_FALLBACK.document]);
     const agent = result.rows[0] ?? null;
     return {
       agent,
+      // "connection" = esta conexão tem prompt próprio; "shared" = está usando o
+      // prompt comum a todos os números.
+      scope: agent?.session_id ? "connection" : "shared",
       available_tools: AVAILABLE_TOOL_NAMES
     };
   });
@@ -1117,18 +1143,95 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
   });
   app.put("/agent", async (request, reply) => {
     const session = await requireRootWorkspace(request); const body = agentSchema.parse(request.body);
-    const result = await db.query(`UPDATE agent_configs SET system_prompt=$2, ai_model=$3, model_params=$4, enabled_tools=$5, is_active=$6, updated_at=now() WHERE tenant_id=$1 RETURNING id, ai_model, enabled_tools, updated_at`, [session.tenantId, body.systemPrompt, body.aiModel, { temperature: body.temperature, max_tokens: body.maxTokens, reasoning_effort: body.reasoningEffort }, body.enabledTools ?? AVAILABLE_TOOL_NAMES, body.isActive]);
-    if (!result.rows[0]) return reply.status(404).send({ error: "Agente não encontrado" });
-    return reply.send({ agent: result.rows[0] });
+    const modelParams = { temperature: body.temperature, max_tokens: body.maxTokens, reasoning_effort: body.reasoningEffort };
+    const enabledTools = body.enabledTools ?? AVAILABLE_TOOL_NAMES;
+    const targetSessionId = body.sessionId ?? null;
+    try {
+      const saved = await withTenantTransaction(db, session.tenantId, async (client) => {
+        if (targetSessionId) {
+          const owned = await client.query(
+            "SELECT id FROM whatsapp_sessions WHERE id=$2 AND tenant_id=$1 AND archived_at IS NULL",
+            [session.tenantId, targetSessionId]
+          );
+          if (!owned.rows[0]) throw Object.assign(new Error("Conexão não encontrada"), { statusCode: 404 });
+        }
+        // Trava a linha-alvo: sem isso dois salvos simultâneos podem publicar
+        // versões concorrentes e disputar o índice de versão ativa.
+        // Não há UNIQUE nas linhas compartilhadas (bases legadas podem ter mais
+        // de uma), então a escolha precisa ser determinística como no runtime.
+        const existing = await client.query<{ id: string }>(
+          `SELECT id FROM agent_configs
+           WHERE tenant_id=$1 AND session_id IS NOT DISTINCT FROM $2::uuid
+           ORDER BY updated_at DESC, id
+           LIMIT 1
+           FOR UPDATE`,
+          [session.tenantId, targetSessionId]
+        );
+        let configId = existing.rows[0]?.id ?? null;
+        if (!configId) {
+          if (!targetSessionId) throw Object.assign(new Error("Agente não encontrado"), { statusCode: 404 });
+          // Primeiro override desta conexão: nasce a partir do que for enviado.
+          configId = (await client.query<{ id: string }>(
+            `INSERT INTO agent_configs(tenant_id,session_id,name,system_prompt,ai_model,model_params,enabled_tools,is_active,updated_at)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,now()) RETURNING id`,
+            [session.tenantId, targetSessionId, "Agente da conexão", body.systemPrompt, body.aiModel, modelParams, JSON.stringify(enabledTools), body.isActive]
+          )).rows[0].id;
+        }
+        // O runtime lê agent_config_versions, não a coluna legada: sem publicar
+        // versão, salvar o prompt no painel não muda o que a IA responde.
+        await client.query(
+          `UPDATE agent_config_versions SET status='retired', retired_at=now()
+           WHERE agent_config_id=$1 AND status='active'`,
+          [configId]
+        );
+        const version = await client.query<{ id: string }>(
+          `INSERT INTO agent_config_versions(
+             tenant_id,agent_config_id,version_number,source,status,
+             system_prompt,ai_model,model_params,enabled_tools,created_by_user_id,activated_at
+           )
+           SELECT $1,$2,COALESCE(max(version_number),0)+1,'manual','active',$3,$4,$5,$6,$7,now()
+           FROM agent_config_versions WHERE agent_config_id=$2
+           RETURNING id`,
+          [session.tenantId, configId, body.systemPrompt, body.aiModel, modelParams, JSON.stringify(enabledTools), session.userId]
+        );
+        const updated = await client.query(
+          `UPDATE agent_configs
+           SET system_prompt=$3, ai_model=$4, model_params=$5, enabled_tools=$6, is_active=$7,
+               active_version_id=$8, updated_at=now()
+           WHERE id=$2 AND tenant_id=$1
+           RETURNING id, ai_model, enabled_tools, updated_at, session_id`,
+          [session.tenantId, configId, body.systemPrompt, body.aiModel, modelParams, JSON.stringify(enabledTools), body.isActive, version.rows[0].id]
+        );
+        return updated.rows[0] ?? null;
+      });
+      if (!saved) return reply.status(404).send({ error: "Agente não encontrado" });
+      return reply.send({ agent: { ...saved, scope: targetSessionId ? "connection" : "shared" } });
+    } catch (error) {
+      const status = (error as { statusCode?: number }).statusCode;
+      if (status === 404) return reply.status(404).send({ error: (error as Error).message });
+      throw error;
+    }
+  });
+  app.delete("/agent/override/:sessionId", async (request, reply) => {
+    const session = await requireRootWorkspace(request);
+    const { sessionId } = z.object({ sessionId: z.string().uuid() }).parse(request.params);
+    const removed = await db.query(
+      "DELETE FROM agent_configs WHERE tenant_id=$1 AND session_id=$2 RETURNING id",
+      [session.tenantId, sessionId]
+    );
+    if (!removed.rows[0]) return reply.status(404).send({ error: "Esta conexão não tem prompt próprio" });
+    return reply.send({ ok: true });
   });
   app.patch("/agent/status", async (request, reply) => {
     const session = await requireRootWorkspace(request);
     const body = agentStatusSchema.parse(request.body);
     const result = await db.query<{ id: string; is_active: boolean }>(
       `UPDATE agent_configs SET is_active=$2, updated_at=now()
-       WHERE id=(SELECT id FROM agent_configs WHERE tenant_id=$1 ORDER BY updated_at DESC LIMIT 1)
+       WHERE id=(SELECT id FROM agent_configs
+                 WHERE tenant_id=$1 AND session_id IS NOT DISTINCT FROM $3::uuid
+                 ORDER BY updated_at DESC LIMIT 1)
        RETURNING id,is_active`,
-      [session.tenantId, body.isActive]
+      [session.tenantId, body.isActive, body.sessionId ?? null]
     );
     if (!result.rows[0]) return reply.status(404).send({ error: "Agente não encontrado" });
     await auditLog({
@@ -2476,6 +2579,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
   void app.register(registerSaasRoutes);
   void app.register(registerBillingRoutes, options.billingOAuth ?? {});
   void app.register(registerOperationsRoutes);
+  void app.register(registerWhatsAppConnectionRoutes, { whatsapp });
   void app.register(registerDashboardWidgetRoutes);
   void app.register(registerOrganizationRoutes);
   void app.register(registerPostSalesRoutes);

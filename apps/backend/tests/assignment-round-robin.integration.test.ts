@@ -17,6 +17,7 @@ let betoUserId = "";
 let betoMemberId = "";
 let juliaUserId = "";
 let juliaMemberId = "";
+let whatsappSessionId = "";
 let phoneSequence = 0;
 
 const nextPhone = () => `551198${String(++phoneSequence).padStart(6, "0")}`;
@@ -73,15 +74,16 @@ async function createConversation(
 ): Promise<string> {
   return (await pool.query<{ id: string }>(
     `INSERT INTO conversations(
-       tenant_id,contact_phone,contact_name,status,assigned_user_id,claimed_at
-     ) VALUES($1,$2,$3,$4,$5,CASE WHEN $5::uuid IS NULL THEN NULL ELSE now() END)
+       tenant_id,contact_phone,contact_name,status,assigned_user_id,claimed_at,session_id
+     ) VALUES($1,$2,$3,$4,$5,CASE WHEN $5::uuid IS NULL THEN NULL ELSE now() END,$6)
      RETURNING id`,
     [
       tenantId,
       options.formattedPhone ?? phone,
       `Contato ${phone}`,
       options.status ?? "open",
-      options.assignedUserId ?? null
+      options.assignedUserId ?? null,
+      whatsappSessionId
     ]
   )).rows[0].id;
 }
@@ -155,6 +157,10 @@ beforeAll(async () => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    whatsappSessionId = (await client.query<{ id: string }>(
+      "INSERT INTO whatsapp_sessions(tenant_id,label,is_primary) VALUES($1,'Principal',true) RETURNING id",
+      [tenantId]
+    )).rows[0].id;
     await ensureWorkspaceDefaultRoles(client, tenantId);
     betoUserId = (await client.query<{ id: string }>(
       "INSERT INTO users(email,status,name) VALUES($1,'active','Beto Souza') RETURNING id",

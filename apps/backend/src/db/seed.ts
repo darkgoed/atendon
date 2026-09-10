@@ -65,13 +65,14 @@ export async function seedDatabase(pool: Pool, seedConfig: SeedConfig) {
     await client.query("UPDATE tenants SET created_by_user_id=COALESCE(created_by_user_id,$2),updated_at=now() WHERE id=$1", [tenantId, seededUser.rows[0].id]);
 
     const insertedSession = await client.query<{ id: string }>(
-      `INSERT INTO whatsapp_sessions (tenant_id)
-       SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM whatsapp_sessions WHERE tenant_id=$1)
+      `INSERT INTO whatsapp_sessions (tenant_id,label,is_primary)
+       SELECT $1,'Principal',true WHERE NOT EXISTS (SELECT 1 FROM whatsapp_sessions WHERE tenant_id=$1)
        RETURNING id`,
       [tenantId]
     );
     const sessionId = insertedSession.rows[0]?.id ?? (await client.query<{ id: string }>(
-      "SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 ORDER BY created_at LIMIT 1",
+      `SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 AND archived_at IS NULL
+       ORDER BY is_primary DESC, created_at LIMIT 1`,
       [tenantId]
     )).rows[0].id;
 

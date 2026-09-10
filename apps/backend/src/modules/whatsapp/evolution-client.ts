@@ -282,6 +282,17 @@ export class EvolutionClient {
     await this.request(`/instance/logout/${encodeURIComponent(instanceName)}`, { method: "DELETE" });
   }
 
+  async deleteInstance(instanceName: string): Promise<void> {
+    try {
+      await this.request(`/instance/delete/${encodeURIComponent(instanceName)}`, { method: "DELETE" });
+    } catch (error) {
+      if (error instanceof EvolutionApiError && error.upstreamStatus === 404) return;
+      throw error;
+    } finally {
+      this.instanceCache.delete(instanceName);
+    }
+  }
+
   async sendText(instanceName: string, number: string, text: string, quoted?: { key: ReadReceipt; text: string }): Promise<{ externalId: string }> {
     const result = await this.request<{ key?: Json; id?: string | number }>(`/message/sendText/${encodeURIComponent(instanceName)}`, {
       method: "POST", body: JSON.stringify({

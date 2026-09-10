@@ -18,6 +18,7 @@ let ownerUserId = "";
 let operatorUserId = "";
 let foreignOwnerUserId = "";
 let operatorMemberId = "";
+let whatsappSessionId = "";
 let leadId = "";
 let ownerCookie = "";
 let operatorCookie = "";
@@ -37,6 +38,10 @@ beforeAll(async () => {
     foreignTenantId = (await client.query<{ id: string }>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id",[`Organization foreign ${suffix}`])).rows[0].id;
     await ensureWorkspaceDefaultRoles(client,tenantId);
     await ensureWorkspaceDefaultRoles(client,foreignTenantId);
+    whatsappSessionId = (await client.query<{ id: string }>(
+      "INSERT INTO whatsapp_sessions(tenant_id,label,is_primary) VALUES($1,'Principal',true) RETURNING id",
+      [tenantId]
+    )).rows[0].id;
     ownerUserId = (await client.query<{ id: string }>("INSERT INTO users(email,status) VALUES($1,'active') RETURNING id",[ownerEmail])).rows[0].id;
     operatorUserId = (await client.query<{ id: string }>("INSERT INTO users(email,status) VALUES($1,'active') RETURNING id",[operatorEmail])).rows[0].id;
     foreignOwnerUserId = (await client.query<{ id: string }>("INSERT INTO users(email,status) VALUES($1,'active') RETURNING id",[foreignOwnerEmail])).rows[0].id;
@@ -248,8 +253,8 @@ describe("case organization REST API",() => {
       payload: { to_stage_ids: [targetStageId] }
     })).statusCode).toBe(200);
     const conversationId = (await pool.query<{ id: string }>(
-      "INSERT INTO conversations(tenant_id,contact_phone,contact_name) VALUES($1,'5511977000011','Lead organização') RETURNING id",
-      [tenantId]
+      "INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name) VALUES($1,$2,'5511977000011','Lead organização') RETURNING id",
+      [tenantId,whatsappSessionId]
     )).rows[0].id;
     const agentMessageId = (await pool.query<{ id: string }>(
       "INSERT INTO messages(conversation_id,sender,content) VALUES($1,'agent','Acompanhamento') RETURNING id",

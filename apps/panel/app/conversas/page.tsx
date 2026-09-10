@@ -36,11 +36,14 @@ import { useCapabilities } from "@/lib/capabilities";
 import {
   clearedConversationDeltaPagination,
   conversationFallbackPollingDelay,
+  conversationLabelForSession,
   conversationMessageDateSeparator,
   conversationMessagesPath,
   conversationMessagesV2Path,
+  filterConversationsByConnection,
   mergeConversationMessages,
-  scrollTopAfterPrepend
+  scrollTopAfterPrepend,
+  shouldShowConversationConnectionFilter
 } from "@/lib/conversation-messages";
 import {
   isFeatureFlagDisabledError,
@@ -57,6 +60,7 @@ import {
   type PanelSession
 } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
+import type { ConnectionsResponse } from "@/lib/connections";
 import type { PipelineStage } from "@/lib/pipeline";
 import type { PanelNotificationPreferencesResponse } from "@/lib/message-notifications";
 import {
@@ -68,6 +72,7 @@ import {
 
 type Conversation = {
   id: string;
+  session_id?: string | null;
   lead_id?: string;
   contact_phone: string;
   contact_name?: string;
@@ -415,6 +420,7 @@ export default function Conversations() {
   const canReadUnits = usePermission("units.read");
   const canSchedule = appointmentsEnabled && canCreateAppointment && canReadAvailability && canReadUnits;
   const [filter, setFilter] = useState("human");
+  const [connectionFilter, setConnectionFilter] = useState("");
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selected, setSelected] = useState("");
@@ -490,6 +496,11 @@ export default function Conversations() {
   }, [query]);
 
   const { data: session } = useSWR<PanelSession>("/me", fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
+  const { data: connectionsData } = useSWR<ConnectionsResponse>(
+    session ? "/connections" : null,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 10_000 }
+  );
   const { data: notificationPreferences, mutate: mutateNotificationPreferences } = useSWR<PanelNotificationPreferencesResponse>(
     session ? "/me/notification-preferences" : null,
     fetcher,
@@ -531,8 +542,18 @@ export default function Conversations() {
     { refreshInterval: 10_000, revalidateOnFocus: false, dedupingInterval: 5_000 }
   );
 
-  const items = useMemo(() => listData?.conversations ?? [], [listData?.conversations]);
+  const connections = useMemo(() => connectionsData?.connections ?? [], [connectionsData?.connections]);
+  const showConnectionFilter = shouldShowConversationConnectionFilter(connections);
+  const allItems = useMemo(() => listData?.conversations ?? [], [listData?.conversations]);
+  const items = useMemo(
+    () => filterConversationsByConnection(allItems, showConnectionFilter ? connectionFilter : ""),
+    [allItems, connectionFilter, showConnectionFilter]
+  );
   const thread = { conversation: threadConversation, messages };
+  const threadConnectionLabel = conversationLabelForSession(
+    threadConversation?.session_id ? threadConversation : allItems.find((item) => item.id === selected),
+    connections
+  );
   const timezone = session?.activeWorkspace?.timezone
     ?? Intl.DateTimeFormat().resolvedOptions().timeZone
     ?? "UTC";
@@ -559,6 +580,10 @@ export default function Conversations() {
   useEffect(() => {
     if (session && !hasWorkspaceScope && filter !== "mine") setFilter("mine");
   }, [filter, hasWorkspaceScope, session]);
+
+  useEffect(() => {
+    if (!showConnectionFilter && connectionFilter) setConnectionFilter("");
+  }, [connectionFilter, showConnectionFilter]);
 
   useEffect(() => {
     selectedRef.current = selected;
@@ -1288,6 +1313,15 @@ export default function Conversations() {
                 </button>
               ) : null}
             </label>
+            {showConnectionFilter ? (
+              <label className="field mb-2.5">
+                <span className="label">Número</span>
+                <select className="input py-2 text-xs" value={connectionFilter} onChange={(event) => setConnectionFilter(event.target.value)} aria-label="Número">
+                  <option value="">Todos os números</option>
+                  {connections.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                </select>
+              </label>
+            ) : null}
             {hasWorkspaceScope ? (
               <div className="conversation-filter-tabs grid grid-cols-4 gap-1 rounded-[10px] border border-[var(--border)] bg-transparent p-1">
                 {[
@@ -1411,6 +1445,7 @@ export default function Conversations() {
                   </button>
                   <div className="conversation-thread__meta mt-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[11px] text-[var(--text-6)]">
                     <span className="inline-flex shrink-0 items-center gap-1"><span className="h-[5px] w-[5px] rounded-full bg-[var(--ok)]" aria-hidden="true" />WhatsApp</span>
+                    {threadConnectionLabel ? <><span className="shrink-0 text-[var(--text-9)]">·</span><span className="shrink-0">Número: {threadConnectionLabel}</span></> : null}
                     <span className="shrink-0 text-[var(--text-9)]">·</span>
                     <span className="mono" dir="ltr">{thread.conversation.contact_phone}</span>
                     <span className={`inline-flex items-center gap-1.5 ${contactIsOnline(thread.conversation) ? "text-[var(--accent-soft)]" : "text-[var(--faint)]"}`}>

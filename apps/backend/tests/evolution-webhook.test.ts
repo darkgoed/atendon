@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vitest";
+import type { FastifyBaseLogger, FastifyReply, FastifyRequest } from "fastify";
+import { describe, expect, it, vi } from "vitest";
+import { config } from "../src/config.js";
 import { normalizedFacebookAttribution } from "../src/modules/messages/repository.js";
 import { evolutionContactUpdates, evolutionMessage, evolutionMessageStatusUpdates, evolutionPresenceUpdates, evolutionStickerMessage, parseEvolutionEvent } from "../src/modules/whatsapp/evolution-webhook.js";
+import { handleEvolutionWebhook } from "../src/modules/whatsapp/webhook-handler.js";
+import type { WhatsAppSessionManager } from "../src/modules/whatsapp/session-manager.js";
+import { enqueueInbound } from "../src/queue/message-queue.js";
+
+vi.mock("../src/queue/message-queue.js", () => ({ enqueueInbound: vi.fn() }));
 
 describe("Evolution webhook adapter", () => {
   const identity = { tenantId: "tenant-a", sessionId: "session-a" };
@@ -236,6 +243,46 @@ describe("Evolution webhook contact mapping", () => {
         avatarUrl: null
       }
     ]);
+  });
+});
+
+describe("Evolution webhook descarta conexões arquivadas", () => {
+  it("responde 204 sem enfileirar a mensagem", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{
+        id: "session-archived",
+        tenant_id: "tenant-a",
+        archived_at: "2026-09-09T12:00:00.000Z"
+      }] })
+      .mockResolvedValue({ rows: [], rowCount: 0 });
+    const send = vi.fn();
+    const status = vi.fn().mockReturnValue({ send });
+    const info = vi.fn();
+    vi.mocked(enqueueInbound).mockClear();
+
+    await handleEvolutionWebhook({
+      headers: { "x-atendon-webhook-secret": config.EVOLUTION_WEBHOOK_SECRET },
+      body: {
+        event: "messages.upsert",
+        instance: "atendon_archived",
+        data: {
+          key: { id: "wamid-archived", remoteJid: "5511999999999@s.whatsapp.net", fromMe: true },
+          message: { conversation: "Não deve entrar na fila" }
+        }
+      }
+    } as unknown as FastifyRequest, { status } as unknown as FastifyReply, {
+      db: { query } as never,
+      whatsapp: {} as WhatsAppSessionManager,
+      log: { info, warn: vi.fn() } as unknown as FastifyBaseLogger
+    });
+
+    expect(status).toHaveBeenCalledWith(204);
+    expect(send).toHaveBeenCalledOnce();
+    expect(enqueueInbound).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledWith(
+      { instance: "atendon_archived" },
+      "Evento de instância arquivada descartado"
+    );
   });
 });
 

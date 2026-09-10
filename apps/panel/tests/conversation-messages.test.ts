@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   clearedConversationDeltaPagination,
   conversationFallbackPollingDelay,
+  conversationLabelForSession,
   conversationMessageDateSeparator,
   conversationMessagesLegacyPath,
   conversationMessagesPath,
   conversationMessagesV2Path,
+  filterConversationsByConnection,
   mergeConversationMessages,
-  scrollTopAfterPrepend
+  scrollTopAfterPrepend,
+  shouldShowConversationConnectionFilter
 } from "../lib/conversation-messages";
 
 type TestMessage = { id: string; created_at: string; content: string };
@@ -147,5 +150,25 @@ describe("conversation message deltas", () => {
   it("preserves the visible scroll anchor when prepending rows and separators", () => {
     expect(scrollTopAfterPrepend(240, 1_200, 1_680)).toBe(720);
     expect(scrollTopAfterPrepend(240, 1_200, 1_100)).toBe(240);
+  });
+
+  it("only exposes the number filter for tenants with multiple connections", () => {
+    expect(shouldShowConversationConnectionFilter([{ id: "primary" }])).toBe(false);
+    expect(shouldShowConversationConnectionFilter([{ id: "primary" }, { id: "support" }])).toBe(true);
+  });
+
+  it("filters conversations by session and resolves the connection label", () => {
+    const conversations = [
+      { id: "conversation-a", session_id: "primary" },
+      { id: "conversation-b", session_id: "support" }
+    ];
+    const connections = [
+      { id: "primary", label: "Comercial" },
+      { id: "support", label: "Suporte" }
+    ];
+
+    expect(filterConversationsByConnection(conversations, "")).toEqual(conversations);
+    expect(filterConversationsByConnection(conversations, "support")).toEqual([conversations[1]]);
+    expect(conversationLabelForSession(conversations[1], connections)).toBe("Suporte");
   });
 });

@@ -36,7 +36,13 @@ const transferBody = z.object({ motivo: z.string().trim().min(1).max(2_000) });
 const schedulingNotificationSettingsBody = z.object({
   enabled: z.boolean(),
   groupJid: z.string().trim().min(1).max(100).nullable(),
-  groupName: z.string().trim().max(200).nullable().optional()
+  groupName: z.string().trim().max(200).nullable().optional(),
+  // Conexão de WhatsApp que enviará as notificações. Ausente = a primária,
+  // que preserva o comportamento de quem tem um único número.
+  sessionId: z.string().uuid().nullable().optional()
+});
+const schedulingNotificationGroupsQuery = z.object({
+  session_id: z.string().uuid().nullable().optional()
 });
 const schedulingBoundary = z.union([date, instant]);
 const appointmentAssigneeBody = z.object({ assigned_member_id: z.string().uuid().nullable() }).strict();
@@ -719,9 +725,14 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
   });
   app.get("/scheduling/config/notification-groups", async (request, reply) => {
     const tenantId = await panelTenant(request, "scheduling_notifications.read");
+    const query = schedulingNotificationGroupsQuery.parse(request.query ?? {});
+    // Com múltiplos números, a escolha passa a ser explícita: a conexão pedida
+    // (validada como do próprio tenant) ou a primária.
     const session = await db.query<{ instance_name: string | null }>(
-      "SELECT instance_name FROM whatsapp_sessions WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 1",
-      [tenantId]
+      `SELECT instance_name FROM whatsapp_sessions
+       WHERE tenant_id=$1 AND archived_at IS NULL AND ($2::uuid IS NULL OR id=$2)
+       ORDER BY is_primary DESC, created_at DESC LIMIT 1`,
+      [tenantId, query.session_id ?? null]
     );
     const instanceName = session.rows[0]?.instance_name;
     if (!instanceName) return reply.status(404).send({ error: "Nenhuma conexão de WhatsApp encontrada" });
@@ -732,8 +743,10 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
     const tenantId = await panelTenant(request, "scheduling_notifications.manage");
     const body = schedulingNotificationSettingsBody.parse(request.body);
     const session = await db.query<{ id: string }>(
-      "SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 1",
-      [tenantId]
+      `SELECT id FROM whatsapp_sessions
+       WHERE tenant_id=$1 AND archived_at IS NULL AND ($2::uuid IS NULL OR id=$2)
+       ORDER BY is_primary DESC, created_at DESC LIMIT 1`,
+      [tenantId, body.sessionId ?? null]
     );
     const sessionId = session.rows[0]?.id ?? null;
     if (body.enabled && (!sessionId || !body.groupJid)) {

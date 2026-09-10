@@ -37,6 +37,7 @@ type AgentResponse = {
     enabled_tools?: string[];
   } | null;
   available_tools?: string[];
+  scope?: "shared" | "connection";
 };
 
 export default function Agent() {
@@ -50,14 +51,27 @@ export default function Agent() {
   const [state, setState] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
+  // Alvo do prompt: "" = compartilhado por todos os números (padrão).
+  const [connections, setConnections] = useState<Array<{ id: string; label: string; is_primary: boolean }>>([]);
+  const [target, setTarget] = useState("");
+  const [scope, setScope] = useState<"shared" | "connection">("shared");
+  const [removingOverride, setRemovingOverride] = useState(false);
 
   const [stateTone, setStateTone] = useState<"info" | "success" | "error">("info");
 
   useEffect(() => {
-    api<AgentResponse>("/agent")
-      .then(({ agent, available_tools: tools }) => {
+    api<{ connections?: Array<{ id: string; label: string; is_primary: boolean }> }>("/connections")
+      .then(({ connections: list }) => setConnections(list ?? []))
+      .catch(() => setConnections([]));
+  }, []);
+
+  useEffect(() => {
+    setLoaded(false);
+    api<AgentResponse>(target ? `/agent?session_id=${target}` : "/agent")
+      .then(({ agent, available_tools: tools, scope: loadedScope }) => {
         if (!agent) throw new Error("Agente não configurado");
         setAvailableTools(tools ?? []);
+        setScope(loadedScope ?? "shared");
         const loadedForm: AgentForm = {
           systemPrompt: agent.system_prompt,
           aiModel: agent.ai_model,
@@ -75,6 +89,7 @@ export default function Agent() {
           enabledTools: agent.enabled_tools ?? []
         };
         setForm(loadedForm);
+        setDirty(false);
 
 
       })
@@ -83,7 +98,7 @@ export default function Agent() {
         setState(error instanceof Error ? error.message : "Erro ao carregar o agente");
       })
       .finally(() => setLoaded(true));
-  }, []);
+  }, [target]);
 
   function change(values: Partial<AgentForm>) {
     if (form && canManage) {
@@ -99,9 +114,10 @@ export default function Agent() {
     try {
       await api("/agent", {
         method: "PUT",
-        body: JSON.stringify(form)
+        body: JSON.stringify({ ...form, sessionId: target || null })
       });
       setForm(form);
+      if (target) setScope("connection");
 
       setDirty(false);
       setStateTone("success");
@@ -140,6 +156,24 @@ export default function Agent() {
     });
   }
 
+  async function removeOverride() {
+    if (!target || !canManage || removingOverride) return;
+    if (!window.confirm("Remover o prompt exclusivo deste número? Ele volta a usar o prompt compartilhado.")) return;
+    setRemovingOverride(true);
+    try {
+      await api(`/agent/override/${target}`, { method: "DELETE" });
+      setScope("shared");
+      setTarget("");
+      setStateTone("success");
+      setState("Prompt exclusivo removido. O número voltou ao prompt compartilhado.");
+    } catch (error) {
+      setStateTone("error");
+      setState(error instanceof Error ? error.message : "Erro ao remover o prompt exclusivo");
+    } finally {
+      setRemovingOverride(false);
+    }
+  }
+
 
   return (
     <Shell>
@@ -149,6 +183,24 @@ export default function Agent() {
           <p>Defina o escopo, o provedor e as respostas automáticas.</p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-3">
+          {connections.length > 1 ? (
+            <label className="flex items-center gap-2 text-sm">
+              <span className="label">Prompt de</span>
+              <select
+                className="input"
+                aria-label="Número que usa este prompt"
+                value={target}
+                onChange={(event) => setTarget(event.target.value)}
+              >
+                <option value="">Todos os números</option>
+                {connections.map((connection) => (
+                  <option key={connection.id} value={connection.id}>
+                    {connection.label}{connection.is_primary ? " (principal)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <span className={`mono rounded-full border px-3 py-2 text-[10px] font-semibold uppercase tracking-[.12em] ${form?.isActive ? "border-[var(--border-ai)] text-[var(--accent-soft)]" : "border-[var(--warn-border)] text-[var(--warn)]"}`}>
             {form?.isActive ? "IA ligada" : "IA desligada"}
           </span>
@@ -161,6 +213,22 @@ export default function Agent() {
           </button>
         </div>
       </header>
+
+      {target && connections.length > 1 ? (
+        <p className="sub mb-4" role="status">
+          {scope === "connection"
+            ? "Este número tem um prompt exclusivo. Alterações aqui não afetam os demais."
+            : "Mostrando o prompt compartilhado. Ao salvar, ele vira um prompt exclusivo deste número."}
+          {scope === "connection" && canManage ? (
+            <>
+              {" "}
+              <button type="button" className="btn warn ml-2" disabled={removingOverride} onClick={() => void removeOverride()}>
+                {removingOverride ? "Removendo…" : "Voltar ao prompt compartilhado"}
+              </button>
+            </>
+          ) : null}
+        </p>
+      ) : null}
 
       {loaded && form && !canManage ? <p className="sub mb-4" role="status">Acesso somente leitura. As configurações e o estado da IA não podem ser alterados.</p> : null}
 

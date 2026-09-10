@@ -21,6 +21,12 @@ export async function handleEvolutionWebhook(request: FastifyRequest, reply: Fas
     if (!event) return reply.status(400).send({ error: "Evento inválido" });
     const repository = new SessionRepository(deps.db ?? defaultDb);
     const identity = await repository.findByInstance(event.instanceName);
+    if (identity?.archivedAt) {
+      // 204 (não 404) para a Evolution não reagendar entrega de uma instância
+      // que a empresa já removeu. Perder esses eventos é o comportamento correto.
+      deps.log.info({ instance: event.instanceName }, "Evento de instância arquivada descartado");
+      return reply.status(204).send();
+    }
     if (!identity) return reply.status(404).send({ error: "Instância desconhecida" });
 
     deps.log.info({ event: event.event, instance: event.instanceName, dataKeys: Object.keys(event.data) }, "Evolution webhook received");

@@ -83,6 +83,14 @@ export class WhatsAppSessionManager implements MessageGateway {
     await this.sessions.updateStatus(sessionId, "disconnected");
   }
 
+  async logoutInstance(instanceName: string): Promise<void> {
+    await this.evolution.logout(instanceName);
+  }
+
+  async deleteInstance(instanceName: string): Promise<void> {
+    await this.evolution.deleteInstance(instanceName);
+  }
+
   async reconnect(sessionId: string): Promise<void> {
     if (!this.config.WHATSAPP_ENABLED) throw new Error("WhatsApp integration is disabled");
     const instanceName = await this.sessions.instanceName(sessionId);

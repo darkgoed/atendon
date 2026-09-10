@@ -12,7 +12,12 @@ const plans: string[] = [];
 async function tenant(label: string): Promise<string> {
   const slug = `billing-ai-${label}-${randomUUID()}`;
   const r = await pool.query<{ id: string }>("INSERT INTO tenants(name,slug,status) VALUES($1,$2,'active') RETURNING id", [slug, slug]);
-  tenants.push(r.rows[0].id); return r.rows[0].id;
+  await pool.query(
+    "INSERT INTO whatsapp_sessions(tenant_id,label,is_primary) VALUES($1,'Principal',true)",
+    [r.rows[0].id]
+  );
+  tenants.push(r.rows[0].id);
+  return r.rows[0].id;
 }
 async function plan(limit: number | null, aiEnabled = true): Promise<string> {
   const code = `BILLING_AI_${randomUUID()}`;
@@ -41,7 +46,13 @@ describe("AI hotpath usage-log reconciliation", () => {
   it("sums all usage_logs rows for one logical turn and is idempotent", async () => {
     const t = await tenant("hotpath-sum"), p = await plan(0); await subscribe(t, p); await period(t); await configureCredit(t, 100000);
     const turn = randomUUID();
-    const conversation = await pool.query<{ id: string }>("INSERT INTO conversations(tenant_id,contact_phone,status) VALUES($1,'5511999999999','open') RETURNING id", [t]);
+    const conversation = await pool.query<{ id: string }>(
+      `INSERT INTO conversations(tenant_id,session_id,contact_phone,status)
+       SELECT $1,id,'5511999999999','open'
+       FROM whatsapp_sessions WHERE tenant_id=$1 AND is_primary AND archived_at IS NULL
+       RETURNING id`,
+      [t]
+    );
     await consumeAiInteraction(t, "inbound_reply", turn);
     for (const row of [[10,20,1,0.10],[30,40,2,0.20],[50,60,3,0.70]] as const) await pool.query("INSERT INTO usage_logs(tenant_id,conversation_id,ai_model,input_tokens,output_tokens,cached_input_tokens,cost_usd,request_id) VALUES($1,$2,'model-a',$3,$4,$5,$6,$7)", [t,conversation.rows[0].id,...row,turn]);
     await reconcileAiTurnFromUsageLogs(t, "inbound_reply", turn);

@@ -144,7 +144,7 @@ export async function registerRootRoutes(app: FastifyInstance) {
         [workspace.rows[0].id, body.ownerEmail, ownerRole.rows[0].id, tokenHash(token), root.userId]
       );
       const session = await client.query<{ id: string }>(
-        "INSERT INTO whatsapp_sessions(tenant_id) VALUES($1) RETURNING id",
+        "INSERT INTO whatsapp_sessions(tenant_id,label,is_primary) VALUES($1,'Principal',true) RETURNING id",
         [workspace.rows[0].id]
       );
       await client.query(
