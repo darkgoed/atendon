@@ -1334,6 +1334,33 @@ export class MessageRepository {
     );
   }
 
+  async createConnectionAlertOnce(tenantId: string, sessionId: string, message: string): Promise<void> {
+    if (typeof this.db.connect !== "function") {
+      await this.createSystemAlertOnce(tenantId, message);
+      return;
+    }
+    const client = await this.db.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`system-alert:connection:${tenantId}:${sessionId}`]);
+      await client.query(
+        `INSERT INTO system_alerts(tenant_id,message)
+         SELECT $1,$2
+         WHERE NOT EXISTS (
+           SELECT 1 FROM system_alerts
+           WHERE tenant_id=$1 AND message=$2 AND created_at >= now()-interval '1 hour'
+         )`,
+        [tenantId, message]
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async reactivate(tenantId: string, conversationId: string): Promise<boolean> {
     const client = await this.db.connect();
     try {

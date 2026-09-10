@@ -40,13 +40,14 @@ export class SessionRepository {
     }));
   }
 
-  async findByInstance(instanceName: string): Promise<{ id: string; tenantId: string; archivedAt: string | null } | null> {
-    const result = await this.db.query<{ id: string; tenant_id: string; archived_at: string | null }>(
-      "SELECT id, tenant_id, archived_at FROM whatsapp_sessions WHERE instance_name=$1", [instanceName]
+  async findByInstance(instanceName: string): Promise<{ id: string; tenantId: string; label: string; archivedAt: string | null } | null> {
+    const result = await this.db.query<{ id: string; tenant_id: string; label: string; archived_at: string | null }>(
+      "SELECT id, tenant_id, label, archived_at FROM whatsapp_sessions WHERE instance_name=$1", [instanceName]
     );
     return result.rows[0] ? {
       id: result.rows[0].id,
       tenantId: result.rows[0].tenant_id,
+      label: result.rows[0].label,
       archivedAt: result.rows[0].archived_at
     } : null;
   }

@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { hash } from "bcryptjs";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
 import { MessageRepository } from "../src/modules/messages/repository.js";
+import { qualifyLeadFromConversation } from "../src/modules/scheduling/contextual-qualification.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const app = buildApp();
@@ -258,6 +259,32 @@ describe("prompt de IA por conexão", () => {
     expect(await promptUsedBy(context, context.primaryId)).toBe("PROMPT_COMPARTILHADO_NOVO");
   });
 
+  it("na qualificação usa o override da sessão B mais recente e mantém fallback compartilhado sem herdar A", async () => {
+    const context = await fixture();
+    const save = async (sessionId: string | undefined, systemPrompt: string, aiModel: string) => {
+      const response = await app.inject({
+        method: "PUT", url: "/agent", headers: { cookie: context.cookie },
+        payload: { systemPrompt, aiModel, temperature: 0.5, maxTokens: 1024, isActive: true, enabledTools: ["registrar_lead"], sessionId }
+      });
+      expect(response.statusCode).toBe(200);
+    };
+    await save(context.primaryId, "PROMPT_A", "model/A");
+    await save(context.secondaryId, "PROMPT_B", "model/B");
+
+    const phone = `5511${Math.floor(900000000 + Math.random() * 99999999)}`;
+    const inbound = await repository.recordInboundAndLoadContext({
+      tenantId: context.tenantId, sessionId: context.secondaryId, contactPhone: phone,
+      text: "Quero avaliar a empresa", externalId: randomUUID()
+    } as never, { claim: false });
+    const lead = await pool.query<{ id: string }>("SELECT id FROM scheduling_leads WHERE tenant_id=$1 AND phone=$2", [context.tenantId, phone]);
+    const complete = vi.fn(async (input: { model: string }) => {
+      expect(input.model).toBe("model/B");
+      return { text: JSON.stringify({ estrelas: 3, respostas: {}, resumo: "Avaliação", justificativa: "Contexto" }), inputTokens: 1, outputTokens: 1, costUsd: 0 };
+    });
+
+    await expect(qualifyLeadFromConversation(context.tenantId, lead.rows[0].id, { complete } as never)).resolves.toMatchObject({ conversa_id: inbound!.conversationId });
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
   it("recusa override para conexão de outro tenant", async () => {
     const mine = await fixture();
     const foreign = await fixture();

@@ -82,6 +82,7 @@ type ContextRow = {
   lead_phone: string;
   qualification_stars: number | null;
   conversation_id: string | null;
+  session_id: string | null;
   contact_name: string | null;
   ai_model: string | null;
   model_params: unknown;
@@ -132,12 +133,12 @@ export async function qualifyLeadFromConversation(
   const context = await db.query<ContextRow>(
     `SELECT lead.id lead_id,lead.name lead_name,lead.phone lead_phone,
             lead.qualification_stars,
-            conversation.id conversation_id,conversation.contact_name,
+            conversation.id conversation_id,conversation.contact_name,conversation.session_id,
             version.ai_model,version.model_params,
             settings.openrouter_provider,settings.openrouter_api_key_encrypted
      FROM scheduling_leads lead
      LEFT JOIN LATERAL (
-       SELECT c.id,c.contact_name
+       SELECT c.id,c.contact_name,c.session_id
        FROM conversations c
        WHERE c.tenant_id=lead.tenant_id
          AND regexp_replace(c.contact_phone,'\\D','','g')=
@@ -154,7 +155,8 @@ export async function qualifyLeadFromConversation(
         AND v.agent_config_id=agent.id
         AND v.status='active'
        WHERE agent.tenant_id=lead.tenant_id
-       ORDER BY agent.updated_at DESC,agent.id
+         AND (agent.session_id=conversation.session_id OR agent.session_id IS NULL)
+       ORDER BY (agent.session_id IS NOT NULL) DESC,agent.updated_at DESC,agent.id
        LIMIT 1
      ) version ON true
      LEFT JOIN tenant_ai_settings settings ON settings.tenant_id=lead.tenant_id

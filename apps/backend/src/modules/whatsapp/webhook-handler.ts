@@ -139,6 +139,13 @@ export async function handleEvolutionWebhook(request: FastifyRequest, reply: Fas
       const owner = String(event.data.ownerJid ?? event.data.wuid ?? "").split("@")[0].split(":")[0] || undefined;
       const reason = status === "disconnected" ? String(event.data.reason ?? event.data.statusReason ?? (state || "connection_closed")) : undefined;
       await repository.updateStatus(identity.id, status, owner, undefined, reason);
+      if (status === "disconnected") {
+        await new MessageRepository(deps.db ?? defaultDb).createConnectionAlertOnce(
+          identity.tenantId,
+          identity.id,
+          `A conexão WhatsApp "${identity.label}" (sessão ${identity.id}) foi desconectada.`
+        );
+      }
       deps.log.info({ sessionId: identity.id, status, hasOwner: Boolean(owner), reason }, "Session status updated");
       if (status === "connected") {
         // Presence is advisory and Evolution may be temporarily unavailable.

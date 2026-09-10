@@ -286,6 +286,21 @@ describe("Evolution webhook descarta conexões arquivadas", () => {
   });
 });
 
+describe("Evolution webhook connection alerts", () => {
+  it("identifies a disconnected connection by label and passes it to once-only alerting", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: "session-a", tenant_id: "tenant-a", label: "Suporte", archived_at: null }] })
+      .mockResolvedValue({ rows: [], rowCount: 0 });
+    const status = vi.fn().mockReturnValue({ send: vi.fn() });
+    await handleEvolutionWebhook({ headers: { "x-atendon-webhook-secret": config.EVOLUTION_WEBHOOK_SECRET }, body: {
+      event: "connection.update", instance: "atendon_a", data: { state: "close", reason: "logged_out" }
+    }} as unknown as FastifyRequest, { status } as unknown as FastifyReply, {
+      db: { query } as never, whatsapp: {} as WhatsAppSessionManager, log: { info: vi.fn(), warn: vi.fn() } as unknown as FastifyBaseLogger
+    });
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO system_alerts"), ["tenant-a", expect.stringContaining("Suporte")]);
+  });
+});
+
 describe("Evolution webhook ack status mapping", () => {
   it("maps a single update object with a nested key/update shape", () => {
     expect(evolutionMessageStatusUpdates({ key: { id: "wamid-1" }, update: { status: "DELIVERY_ACK" } }))

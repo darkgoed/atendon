@@ -56,6 +56,7 @@ export default function Agent() {
   const [target, setTarget] = useState("");
   const [scope, setScope] = useState<"shared" | "connection">("shared");
   const [removingOverride, setRemovingOverride] = useState(false);
+  const targetNeedsOverride = Boolean(target && scope === "shared");
 
   const [stateTone, setStateTone] = useState<"info" | "success" | "error">("info");
 
@@ -135,7 +136,7 @@ export default function Agent() {
     setChangingStatus(true);
     setState("");
     try {
-      await api("/agent/status", { method: "PATCH", body: JSON.stringify({ isActive: next }) });
+      await api("/agent/status", { method: "PATCH", body: JSON.stringify({ isActive: next, sessionId: target || null }) });
       setForm((current) => current ? { ...current, isActive: next } : current);
       setStateTone("success");
       setState(next ? "IA ativada" : "IA totalmente desativada");
@@ -204,7 +205,7 @@ export default function Agent() {
           <span className={`mono rounded-full border px-3 py-2 text-[10px] font-semibold uppercase tracking-[.12em] ${form?.isActive ? "border-[var(--border-ai)] text-[var(--accent-soft)]" : "border-[var(--warn-border)] text-[var(--warn)]"}`}>
             {form?.isActive ? "IA ligada" : "IA desligada"}
           </span>
-          <button type="button" className={`btn active:scale-[.98] ${form?.isActive ? "warn" : "primary"}`} disabled={!canManage || !form || changingStatus} onClick={toggleAgent}>
+          <button type="button" className={`btn active:scale-[.98] ${form?.isActive ? "warn" : "primary"}`} disabled={!canManage || !form || changingStatus || targetNeedsOverride} onClick={toggleAgent}>
             <Power size={16} aria-hidden="true" />
             {changingStatus ? "Alterando…" : form?.isActive ? "Desativar IA" : "Ativar IA"}
           </button>
@@ -218,7 +219,7 @@ export default function Agent() {
         <p className="sub mb-4" role="status">
           {scope === "connection"
             ? "Este número tem um prompt exclusivo. Alterações aqui não afetam os demais."
-            : "Mostrando o prompt compartilhado. Ao salvar, ele vira um prompt exclusivo deste número."}
+            : "Mostrando o prompt compartilhado. Ao salvar, ele vira um prompt exclusivo deste número. Salve as alterações para criar um prompt exclusivo antes de alterar o status deste número."}
           {scope === "connection" && canManage ? (
             <>
               {" "}

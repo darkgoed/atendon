@@ -128,8 +128,12 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
   const leadsEnabled = isEnabled("leads_v1");
   const appointmentsEnabled = isEnabled("appointments_v1");
   if (widgetKey === "whatsapp_connection") {
-    const connected = data.status === "connected";
-    return <div><p className={connected ? "metric accent" : "metric warning"}>{connected ? "Conectado" : "Desconectado"}</p><p className="sub mono">status: {String(data.status ?? "disconnected")}</p></div>;
+    const total = Number(data.total ?? 0);
+    const connectedCount = Number(data.connected ?? 0);
+    const connected = total > 0 && connectedCount === total;
+    const statusLabel = total > 1 ? `${connectedCount} de ${total} conectados` : total === 1 ? (connected ? "Conectado" : "Desconectado") : "Desconectado";
+    const aggregateStatus = total > 1 ? (connected ? "todas conectadas" : connectedCount > 0 ? "parcial" : "nenhuma conectada") : (connected ? "connected" : "disconnected");
+    return <div><p className={connected ? "metric accent" : "metric warning"}>{statusLabel}</p><p className="sub mono">status: {aggregateStatus}</p></div>;
   }
   if (widgetKey === "open_conversations") {
     return <div><p className="metric">{metric(data.open)}</p><p className="sub">{metric(data.ai_open)} com IA · {metric(data.resolved_today)} resolvidas hoje</p></div>;

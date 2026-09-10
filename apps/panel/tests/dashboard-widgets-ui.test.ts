@@ -3,11 +3,13 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 let component = "";
 let home = "";
+let agent = "";
 
 beforeAll(async () => {
-  [component, home] = await Promise.all([
+  [component, home, agent] = await Promise.all([
     readFile(new URL("../components/dashboard-widgets.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/page.tsx", import.meta.url), "utf8")
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/agente/page.tsx", import.meta.url), "utf8")
   ]);
 });
 
@@ -64,5 +66,17 @@ describe("personalizable dashboard UI", () => {
     expect(component).toContain('period === "custom"');
     expect(component).toContain("period=custom&start=");
     expect(component).toContain('<option value="custom">');
+  });
+
+  it("renders connected totals for multiple WhatsApp connections and preserves singular wording", () => {
+    expect(component).toContain('total > 1 ? `${connectedCount} de ${total} conectados`');
+    expect(component).toContain('total === 1 ? (connected ? "Conectado" : "Desconectado")');
+  });
+
+  it("envia o target no toggle e impede alternar um alvo herdado antes de salvar override", () => {
+    expect(agent).toContain('body: JSON.stringify({ isActive: next, sessionId: target || null })');
+    expect(agent).toContain('const targetNeedsOverride = Boolean(target && scope === "shared")');
+    expect(agent).toContain('disabled={!canManage || !form || changingStatus || targetNeedsOverride}');
+    expect(agent).toContain("Salve as alterações para criar um prompt exclusivo antes de alterar o status deste número.");
   });
 });
