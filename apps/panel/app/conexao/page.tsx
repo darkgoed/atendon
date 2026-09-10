@@ -103,7 +103,11 @@ export default function Connection() {
         consecutiveFailures = 0;
         applyConnections(response);
         try {
-          const recoveryResponse = await api<{ recovery: FailedMessageRecoveryState }>("/connection/failed-messages");
+          const recoveryResponse = await api<{ recovery: FailedMessageRecoveryState }>(
+            "/connection/failed-messages",
+            undefined,
+            { reportErrors: false }
+          );
           if (active && !pollingPausedRef.current) setRecovery(recoveryResponse.recovery);
         } catch {
           // Message recovery is optional and must not hide healthy WhatsApp connections.

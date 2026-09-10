@@ -304,6 +304,19 @@ describe("API de múltiplas conexões WhatsApp", () => {
     ]);
   });
 
+  it("rejeita atualização sem rótulo nem promoção", async () => {
+    const context = await fixture();
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/connections/${context.sessionIds[0]}`,
+      headers: { cookie: context.cookie },
+      payload: {}
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
   it("responde 404 ao tentar promover conexão de outro tenant sem rebaixar a atual", async () => {
     const own = await fixture();
     const foreign = await fixture();

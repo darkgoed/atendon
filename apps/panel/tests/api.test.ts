@@ -37,6 +37,18 @@ describe("panel API client", () => {
     await expect(api("/html-error")).rejects.toThrow("Falha na requisição (502)");
   });
 
+  it("can suppress the global toast for an optional request", async () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal("window", { location: { pathname: "/conexao", href: "" }, dispatchEvent });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Not Found", {
+      status: 404,
+      headers: { "content-type": "text/plain" }
+    })));
+
+    await expect(api("/optional", undefined, { reportErrors: false })).rejects.toThrow("Not Found");
+    expect(dispatchEvent).not.toHaveBeenCalled();
+  });
+
   it("redirects a session with a required password change to the dedicated page", async () => {
     const location = { pathname: "/", href: "" };
     vi.stubGlobal("window", { location, dispatchEvent: vi.fn() });

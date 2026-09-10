@@ -13,7 +13,12 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+export interface ApiOptions {
+  reportErrors?: boolean;
+}
+
+export async function api<T>(path: string, init?: RequestInit, options: ApiOptions = {}): Promise<T> {
+  const shouldReportErrors = options.reportErrors !== false;
   const headers = new Headers(init?.headers);
   const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
   if (init?.body != null && !isFormData && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
@@ -23,7 +28,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     response = await fetch(`${base}${path}`, { ...init, credentials: "include", headers });
   } catch (cause) {
     const error = cause instanceof Error ? cause : new Error("Não foi possível conectar ao servidor");
-    reportError(error.message);
+    if (shouldReportErrors) reportError(error.message);
     throw error;
   }
   if (response.status === 401 && typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
@@ -39,7 +44,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     body = contentType.includes("json") ? await response.json() : await response.text();
   } catch (cause) {
     const error = cause instanceof Error ? cause : new Error("Resposta inválida do servidor");
-    reportError(error.message);
+    if (shouldReportErrors) reportError(error.message);
     throw error;
   }
   if (!response.ok) {
@@ -52,7 +57,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
         ? body
         : `Falha na requisição (${response.status})`;
     const message = friendlyPanelError(rawMessage);
-    reportError(message);
+    if (shouldReportErrors) reportError(message);
     throw new ApiError(message, response.status, body);
   }
   return body as T;

@@ -116,6 +116,7 @@ export interface ManualOutboundInput {
   contactPhone: string;
   contactJid?: string;
   text: string;
+  sendText?: string;
   idempotencyKey: string;
   sentByUserId: string;
   mediaType?: MediaType;
@@ -124,6 +125,21 @@ export interface ManualOutboundInput {
   mediaSizeBytes?: number;
   contentFingerprint?: string;
   replyToMessageId?: string;
+}
+
+export interface FailedMessageRecoverySummary {
+  available: number;
+  ambiguous: number;
+  has_connected_session: boolean;
+  legacy_unrecoverable: number;
+  oldest_at: string | null;
+}
+
+export interface FailedMessageRecoveryResult {
+  sent: number;
+  failed: number;
+  ambiguous: number;
+  remaining: number;
 }
 
 export interface ToolCallJournalInput {
@@ -1405,20 +1421,25 @@ export class MessageRepository {
         contentFingerprint: input.contentFingerprint ?? null
       })
       : payloadFingerprint({ conversationId: input.conversationId, text: input.text });
+    const recoveryPayload = input.mediaType ? null : JSON.stringify({
+      sendText: input.sendText ?? input.text,
+      displayText: input.text,
+      sentByUserId: input.sentByUserId
+    });
     const claimed = await this.db.query<{ id: string }>(
-      `INSERT INTO outbound_message_requests(tenant_id,conversation_id,idempotency_key,request_hash)
-       SELECT $1,c.id,$3,$4 FROM conversations c
+      `INSERT INTO outbound_message_requests(tenant_id,conversation_id,idempotency_key,request_hash,recovery_payload)
+       SELECT $1,c.id,$3,$4,$6::jsonb FROM conversations c
        WHERE c.id=$2 AND c.tenant_id=$1 AND c.session_id=$5
        ON CONFLICT (tenant_id,idempotency_key) DO NOTHING
        RETURNING id`,
-      [input.tenantId, input.conversationId, idempotencyKey, requestHash, input.sessionId]
+      [input.tenantId, input.conversationId, idempotencyKey, requestHash, input.sessionId, recoveryPayload]
     );
 
     if (!claimed.rows[0]) {
       for (let attempt = 0; attempt < IDEMPOTENCY_WAIT_ATTEMPTS; attempt += 1) {
         const previous = await this.db.query<{
           request_hash: string;
-          status: "pending" | "sent" | "failed";
+          status: "pending" | "sent" | "failed" | "ambiguous";
           external_message_id: string | null;
           error_message: string | null;
           stale: boolean;
@@ -1433,6 +1454,7 @@ export class MessageRepository {
         if (row.request_hash.trim() !== requestHash) throw conflict("Idempotency-Key já foi usada com outro conteúdo");
         if (row.status === "sent" && row.external_message_id) return { externalId: row.external_message_id, duplicate: true };
         if (row.status === "failed") throw conflict(`Envio anterior falhou: ${row.error_message ?? "erro desconhecido"}`);
+        if (row.status === "ambiguous") throw conflict("O WhatsApp pode ter aceitado o envio anterior; confirme no histórico antes de tentar novamente");
         if (row.stale) break;
         await wait(IDEMPOTENCY_WAIT_MS);
       }
@@ -1454,7 +1476,8 @@ export class MessageRepository {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await this.db.query(
-        `UPDATE outbound_message_requests SET status='failed',error_message=$3,completed_at=now()
+        `UPDATE outbound_message_requests
+         SET status='failed',error_message=$3,completed_at=now()
          WHERE tenant_id=$1 AND idempotency_key=$2 AND status='pending'`,
         [input.tenantId, idempotencyKey, message]
       );
@@ -1490,18 +1513,224 @@ export class MessageRepository {
       }
       await client.query(
         `UPDATE outbound_message_requests
-         SET status='sent',external_message_id=$3,error_message=NULL,completed_at=now()
+         SET status='sent',external_message_id=$3,error_message=NULL,recovery_payload=NULL,completed_at=now()
          WHERE tenant_id=$1 AND idempotency_key=$2 AND status='pending'`,
         [input.tenantId, idempotencyKey, sent.externalId]
       );
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK");
+      const message = error instanceof Error ? error.message : String(error);
+      await this.db.query(
+        `UPDATE outbound_message_requests
+         SET status='ambiguous',external_message_id=COALESCE(external_message_id,$3),
+             error_message=$4,completed_at=now()
+         WHERE tenant_id=$1 AND idempotency_key=$2 AND status='pending'`,
+        [input.tenantId, idempotencyKey, sent.externalId, message]
+      );
       throw error;
     } finally {
       client.release();
     }
     return { externalId: sent.externalId, duplicate: false };
+  }
+
+  async failedMessageRecoverySummary(tenantId: string): Promise<FailedMessageRecoverySummary> {
+    const result = await this.db.query<{
+      available: number;
+      ambiguous: number;
+      has_connected_session: boolean;
+      legacy_unrecoverable: number;
+      oldest_at: Date | null;
+    }>(
+      `SELECT
+         count(*) FILTER (WHERE request.status='failed' AND request.recovery_payload IS NOT NULL)::int AS available,
+         count(*) FILTER (WHERE request.status='ambiguous')::int AS ambiguous,
+         count(*) FILTER (WHERE request.status='failed' AND request.recovery_payload IS NULL)::int AS legacy_unrecoverable,
+         min(request.created_at) FILTER (WHERE request.status='failed' AND request.recovery_payload IS NOT NULL) AS oldest_at,
+         EXISTS (
+           SELECT 1
+           FROM outbound_message_requests recoverable
+           JOIN conversations conversation
+             ON conversation.id=recoverable.conversation_id AND conversation.tenant_id=recoverable.tenant_id
+           JOIN whatsapp_sessions connection
+             ON connection.id=conversation.session_id AND connection.tenant_id=conversation.tenant_id
+           WHERE recoverable.tenant_id=$1 AND recoverable.status='failed'
+             AND recoverable.recovery_payload IS NOT NULL
+             AND connection.archived_at IS NULL AND connection.status='connected'
+         ) AS has_connected_session
+       FROM outbound_message_requests request
+       WHERE request.tenant_id=$1`,
+      [tenantId]
+    );
+    const row = result.rows[0];
+    return {
+      available: Number(row?.available ?? 0),
+      ambiguous: Number(row?.ambiguous ?? 0),
+      has_connected_session: Boolean(row?.has_connected_session),
+      legacy_unrecoverable: Number(row?.legacy_unrecoverable ?? 0),
+      oldest_at: row?.oldest_at?.toISOString() ?? null
+    };
+  }
+
+  async recoverFailedManualMessages(
+    tenantId: string,
+    send: (input: { sessionId: string; destination: string; text: string }) => Promise<{ externalId: string }>,
+    limit = 25
+  ): Promise<FailedMessageRecoveryResult> {
+    type RecoveryRow = {
+      id: string;
+      conversation_id: string;
+      session_id: string;
+      contact_phone: string;
+      contact_jid: string | null;
+      recovery_payload: unknown;
+    };
+    const claim = await this.db.connect();
+    let rows: RecoveryRow[] = [];
+    try {
+      await claim.query("BEGIN");
+      // A crashed recovery may have reached WhatsApp before local persistence.
+      // Never resend such an unknown outcome; surface it for manual review.
+      await claim.query(
+        `UPDATE outbound_message_requests
+         SET status='ambiguous',error_message='Recuperação interrompida após início do envio',completed_at=now()
+         WHERE tenant_id=$1 AND status='pending' AND recovery_attempts>0
+           AND recovery_payload IS NOT NULL
+           AND processing_started_at < now()-interval '5 minutes'`,
+        [tenantId]
+      );
+      const selected = await claim.query<RecoveryRow>(
+        `SELECT request.id,request.conversation_id,conversation.session_id,
+                conversation.contact_phone,conversation.contact_jid,request.recovery_payload
+         FROM outbound_message_requests request
+         JOIN conversations conversation
+           ON conversation.id=request.conversation_id AND conversation.tenant_id=request.tenant_id
+         JOIN whatsapp_sessions connection
+           ON connection.id=conversation.session_id AND connection.tenant_id=conversation.tenant_id
+         WHERE request.tenant_id=$1 AND request.status='failed'
+           AND request.recovery_payload IS NOT NULL
+           AND connection.archived_at IS NULL AND connection.status='connected'
+         ORDER BY request.created_at,request.id
+         FOR UPDATE OF request SKIP LOCKED
+         LIMIT $2`,
+        [tenantId, Math.max(1, Math.min(limit, 50))]
+      );
+      rows = selected.rows;
+      if (rows.length > 0) {
+        await claim.query(
+          `UPDATE outbound_message_requests
+           SET status='pending',recovery_attempts=recovery_attempts+1,
+               processing_started_at=now(),completed_at=NULL
+           WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND status='failed'`,
+          [tenantId, rows.map((row) => row.id)]
+        );
+      }
+      await claim.query("COMMIT");
+    } catch (error) {
+      await claim.query("ROLLBACK");
+      throw error;
+    } finally {
+      claim.release();
+    }
+
+    let sentCount = 0;
+    let failedCount = 0;
+    let ambiguousCount = 0;
+    for (const row of rows) {
+      const payload = row.recovery_payload as Record<string, unknown> | null;
+      const sendText = typeof payload?.sendText === "string" ? payload.sendText : "";
+      const displayText = typeof payload?.displayText === "string" ? payload.displayText : "";
+      const sentByUserId = typeof payload?.sentByUserId === "string" ? payload.sentByUserId : "";
+      if (!sendText || !displayText || !sentByUserId) {
+        await this.db.query(
+          `UPDATE outbound_message_requests
+           SET status='failed',recovery_payload=NULL,error_message='Payload de recuperação inválido',completed_at=now()
+           WHERE id=$1 AND tenant_id=$2 AND status='pending'`,
+          [row.id, tenantId]
+        );
+        failedCount += 1;
+        continue;
+      }
+
+      let providerResult: { externalId: string };
+      try {
+        providerResult = await send({
+          sessionId: row.session_id,
+          destination: row.contact_jid ?? row.contact_phone,
+          text: sendText
+        });
+      } catch (error) {
+        await this.db.query(
+          `UPDATE outbound_message_requests
+           SET status='failed',error_message=$3,completed_at=now()
+           WHERE id=$1 AND tenant_id=$2 AND status='pending'`,
+          [row.id, tenantId, error instanceof Error ? error.message : String(error)]
+        );
+        failedCount += 1;
+        continue;
+      }
+
+      const record = await this.db.connect();
+      try {
+        await record.query("BEGIN");
+        const providerMessageKey = this.messageKey({
+          tenantId,
+          sessionId: row.session_id,
+          externalId: providerResult.externalId
+        });
+        const inserted = await record.query(
+          `INSERT INTO messages(conversation_id,sender,content,external_message_id,provider_message_key,sent_by_user_id)
+           SELECT conversation.id,'human',$4,$5,$6,$7
+           FROM conversations conversation
+           WHERE conversation.id=$1 AND conversation.tenant_id=$2 AND conversation.session_id=$3
+           ON CONFLICT(provider_message_key) DO NOTHING`,
+          [row.conversation_id, tenantId, row.session_id, displayText, providerResult.externalId, providerMessageKey, sentByUserId]
+        );
+        if ((inserted.rowCount ?? 0) === 0) {
+          const existing = await record.query("SELECT 1 FROM messages WHERE provider_message_key=$1", [providerMessageKey]);
+          if (!existing.rows[0]) throw new Error("A conversa desapareceu antes de registrar a mensagem recuperada");
+        }
+        await record.query(
+          `UPDATE conversations SET contact_jid=COALESCE($4,contact_jid),last_message_at=now()
+           WHERE id=$1 AND tenant_id=$2 AND session_id=$3`,
+          [row.conversation_id, tenantId, row.session_id, row.contact_jid]
+        );
+        await record.query(
+          `UPDATE outbound_message_requests
+           SET status='sent',external_message_id=$3,error_message=NULL,recovery_payload=NULL,
+               recovered_at=now(),completed_at=now()
+           WHERE id=$1 AND tenant_id=$2 AND status='pending'`,
+          [row.id, tenantId, providerResult.externalId]
+        );
+        await record.query("COMMIT");
+        sentCount += 1;
+      } catch (error) {
+        await record.query("ROLLBACK");
+        await this.db.query(
+          `UPDATE outbound_message_requests
+           SET status='ambiguous',external_message_id=COALESCE(external_message_id,$3),
+               error_message=$4,completed_at=now()
+           WHERE id=$1 AND tenant_id=$2 AND status='pending'`,
+          [row.id, tenantId, providerResult.externalId, error instanceof Error ? error.message : String(error)]
+        );
+        ambiguousCount += 1;
+      } finally {
+        record.release();
+      }
+    }
+
+    const remaining = await this.db.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM outbound_message_requests
+       WHERE tenant_id=$1 AND status='failed' AND recovery_payload IS NOT NULL`,
+      [tenantId]
+    );
+    return {
+      sent: sentCount,
+      failed: failedCount,
+      ambiguous: ambiguousCount,
+      remaining: Number(remaining.rows[0]?.count ?? 0)
+    };
   }
 
   async executeToolCallOnceDetailed(

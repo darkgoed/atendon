@@ -5,6 +5,7 @@ import { getLimit } from "../../billing/entitlements.js";
 import { assertLimitWithinTransaction } from "../../billing/limits.js";
 import { db } from "../../db/client.js";
 import { withTenantTransaction } from "../../db/tenant-transaction.js";
+import { MessageRepository } from "../messages/repository.js";
 import type { WhatsAppSessionManager } from "./session-manager.js";
 import { SessionRepository } from "./session-repository.js";
 
@@ -13,10 +14,12 @@ const createConnection = z.object({ label: z.string().trim().min(1).max(60) });
 const updateConnection = z.object({
   label: z.string().trim().min(1).max(60).optional(),
   is_primary: z.literal(true).optional()
+}).refine((body) => body.label !== undefined || body.is_primary !== undefined, {
+  message: "Informe o rótulo ou marque a conexão como principal"
 });
 
 type WhatsAppConnectionRoutesOptions = {
-  whatsapp: Pick<WhatsAppSessionManager, "start" | "reconnect" | "logoutInstance" | "deleteInstance">;
+  whatsapp: Pick<WhatsAppSessionManager, "start" | "reconnect" | "logoutInstance" | "deleteInstance" | "sendText">;
 };
 
 function routeError(message: string, statusCode: number): Error {
@@ -28,6 +31,19 @@ export async function registerWhatsAppConnectionRoutes(
   options: WhatsAppConnectionRoutesOptions
 ): Promise<void> {
   const sessions = new SessionRepository(db);
+  const messages = new MessageRepository(db);
+
+  app.get("/connection/failed-messages", async (request) => {
+    const session = await requirePermission(request, "connection.read");
+    return { recovery: await messages.failedMessageRecoverySummary(session.tenantId) };
+  });
+
+  app.post("/connection/failed-messages/resend", async (request) => {
+    const session = await requirePermission(request, "connection.manage");
+    return messages.recoverFailedManualMessages(session.tenantId, ({ sessionId, destination, text }) =>
+      options.whatsapp.sendText(sessionId, destination, text)
+    );
+  });
 
   app.get("/connections", async (request) => {
     const session = await requirePermission(request, "connection.read");

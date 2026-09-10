@@ -2454,6 +2454,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
       contactPhone: row.contact_phone,
       contactJid: row.contact_jid ?? undefined,
       text,
+      ...(!media ? { sendText: outboundText ?? text } : {}),
       idempotencyKey,
       sentByUserId: session.userId,
       ...(body.replyToMessageId ? { replyToMessageId: body.replyToMessageId } : {}),

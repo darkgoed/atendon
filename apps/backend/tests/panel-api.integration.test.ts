@@ -1099,17 +1099,27 @@ describe("panel API tenant isolation",()=>{
     const preview=await app.inject({url:"/connection/failed-messages",headers:{cookie:cookieA}});
     expect(preview.statusCode).toBe(200);
     expect(preview.json().recovery.available).toBe(1);
+    const originalSession=(await pool.query<{session_id:string}>("SELECT session_id FROM conversations WHERE id=$1",[conversationA])).rows[0].session_id;
     await pool.query(
       "INSERT INTO whatsapp_sessions(id,tenant_id,instance_name,status) VALUES($1,$2,$3,'disconnected')",
       [newerDisconnectedSession,tenantA,`disconnected-${randomUUID()}`]
     );
 
-    const resend=vi.spyOn(WhatsAppSessionManager.prototype,"sendText").mockResolvedValue({externalId:`recovered-${randomUUID()}`});
+    const resend=vi.spyOn(WhatsAppSessionManager.prototype,"sendText").mockImplementation(async()=>{
+      await new Promise((resolve)=>setTimeout(resolve,25));
+      return {externalId:`recovered-${randomUUID()}`};
+    });
     try{
-      const recovered=await app.inject({method:"POST",url:"/connection/failed-messages/resend",headers:{cookie:cookieA}});
+      const [recovered,concurrent]=await Promise.all([
+        app.inject({method:"POST",url:"/connection/failed-messages/resend",headers:{cookie:cookieA}}),
+        app.inject({method:"POST",url:"/connection/failed-messages/resend",headers:{cookie:cookieA}})
+      ]);
       expect(recovered.statusCode).toBe(200);
-      expect(recovered.json()).toMatchObject({sent:1,failed:0,remaining:0});
+      expect(concurrent.statusCode).toBe(200);
+      expect(recovered.json().sent+concurrent.json().sent).toBe(1);
+      expect(recovered.json().failed+concurrent.json().failed).toBe(0);
       expect(resend).toHaveBeenCalledOnce();
+      expect(resend).toHaveBeenCalledWith(originalSession,expect.any(String),failedText);
       expect((await pool.query("SELECT content,status FROM messages WHERE tenant_id=$1 AND content=$2",[tenantA,failedText])).rows)
         .toEqual([{content:failedText,status:"sent"}]);
       const replay=await app.inject({method:"POST",url:"/connection/failed-messages/resend",headers:{cookie:cookieA}});
