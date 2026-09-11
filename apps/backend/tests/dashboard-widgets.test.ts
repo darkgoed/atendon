@@ -16,9 +16,12 @@ describe("dashboard widget catalog and layout", () => {
     ]));
   });
 
-  it("keeps the current overview visible by default and optional widgets hidden", () => {
+  it("shows exactly the five essential widgets by default and hides legacy widgets", () => {
     const layout = defaultDashboardLayout(availableDashboardWidgets(OPERATOR_PERMISSIONS));
-    expect(layout.find((item) => item.key === "commercial_metrics")?.visible).toBe(true);
+    expect(layout.filter((item) => item.visible).map((item) => item.key)).toEqual([
+      "conversations_started", "appointments_count", "sales_count", "sales_value", "conversion_rate"
+    ]);
+    expect(layout.find((item) => item.key === "commercial_metrics")?.visible).toBe(false);
     expect(layout.find((item) => item.key === "pipeline")?.visible).toBe(false);
     expect(layout.find((item) => item.key === "recent_alerts")?.visible).toBe(false);
   });

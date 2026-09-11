@@ -40,7 +40,6 @@ import {
   conversationMessageDateSeparator,
   conversationMessagesPath,
   conversationMessagesV2Path,
-  filterConversationsByConnection,
   mergeConversationMessages,
   scrollTopAfterPrepend,
   shouldShowConversationConnectionFilter
@@ -60,6 +59,10 @@ import {
   type PanelSession
 } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
+import { ChannelBadge, type Channel } from "@/components/channel-badge";
+import { ConversationNextAction } from "@/components/conversation-next-action";
+import { ConversationPreBriefing } from "@/components/conversation-pre-briefing";
+import { ConversationQueueManager } from "@/components/conversation-queue-manager";
 import type { ConnectionsResponse } from "@/lib/connections";
 import type { PipelineStage } from "@/lib/pipeline";
 import type { PanelNotificationPreferencesResponse } from "@/lib/message-notifications";
@@ -97,6 +100,17 @@ type Conversation = {
   lead_status?: string;
   lead_updated_at?: string;
   unread_count?: number;
+  queue_id?: string | null;
+  queue_name?: string | null;
+  queue_color?: string | null;
+  queue_is_resolved?: boolean;
+  next_action?: string | null;
+  next_action_at?: string | null;
+  next_action_due?: boolean;
+  lead_source?: string | null;
+  lead_campaign?: string | null;
+  interest?: string | null;
+  channel?: Channel | null;
   last_message_sender?: "contact" | "agent" | "human" | null;
   last_message_status?: string | null;
 };
@@ -236,7 +250,7 @@ function ConversationItem({ item, selected, showLeadTags, onClick }: { item: Con
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline justify-between gap-2">
-          <strong className="conversation-list__name min-w-0 truncate text-[var(--text)]">{title}</strong>
+          <strong data-unread={unread > 0 ? "true" : undefined} className={`conversation-list__name min-w-0 truncate text-[var(--text)] ${unread > 0 ? "font-semibold" : ""}`}><ChannelBadge channel={item.channel === "instagram" ? "instagram" : "whatsapp"} size={12} /> {title}</strong>
           <time className="conversation-list__time mono shrink-0 text-[var(--text-8)]">{formatClock(item.last_message_at)}</time>
         </div>
         {item.contact_name ? <p className="conversation-list__company mono truncate text-[var(--text-6)]" dir="ltr">{item.contact_phone}</p> : null}
@@ -414,6 +428,7 @@ export default function Conversations() {
   const leadsEnabled = isEnabled("leads_v1");
   const appointmentsEnabled = isEnabled("appointments_v1");
   const canReply = usePermission("conversations.reply");
+  const canManageQueues = usePermission("conversations.queues.manage");
   const canChangeAi = usePermission("conversations.reactivate");
   const canCreateAppointment = usePermission("appointments.create");
   const canReadAvailability = usePermission("availability.read");
@@ -421,6 +436,9 @@ export default function Conversations() {
   const canSchedule = appointmentsEnabled && canCreateAppointment && canReadAvailability && canReadUnits;
   const [filter, setFilter] = useState("human");
   const [connectionFilter, setConnectionFilter] = useState("");
+  const [queueFilter, setQueueFilter] = useState("");
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [pendingOnly, setPendingOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selected, setSelected] = useState("");
@@ -518,7 +536,7 @@ export default function Conversations() {
   const hasWorkspaceScope = Boolean(session && hasWorkspaceWideCaseScope(session));
   const effectiveFilter = hasWorkspaceScope ? filter : "mine";
   const listKey = session
-    ? `/conversations?filter=${effectiveFilter}${debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ""}`
+    ? `/conversations?filter=${effectiveFilter}${debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ""}${queueFilter ? `&queue_id=${queueFilter}` : ""}${connectionFilter ? `&session_id=${connectionFilter}` : ""}${unreadOnly ? "&unread=true" : ""}${pendingOnly ? "&pending_action=true" : ""}`
     : null;
   const { data: listData, error: listError, isLoading: listLoading, mutate: mutateList } = useSWR<ConversationsResponse>(listKey, fetcher, {
     refreshInterval: 10_000,
@@ -543,12 +561,10 @@ export default function Conversations() {
   );
 
   const connections = useMemo(() => connectionsData?.connections ?? [], [connectionsData?.connections]);
+  const { data: queueData, mutate: mutateQueues } = useSWR<{ queues: Array<{ id: string; name: string; color: string; is_resolved: boolean; conversation_count: number; archived_at: string | null }> }>(session ? "/conversation-queues" : null, fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
   const showConnectionFilter = shouldShowConversationConnectionFilter(connections);
   const allItems = useMemo(() => listData?.conversations ?? [], [listData?.conversations]);
-  const items = useMemo(
-    () => filterConversationsByConnection(allItems, showConnectionFilter ? connectionFilter : ""),
-    [allItems, connectionFilter, showConnectionFilter]
-  );
+  const items = allItems;
   const thread = { conversation: threadConversation, messages };
   const threadConnectionLabel = conversationLabelForSession(
     threadConversation?.session_id ? threadConversation : allItems.find((item) => item.id === selected),
@@ -1030,10 +1046,17 @@ export default function Conversations() {
   async function resolveConversationConfirmed() {
     setError("");
     setChangingOwner(true);
+    const previousList = listData;
+    const previousThread = threadData;
+    const optimistic = (conversation: Conversation): Conversation => ({ ...conversation, status: "closed", resolved_at: new Date().toISOString() });
+    await mutateList((current) => current ? { conversations: current.conversations.map(optimistic) } : current, { revalidate: false });
+    if (previousThread?.conversation.id === selectedRef.current) await mutateThread({ ...previousThread, conversation: optimistic(previousThread.conversation) }, { revalidate: false });
     try {
       await resolveConversationApi(selectedRef.current);
-      await Promise.all([mutateList(), mutateThread()]);
+      await Promise.all([mutateList(), mutateThread(), mutateQueues()]);
     } catch (e) {
+      await mutateList(previousList, { revalidate: false });
+      await mutateThread(previousThread, { revalidate: false });
       setError(e instanceof Error ? e.message : "Falha ao resolver a conversa");
     } finally {
       setChangingOwner(false);
@@ -1114,6 +1137,24 @@ export default function Conversations() {
       setError(e instanceof Error ? e.message : "Falha ao transferir a conversa");
     } finally {
       setChangingOwner(false);
+    }
+  }
+
+  async function moveConversationToQueue(queueId: string) {
+    if (!selected || !canReply) return;
+    const previousList = listData;
+    const previousThread = threadData;
+    const queue = (queueData?.queues ?? []).find((item) => item.id === queueId);
+    const optimistic = (conversation: Conversation): Conversation => ({ ...conversation, queue_id: queueId, queue_name: queue?.name ?? conversation.queue_name, queue_color: queue?.color ?? conversation.queue_color, status: queue?.is_resolved ? "closed" : "open" });
+    await mutateList((current) => current ? { conversations: current.conversations.map(optimistic) } : current, { revalidate: false });
+    if (previousThread?.conversation.id === selected) await mutateThread({ ...previousThread, conversation: optimistic(previousThread.conversation) }, { revalidate: false });
+    try {
+      await api(`/conversations/${selected}/queue`, { method: "PATCH", body: JSON.stringify({ queue_id: queueId }) });
+      await Promise.all([mutateList(), mutateThread(), mutateQueues()]);
+    } catch (caught) {
+      await mutateList(previousList, { revalidate: false });
+      await mutateThread(previousThread, { revalidate: false });
+      setError(caught instanceof Error ? caught.message : "Falha ao mover a conversa de fila");
     }
   }
 
@@ -1322,6 +1363,18 @@ export default function Conversations() {
                 </select>
               </label>
             ) : null}
+            <>
+              <div className="mb-2 flex gap-1 overflow-x-auto" aria-label="Filas de atendimento">
+                <button type="button" className={`btn shrink-0 px-2 py-1 text-xs ${!queueFilter ? "primary" : ""}`} onClick={() => setQueueFilter("")}>Todas</button>
+                {(queueData?.queues ?? []).filter((queue) => !queue.archived_at).map((queue) => <button type="button" key={queue.id} className={`btn shrink-0 px-2 py-1 text-xs ${queueFilter === queue.id ? "primary" : ""}`} onClick={() => { setQueueFilter(queue.id); if (queue.is_resolved && hasWorkspaceScope) setFilter("resolved"); }}><span className="mr-1 inline-block size-2 rounded-full" style={{ backgroundColor: queue.color }} aria-hidden="true" />{queue.name} <span className="mono">{queue.conversation_count}</span></button>)}
+              </div>
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                <button type="button" disabled={!hasWorkspaceScope} className={`btn px-2 py-1 text-xs ${!hasWorkspaceScope || filter === "mine" ? "primary" : ""}`} onClick={() => { if (hasWorkspaceScope) setFilter(filter === "mine" ? "human" : "mine"); }}>Minhas conversas</button>
+                {hasWorkspaceScope ? <button type="button" className={`btn px-2 py-1 text-xs ${filter === "unassigned" ? "primary" : ""}`} onClick={() => setFilter(filter === "unassigned" ? "human" : "unassigned")}>Sem responsável</button> : null}
+                <button type="button" className={`btn px-2 py-1 text-xs ${unreadOnly ? "primary" : ""}`} onClick={() => setUnreadOnly((value) => !value)}>Não lidas</button>
+                <button type="button" className={`btn px-2 py-1 text-xs ${pendingOnly ? "primary" : ""}`} onClick={() => setPendingOnly((value) => !value)}>Pendências</button>
+              </div>
+            </>
             {hasWorkspaceScope ? (
               <div className="conversation-filter-tabs grid grid-cols-4 gap-1 rounded-[10px] border border-[var(--border)] bg-transparent p-1">
                 {[
@@ -1353,6 +1406,7 @@ export default function Conversations() {
                 Minhas conversas abertas
               </div>
             )}
+            {canManageQueues ? <div className="mt-2"><ConversationQueueManager onSaved={async () => { await Promise.all([mutateList(), mutateQueues()]); }} /></div> : null}
           </header>
 
           <div
@@ -1444,7 +1498,7 @@ export default function Conversations() {
                     {thread.conversation.contact_name ?? thread.conversation.contact_phone}
                   </button>
                   <div className="conversation-thread__meta mt-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[11px] text-[var(--text-6)]">
-                    <span className="inline-flex shrink-0 items-center gap-1"><span className="h-[5px] w-[5px] rounded-full bg-[var(--ok)]" aria-hidden="true" />WhatsApp</span>
+                    <ChannelBadge channel={thread.conversation.channel === "instagram" ? "instagram" : "whatsapp"} size={13} />
                     {threadConnectionLabel ? <><span className="shrink-0 text-[var(--text-9)]">·</span><span className="shrink-0">Número: {threadConnectionLabel}</span></> : null}
                     <span className="shrink-0 text-[var(--text-9)]">·</span>
                     <span className="mono" dir="ltr">{thread.conversation.contact_phone}</span>
@@ -1473,6 +1527,7 @@ export default function Conversations() {
                       />
                     ) : null
                   ) : null}
+                  {canReply ? <label className="field"><span className="sr-only">Fila do atendimento</span><select className="input py-1.5 text-xs" aria-label="Fila do atendimento" value={thread.conversation.queue_id ?? ""} onChange={(event) => { if (event.target.value) void moveConversationToQueue(event.target.value); }}><option value="">Sem fila</option>{(queueData?.queues ?? []).filter((queue) => !queue.archived_at).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></label> : null}
                   {canSchedule ? (
                     <button type="button" className="btn shrink-0 active:scale-[.98]" onClick={() => setSchedulerOpen(true)}>
                       <CalendarDots size={14} aria-hidden="true" />
@@ -1603,6 +1658,7 @@ export default function Conversations() {
                 </div>
               ) : null}
 
+              {thread.conversation.lead_id ? <div className="grid shrink-0 gap-2 border-b border-[var(--border)] p-3 lg:grid-cols-2"><ConversationPreBriefing contactName={thread.conversation.contact_name ?? null} contactPhone={thread.conversation.contact_phone} source={thread.conversation.lead_source ?? null} campaign={thread.conversation.lead_campaign ?? null} interest={thread.conversation.interest ?? null} facebookAttribution={thread.conversation.facebook_attribution} /><ConversationNextAction leadId={thread.conversation.lead_id} nextAction={thread.conversation.next_action ?? null} nextActionAt={thread.conversation.next_action_at ?? null} assignedUserEmail={thread.conversation.assigned_user_email ?? null} assignedUserId={thread.conversation.assigned_user_id ?? null} timezone={timezone} canManage={canReply} canAssign={hasWorkspaceScope && canReply} conversationId={thread.conversation.id} onSaved={async () => { await Promise.all([mutateList(), mutateThread()]); }} /></div> : null}
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div className="relative min-h-0 flex-1">
                   <div

@@ -16,6 +16,9 @@ const nextAction = z.string().trim().min(1).max(500);
 
 export const commercialTransitionPayloadSchema = z.object({
   sale_value: z.number().positive().finite().optional(),
+  sale_product: z.string().trim().min(1).max(200).optional(),
+  sale_channel: z.string().trim().min(1).max(60).optional(),
+  sale_source: z.string().trim().min(1).max(200).optional(),
   loss_reason: lossReasonSchema.optional(),
   loss_reason_note: lossReasonNoteSchema.optional(),
   next_action: nextAction.optional(),

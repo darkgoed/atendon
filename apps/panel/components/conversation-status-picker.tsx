@@ -18,6 +18,7 @@ import { usePermission } from "@/lib/use-permission";
 type PipelineResponse = {
   stages: PipelineStage[];
   transitions: PipelineTransition[];
+  enforce_transitions?: boolean;
 };
 
 export function ConversationStatusPicker({
@@ -50,13 +51,15 @@ export function ConversationStatusPicker({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const targets = useMemo(() => {
-    const targetIds = new Set((data?.transitions ?? [])
-      .filter((transition) => transition.from_stage_id === pipelineStage.id)
-      .map((transition) => transition.to_stage_id));
+    const targetIds = data?.enforce_transitions === false
+      ? new Set((data?.stages ?? []).filter((stage) => stage.id !== pipelineStage.id).map((stage) => stage.id))
+      : new Set((data?.transitions ?? [])
+        .filter((transition) => transition.from_stage_id === pipelineStage.id)
+        .map((transition) => transition.to_stage_id));
     return (data?.stages ?? [])
       .filter((stage) => !stage.archived_at && targetIds.has(stage.id))
       .sort((left, right) => left.position - right.position);
-  }, [data?.stages, data?.transitions, pipelineStage.id]);
+  }, [data?.stages, data?.transitions, data?.enforce_transitions, pipelineStage.id]);
   const lead: PipelineLead = {
     id: leadId,
     telefone: leadPhone,

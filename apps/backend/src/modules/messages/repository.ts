@@ -434,8 +434,10 @@ export class MessageRepository {
       WITH conv AS (
         INSERT INTO conversations
           (tenant_id, session_id, contact_phone, contact_name, contact_jid, facebook_attribution,
-           contact_presence, contact_presence_updated_at, contact_last_seen_at)
-        SELECT $1, s.id, $3, $4, $5, $13::jsonb, 'available', now(), now() FROM whatsapp_sessions s
+           contact_presence, contact_presence_updated_at, contact_last_seen_at, queue_id)
+        SELECT $1, s.id, $3, $4, $5, $13::jsonb, 'available', now(), now(),
+               (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)
+        FROM whatsapp_sessions s
         WHERE s.id = $2 AND s.tenant_id = $1
         ON CONFLICT (tenant_id, session_id, contact_phone) DO UPDATE
         SET contact_name = COALESCE(
@@ -453,7 +455,11 @@ export class MessageRepository {
             contact_presence = 'available',
             contact_presence_updated_at = now(),
             contact_last_seen_at = now(),
-            status = 'open', resolved_at = NULL, last_message_at = now()
+            status = 'open', resolved_at = NULL, last_message_at = now(),
+            queue_id = CASE WHEN conversations.status='closed' THEN
+              (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)
+              ELSE COALESCE(conversations.queue_id,
+                (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)) END
         RETURNING id, ai_active, ai_commercial_override_at, facebook_attribution, contact_name
       ),
       automatic_lead AS (
@@ -1902,11 +1908,18 @@ export class MessageRepository {
     const conversation = await withTenantTransaction(this.db, message.tenantId, async (client) => {
       const recorded = await client.query<{ id: string }>(
         `WITH conv AS (
-         INSERT INTO conversations (tenant_id, session_id, contact_phone, contact_jid)
-         SELECT $1, s.id, $3, $4 FROM whatsapp_sessions s WHERE s.id = $2 AND s.tenant_id = $1
+         INSERT INTO conversations (tenant_id, session_id, contact_phone, contact_jid, queue_id)
+         SELECT $1, s.id, $3, $4,
+                (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)
+         FROM whatsapp_sessions s WHERE s.id = $2 AND s.tenant_id = $1
          ON CONFLICT (tenant_id, session_id, contact_phone) DO UPDATE
          SET contact_jid = COALESCE(EXCLUDED.contact_jid, conversations.contact_jid),
-             ai_active=false,handoff_reason='manually_paused',handoff_error_code=NULL,last_message_at = now()
+             ai_active=false,handoff_reason='manually_paused',handoff_error_code=NULL,last_message_at = now(),
+             status='open',resolved_at=NULL,
+             queue_id=CASE WHEN conversations.status='closed' THEN
+               (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)
+               ELSE COALESCE(conversations.queue_id,
+                 (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)) END
          RETURNING id
        ),
        automatic_lead AS (

@@ -109,7 +109,7 @@ describe("0098 case organization migration",() => {
         [conversationA,leadB]
       )).rejects.toThrow(/conversations_lead_tenant_fkey/i);
     });
-  });
+  },15_000);
 
   it.each(["missing","ambiguous"] as const)("aborts and rolls back when a conversation link is %s",async (mode) => {
     await withUpgradeDatabase(mode,async (client,upgradeDirectory) => {

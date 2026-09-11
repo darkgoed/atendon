@@ -26,7 +26,7 @@ import {
   transferCaseAssignment
 } from "../assignments/service.js";
 import { phoneE164Schema } from "../../phone.js";
-import { LEAD_TECHNICAL_STATUSES, domainAllowsStageTransition } from "../organization/domain.js";
+import { LEAD_TECHNICAL_STATUSES, domainAllowsStageTransition, leadSituation } from "../organization/domain.js";
 import {
   applyAppointmentHandoff,
   cancelAppointmentJourney,
@@ -266,12 +266,28 @@ export function unitMapper(row: Record<string, unknown>) {
 }
 
 export function leadMapper(row: Record<string, unknown>) {
+  const parsedStatus = leadStatus.safeParse(row.status);
+  const appointmentStart = row.latest_appointment_start instanceof Date
+    ? row.latest_appointment_start
+    : new Date(String(row.latest_appointment_start ?? ""));
+  const hasUpcomingAppointment = row.has_upcoming_appointment === true || (
+    (row.latest_appointment_status === "confirmado" || row.latest_appointment_status === "reagendado")
+    && Number.isFinite(appointmentStart.getTime())
+    && appointmentStart.getTime() > Date.now()
+  );
+  const situacao = parsedStatus.success ? leadSituation({
+    status: parsedStatus.data,
+    hasUpcomingAppointment,
+    awaitingReply: row.awaiting_reply === true || row.awaitingReply === true
+  }) : null;
   return {
     id: row.id, tenant: row.tenant_id, telefone: row.phone, nome: row.name,
     avatar_url: row.avatar_url ?? null,
     categoria_interesse_id: row.interest_category_id, unidade_id: row.unit_id, parceiro_id: row.partner_id,
     status: row.status, origem: row.source, campanha: row.campaign ?? null, criado_em: row.created_at, atualizado_em: row.updated_at,
     categoria_nome: row.category_name, unidade_nome: row.unit_name, parceiro_nome: row.partner_name,
+    interesse: row.category_name ?? row.interest_category_id ?? null,
+    situacao,
     origem_facebook: row.facebook_attribution ?? {},
     pipeline_stage_id: row.pipeline_stage_id ?? null,
     pipeline_stage: row.pipeline_stage ?? null,
@@ -284,6 +300,7 @@ export function leadMapper(row: Record<string, unknown>) {
     handoff_at: row.handoff_at ?? null,
     handoff_by_user_id: row.handoff_by_user_id ?? null,
     commercial_outcome: row.commercial_outcome ?? null,
+    outcome_metadata: row.outcome_metadata ?? {},
     sale_value: row.sale_value === null || row.sale_value === undefined ? null : Number(row.sale_value),
     loss_reason: row.loss_reason ?? null,
     loss_reason_note: row.loss_reason_note ?? null,

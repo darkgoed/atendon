@@ -90,6 +90,8 @@ export type PipelineLead = {
   nome?: string;
   avatar_url?: string | null;
   status: string;
+  interesse?: string | null;
+  situacao?: string | null;
   origem?: string | null;
   campanha?: string | null;
   unidade_nome?: string;
@@ -221,8 +223,8 @@ export type PipelinePreferences = {
 
 export const DEFAULT_PIPELINE_PREFERENCES: PipelinePreferences = {
   density: "compact",
-  visibleFields: ["ownership", "nextAction", "stalled"],
-  auxiliaryBadges: [...PIPELINE_AUXILIARY_BADGES],
+  visibleFields: ["ownership", "nextAction"],
+  auxiliaryBadges: [],
   columnWidth: 280
 };
 
@@ -250,7 +252,7 @@ export function normalizePipelinePreferences(value: unknown): PipelinePreference
 }
 
 export type PipelineCommercialInput =
-  | { sale_value: number }
+  | { sale_value: number; sale_product?: string; sale_source?: string; sale_channel?: string; responsavel_member_id?: string }
   | { next_action: string; next_action_at: string }
   | { loss_reason: string; loss_reason_note?: string };
 
@@ -263,15 +265,35 @@ export function pipelineTransitionRequirement(technicalStatus: string): Pipeline
   return null;
 }
 
+const DEFAULT_BOARD_STATUS_SET = new Set(["novo", "em_atendimento", "qualificado", "em_negociacao", "fechado", "perdido"]);
+const LEGACY_BOARD_PROJECTION: Record<string, string> = {
+  aguardando_resposta: "em_atendimento",
+  agendado: "qualificado",
+  proposta_enviada: "em_negociacao",
+  follow_up: "em_negociacao"
+};
+
+/** Projects technical legacy stages into commercial columns without persistence changes. */
+export function pipelineBoardStageId(lead: PipelineLead, stages: PipelineStage[], showAllStages: boolean): string | null {
+  const persisted = currentPipelineStageId(lead, stages, false);
+  if (showAllStages) return persisted;
+  const status = LEGACY_BOARD_PROJECTION[lead.status] ?? lead.status;
+  if (!DEFAULT_BOARD_STATUS_SET.has(status)) return persisted;
+  return stages.find((stage) => !stage.operational_kind && stage.technical_status === status)?.id ?? `fallback:${status}`;
+}
+
 export function buildPipelineTransitionPayload(input: {
   stage: PipelineStage;
   expectedUpdatedAt: string;
   commercial?: PipelineCommercialInput;
 }) {
+  const commercialPayload = input.commercial && "sale_value" in input.commercial
+    ? Object.fromEntries(Object.entries(input.commercial).filter(([key]) => key !== "responsavel_member_id"))
+    : input.commercial;
   return {
     stage_id: input.stage.id,
     expected_updated_at: input.expectedUpdatedAt,
-    ...(input.commercial ? { commercial: input.commercial } : {})
+    ...(commercialPayload ? { commercial: commercialPayload } : {})
   };
 }
 

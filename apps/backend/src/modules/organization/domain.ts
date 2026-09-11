@@ -13,6 +13,31 @@ export const LEAD_TECHNICAL_STATUSES = [
 
 export type LeadTechnicalStatus = typeof LEAD_TECHNICAL_STATUSES[number];
 
+/** Etapas oferecidas por padrão como colunas comerciais do Kanban. */
+export const DEFAULT_BOARD_STATUSES = [
+  "novo",
+  "em_atendimento",
+  "qualificado",
+  "em_negociacao",
+  "fechado",
+  "perdido"
+] as const;
+
+/** Situação é um rótulo operacional do card e não altera sua etapa. */
+export type LeadSituation = "aguardando_resposta" | "agendado" | "proposta_enviada" | "follow_up" | null;
+
+export function leadSituation(input: {
+  status: LeadTechnicalStatus;
+  hasUpcomingAppointment: boolean;
+  awaitingReply: boolean;
+}): LeadSituation {
+  if (input.status === "aguardando_resposta" || input.awaitingReply) return "aguardando_resposta";
+  if (input.status === "agendado" || input.hasUpcomingAppointment) return "agendado";
+  if (input.status === "proposta_enviada") return "proposta_enviada";
+  if (input.status === "follow_up") return "follow_up";
+  return null;
+}
+
 const DOMAIN_TRANSITIONS: Record<LeadTechnicalStatus, readonly LeadTechnicalStatus[]> = {
   novo: ["em_atendimento", "perdido"],
   em_atendimento: ["aguardando_resposta", "qualificado", "proposta_enviada", "follow_up", "perdido"],

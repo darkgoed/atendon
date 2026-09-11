@@ -10,7 +10,10 @@ import type { WhatsAppSessionManager } from "./session-manager.js";
 import { SessionRepository } from "./session-repository.js";
 
 const connectionParams = z.object({ id: z.string().uuid() });
-const createConnection = z.object({ label: z.string().trim().min(1).max(60) });
+const createConnection = z.object({
+  label: z.string().trim().min(1).max(60),
+  channel: z.enum(["whatsapp", "instagram"]).default("whatsapp")
+});
 const updateConnection = z.object({
   label: z.string().trim().min(1).max(60).optional(),
   is_primary: z.literal(true).optional()
@@ -55,6 +58,7 @@ export async function registerWhatsAppConnectionRoutes(
       connections: connections.map((connection) => ({
         id: connection.id,
         label: connection.label,
+        channel: connection.channel,
         is_primary: connection.isPrimary,
         status: connection.status,
         phone_number: connection.phoneNumber,
@@ -70,16 +74,22 @@ export async function registerWhatsAppConnectionRoutes(
   app.post("/connections", async (request, reply) => {
     const session = await requirePermission(request, "connection.manage");
     const body = createConnection.parse(request.body);
+    if (body.channel === "instagram") {
+      return reply.status(501).send({
+        code: "CHANNEL_NOT_AVAILABLE",
+        message: "Canal Instagram ainda não disponível para conexão"
+      });
+    }
     const created = await withTenantTransaction(db, session.tenantId, async (client) => {
       await assertLimitWithinTransaction(client, session.tenantId, "MAX_WHATSAPP_CONNECTIONS");
       const row = await client.query<{ id: string }>(
-        `INSERT INTO whatsapp_sessions(tenant_id,label,is_primary)
+        `INSERT INTO whatsapp_sessions(tenant_id,label,is_primary,channel)
          SELECT $1,$2,NOT EXISTS(
            SELECT 1 FROM whatsapp_sessions
            WHERE tenant_id=$1 AND is_primary AND archived_at IS NULL
-         )
+         ),$3
          RETURNING id`,
-        [session.tenantId, body.label]
+        [session.tenantId, body.label, body.channel]
       );
       return row.rows[0];
     });

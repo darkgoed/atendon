@@ -71,7 +71,16 @@ describe("case organization UI contracts", () => {
     expect(pipelineCard).not.toContain("md:hidden");
     expect(pipelineBoard).toContain('aria-live="polite"');
     expect(pipelineBoard).toContain("data-drop-state=");
-    expect(pipelinePage).toContain("expectedUpdatedAt: lead.atualizado_em");
+    const initialToken = pipelinePage.indexOf("let expectedUpdatedAt = lead.atualizado_em;");
+    const assignment = pipelinePage.indexOf("await api(`/scheduling/leads/${lead.id}/follow-up`");
+    const revalidation = pipelinePage.indexOf("const refreshed = await api<{ lead?: { atualizado_em?: string } }>(`/scheduling/leads/${lead.id}`);");
+    const refreshedToken = pipelinePage.indexOf("expectedUpdatedAt = refreshed.lead?.atualizado_em ?? expectedUpdatedAt;");
+    const transitionPayload = pipelinePage.indexOf("buildPipelineTransitionPayload({ stage: persistenceStage, expectedUpdatedAt, commercial })");
+    expect(initialToken).toBeGreaterThanOrEqual(0);
+    expect(assignment).toBeGreaterThan(initialToken);
+    expect(revalidation).toBeGreaterThan(assignment);
+    expect(refreshedToken).toBeGreaterThan(revalidation);
+    expect(transitionPayload).toBeGreaterThan(refreshedToken);
     expect(pipelinePage).toContain("allowedTransitions.has(`${sourceId}:${target.id}`)");
   });
 

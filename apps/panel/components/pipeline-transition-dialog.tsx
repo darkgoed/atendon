@@ -10,6 +10,7 @@ import {
   pipelineTransitionRequirement,
   type PipelineCommercialInput,
   type PipelineLead,
+  type PipelineMember,
   type PipelineStage
 } from "@/lib/pipeline";
 
@@ -20,6 +21,7 @@ export function PipelineTransitionDialog({
   pending,
   error,
   timezone,
+  members = [],
   onClose,
   onSubmit
 }: {
@@ -29,11 +31,16 @@ export function PipelineTransitionDialog({
   pending: boolean;
   error?: string;
   timezone: string;
+  members?: PipelineMember[];
   onClose: () => void;
   onSubmit: (stage: PipelineStage, commercial?: PipelineCommercialInput) => void | Promise<void>;
 }) {
   const [targetId, setTargetId] = useState(initialTarget?.id ?? targets[0]?.id ?? "");
   const [saleValue, setSaleValue] = useState("");
+  const [saleProduct, setSaleProduct] = useState("");
+  const [saleSource, setSaleSource] = useState("");
+  const [saleChannel, setSaleChannel] = useState("");
+  const [responsibleMemberId, setResponsibleMemberId] = useState(lead.responsavel_member_id ?? "");
   const [nextAction, setNextAction] = useState("");
   const [nextActionAt, setNextActionAt] = useState("");
   const [lossReason, setLossReason] = useState("");
@@ -48,12 +55,16 @@ export function PipelineTransitionDialog({
   useEffect(() => {
     setTargetId(initialTarget?.id ?? firstTargetId ?? "");
     setSaleValue("");
+    setSaleProduct("");
+    setSaleSource("");
+    setSaleChannel("");
+    setResponsibleMemberId(lead.responsavel_member_id ?? "");
     setNextAction("");
     setNextActionAt("");
     setLossReason("");
     setLossReasonNote("");
     setValidationError("");
-  }, [firstTargetId, initialTarget?.id, lead.id]);
+  }, [firstTargetId, initialTarget?.id, lead.id, lead.responsavel_member_id]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -66,7 +77,11 @@ export function PipelineTransitionDialog({
         setValidationError("Informe um valor de venda maior que zero.");
         return;
       }
-      commercial = { sale_value: parsed };
+      if (!saleProduct.trim() || !saleSource.trim() || !saleChannel.trim() || !responsibleMemberId) {
+        setValidationError("Informe produto, responsável, origem e modalidade da venda.");
+        return;
+      }
+      commercial = { sale_value: parsed, sale_product: saleProduct.trim(), sale_source: saleSource.trim(), sale_channel: saleChannel.trim(), responsavel_member_id: responsibleMemberId };
     } else if (requirement === "next_action") {
       if (!nextAction.trim() || !nextActionAt) {
         setValidationError("Informe a próxima ação e sua data e hora.");
@@ -122,11 +137,13 @@ export function PipelineTransitionDialog({
         </label>
 
         {requirement === "sale" ? (
-          <label className="field">
-            <span className="label">Valor da venda</span>
-            <input className="input" type="number" inputMode="decimal" min="0.01" step="0.01" value={saleValue} onChange={(event) => setSaleValue(event.target.value)} placeholder="0,00" disabled={pending} required />
-            <span className="text-[10px] text-[var(--muted)]">Obrigatório para concluir como fechado.</span>
-          </label>
+          <>
+            <label className="field"><span className="label">Produto</span><input className="input" value={saleProduct} onChange={(event) => setSaleProduct(event.target.value)} disabled={pending} required /></label>
+            <label className="field"><span className="label">Valor da venda</span><input className="input" type="number" inputMode="decimal" min="0.01" step="0.01" value={saleValue} onChange={(event) => setSaleValue(event.target.value)} placeholder="0,00" disabled={pending} required /></label>
+            <label className="field"><span className="label">Responsável</span><select className="input" value={responsibleMemberId} onChange={(event) => setResponsibleMemberId(event.target.value)} disabled={pending} required><option value="">Selecione um responsável</option>{members.map((member) => <option key={member.id} value={member.id}>{member.name ?? member.email}</option>)}{lead.responsavel_member_id && !members.some((member) => member.id === lead.responsavel_member_id) ? <option value={lead.responsavel_member_id}>{lead.responsavel_email ?? "Responsável atual"}</option> : null}</select></label>
+            <label className="field"><span className="label">Origem</span><input className="input" value={saleSource} onChange={(event) => setSaleSource(event.target.value)} disabled={pending} required /></label>
+            <label className="field"><span className="label">Modalidade</span><input className="input" value={saleChannel} onChange={(event) => setSaleChannel(event.target.value)} disabled={pending} required /></label>
+          </>
         ) : null}
 
         {requirement === "next_action" ? <>

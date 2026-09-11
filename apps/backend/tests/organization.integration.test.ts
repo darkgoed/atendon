@@ -38,6 +38,13 @@ beforeAll(async () => {
     foreignTenantId = (await client.query<{ id: string }>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id",[`Organization foreign ${suffix}`])).rows[0].id;
     await ensureWorkspaceDefaultRoles(client,tenantId);
     await ensureWorkspaceDefaultRoles(client,foreignTenantId);
+    await client.query(
+      `INSERT INTO tenant_feature_flag_overrides(tenant_id,flag_key,enabled)
+       VALUES ($1,'leads_v1',true),($1,'pipeline_v1',true),
+              ($2,'leads_v1',true),($2,'pipeline_v1',true)
+       ON CONFLICT (tenant_id,flag_key) DO UPDATE SET enabled=EXCLUDED.enabled,updated_at=now()`,
+      [tenantId,foreignTenantId]
+    );
     whatsappSessionId = (await client.query<{ id: string }>(
       "INSERT INTO whatsapp_sessions(tenant_id,label,is_primary) VALUES($1,'Principal',true) RETURNING id",
       [tenantId]

@@ -1,5 +1,7 @@
 import type { Pool } from "pg";
 
+export type ConnectionChannel = "whatsapp" | "instagram";
+
 export interface SessionRecord { id: string; tenantId: string; status: string; instanceName: string }
 
 export class SessionRepository {
@@ -21,19 +23,26 @@ export class SessionRepository {
   }
 
   async listByTenant(tenantId: string): Promise<Array<SessionRecord & {
+    channel: ConnectionChannel;
     label: string; phoneNumber: string | null; isPrimary: boolean;
     qrCode: string | null; lastConnectedAt: string | null;
     disconnectedReason: string | null; createdAt: string;
   }>> {
-    const result = await this.db.query(
+    const result = await this.db.query<{
+      id: string; tenant_id: string; status: string; instance_name: string;
+      channel: ConnectionChannel; label: string; phone_number: string | null;
+      is_primary: boolean; qr_code: string | null; last_connected_at: string | null;
+      disconnected_reason: string | null; created_at: string;
+    }>(
       `SELECT id, tenant_id, status, instance_name, label, phone_number, is_primary,
-              qr_code, last_connected_at, disconnected_reason, created_at
+              qr_code, last_connected_at, disconnected_reason, created_at, channel
        FROM whatsapp_sessions
        WHERE tenant_id=$1 AND archived_at IS NULL
        ORDER BY is_primary DESC, created_at`, [tenantId]
     );
     return result.rows.map((row) => ({
       id: row.id, tenantId: row.tenant_id, status: row.status, instanceName: row.instance_name,
+      channel: row.channel,
       label: row.label, phoneNumber: row.phone_number, isPrimary: row.is_primary,
       qrCode: row.qr_code, lastConnectedAt: row.last_connected_at,
       disconnectedReason: row.disconnected_reason, createdAt: row.created_at

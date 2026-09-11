@@ -3,6 +3,7 @@ import { db } from "../../db/client.js";
 import { httpError, withTransaction } from "../scheduling/service.js";
 import { refreshAppointmentGroupNotificationsForLead } from "../scheduling/notification-repository.js";
 import {
+  DEFAULT_BOARD_STATUSES,
   configuredStageTransitionIsUndoable,
   domainAllowsStageTransition,
   type LeadTechnicalStatus
@@ -50,12 +51,23 @@ type BulkValidation = {
   items: Array<{ id: string; status: LeadTechnicalStatus; pipeline_stage_id: string; assigned_member_id: string | null; updated_at: string }>;
   errors: Array<{ id: string; code: string; message: string }>;
   undoable: boolean;
+  enforceTransitions: boolean;
   targetStage?: StageRow;
   targetMemberUserId?: string | null;
 };
 
 function serializedDate(value: string | Date) {
   return new Date(value).toISOString();
+}
+
+async function pipelineEnforcesTransitions(client: PoolClient, tenantId: string) {
+  const result = await client.query<{ pipeline_enforce_transitions: boolean | null }>(
+    "SELECT pipeline_enforce_transitions FROM tenants WHERE id=$1 FOR SHARE",
+    [tenantId]
+  );
+  if (!result.rows[0]) throw httpError(404,"Tenant não encontrado");
+  // Somente `false` explícito libera sequência. Ausência/null falha fechado.
+  return result.rows[0].pipeline_enforce_transitions !== false;
 }
 
 function databaseError(error: unknown, fallback: string): never {
@@ -275,8 +287,8 @@ export async function deleteSavedView(tenantId: string, viewId: string, actor: O
 }
 
 export async function loadPipeline(tenantId: string, includeArchived = false) {
-  const [stages,transitions,followUpSettings] = await Promise.all([
-    db.query(
+  const [stages,transitions,followUpSettings,pipelineMode] = await Promise.all([
+    db.query<StageRow & { lead_count: number; created_at: string; updated_at: string }>(
       `SELECT stage.id,stage.name,stage.color,stage.position,stage.capacity_target,
               stage.technical_status,stage.is_default,stage.archived_at,
               count(lead.id)::int lead_count,stage.created_at,stage.updated_at
@@ -304,12 +316,21 @@ export async function loadPipeline(tenantId: string, includeArchived = false) {
        FROM tenant_ai_settings
        WHERE tenant_id=$1`,
       [tenantId]
+    ),
+    db.query<{ pipeline_enforce_transitions: boolean | null }>(
+      "SELECT pipeline_enforce_transitions FROM tenants WHERE id=$1",
+      [tenantId]
     )
   ]);
+  if (!pipelineMode.rows[0]) throw httpError(404,"Tenant não encontrado");
   return {
-    stages: stages.rows,
+    stages: stages.rows.map((stage) => ({
+      ...stage,
+      is_default_board: (DEFAULT_BOARD_STATUSES as readonly string[]).includes(stage.technical_status)
+    })),
     transitions: transitions.rows,
-    follow_up_config: followUpSettings.rows[0] ?? { enabled: false, max_count: 0 }
+    follow_up_config: followUpSettings.rows[0] ?? { enabled: false, max_count: 0 },
+    enforce_transitions: pipelineMode.rows[0].pipeline_enforce_transitions !== false
   };
 }
 
@@ -462,12 +483,15 @@ async function moveLeadToStage(
   target: StageRow,
   actor: OrganizationActor,
   requireConfiguredTransition = true,
-  commercial?: CommercialTransitionPayload
+  commercial?: CommercialTransitionPayload,
+  enforceTransitions = true
 ) {
-  if (!domainAllowsStageTransition(lead.status,target.technical_status)) {
+  // Modo livre dispensa somente os dois grafos de sequência. Payload
+  // comercial, escopo, locks, tenant e invariantes do banco continuam ativos.
+  if (enforceTransitions && !domainAllowsStageTransition(lead.status,target.technical_status)) {
     throw httpError(409,`Transição proibida pelo domínio: ${lead.status} -> ${target.technical_status}`);
   }
-  if (lead.pipeline_stage_id !== target.id && requireConfiguredTransition) {
+  if (enforceTransitions && lead.pipeline_stage_id !== target.id && requireConfiguredTransition) {
     const transition = await client.query(
       `SELECT 1 FROM pipeline_transitions
        WHERE tenant_id=$1 AND from_stage_id=$2 AND to_stage_id=$3`,
@@ -525,13 +549,14 @@ export async function moveLeadStage(
 ) {
   return withTransaction(async (client) => {
     const lead = await assertAccessibleLead(client,tenantId,leadId,access,true);
+    const enforceTransitions = await pipelineEnforcesTransitions(client,tenantId);
     if (expectedUpdatedAt && serializedDate(lead.updated_at) !== serializedDate(expectedUpdatedAt)) throw httpError(409,"Lead alterado por outra operação");
     const target = (await client.query<StageRow>(
       "SELECT * FROM pipeline_stages WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL",
       [tenantId,stageId]
     )).rows[0];
     if (!target) throw httpError(404,"Etapa não encontrada");
-    const updated = await moveLeadToStage(client,tenantId,lead,target,actor,true,commercial);
+    const updated = await moveLeadToStage(client,tenantId,lead,target,actor,true,commercial,enforceTransitions);
     await insertAudit(client,tenantId,actor,"pipeline_stage.lead_moved","scheduling_lead",leadId,{ previousStageId: lead.pipeline_stage_id, stageId });
     return updated;
   });
@@ -544,6 +569,7 @@ async function validateBulk(
   input: BulkPreviewInput,
   lock: boolean
 ): Promise<BulkValidation> {
+  const enforceTransitions = await pipelineEnforcesTransitions(client,tenantId);
   const ids = input.items.map((item) => item.id);
   const leads = await client.query<LeadRow>(
     `SELECT id,status,pipeline_stage_id,assigned_member_id,updated_at
@@ -593,16 +619,16 @@ async function validateBulk(
         errors.push({ id: targetStage.id, code: "commercial_payload_required", message: "Esta etapa exige dados comerciais e não pode ser aplicada em lote" });
       }
       const transitionPairs = leads.rows.filter((lead) => lead.pipeline_stage_id !== targetStage?.id);
-      const transitions = await client.query<{ from_stage_id: string }>(
+      const transitions = enforceTransitions ? await client.query<{ from_stage_id: string }>(
         `SELECT from_stage_id FROM pipeline_transitions
          WHERE tenant_id=$1 AND to_stage_id=$2 AND from_stage_id=ANY($3::uuid[])`,
         [tenantId,targetStage.id,transitionPairs.map((lead) => lead.pipeline_stage_id)]
-      );
+      ) : { rows: [] as Array<{ from_stage_id: string }> };
       const configured = new Set(transitions.rows.map((row) => row.from_stage_id));
       for (const lead of transitionPairs) {
-        if (!domainAllowsStageTransition(lead.status,targetStage.technical_status)) {
+        if (enforceTransitions && !domainAllowsStageTransition(lead.status,targetStage.technical_status)) {
           errors.push({ id: lead.id, code: "domain_transition", message: `Transição técnica proibida: ${lead.status} -> ${targetStage.technical_status}` });
-        } else if (!configured.has(lead.pipeline_stage_id)) {
+        } else if (enforceTransitions && !configured.has(lead.pipeline_stage_id)) {
           errors.push({ id: lead.id, code: "pipeline_transition", message: "Transição não habilitada na configuração do Pipeline" });
         }
       }
@@ -615,6 +641,7 @@ async function validateBulk(
     items: leads.rows.map((lead) => ({ ...lead, updated_at: serializedDate(lead.updated_at) })),
     errors,
     undoable,
+    enforceTransitions,
     ...(targetStage ? { targetStage } : {}),
     ...(targetMemberUserId !== undefined ? { targetMemberUserId } : {})
   };
@@ -700,7 +727,7 @@ export async function applyBulkOperation(
         target_status: target.technical_status,
         items: validation.items.map((lead) => ({ id: lead.id, previous_stage_id: lead.pipeline_stage_id, previous_status: lead.status }))
       } : null;
-      for (const lead of validation.items) await moveLeadToStage(client,tenantId,lead,target,actor);
+      for (const lead of validation.items) await moveLeadToStage(client,tenantId,lead,target,actor,true,undefined,validation.enforceTransitions);
     }
     const undoExpiresAt = undoPayload ? new Date(Date.now()+30_000).toISOString() : null;
     const resultPayload = { action: input.action, count: leadIds.length, undoable: Boolean(undoPayload), undo_expires_at: undoExpiresAt };

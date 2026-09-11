@@ -7,6 +7,9 @@ import { loadCommercialDashboard, type CommercialDashboardInput } from "../dashb
 import { isCapabilityEnabled, isFeatureFlagEnabled, type CapabilityKey } from "../operations/feature-flags.js";
 import {
   availableDashboardWidgets,
+  dashboardLayoutFromPreset,
+  DASHBOARD_PRESETS,
+  DASHBOARD_PRESET_KEYS,
   DASHBOARD_WIDGET_KEYS,
   DASHBOARD_WIDGET_SIZES,
   defaultDashboardLayout,
@@ -15,16 +18,18 @@ import {
   type DashboardLayoutItem,
   type DashboardWidgetKey
 } from "./catalog.js";
+import { loadNewWidgetMetric } from "./metrics.js";
 
 const widgetKeySchema = z.enum(DASHBOARD_WIDGET_KEYS);
 const layoutItemSchema = z.object({
   key: widgetKeySchema,
-  order: z.number().int().min(0).max(20),
+  order: z.number().int().min(0).max(60),
   visible: z.boolean(),
   size: z.enum(DASHBOARD_WIDGET_SIZES)
 }).strict();
 const layoutBodySchema = z.object({ items: z.array(layoutItemSchema).max(DASHBOARD_WIDGET_KEYS.length) }).strict();
 const widgetParamsSchema = z.object({ key: widgetKeySchema });
+const presetParamsSchema = z.object({ key: z.enum(DASHBOARD_PRESET_KEYS) });
 const dashboardQuerySchema = z.object({
   period: z.enum(["today", "week", "month", "custom"]).catch("today"),
   start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -48,7 +53,30 @@ const WIDGET_CAPABILITIES: Partial<Record<DashboardWidgetKey, CapabilityKey>> = 
   team_load: "appointments_v1",
   today_agenda: "appointments_v1",
   pipeline: "pipeline_v1",
-  whatsapp_connection: "workspace_admin_v1"
+  whatsapp_connection: "workspace_admin_v1",
+  new_leads: "leads_v1",
+  pending_follow_ups: "leads_v1",
+  overdue_follow_ups: "leads_v1",
+  leads_paid_traffic: "leads_v1",
+  leads_referral: "leads_v1",
+  leads_organic: "leads_v1",
+  leads_other_sources: "leads_v1",
+  appointments_count: "appointments_v1",
+  attendances: "appointments_v1",
+  no_shows: "appointments_v1",
+  reschedules: "appointments_v1",
+  attendance_rate: "appointments_v1",
+  sales_count: "leads_v1",
+  sales_value: "leads_v1",
+  average_ticket: "leads_v1",
+  lost_sales: "leads_v1",
+  conversion_rate: "leads_v1",
+  sales_paid_traffic: "leads_v1",
+  sales_referral: "leads_v1",
+  sales_organic: "leads_v1",
+  sales_by_seller: "appointments_v1",
+  sales_value_by_seller: "appointments_v1",
+  conversion_by_seller: "appointments_v1"
 };
 
 async function widgetCatalog(session: WorkspaceSession) {
@@ -113,6 +141,8 @@ async function loadWidgetData(
   key: DashboardWidgetKey,
   input: CommercialDashboardInput
 ): Promise<unknown> {
+  const metric = await loadNewWidgetMetric(session, key, input);
+  if (metric !== undefined) return metric;
   const scope = await resolveCaseScope(db, session);
   const workspaceScope = scope.type === "workspace";
   const caseParams = [session.tenantId, workspaceScope, session.userId];
@@ -239,8 +269,8 @@ export async function registerDashboardWidgetRoutes(app: FastifyInstance) {
     if (!await featureEnabled(session, reply)) return;
     const catalog = await widgetCatalog(session);
     return {
-      widgets: catalog.map(({ key, label, description, sizes, defaultSize }) => ({
-        key,label,description,sizes,default_size: defaultSize
+      widgets: catalog.map(({ key, label, description, group, sizes, defaultSize }) => ({
+        key,label,description,group,sizes,default_size: defaultSize
       })),
       default_layout: defaultDashboardLayout(catalog)
     };
@@ -269,6 +299,29 @@ export async function registerDashboardWidgetRoutes(app: FastifyInstance) {
       [session.tenantId, session.userId]
     );
     return { layout: { items: defaultDashboardLayout(await widgetCatalog(session)), source: "default" as const } };
+  });
+
+  app.get("/dashboard/widgets/presets", async (request, reply) => {
+    const session = await requirePermission(request, "dashboard.read");
+    if (!await featureEnabled(session, reply)) return;
+    const allowed = new Set((await widgetCatalog(session)).map((widget) => widget.key));
+    return {
+      presets: DASHBOARD_PRESET_KEYS.map((key) => ({
+        key,
+        label: DASHBOARD_PRESETS[key].label,
+        description: DASHBOARD_PRESETS[key].description,
+        keys: DASHBOARD_PRESETS[key].keys.filter((widgetKey) => allowed.has(widgetKey))
+      }))
+    };
+  });
+
+  app.post("/dashboard/widgets/presets/:key", async (request, reply) => {
+    const session = await requirePermission(request, "dashboard.read");
+    if (!await featureEnabled(session, reply)) return;
+    const { key } = presetParamsSchema.parse(request.params);
+    const items = dashboardLayoutFromPreset(key, await widgetCatalog(session));
+    await saveLayout(session, items);
+    return { items };
   });
 
   app.get("/dashboard/widgets/:key", async (request, reply) => {

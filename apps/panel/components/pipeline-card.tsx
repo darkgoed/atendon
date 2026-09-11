@@ -1,23 +1,17 @@
 "use client";
 
-import { ArrowRight, CalendarBlank, Clock, WarningCircle } from "@phosphor-icons/react";
+import { ArrowRight, CalendarBlank, Clock } from "@phosphor-icons/react";
 import Link from "next/link";
 import type { DragEvent } from "react";
-import { LeadTagChips } from "@/components/lead-tag-picker";
+
 import {
   formatPipelineAge,
   isOverdueFollowUp,
+  pipelineStatusLabel,
   type PipelineLead,
   type PipelinePreferences
 } from "@/lib/pipeline";
 
-const outcomeLabels: Record<string, string> = {
-  fechado: "Venda fechada",
-  proposta_enviada: "Proposta enviada",
-  em_negociacao: "Em negociação",
-  follow_up: "Follow-up",
-  nao_avancou: "Não avançou"
-};
 
 function formatDateTime(value: string, timezone?: string): string {
   try {
@@ -86,7 +80,7 @@ export function PipelineCard({
   const compact = preferences.density === "compact";
   const score = qualificationScore(lead.qualificacao?.estrelas);
   const actionStatus = actionTiming(lead.proxima_acao_em);
-  const company = lead.unidade_nome ?? lead.origem ?? lead.campanha ?? "Empresa não informada";
+
 
   return (
     <article
@@ -100,10 +94,10 @@ export function PipelineCard({
         {canSelect ? <input type="checkbox" checked={selected} onChange={onToggleSelected} aria-label={`Selecionar ${lead.nome ?? lead.telefone}`} disabled={pending} /> : null}
         <div className="min-w-0 flex-1">
           <strong className="block truncate text-[12.5px] font-semibold leading-[1.35]">{lead.nome ?? "Sem nome"}</strong>
-          <span className="mt-0.5 block truncate text-[11px] text-[var(--text-6)]" title={company}>{company}</span>
+          <span className="mt-0.5 block truncate text-[11px] text-[var(--text-6)]" title={lead.interesse ?? undefined}>Interesse: {lead.interesse ?? "Não informado"}</span>
         </div>
-        {visible("ownership") ? <span className="pipeline-card__owner" title={`Responsável: ${shortIdentity(currentResponsible)}`} aria-label={`Responsável: ${shortIdentity(currentResponsible)}`}>{ownerInitials(currentResponsible)}</span> : null}
-        {lead.qualificacao?.requer_decisao_humana ? <WarningCircle size={16} className="shrink-0 text-[var(--warn)]" aria-label="Requer decisão humana" /> : null}
+        <span className="pipeline-card__owner" title={`Responsável: ${shortIdentity(currentResponsible)}`} aria-label={`Responsável: ${shortIdentity(currentResponsible)}`}>{ownerInitials(currentResponsible)}</span>
+
       </div>
 
       {(badgeVisible("resultPending") && resultPending) || (badgeVisible("recovery") && lead.recovery_required) || (badgeVisible("overdueFollowUp") && overdue) ? (
@@ -120,10 +114,9 @@ export function PipelineCard({
         </p>
       ) : null}
 
-      <div className="mt-2 flex min-w-0 items-center gap-2">
-        <span className="mono min-w-0 truncate text-[12px] font-medium text-[var(--text)]">{lead.sale_value != null ? lead.sale_value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "Valor não informado"}</span>
-        {visible("qualification") && lead.qualificacao ? <span className="pipeline-card__score" data-score={score} aria-label={`${lead.qualificacao.estrelas} de 5 na qualificação`}>{score}</span> : null}
-      </div>
+      {lead.situacao ? <span className="mt-2 inline-flex w-fit rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-5)]">Situação: {pipelineStatusLabel(lead.situacao)}</span> : null}
+
+      {visible("qualification") && lead.qualificacao ? <div className="mt-2"><span className="pipeline-card__score" data-score={score} aria-label={`${lead.qualificacao.estrelas} de 5 na qualificação`}>{score}</span></div> : null}
 
       {visible("nextMeeting") && lead.latest_appointment ? (
         <div className="mt-2 flex items-start gap-1.5 text-[10px] text-[var(--body)]">
@@ -140,9 +133,6 @@ export function PipelineCard({
         </div>
       ) : null}
 
-      {lead.commercial_outcome ? <p className="mt-2 truncate text-[10px] font-medium text-[var(--accent-soft)]">{outcomeLabels[lead.commercial_outcome] ?? lead.commercial_outcome.replaceAll("_", " ")}{lead.sale_value ? ` · ${lead.sale_value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}</p> : null}
-
-      {lead.tags?.length ? <div className="pipeline-card__tags mt-2"><LeadTagChips tags={lead.tags} compact /></div> : null}
 
       <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--border)] pt-2">
         <span className="flex shrink-0 items-center gap-1">

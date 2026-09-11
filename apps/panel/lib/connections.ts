@@ -1,8 +1,11 @@
 import { api } from "./api";
 
+export type ConnectionChannel = "whatsapp" | "instagram";
+
 export interface ConnectionState {
   id: string;
   label: string;
+  channel?: ConnectionChannel;
   is_primary: boolean;
   phone_number: string | null;
   status: "qr_pending" | "connected" | "disconnected" | "banned";
@@ -22,8 +25,12 @@ export interface ConnectionsResponse {
   limits: ConnectionLimits;
 }
 
-export function listConnections() {
-  return api<ConnectionsResponse>("/connections");
+export async function listConnections() {
+  const response = await api<ConnectionsResponse>("/connections");
+  return {
+    ...response,
+    connections: response.connections.map((connection) => ({ ...connection, channel: connection.channel ?? "whatsapp" }))
+  };
 }
 
 export function createConnection(label: string) {

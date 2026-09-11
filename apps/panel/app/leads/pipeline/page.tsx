@@ -42,7 +42,7 @@ import { usePipelinePreferences } from "@/lib/use-pipeline-preferences";
 import { readPipelineViewPreference, writePipelineViewPreference } from "@/lib/pipeline-view";
 
 type PipelineResponse = { leads: PipelineLead[]; timezone?: string };
-type PipelineConfigResponse = { stages: PipelineStage[]; transitions: PipelineTransition[]; follow_up_config: PipelineFollowUpConfig };
+type PipelineConfigResponse = { stages: PipelineStage[]; transitions: PipelineTransition[]; follow_up_config: PipelineFollowUpConfig; enforce_transitions?: boolean };
 type MembersResponse = { members: PipelineMember[] };
 type TransitionIntent = { lead: PipelineLead; target?: PipelineStage };
 
@@ -73,6 +73,7 @@ export default function PipelinePage() {
   const [pendingLeadIds, setPendingLeadIds] = useState<Set<string>>(() => new Set());
   const [intent, setIntent] = useState<TransitionIntent | null>(null);
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
+  const [showAllStages, setShowAllStages] = useState(false);
   const [actionError, setActionError] = useState("");
   const { data: session } = useSWR<PanelSession>("/me", fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
   const [preferences, setPreferences] = usePipelinePreferences(session?.activeWorkspace?.id, session?.user.id);
@@ -130,9 +131,14 @@ export default function PipelinePage() {
       : buildOperationalPipelineStages(configuredStages, pipelineData?.follow_up_config),
     [configuredStages, organizationEnabled, pipelineData?.follow_up_config]
   );
+  const boardStages = useMemo(() => showAllStages
+    ? stages
+    : stages.filter((stage) => ["novo", "em_atendimento", "qualificado", "em_negociacao", "fechado", "perdido"].includes(stage.technical_status)), [showAllStages, stages]);
   const allowedTransitions = useMemo(() => new Set(organizationEnabled === false
     ? fallbackTransitions
-    : (pipelineData?.transitions ?? []).map((transition) => `${transition.from_stage_id}:${transition.to_stage_id}`)), [organizationEnabled, pipelineData?.transitions]);
+    : pipelineData?.enforce_transitions === false
+      ? configuredStages.flatMap((source) => configuredStages.filter((target) => target.id !== source.id).map((target) => `${source.id}:${target.id}`))
+      : (pipelineData?.transitions ?? []).map((transition) => `${transition.from_stage_id}:${transition.to_stage_id}`)), [configuredStages, organizationEnabled, pipelineData?.enforce_transitions, pipelineData?.transitions]);
   const members = useMemo(() => {
     if (membersData?.members) return membersData.members.filter((member) => member.status !== "suspended");
     const derived = new Map<string, PipelineMember>();
@@ -220,13 +226,22 @@ export default function PipelinePage() {
     } : item);
     const optimisticData: PipelineResponse = { ...(data ?? {}), leads: optimisticLeads };
     try {
+      let expectedUpdatedAt = lead.atualizado_em;
+      if (commercial && "responsavel_member_id" in commercial && commercial.responsavel_member_id) {
+        await api(`/scheduling/leads/${lead.id}/follow-up`, {
+          method: "PATCH",
+          body: JSON.stringify({ responsavel_member_id: commercial.responsavel_member_id })
+        });
+        const refreshed = await api<{ lead?: { atualizado_em?: string } }>(`/scheduling/leads/${lead.id}`);
+        expectedUpdatedAt = refreshed.lead?.atualizado_em ?? expectedUpdatedAt;
+      }
       await mutate(async () => {
         if (stage.id.startsWith("fallback:")) {
           await updateLeadStatus(lead.id, persistenceStage.technical_status);
         } else {
           await api(`/organization/leads/${lead.id}/stage`, {
             method: "PATCH",
-            body: JSON.stringify(buildPipelineTransitionPayload({ stage: persistenceStage, expectedUpdatedAt: lead.atualizado_em, commercial }))
+            body: JSON.stringify(buildPipelineTransitionPayload({ stage: persistenceStage, expectedUpdatedAt, commercial }))
           });
         }
         return optimisticData;
@@ -260,6 +275,10 @@ export default function PipelinePage() {
         </div>
         <div className="pipeline-page__actions">
           <SavedViewsControl resource="pipeline" filters={pipelineFiltersForSavedView(filters)} onApply={(saved) => setFilters(applyPipelineSavedView(saved))} />
+          <label className="inline-flex min-h-9 items-center gap-2 rounded border border-[var(--border)] px-3 text-xs">
+            <input type="checkbox" checked={showAllStages} onChange={(event) => setShowAllStages(event.target.checked)} />
+            Mostrar todas as etapas
+          </label>
           <PipelineViewPreferences value={preferences} onChange={setPreferences} />
           <PipelineSettings stages={pipelineData?.stages ?? []} transitions={pipelineData?.transitions ?? []} followUpConfig={pipelineData?.follow_up_config} onChanged={mutatePipeline} />
         </div>
@@ -291,10 +310,11 @@ export default function PipelinePage() {
           onToggleSelected={toggleSelected}
           onMoveRequest={requestMove}
         /> : <PipelineBoard
-          stages={stages}
+          stages={boardStages}
           leads={visibleLeads}
           allowedTransitions={allowedTransitions}
           legacy={organizationEnabled === false}
+          showAllStages={showAllStages}
           loading={loading}
           loadError={loadError}
           hasActiveFilters={hasActiveFilters}
@@ -318,6 +338,7 @@ export default function PipelinePage() {
           pending={pendingLeadIds.has(intent.lead.id)}
           error={actionError}
           timezone={data?.timezone ?? session?.activeWorkspace?.timezone ?? "UTC"}
+          members={members}
           onClose={() => { if (!pendingLeadIds.has(intent.lead.id)) { setIntent(null); setActionError(""); } }}
           onSubmit={(stage, commercial) => moveLead(intent.lead, stage, commercial)}
         />

@@ -38,6 +38,7 @@ type LeadRow = {
   assigned_member_id: string | null;
   sdr_member_id: string | null;
   closer_member_id: string | null;
+  outcome_metadata?: Record<string, unknown>;
 };
 
 type JourneyResult = {
@@ -301,23 +302,30 @@ export async function applyStructuredStageEffects(
   let lossReasonNote: string | null = null;
   let nextAction: string | null = null;
   let nextActionAt: Date | null = null;
+  const hasSaleMetadata = Boolean(payload?.sale_product || payload?.sale_channel || payload?.sale_source);
   if (targetStatus === "fechado") {
-    if (!payload?.sale_value || payload.loss_reason || payload.next_action || payload.next_action_at) throw httpError(400,"Informe somente um valor de venda positivo para fechar o lead");
+    if (!payload?.sale_value || payload.loss_reason || payload.loss_reason_note || payload.next_action || payload.next_action_at) throw httpError(400,"Informe somente os dados da venda para fechar o lead");
     outcome="fechado"; saleValue=payload.sale_value;
   } else if (targetStatus === "perdido") {
-    if (!payload?.loss_reason || payload.sale_value || payload.next_action || payload.next_action_at) throw httpError(400,"Informe somente o motivo da perda");
+    if (!payload?.loss_reason || payload.sale_value || hasSaleMetadata || payload.next_action || payload.next_action_at) throw httpError(400,"Informe somente o motivo da perda");
     const resolved = await resolveLossReason(client,input.tenantId,payload.loss_reason,payload.loss_reason_note);
     outcome="nao_avancou"; lossReason=resolved.key; lossReasonNote=resolved.note;
   } else if (STAGES_REQUIRING_NEXT_ACTION.has(targetStatus)) {
-    if (!payload?.next_action || !payload.next_action_at || payload.sale_value || payload.loss_reason) throw httpError(400,"Informe somente a próxima ação e sua data");
+    if (!payload?.next_action || !payload.next_action_at || payload.sale_value || hasSaleMetadata || payload.loss_reason || payload.loss_reason_note) throw httpError(400,"Informe somente a próxima ação e sua data");
     outcome=targetStatus as CommercialOutcome;
     nextAction=payload.next_action;
     nextActionAt=assertFuture(payload.next_action_at);
   }
+  const outcomeMetadata = {
+    ...(payload?.outcome_metadata ?? {}),
+    ...(targetStatus === "fechado" && payload?.sale_product ? { sale_product: payload.sale_product } : {}),
+    ...(targetStatus === "fechado" && payload?.sale_channel ? { sale_channel: payload.sale_channel } : {}),
+    ...(targetStatus === "fechado" && payload?.sale_source ? { sale_source: payload.sale_source } : {})
+  };
   const result = await client.query<LeadRow>(
     `UPDATE scheduling_leads SET
        status=$3,pipeline_stage_id=$4,
-       commercial_outcome=$5,sale_value=$6,loss_reason=$7,loss_reason_note=$11,
+       commercial_outcome=$5,sale_value=$6,loss_reason=$7,loss_reason_note=$11,outcome_metadata=$12::jsonb,
        next_action=$8,next_action_at=$9,
        commercial_updated_at=CASE WHEN $5::text IS NULL THEN commercial_updated_at ELSE now() END,
        commercial_updated_by_user_id=CASE WHEN $5::text IS NULL THEN commercial_updated_by_user_id ELSE $10 END,
@@ -325,8 +333,8 @@ export async function applyStructuredStageEffects(
        recovery_member_id=CASE WHEN $3='follow_up' THEN recovery_member_id ELSE NULL END,
        updated_at=now()
      WHERE tenant_id=$1 AND id=$2
-     RETURNING id,status,pipeline_stage_id,assigned_member_id,sdr_member_id,closer_member_id`,
-    [input.tenantId,input.lead.id,targetStatus,input.targetStageId,outcome,saleValue,lossReason,nextAction,nextActionAt,input.actor.userId,lossReasonNote]
+     RETURNING id,status,pipeline_stage_id,assigned_member_id,sdr_member_id,closer_member_id,outcome_metadata`,
+    [input.tenantId,input.lead.id,targetStatus,input.targetStageId,outcome,saleValue,lossReason,nextAction,nextActionAt,input.actor.userId,lossReasonNote,outcomeMetadata]
   );
   if (targetStatus === "fechado") {
     await captureClosedSalePostSaleClient(

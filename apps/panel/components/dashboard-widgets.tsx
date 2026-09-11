@@ -20,30 +20,22 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { RateRing, Sparkline, TrendChart } from "@/components/commercial-dashboard-charts";
+import { DashboardMetricWidget, DashboardTeamWidget, type DashboardMetricData, type DashboardTeamData } from "@/components/dashboard-metric-widget";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { useCapabilities } from "@/lib/capabilities";
 import { trendDelta, type CommercialDashboardSeries } from "@/lib/commercial-dashboard";
 import { useRealtimeSignals } from "@/lib/realtime";
 
-type WidgetKey =
-  | "commercial_metrics"
-  | "conversion_funnel"
-  | "operations_summary"
-  | "whatsapp_connection"
-  | "handoffs"
-  | "open_conversations"
-  | "messages_today"
-  | "today_agenda"
-  | "team_load"
-  | "pipeline"
-  | "recent_alerts";
+type WidgetKey = string;
 type WidgetSize = "small" | "medium" | "wide" | "full";
 type LayoutItem = { key: WidgetKey; order: number; visible: boolean; size: WidgetSize };
+type WidgetGroup = string;
 type WidgetDefinition = {
   key: WidgetKey;
   label: string;
   description: string;
+  group?: WidgetGroup;
   sizes: WidgetSize[];
   default_size: WidgetSize;
 };
@@ -123,8 +115,37 @@ function KpiTile({ label, value, hint, tone, icon: TileIcon, spark, series }: {
   );
 }
 
+const GROUP_LABELS: Record<string, string> = {
+  atendimento: "Atendimento",
+  origem: "Origem",
+  agendamento: "Agendamento",
+  vendas: "Vendas",
+  origem_das_vendas: "Origem das vendas",
+  equipe: "Equipe"
+};
+const PERCENTAGE_WIDGET_KEYS = new Set(["attendance_rate", "conversion_rate", "conversion_by_seller"]);
+
+function groupTitle(group: string | undefined) {
+  return GROUP_LABELS[group ?? ""] ?? group ?? "Outros";
+}
+
+function metricData(data: Record<string, unknown>): DashboardMetricData | null {
+  return typeof data.value === "number" ? { value: data.value, ...(data.currency === "BRL" ? { currency: "BRL" as const } : {}) } : null;
+}
+
+function teamData(data: Record<string, unknown>): DashboardTeamData | null {
+  if (!Array.isArray(data.items)) return null;
+  const items = data.items.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object").map((item) => ({ member_id: String(item.member_id ?? ""), name: String(item.name ?? "Membro"), value: Number(item.value ?? 0) }));
+  return { items, ...(data.currency === "BRL" ? { currency: "BRL" as const } : {}) };
+}
+
 function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record<string, unknown> }) {
   const { isEnabled } = useCapabilities();
+  const newMetric = metricData(data);
+  const newTeam = teamData(data);
+  if (newTeam) return <DashboardTeamWidget data={newTeam} percentage={PERCENTAGE_WIDGET_KEYS.has(widgetKey)} />;
+  if (newMetric) return <DashboardMetricWidget data={newMetric} percentage={PERCENTAGE_WIDGET_KEYS.has(widgetKey)} />;
+
   const leadsEnabled = isEnabled("leads_v1");
   const appointmentsEnabled = isEnabled("appointments_v1");
   if (widgetKey === "whatsapp_connection") {
@@ -357,6 +378,14 @@ export function DashboardWidgets() {
   };
   const availableDraft = draft.filter((item) => widgetAvailable(item.key));
   const visible = availableDraft.filter((item) => item.visible).sort((a, b) => a.order - b.order);
+  const groupedDraft = useMemo(() => {
+    const groups = new Map<string, LayoutItem[]>();
+    [...availableDraft].sort((a, b) => a.order - b.order).forEach((item) => {
+      const group = definitions.get(item.key)?.group ?? "outros";
+      groups.set(group, [...(groups.get(group) ?? []), item]);
+    });
+    return [...groups.entries()];
+  }, [availableDraft, definitions]);
   // Um único filtro alimenta todos os widgets: eles recalculam juntos.
   const periodQuery = period === "custom"
     ? `period=custom&start=${encodeURIComponent(customStart)}&end=${encodeURIComponent(customEnd)}`
@@ -399,6 +428,15 @@ export function DashboardWidgets() {
       await mutateLayout(response, { revalidate: false });
     } finally { setSaving(false); }
   }
+  async function applyPreset(key: "essencial" | "comercial" | "gestao_completa") {
+    setSaving(true);
+    try {
+      const response = await api<{ items: LayoutItem[] }>(`/dashboard/widgets/presets/${key}`, { method: "POST" });
+      const nextLayout: LayoutResponse = { layout: { items: response.items, source: "saved" } };
+      await mutateLayout(nextLayout, { revalidate: true });
+      setDraft(response.items);
+    } finally { setSaving(false); }
+  }
 
   return (
     <Shell>
@@ -420,7 +458,11 @@ export function DashboardWidgets() {
 
         {editing && catalog ? <section className="mb-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 md:p-6" aria-label="Configurar dashboard">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Biblioteca de widgets</h2><p className="text-sm text-[var(--muted)]">A ordem e o tamanho se adaptam automaticamente em telas menores — um widget &ldquo;Amplo&rdquo; também vira coluna única no celular.</p></div><div className="flex gap-2"><button className="btn secondary active:scale-[0.98]" disabled={saving} onClick={() => void reset()}><ArrowCounterClockwise size={18} />Restaurar padrão</button><button className="btn active:scale-[0.98]" disabled={saving} onClick={() => void save()}><Check size={18} />{saving ? "Salvando" : "Salvar"}</button></div></div>
-          <div className="divide-y divide-[var(--border)]">{[...availableDraft].sort((a, b) => a.order - b.order).map((item, index) => { const definition = definitions.get(item.key); if (!definition) return null; return <div key={item.key} className="grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center"><label className="flex min-w-0 items-start gap-3"><input type="checkbox" checked={item.visible} onChange={(event) => patchItem(item.key, { visible: event.target.checked })} className="mt-1" /><span><strong className="block text-sm">{definition.label}</strong><span className="block text-xs text-[var(--muted)]">{definition.description}</span></span></label><label className="flex items-center gap-2 text-sm"><span>Tamanho</span><select className="input w-auto" value={item.size} onChange={(event) => patchItem(item.key, { size: event.target.value as WidgetSize })}>{definition.sizes.map((size) => <option key={size} value={size}>{sizeLabels[size]}</option>)}</select></label><div className="flex gap-1"><button className="btn secondary min-h-11 min-w-11 px-2" disabled={index === 0} aria-label={`Mover ${definition.label} para cima`} title="Mover para cima" onClick={() => move(item.key, -1)}><CaretUp size={17} /></button><button className="btn secondary min-h-11 min-w-11 px-2" disabled={index === availableDraft.length - 1} aria-label={`Mover ${definition.label} para baixo`} title="Mover para baixo" onClick={() => move(item.key, 1)}><CaretDown size={17} /></button></div></div>; })}</div>
+          <div className="mb-4 flex flex-wrap gap-2" aria-label="Presets do dashboard">
+            {([["essencial", "Essencial"], ["comercial", "Comercial"], ["gestao_completa", "Gestão completa"]] as const).map(([key, label]) => <button key={key} className="btn secondary active:scale-[0.98]" disabled={saving} onClick={() => void applyPreset(key)}>{label}</button>)}
+            <button className="btn secondary active:scale-[0.98]" disabled={saving} onClick={() => setEditing(true)}>Personalizado</button>
+          </div>
+          <div className="divide-y divide-[var(--border)]">{groupedDraft.map(([group, items]) => <section key={group} aria-labelledby={`dashboard-group-${group}`}><h3 id={`dashboard-group-${group}`} className="pt-4 text-xs font-semibold uppercase tracking-[.1em] text-[var(--faint-text)]">{groupTitle(group)}</h3>{items.map((item) => { const definition = definitions.get(item.key); if (!definition) return null; return <div key={item.key} className="grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center"><label className="flex min-w-0 items-start gap-3"><input type="checkbox" checked={item.visible} onChange={(event) => patchItem(item.key, { visible: event.target.checked })} className="mt-1" /><span><strong className="block text-sm">{definition.label}</strong><span className="block text-xs text-[var(--muted)]">{definition.description}</span></span></label><label className="flex items-center gap-2 text-sm"><span>Tamanho</span><select className="input w-auto" value={item.size} onChange={(event) => patchItem(item.key, { size: event.target.value as WidgetSize })}>{definition.sizes.map((size) => <option key={size} value={size}>{sizeLabels[size]}</option>)}</select></label><div className="flex gap-1"><button className="btn secondary min-h-11 min-w-11 px-2" disabled={item.order === 0} aria-label={`Mover ${definition.label} para cima`} title="Mover para cima" onClick={() => move(item.key, -1)}><CaretUp size={17} /></button><button className="btn secondary min-h-11 min-w-11 px-2" disabled={item.order === availableDraft.length - 1} aria-label={`Mover ${definition.label} para baixo`} title="Mover para baixo" onClick={() => move(item.key, 1)}><CaretDown size={17} /></button></div></div>; })}</section>)}</div>
         </section> : null}
 
         {catalogError || layoutError ? <div className="card" role="alert"><p className="error">Não foi possível carregar a configuração do dashboard.</p></div> : !catalog || !layout ? <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><div className="card min-h-[220px]"><WidgetSkeleton /></div><div className="card min-h-[220px]"><WidgetSkeleton /></div><div className="card min-h-[220px]"><WidgetSkeleton /></div><div className="card min-h-[220px]"><WidgetSkeleton /></div></div> : !visible.length ? <div className="card"><EmptyWidget message="Nenhum widget está visível. Abra Personalizar para escolher o que acompanhar." /></div> : <section className="grid grid-cols-12 gap-4" aria-label="Widgets do dashboard">{visible.map((item) => { const definition = definitions.get(item.key); return definition ? <WidgetCard key={item.key} item={item} definition={definition} periodQuery={periodQuery} /> : null; })}</section>}

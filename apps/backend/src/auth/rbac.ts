@@ -18,6 +18,7 @@ export const PERMISSIONS = [
   { key: "conversations.read", module: "conversations", action: "read", description: "Visualizar conversas" },
   { key: "conversations.reply", module: "conversations", action: "reply", description: "Responder conversas" },
   { key: "conversations.reactivate", module: "conversations", action: "reactivate", description: "Reativar IA em conversas" },
+  { key: "conversations.queues.manage", module: "conversations", action: "queues_manage", description: "Criar, renomear, ordenar e arquivar filas de atendimento" },
   { key: "contacts.read", module: "contacts", action: "read", description: "Visualizar contatos" },
   { key: "contacts.delete", module: "contacts", action: "delete", description: "Excluir contatos" },
   { key: "leads.read", module: "leads", action: "read", description: "Visualizar leads" },

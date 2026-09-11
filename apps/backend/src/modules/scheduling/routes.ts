@@ -267,7 +267,8 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
                 'capacity_target',stage.capacity_target,'technical_status',stage.technical_status,
                 'is_default',stage.is_default
               ) pipeline_stage,
-              COALESCE(tags.items,'[]'::jsonb) tags
+              COALESCE(tags.items,'[]'::jsonb) tags,
+              COALESCE((awaiting_reply.sender IN ('agent','human')),false) awaiting_reply
        FROM scheduling_leads l
        JOIN tenants tenant ON tenant.id=l.tenant_id
        LEFT JOIN scheduling_categories c ON c.tenant_id=l.tenant_id AND c.id=l.interest_category_id
@@ -291,6 +292,21 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
          ORDER BY appointment.start_at DESC,appointment.id DESC
          LIMIT 1
        ) latest_appointment ON true
+       LEFT JOIN LATERAL (
+         SELECT latest_message.sender
+         FROM conversations conversation
+         JOIN LATERAL (
+           SELECT message.id,message.sender,message.created_at
+           FROM messages message
+           WHERE message.conversation_id=conversation.id
+           ORDER BY message.created_at DESC,message.id DESC
+           LIMIT 1
+         ) latest_message ON true
+         WHERE conversation.tenant_id=l.tenant_id
+           AND regexp_replace(conversation.contact_phone,'\\D','','g')=regexp_replace(l.phone,'\\D','','g')
+         ORDER BY latest_message.created_at DESC,latest_message.id DESC,conversation.id DESC
+         LIMIT 1
+       ) awaiting_reply ON true
        LEFT JOIN LATERAL (
          SELECT jsonb_build_object(
            'count',schedule.follow_up_count,

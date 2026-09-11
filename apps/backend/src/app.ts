@@ -78,6 +78,7 @@ import { enforceRequestCapability } from "./capabilities/gate.js";
 import { enforceRequestEntitlement } from "./billing/entitlement-gate.js";
 import { processBillingWebhook } from "./billing/webhook-service.js";
 import { assertHomologatedProvider } from "./billing/providers/homologation.js";
+import { registerConversationQueueRoutes } from "./modules/conversations/queues.js";
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
@@ -149,7 +150,11 @@ const messageEditSchema = z.object({ text: z.string().trim().min(1).max(4_000) }
 const messageDeleteSchema = z.object({ forEveryone: z.boolean().default(false) });
 const conversationsQuerySchema = z.object({
   filter: z.enum(["all", "human", "ai", "mine", "unassigned", "scheduled", "resolved"]).catch("all"),
-  q: z.string().trim().max(120).optional().transform((value) => value || undefined)
+  q: z.string().trim().max(120).optional().transform((value) => value || undefined),
+  queue_id: z.string().uuid().optional(),
+  session_id: z.string().uuid().optional(),
+  unread: z.enum(["true", "false"]).optional(),
+  pending_action: z.enum(["true", "false"]).optional()
 });
 const messageCursorPayloadSchema = z.object({
   v: z.literal(1),
@@ -1487,7 +1492,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
   app.get("/conversations", async (request) => {
     const session = await requirePermission(request, "conversations.read");
     const scope = await resolveCaseScope(db, session);
-    const { filter, q } = conversationsQuerySchema.parse(request.query);
+    const { filter, q, queue_id, session_id, unread, pending_action } = conversationsQuerySchema.parse(request.query);
     const condition = filter === "human" ? "AND c.status='open' AND c.ai_active=false"
       : filter === "ai" ? "AND c.status='open' AND c.ai_active=true"
         : filter === "mine" ? "AND c.status='open' AND c.assigned_user_id=$3"
@@ -1503,13 +1508,26 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
                   AND scheduled_lead.id=c.lead_id
               )`
               : filter === "resolved" ? "AND c.status='closed'" : "AND c.status='open'";
+    const filterConditions = [
+      "AND ($4::uuid IS NULL OR c.queue_id=$4)",
+      "AND ($5::uuid IS NULL OR c.session_id=$5)",
+      unread === "true" ? "AND EXISTS (SELECT 1 FROM messages unread_message WHERE unread_message.conversation_id=c.id AND unread_message.sender='contact' AND unread_message.created_at > COALESCE(c.last_read_at,'-infinity'))" : unread === "false" ? "AND NOT EXISTS (SELECT 1 FROM messages read_message WHERE read_message.conversation_id=c.id AND read_message.sender='contact' AND read_message.created_at > COALESCE(c.last_read_at,'-infinity'))" : "",
+      pending_action === "true" ? "AND lead.next_action_at IS NOT NULL AND lead.next_action_at <= now()" : pending_action === "false" ? "AND (lead.next_action_at IS NULL OR lead.next_action_at > now())" : ""
+    ].join(" ");
     const search = "AND ($2::text = '' OR strpos(lower(COALESCE(c.contact_name,'')),lower($2)) > 0 OR strpos(c.contact_phone,$2) > 0)";
-    const values = [session.tenantId, q ?? "", session.userId];
+    const values = [session.tenantId, q ?? "", session.userId, queue_id ?? null, session_id ?? null];
     const result = await db.query(`SELECT c.id, c.session_id, c.lead_id, c.contact_phone, c.contact_name,
       c.contact_avatar_url avatar_url, c.ai_active, c.handoff_reason,
       c.status, c.last_message_at, c.contact_jid, c.assigned_user_id, c.claimed_at, c.resolved_at,
       c.contact_presence, c.contact_presence_updated_at, c.contact_last_seen_at, c.signature_enabled,
+      c.queue_id, qqueue.name queue_name, qqueue.color queue_color, qqueue.position queue_position,
+      qqueue.is_initial queue_is_initial, qqueue.is_resolved queue_is_resolved, qqueue.archived_at queue_archived_at,
+      ws.channel,
       u.email assigned_user_email,lead.status lead_status,lead.updated_at lead_updated_at,
+      lead.next_action,lead.next_action_at,
+      (lead.next_action_at IS NOT NULL AND lead.next_action_at <= now()) next_action_due,
+      lead.source lead_source, lead.campaign lead_campaign,
+      lead.facebook_attribution,
       jsonb_build_object(
         'id',stage.id,'name',stage.name,'color',stage.color,'position',stage.position,
         'capacity_target',stage.capacity_target,'technical_status',stage.technical_status,
@@ -1529,6 +1547,8 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
       COALESCE(unread.count,0)::int unread_count
       FROM conversations c
       LEFT JOIN users u ON u.id=c.assigned_user_id
+      LEFT JOIN conversation_queues qqueue ON qqueue.id=c.queue_id AND qqueue.tenant_id=c.tenant_id
+      LEFT JOIN whatsapp_sessions ws ON ws.id=c.session_id AND ws.tenant_id=c.tenant_id
       LEFT JOIN LATERAL (
         SELECT content, media_type, media_is_sticker, media_file_name, sender, status
         FROM messages WHERE conversation_id=c.id ORDER BY created_at DESC LIMIT 1
@@ -1549,8 +1569,8 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
       ) tags ON true
       WHERE c.tenant_id=$1
         AND (${conversationScopeCondition(scope, "c", "$3")})
-        ${condition} ${search}
-      ORDER BY c.last_message_at DESC LIMIT 100`, values);
+        ${condition} ${filterConditions} ${search}
+      ORDER BY c.last_message_at DESC LIMIT 50`, values);
     for (const conversation of result.rows.slice(0, 20)) {
       if (!conversation.avatar_url && conversation.session_id && conversation.contact_phone) {
         void whatsapp.refreshContactAvatar(conversation.session_id, conversation.contact_phone).catch((error) => {
@@ -1559,6 +1579,39 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
       }
     }
     return { conversations: result.rows };
+  });
+  app.get("/conversations/pending-actions", async (request) => {
+    const session = await requirePermission(request, "conversations.read");
+    const scope = await resolveCaseScope(db, session);
+    const result = await db.query<{
+      items: Array<Record<string, unknown>> | null;
+      total: number;
+      overdue_total: number;
+    }>(`
+      WITH eligible AS (
+        SELECT c.id conversation_id,c.lead_id,c.contact_name,c.contact_phone,
+          lead.next_action,lead.next_action_at,u.email assigned_user_email,
+          c.queue_id,queue.name queue_name,
+          (lead.next_action_at < now()) overdue
+        FROM conversations c
+        JOIN scheduling_leads lead ON lead.id=c.lead_id AND lead.tenant_id=c.tenant_id
+        LEFT JOIN users u ON u.id=c.assigned_user_id
+        LEFT JOIN conversation_queues queue ON queue.id=c.queue_id AND queue.tenant_id=c.tenant_id
+        WHERE c.tenant_id=$1
+          AND (${conversationScopeCondition(scope, "c", "$2")})
+          AND lead.next_action_at IS NOT NULL
+          AND lead.next_action_at <= now() + interval '15 minutes'
+      ), limited AS (
+        SELECT * FROM eligible ORDER BY next_action_at ASC,conversation_id ASC LIMIT 50
+      )
+      SELECT
+        COALESCE((SELECT jsonb_agg(to_jsonb(limited) ORDER BY next_action_at ASC,conversation_id ASC) FROM limited),'[]'::jsonb) items,
+        (SELECT count(*)::int FROM eligible) total,
+        (SELECT count(*) FILTER (WHERE overdue)::int FROM eligible) overdue_total`,
+      [session.tenantId, scope.userId]
+    );
+    const row = result.rows[0];
+    return { items: row?.items ?? [], total: Number(row?.total ?? 0), overdue_total: Number(row?.overdue_total ?? 0) };
   });
   app.get("/conversations/unread", async (request) => {
     const session = await requirePermission(request, "conversations.read");
@@ -1804,14 +1857,21 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
       c.ai_active, c.handoff_reason, c.status, c.assigned_user_id, c.claimed_at, c.resolved_at,
       c.facebook_attribution,
       c.contact_presence, c.contact_presence_updated_at, c.contact_last_seen_at, c.signature_enabled,
+      ws.channel,
       u.email assigned_user_email,lead.status lead_status,lead.updated_at lead_updated_at,
+      lead.source lead_source, lead.campaign lead_campaign,
+      lead.next_action, lead.next_action_at,
+      COALESCE(interest_category.name, lead.interest_category_id) interest,
       jsonb_build_object('id',stage.id,'name',stage.name,'color',stage.color,'position',stage.position,
         'capacity_target',stage.capacity_target,'technical_status',stage.technical_status,'is_default',stage.is_default) pipeline_stage,
       COALESCE(tags.items,'[]'::jsonb) tags
       FROM conversations c
+      JOIN whatsapp_sessions ws ON ws.id=c.session_id AND ws.tenant_id=c.tenant_id
       LEFT JOIN users u ON u.id=c.assigned_user_id
       JOIN scheduling_leads lead ON lead.id=c.lead_id AND lead.tenant_id=c.tenant_id
       JOIN pipeline_stages stage ON stage.id=lead.pipeline_stage_id AND stage.tenant_id=lead.tenant_id
+      LEFT JOIN scheduling_categories interest_category
+        ON interest_category.tenant_id=lead.tenant_id AND interest_category.id=lead.interest_category_id
       LEFT JOIN LATERAL (
         SELECT jsonb_agg(jsonb_build_object('id',tag.id,'name',tag.name,'color',tag.color,'archived',tag.archived_at IS NOT NULL) ORDER BY lower(tag.name),tag.id) items
         FROM lead_tag_assignments assignment
@@ -1907,14 +1967,21 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
       c.ai_active, c.handoff_reason, c.status, c.assigned_user_id, c.claimed_at, c.resolved_at,
       c.facebook_attribution,
       c.contact_presence, c.contact_presence_updated_at, c.contact_last_seen_at, c.signature_enabled,
+      ws.channel,
       u.email assigned_user_email,lead.status lead_status,lead.updated_at lead_updated_at,
+      lead.source lead_source, lead.campaign lead_campaign,
+      lead.next_action, lead.next_action_at,
+      COALESCE(interest_category.name, lead.interest_category_id) interest,
       jsonb_build_object('id',stage.id,'name',stage.name,'color',stage.color,'position',stage.position,
         'capacity_target',stage.capacity_target,'technical_status',stage.technical_status,'is_default',stage.is_default) pipeline_stage,
       COALESCE(tags.items,'[]'::jsonb) tags
       FROM conversations c
+      JOIN whatsapp_sessions ws ON ws.id=c.session_id AND ws.tenant_id=c.tenant_id
       LEFT JOIN users u ON u.id=c.assigned_user_id
       JOIN scheduling_leads lead ON lead.id=c.lead_id AND lead.tenant_id=c.tenant_id
       JOIN pipeline_stages stage ON stage.id=lead.pipeline_stage_id AND stage.tenant_id=lead.tenant_id
+      LEFT JOIN scheduling_categories interest_category
+        ON interest_category.tenant_id=lead.tenant_id AND interest_category.id=lead.interest_category_id
       LEFT JOIN LATERAL (
         SELECT jsonb_agg(jsonb_build_object('id',tag.id,'name',tag.name,'color',tag.color,'archived',tag.archived_at IS NOT NULL) ORDER BY lower(tag.name),tag.id) items
         FROM lead_tag_assignments assignment
@@ -2333,14 +2400,14 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     const session = await requirePermission(request, "conversations.reply");
     const { id } = idParams.parse(request.params);
     const scope = await resolveCaseScope(db, session);
-    const reopened = await db.query(
+    const reopened = await withTenantTransaction(db, session.tenantId, async (client) => client.query(
       `UPDATE conversations conversation
        SET status='open',resolved_at=NULL
        WHERE conversation.id=$1 AND conversation.tenant_id=$2
          AND (${conversationScopeCondition(scope, "conversation", "$3")})
        RETURNING id`,
       [id, session.tenantId, scope.userId]
-    );
+    ));
     if (!reopened.rows[0]) return reply.status(404).send({ error: "Conversa não encontrada" });
     await auditLog({
       actorUserId: session.userId,
@@ -2597,6 +2664,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     renderPreview: async ({ scope, proposal }: TripzDocumentRenderContext) => tripzDocuments.renderPreview(scope, proposal),
     renderPdf: async ({ scope, proposal }: TripzDocumentRenderContext) => tripzDocuments.renderPdf(scope, proposal)
   });
+  void app.register(registerConversationQueueRoutes);
 
   return app;
 }

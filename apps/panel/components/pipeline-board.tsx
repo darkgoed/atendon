@@ -4,7 +4,7 @@ import { ArrowClockwise, DotsThree } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { PipelineCard } from "@/components/pipeline-card";
 import {
-  currentPipelineStageId,
+  pipelineBoardStageId,
   type PipelineLead,
   type PipelinePreferences,
   type PipelineStage
@@ -54,6 +54,7 @@ export function PipelineBoard({
   leads,
   allowedTransitions,
   legacy,
+  showAllStages = false,
   loading,
   loadError,
   hasActiveFilters,
@@ -71,6 +72,7 @@ export function PipelineBoard({
   leads: PipelineLead[];
   allowedTransitions: Set<string>;
   legacy: boolean;
+  showAllStages?: boolean;
   loading: boolean;
   loadError?: string;
   hasActiveFilters: boolean;
@@ -90,8 +92,8 @@ export function PipelineBoard({
   const boardRef = useRef<HTMLElement | null>(null);
   const leadsByStage = useMemo(() => new Map(stages.map((stage) => [
     stage.id,
-    leads.filter((lead) => currentPipelineStageId(lead, stages, legacy) === stage.id)
-  ])), [leads, legacy, stages]);
+    leads.filter((lead) => pipelineBoardStageId(lead, stages, showAllStages) === stage.id)
+  ])), [leads, showAllStages, stages]);
   const draggingStageId = dragging
     ? legacy ? `fallback:${dragging.status}` : dragging.pipeline_stage_id ?? null
     : null;
