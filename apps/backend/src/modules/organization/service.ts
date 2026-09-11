@@ -287,7 +287,7 @@ export async function deleteSavedView(tenantId: string, viewId: string, actor: O
 }
 
 export async function loadPipeline(tenantId: string, includeArchived = false) {
-  const [stages,transitions,followUpSettings,pipelineMode] = await Promise.all([
+  const [stages,transitions,followUpSettings,pipelineMode,members] = await Promise.all([
     db.query<StageRow & { lead_count: number; created_at: string; updated_at: string }>(
       `SELECT stage.id,stage.name,stage.color,stage.position,stage.capacity_target,
               stage.technical_status,stage.is_default,stage.archived_at,
@@ -320,6 +320,14 @@ export async function loadPipeline(tenantId: string, includeArchived = false) {
     db.query<{ pipeline_enforce_transitions: boolean | null }>(
       "SELECT pipeline_enforce_transitions FROM tenants WHERE id=$1",
       [tenantId]
+    ),
+    db.query<{ id: string; name: string | null; email: string; status: "active" }>(
+      `SELECT member.id,usr.name,usr.email,member.status
+       FROM workspace_members member
+       JOIN users usr ON usr.id=member.user_id
+       WHERE member.workspace_id=$1 AND member.status='active' AND usr.status='active'
+       ORDER BY lower(COALESCE(usr.name,usr.email)),usr.email,member.id`,
+      [tenantId]
     )
   ]);
   if (!pipelineMode.rows[0]) throw httpError(404,"Tenant não encontrado");
@@ -329,6 +337,7 @@ export async function loadPipeline(tenantId: string, includeArchived = false) {
       is_default_board: (DEFAULT_BOARD_STATUSES as readonly string[]).includes(stage.technical_status)
     })),
     transitions: transitions.rows,
+    members: members.rows,
     follow_up_config: followUpSettings.rows[0] ?? { enabled: false, max_count: 0 },
     enforce_transitions: pipelineMode.rows[0].pipeline_enforce_transitions !== false
   };

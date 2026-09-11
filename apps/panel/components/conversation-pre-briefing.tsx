@@ -15,10 +15,8 @@ function readable(value: unknown): string | null {
 }
 
 export function ConversationPreBriefing({
-  contactName, contactPhone, source, campaign, interest, facebookAttribution
+  source, campaign, interest, facebookAttribution
 }: {
-  contactName: string | null;
-  contactPhone?: string | null;
   source: string | null;
   campaign: string | null;
   interest: string | null;
@@ -27,8 +25,6 @@ export function ConversationPreBriefing({
   const facebookOrigin = readable(facebookAttribution?.origem_facebook);
   const origin = present(source) ? source : facebookOrigin;
   const rows = [
-    ["Nome", contactName],
-    ["Telefone", contactPhone],
     ["Origem", origin],
     ["Campanha", campaign],
     ["Interesse", interest]

@@ -242,6 +242,15 @@ describe("case organization REST API",() => {
     );
     const pipeline = await app.inject({ url: "/organization/pipeline",headers: { cookie: ownerCookie } });
     expect(pipeline.statusCode).toBe(200);
+    const operatorPipeline = await app.inject({ url: "/organization/pipeline",headers: { cookie: operatorCookie } });
+    expect(operatorPipeline.statusCode).toBe(200);
+    expect(operatorPipeline.json().members).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: operatorMemberId, email: operatorEmail, status: "active" })
+    ]));
+    expect(operatorPipeline.json().members[0]).toEqual(expect.objectContaining({ id: expect.any(String), name: null, email: expect.any(String), status: "active" }));
+    expect(operatorPipeline.json().members).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ email: foreignOwnerEmail })
+    ]));
     expect(pipeline.json().follow_up_config).toEqual({ enabled: true,max_count: 7 });
     const defaultStage = pipeline.json().stages.find((stage: { technical_status: string; is_default: boolean }) => stage.technical_status === "novo" && stage.is_default);
     const unusedDefaultStage = pipeline.json().stages.find((stage: { technical_status: string; is_default: boolean }) => stage.technical_status === "aguardando_resposta" && stage.is_default);

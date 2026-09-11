@@ -10,6 +10,7 @@ import {
   buildPipelineTransitionPayload,
   type PipelineCommercialInput,
   type PipelineLead,
+  type PipelineMember,
   type PipelineStage,
   type PipelineTransition
 } from "@/lib/pipeline";
@@ -18,6 +19,7 @@ import { usePermission } from "@/lib/use-permission";
 type PipelineResponse = {
   stages: PipelineStage[];
   transitions: PipelineTransition[];
+  members: PipelineMember[];
   enforce_transitions?: boolean;
 };
 
@@ -25,6 +27,8 @@ export function ConversationStatusPicker({
   leadId,
   leadName,
   leadPhone,
+  leadResponsibleMemberId,
+  leadResponsibleEmail,
   leadStatus,
   leadUpdatedAt,
   pipelineStage,
@@ -34,6 +38,8 @@ export function ConversationStatusPicker({
   leadId: string;
   leadName?: string;
   leadPhone: string;
+  leadResponsibleMemberId?: string | null;
+  leadResponsibleEmail?: string | null;
   leadStatus: string;
   leadUpdatedAt: string;
   pipelineStage: PipelineStage;
@@ -47,6 +53,7 @@ export function ConversationStatusPicker({
     (url: string) => api<PipelineResponse>(url),
     { revalidateOnFocus: false, dedupingInterval: 10_000 }
   );
+  const members = data?.members ?? [];
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -66,7 +73,9 @@ export function ConversationStatusPicker({
     nome: leadName,
     status: leadStatus,
     atualizado_em: leadUpdatedAt,
-    pipeline_stage_id: pipelineStage.id
+    pipeline_stage_id: pipelineStage.id,
+    responsavel_member_id: leadResponsibleMemberId,
+    responsavel_email: leadResponsibleEmail
   };
 
   async function submit(stage: PipelineStage, commercial?: PipelineCommercialInput) {
@@ -100,10 +109,11 @@ export function ConversationStatusPicker({
         className="conversation-status-picker btn shrink-0 active:scale-[.98]"
         onClick={() => { setError(""); setOpen(true); }}
         disabled={disabled}
-        title={disabled ? "Nenhuma mudança de status disponível" : `Status atual: ${pipelineStage.name}`}
+        title={disabled ? "Nenhuma mudança de etapa comercial disponível" : `Etapa comercial atual: ${pipelineStage.name}`}
+        aria-label={`Etapa comercial atual: ${pipelineStage.name}`}
       >
         <ArrowsLeftRight size={14} aria-hidden="true" />
-        Status
+        Etapa comercial
       </button>
       {open ? (
         <PipelineTransitionDialog
@@ -112,6 +122,7 @@ export function ConversationStatusPicker({
           pending={pending}
           error={error}
           timezone={timezone}
+          members={members}
           onClose={() => setOpen(false)}
           onSubmit={submit}
         />

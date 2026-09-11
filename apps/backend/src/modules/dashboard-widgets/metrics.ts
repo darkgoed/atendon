@@ -1,7 +1,7 @@
 import type { WorkspaceSession } from "../../auth/session.js";
 import { resolveCaseScope } from "../../auth/case-scope.js";
 import { db } from "../../db/client.js";
-import { loadCommercialDashboard, type CommercialDashboardInput } from "../dashboard/service.js";
+import type { CommercialDashboardInput } from "../dashboard/service.js";
 import { resolveReportingRange } from "../reporting.js";
 import type { DashboardWidgetKey } from "./catalog.js";
 
@@ -99,15 +99,32 @@ async function loadAppointmentMetric(
   key: DashboardWidgetKey,
   input: CommercialDashboardInput
 ): Promise<NumericMetric> {
-  const commercial = await loadCommercialDashboard(session, input);
-  const scheduled = finite(commercial.metrics.scheduled);
-  const completed = finite(commercial.metrics.completed);
+  const { range, scope, workspaceScope } = await reportingContext(session, input);
+  const row = (await db.query<{ scheduled: number; completed: number; no_show: number; rescheduled: number; due: number }>(
+    `SELECT
+       count(*) FILTER (WHERE a.status <> 'cancelado')::int scheduled,
+       count(*) FILTER (WHERE a.status='concluido')::int completed,
+       count(*) FILTER (WHERE a.status='no_show')::int no_show,
+       count(*) FILTER (WHERE EXISTS (
+         SELECT 1 FROM scheduling_lead_events event
+         WHERE event.tenant_id=a.tenant_id AND event.lead_id=a.lead_id
+           AND event.event_type='agendamento_reagendado'
+           AND event.details->>'appointment_id'=a.id::text
+       ))::int rescheduled,
+       count(*) FILTER (WHERE a.status <> 'cancelado' AND a.end_at < now())::int due
+     FROM scheduling_appointments a
+     WHERE a.tenant_id=$1 AND a.start_at >= $2::timestamptz AND a.start_at < $3::timestamptz
+       AND ($4::boolean OR a.assigned_member_id=$5)`,
+    [session.tenantId, range.start.toISOString(), range.end.toISOString(), workspaceScope, scope.memberId]
+  )).rows[0] ?? { scheduled: 0, completed: 0, no_show: 0, rescheduled: 0, due: 0 };
+  const scheduled = finite(row.scheduled);
+  const completed = finite(row.completed);
   const values: Partial<Record<DashboardWidgetKey, number>> = {
     appointments_count: scheduled,
     attendances: completed,
-    no_shows: finite(commercial.metrics.no_show),
-    reschedules: finite(commercial.metrics.rescheduled),
-    attendance_rate: scheduled ? Math.round((completed / scheduled) * 1_000) / 10 : 0
+    no_shows: finite(row.no_show),
+    reschedules: finite(row.rescheduled),
+    attendance_rate: row.due ? Math.round((completed / row.due) * 1_000) / 10 : 0
   };
   return { value: finite(values[key]) };
 }
@@ -199,12 +216,25 @@ async function loadTeamMetric(
   input: CommercialDashboardInput
 ): Promise<TeamMetric> {
   if (key === "sales_value_by_seller") return loadSalesValueBySeller(session, input);
-  const commercial = await loadCommercialDashboard(session, input);
+  const { range, scope, workspaceScope } = await reportingContext(session, input);
+  const rows = (await db.query<{ member_id: string; email: string; name: string | null; completed: number; sales: number }>(
+    `SELECT member.id member_id,"user".email,"user".name,
+            count(appointment.id) FILTER (WHERE appointment.start_at >= $2::timestamptz AND appointment.start_at < $3::timestamptz AND appointment.status='concluido')::int completed,
+            count(appointment.id) FILTER (WHERE appointment.start_at >= $2::timestamptz AND appointment.start_at < $3::timestamptz AND appointment.commercial_outcome='fechado')::int sales
+     FROM scheduling_google_meet_closers closer
+     JOIN workspace_members member ON member.id=closer.member_id AND member.workspace_id=closer.tenant_id AND member.status='active'
+     JOIN users "user" ON "user".id=member.user_id AND "user".status='active'
+     LEFT JOIN scheduling_appointments appointment ON appointment.tenant_id=closer.tenant_id AND appointment.assigned_member_id=member.id
+     WHERE closer.tenant_id=$1 AND ($4::boolean OR member.id=$5)
+     GROUP BY member.id,"user".email,"user".name,closer.created_at
+     ORDER BY closer.created_at,member.id`,
+    [session.tenantId, range.start.toISOString(), range.end.toISOString(), workspaceScope, scope.memberId]
+  )).rows;
   return {
-    items: commercial.team.map((member) => ({
+    items: rows.map((member) => ({
       member_id: member.member_id,
       name: memberName(member),
-      value: key === "sales_by_seller" ? finite(member.sales) : finite(member.closing_rate)
+      value: key === "sales_by_seller" ? finite(member.sales) : member.completed ? Math.round((member.sales / member.completed) * 1_000) / 10 : 0
     }))
   };
 }

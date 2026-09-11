@@ -26,6 +26,16 @@ describe("dashboard widget catalog and layout", () => {
     expect(layout.find((item) => item.key === "recent_alerts")?.visible).toBe(false);
   });
 
+  it("marks only duplicated compound widgets as non-selectable", () => {
+    const catalog = availableDashboardWidgets(OPERATOR_PERMISSIONS);
+    const definition = (key: string) => catalog.find((widget) => widget.key === key);
+    expect(definition("commercial_metrics")?.selectable).toBe(false);
+    expect(definition("open_conversations")?.selectable).toBe(false);
+    expect(definition("team_load")?.selectable).toBe(false);
+    expect(definition("handoffs")?.selectable).toBe(true);
+    expect(definition("sales_by_seller")?.selectable).toBe(true);
+  });
+
   it("removes widgets after permission loss and canonicalizes order and sizes", () => {
     const catalog = availableDashboardWidgets(OPERATOR_PERMISSIONS);
     const layout = sanitizeDashboardLayout([

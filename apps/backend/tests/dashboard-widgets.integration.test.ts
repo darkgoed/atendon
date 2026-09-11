@@ -37,6 +37,10 @@ beforeAll(async () => {
     await client.query("BEGIN");
     tenantA = (await client.query<{ id: string }>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id", [`Dashboard A ${suffix}`])).rows[0].id;
     tenantB = (await client.query<{ id: string }>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id", [`Dashboard B ${suffix}`])).rows[0].id;
+    await client.query(`INSERT INTO tenant_feature_flag_overrides(tenant_id,flag_key,enabled) VALUES
+      ($1,'dashboard_v1',true),($1,'dashboard_widgets_v1',true),($1,'leads_v1',true),($1,'pipeline_v1',true),($1,'appointments_v1',true),($1,'workspace_admin_v1',true),
+      ($2,'dashboard_v1',true),($2,'dashboard_widgets_v1',true),($2,'leads_v1',true),($2,'pipeline_v1',true),($2,'appointments_v1',true),($2,'workspace_admin_v1',true)
+      ON CONFLICT (tenant_id,flag_key) DO UPDATE SET enabled=EXCLUDED.enabled,updated_at=now()`, [tenantA, tenantB]);
     await ensureWorkspaceDefaultRoles(client, tenantA);
     await ensureWorkspaceDefaultRoles(client, tenantB);
     ownerA = (await client.query<{ id: string }>("INSERT INTO users(email,status) VALUES($1,'active') RETURNING id", [`dashboard-owner-a-${suffix}@test.local`])).rows[0].id;
@@ -99,6 +103,30 @@ describe("dashboard widget REST resources", () => {
     expect(operatorCatalog.json().widgets.map((widget: { key: string }) => widget.key)).not.toContain("whatsapp_connection");
     expect((await app.inject({ url: "/dashboard/widgets/whatsapp_connection", headers: { cookie: operatorACookie } })).statusCode).toBe(403);
     expect((await app.inject({ url: "/dashboard/widgets/open_conversations", headers: { cookie: operatorACookie } })).statusCode).toBe(200);
+  });
+
+  it("counts and selects only active WhatsApp sessions, not a primary Instagram session", async () => {
+    await pool.query(
+      `INSERT INTO whatsapp_sessions(tenant_id,label,is_primary,status,channel)
+       VALUES
+         ($1,'Instagram primary',true,'disconnected','instagram'),
+         ($1,'WhatsApp active',false,'connected','whatsapp'),
+         ($2,'Foreign WhatsApp',false,'connected','whatsapp')`,
+      [tenantA, tenantB]
+    );
+    await pool.query(
+      `INSERT INTO whatsapp_sessions(tenant_id,label,is_primary,status,channel,archived_at)
+       VALUES($1,'WhatsApp archived',false,'connected','whatsapp',now())`,
+      [tenantA]
+    );
+
+    const response = await app.inject({ url: "/dashboard/widgets/whatsapp_connection", headers: { cookie: ownerACookie } });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({
+      key: "whatsapp_connection",
+      data: { status: "connected", total: 1, connected: 1 }
+    });
   });
 
   it("persists a canonical layout per user and workspace, then restores the default", async () => {

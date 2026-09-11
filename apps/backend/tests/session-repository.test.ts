@@ -12,6 +12,7 @@ describe("SessionRepository.listRunnable", () => {
     expect(query).toHaveBeenCalledOnce();
     const sql = String(query.mock.calls[0][0]).replace(/\s+/g, " ");
     expect(sql).toContain("s.status IN ('connected', 'qr_pending')");
+    expect(sql).toContain("s.channel = 'whatsapp'");
     expect(sql).toContain("s.archived_at IS NULL");
     expect(sql).not.toContain("s.status <> 'banned'");
   });
@@ -26,7 +27,9 @@ describe("SessionRepository.primaryId", () => {
 
     expect(query).toHaveBeenCalledOnce();
     const sql = String(query.mock.calls[0][0]).replace(/\s+/g, " ");
-    expect(sql).toContain("tenant_id=$1 AND archived_at IS NULL");
+    expect(sql).toContain("tenant_id=$1");
+    expect(sql).toContain("channel = 'whatsapp'");
+    expect(sql).toContain("archived_at IS NULL");
     expect(sql).toContain("ORDER BY is_primary DESC, created_at DESC");
     expect(query.mock.calls[0][1]).toEqual(["tenant-a"]);
   });

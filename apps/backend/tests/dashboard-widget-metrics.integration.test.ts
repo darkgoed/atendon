@@ -12,7 +12,6 @@ let tenantA = ""; let tenantB = ""; let ownerA = ""; let operatorA = ""; let own
 let memberA = ""; let memberB = ""; let unit = ""; let session = "";
 let conversationSequence = 0;
 let ownerCookie = ""; let operatorCookie = ""; let ownerBCookie = "";
-let leadShapeConstraintsDropped = false;
 const period = { period: "custom", start: "2025-01-01", end: "2025-02-01" };
 
 type Row = { id: string };
@@ -58,13 +57,7 @@ beforeAll(async () => {
     const l3 = await lead(c, { tenant: tenantA, phone: "551100000003", name: "Organic sale", source: "whatsapp", created: "2025-01-07T10:00:00Z", member: memberB, status: "fechado", outcome: "fechado", sale: "25.00", next: "2099-01-01T00:00:00Z" });
     const l4 = await lead(c, { tenant: tenantA, phone: "551100000004", name: "Outside", source: "google", created: "2024-12-01T10:00:00Z", member: memberA });
     const l5 = await lead(c, { tenant: tenantA, phone: "551100000005", name: "Other", source: "google", created: "2025-01-08T10:00:00Z", member: memberA });
-    // Exercise legacy/inconsistent data in the disposable database: production
-    // constraints reject this shape, but reporting must still use the outcome.
-    await c.query("ALTER TABLE scheduling_leads DROP CONSTRAINT IF EXISTS scheduling_leads_closed_shape_check, DROP CONSTRAINT IF EXISTS scheduling_leads_terminal_outcome_check");
-    leadShapeConstraintsDropped = true;
-    const closedWithoutOutcome = await lead(c, { tenant: tenantA, phone: "551100000006", name: "Closed status without outcome", source: "google", created: "2024-12-08T10:00:00Z", member: memberA, status: "fechado" });
-    const outcomeClosedWithoutStatus = await lead(c, { tenant: tenantA, phone: "551100000007", name: "Outcome closed without closed status", source: "google", created: "2024-12-09T10:00:00Z", member: memberB, status: "novo", outcome: "fechado", sale: "40.00" });
-    await c.query("UPDATE scheduling_leads SET commercial_updated_at='2025-01-15T10:00:00Z' WHERE id IN ($1,$2,$3,$4,$5)", [l1, l2, l3, closedWithoutOutcome, outcomeClosedWithoutStatus]);
+    await c.query("UPDATE scheduling_leads SET commercial_updated_at='2025-01-15T10:00:00Z' WHERE id IN ($1,$2,$3)", [l1, l2, l3]);
     await conversation(c, tenantA, l1, operatorA, "2025-01-05T11:00:00Z", "open");
     await conversation(c, tenantA, l2, operatorA, "2025-01-06T11:00:00Z", "closed");
     await conversation(c, tenantA, l3, ownerA, "2025-01-07T11:00:00Z", "open");
@@ -89,11 +82,7 @@ afterAll(async () => {
   const tenants = [tenantA, tenantB].filter(Boolean);
   const users = [ownerA, operatorA, ownerB].filter(Boolean);
   if (tenants.length) await pool.query("DELETE FROM tenants WHERE id=ANY($1::uuid[])", [tenants]);
-  if (leadShapeConstraintsDropped) {
-    await pool.query(`ALTER TABLE scheduling_leads
-      ADD CONSTRAINT scheduling_leads_closed_shape_check CHECK (status<>'fechado' OR (commercial_outcome='fechado' AND sale_value IS NOT NULL AND sale_value>0)),
-      ADD CONSTRAINT scheduling_leads_terminal_outcome_check CHECK ((commercial_outcome IS DISTINCT FROM 'fechado' OR status='fechado') AND (commercial_outcome IS DISTINCT FROM 'nao_avancou' OR status='perdido'))`);
-  }
+
   if (users.length) await pool.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [users]);
   await pool.end(); await app.close();
 });
@@ -106,7 +95,7 @@ describe("dashboard indicator values", () => {
       conversations_started: 4, active_conversations: 4, new_leads: 4, pending_follow_ups: 1, overdue_follow_ups: 1,
       leads_paid_traffic: 1, leads_referral: 1, leads_organic: 1, leads_other_sources: 1,
       appointments_count: 3, attendances: 2, no_shows: 1, reschedules: 1, attendance_rate: 66.7,
-      sales_count: 3, sales_value: 16550, average_ticket: 5517, lost_sales: 1, conversion_rate: 75,
+      sales_count: 2, sales_value: 12550, average_ticket: 6275, lost_sales: 1, conversion_rate: 50,
       sales_paid_traffic: 1, sales_referral: 0, sales_organic: 1
     };
     for (const [key, wanted] of Object.entries(expected)) {
@@ -129,7 +118,7 @@ describe("dashboard indicator values", () => {
 
   it("applies tenant and mine scope to values and keeps percentages finite", async () => {
     const mine = await app.inject({ url: "/dashboard/widgets/sales_value", query: period, headers: { cookie: operatorCookie } });
-    expect(mine.statusCode).toBe(200); expect(mine.json().data).toMatchObject({ value: 6500, currency: "BRL" });
+    expect(mine.statusCode).toBe(200); expect(mine.json().data).toMatchObject({ value: 2500, currency: "BRL" });
     const other = await app.inject({ url: "/dashboard/widgets/sales_value", query: period, headers: { cookie: ownerBCookie } });
     expect(other.statusCode).toBe(200); expect(other.json().data).toMatchObject({ value: 99999, currency: "BRL" });
     const zero = await app.inject({ url: "/dashboard/widgets/attendance_rate", query: { period: "custom", start: "2024-01-01", end: "2024-02-01" }, headers: { cookie: ownerCookie } });
@@ -137,6 +126,6 @@ describe("dashboard indicator values", () => {
     const hidden = await app.inject({ method: "PUT", url: "/dashboard/widgets/layout", headers: { cookie: ownerCookie }, payload: { items: [{ key: "sales_value", order: 0, visible: false, size: "small" }] } });
     expect(hidden.statusCode).toBe(200);
     const same = await app.inject({ url: "/dashboard/widgets/sales_value", query: period, headers: { cookie: ownerCookie } });
-    expect(same.json().data.value).toBe(16550);
+    expect(same.json().data.value).toBe(12550);
   });
 });

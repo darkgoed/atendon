@@ -55,4 +55,9 @@ describe("commercial journey contract",()=>{
     expect(stageRequiresCommercialPayload("agendado")).toBe(false);
     expect(commercialTransitionPayloadSchema.parse({ sale_value: 100 })).toEqual({ sale_value: 100 });
   });
+
+  it("accepts the selected responsible member in a sale transition",()=>{
+    expect(commercialTransitionPayloadSchema.parse({ sale_value: 100, responsavel_member_id: "00000000-0000-4000-8000-000000000001" }))
+      .toMatchObject({ responsavel_member_id: "00000000-0000-4000-8000-000000000001" });
+  });
 });

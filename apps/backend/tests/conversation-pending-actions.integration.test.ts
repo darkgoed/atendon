@@ -131,38 +131,53 @@ afterAll(async () => {
   await pool.end();
 });
 
-describe("GET /conversations/pending-actions against PostgreSQL", () => {
-  it("uses the database window, SQL overdue flag, deterministic ordering and pre-limit totals", async () => {
-    const response = await app.inject({ url: "/conversations/pending-actions", headers: { cookie: ownerCookie } });
+describe("GET /conversations pending-action contract against PostgreSQL", () => {
+  it("returns due actions with the panel fields and list ordering", async () => {
+    const response = await app.inject({ url: "/conversations?pending_action=true", headers: { cookie: ownerCookie } });
     expect(response.statusCode).toBe(200);
     const body = response.json() as {
-      items: Array<{ conversation_id: string; next_action_at: string; overdue: boolean }>;
-      total: number;
-      overdue_total: number;
+      conversations: Array<{
+        id: string;
+        last_message_at: string;
+        next_action: string;
+        next_action_at: string;
+        next_action_due: boolean;
+      }>;
     };
-    expect(body.total).toBe(52);
-    expect(body.overdue_total).toBe(2);
-    expect(body.items).toHaveLength(50);
-    expect(body.items.every((item) => item.next_action_at <= new Date(Date.now() + 15 * 60_000).toISOString())).toBe(true);
-    expect(body.items.filter((item) => item.overdue)).toHaveLength(2);
-    for (let index = 1; index < body.items.length; index += 1) {
-      const previous = body.items[index - 1];
-      const current = body.items[index];
-      expect(previous.next_action_at < current.next_action_at || (previous.next_action_at === current.next_action_at && previous.conversation_id < current.conversation_id)).toBe(true);
+    expect(body.conversations).toHaveLength(2);
+    expect(body.conversations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ next_action: "Follow up", next_action_due: true }),
+    ]));
+    for (const conversation of body.conversations) {
+      expect(conversation.next_action_at).toEqual(expect.any(String));
+      expect(conversation.next_action_due).toBe(true);
     }
-    expect(body.items.map((item) => item.conversation_id)).not.toContain(createdConversationIds.at(-1));
+    for (let index = 1; index < body.conversations.length; index += 1) {
+      const previous = body.conversations[index - 1];
+      const current = body.conversations[index];
+      expect(previous.last_message_at >= current.last_message_at).toBe(true);
+    }
+    expect(body.conversations.map((conversation) => conversation.id)).not.toContain(createdConversationIds.at(-1));
   });
 
   it("applies attendant scope, tenant isolation and authorization", async () => {
-    const mine = await app.inject({ url: "/conversations/pending-actions", headers: { cookie: operatorCookie } });
+    const mine = await app.inject({ url: "/conversations?pending_action=true", headers: { cookie: operatorCookie } });
     expect(mine.statusCode).toBe(200);
-    expect(mine.json().items.every((item: { assigned_user_email: string }) => item.assigned_user_email === `pending-operator-${suffix}@test.local`)).toBe(true);
-    expect(mine.json().total).toBe(51);
-    const foreign = await app.inject({ url: "/conversations/pending-actions", headers: { cookie: foreignCookie } });
+    expect(mine.json().conversations).toHaveLength(1);
+    expect(mine.json().conversations).toEqual([expect.objectContaining({
+      assigned_user_email: `pending-operator-${suffix}@test.local`,
+      next_action: "Follow up",
+      next_action_due: true,
+    })]);
+    const foreign = await app.inject({ url: "/conversations?pending_action=true", headers: { cookie: foreignCookie } });
     expect(foreign.statusCode).toBe(200);
-    expect(foreign.json()).toMatchObject({ total: 1, overdue_total: 1 });
-    expect(foreign.json().items).toEqual([expect.objectContaining({ contact_name: expect.stringContaining("Foreign") })]);
-    expect(foreign.json().items.map((item: { conversation_id: string }) => item.conversation_id)).not.toContain(createdConversationIds[0]);
-    expect((await app.inject({ url: "/conversations/pending-actions" })).statusCode).toBe(401);
+    expect(foreign.json().conversations).toEqual([expect.objectContaining({ contact_name: expect.stringContaining("Foreign"), next_action_due: true })]);
+    expect(foreign.json().conversations.map((item: { id: string }) => item.id)).not.toContain(createdConversationIds[0]);
+    expect((await app.inject({ url: "/conversations?pending_action=true" })).statusCode).toBe(401);
+  });
+
+  it("does not expose the duplicate pending-actions route", async () => {
+    const response = await app.inject({ url: "/conversations/pending-actions", headers: { cookie: ownerCookie } });
+    expect(response.statusCode).toBe(404);
   });
 });

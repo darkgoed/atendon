@@ -109,6 +109,26 @@ describe("inbox de filas e canais", () => {
     expect(screen.getByRole("button", { name: "Pendências" })).toHaveClass("primary");
   });
 
+  it("mantém a fila Resolvido fora dos chips e destinos e mostra a próxima ação na lista", async () => {
+    conversation = {
+      ...conversation,
+      next_action: "Ligar para Ana",
+      next_action_at: "2026-09-12T15:30:00.000Z"
+    };
+    await renderInbox("/conversas?id=c-1");
+
+    await screen.findAllByText("Ana");
+    expect(screen.getByText(/Próxima ação: Ligar para Ana/)).toHaveTextContent(/Próxima ação: Ligar para Ana/);
+    expect(screen.getByText(/Próxima ação: Ligar para Ana/)).toHaveTextContent(/\d{2}\/\d{2}/);
+
+    const queueBar = screen.getByLabelText("Filas de atendimento");
+    expect(within(queueBar).queryByRole("button", { name: /Resolvido/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Resolvido" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Filas de atendimento" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Nova conversa")).not.toBeInTheDocument();
+    expect(screen.queryByText("Filtros")).not.toBeInTheDocument();
+  });
+
   it("mantém os filtros próprios para operador mine e oculta somente sem responsável", async () => {
     sessionRole = "OPERADOR";
     await renderInbox();

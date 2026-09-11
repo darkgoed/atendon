@@ -27,9 +27,10 @@ import {
 import { usePermission } from "@/lib/use-permission";
 import type { PanelNotificationPreferencesResponse } from "@/lib/message-notifications";
 import { WebPushSettings } from "@/components/web-push-settings";
+import { ConversationQueueManager } from "@/components/conversation-queue-manager";
 
 type CatalogResource = "categorias" | "parceiros" | "unidades";
-type Resource = CatalogResource | "workspace" | "attendants" | "atendon-meet" | "google-meet" | "signature" | "panel-notifications" | "agenda-notifications";
+type Resource = CatalogResource | "workspace" | "attendants" | "conversation-queues" | "atendon-meet" | "google-meet" | "signature" | "panel-notifications" | "agenda-notifications";
 type CatalogItem = {
   id?: string;
   nome?: string;
@@ -55,6 +56,7 @@ const resourceLabels: Record<Resource, string> = {
   parceiros: "Parceiros",
   unidades: "Unidades",
   attendants: "Equipe de atendimento",
+  "conversation-queues": "Filas de atendimento",
   "atendon-meet": "AtendON Meet",
   "google-meet": "Google Meet",
   signature: "Assinatura do atendente",
@@ -129,6 +131,7 @@ export default function ConfigPage() {
   });
   const canManageAttendants = attendantAccess.canManage;
   const canReadAttendants = attendantAccess.canRead;
+  const canManageQueues = usePermission("conversations.queues.manage");
   const visibleSettingsDestinations = session
     ? settingsDestinations.filter((destination) => destination.rootWorkspaceOnly
       ? canAccessRootWorkspace(session)
@@ -136,6 +139,7 @@ export default function ConfigPage() {
     : [];
   const canManage = resource === "workspace" ? canUpdateWorkspace
        : resource === "attendants" ? canManageAttendants
+    : resource === "conversation-queues" ? canManageQueues
     : resource === "atendon-meet" || resource === "google-meet" ? canManageUnits
     : resource === "signature" ? canManageSignature
     : resource === "panel-notifications" ? true
@@ -148,12 +152,14 @@ export default function ConfigPage() {
     ...(leadsEnabled && canReadPartners ? ["parceiros" as const] : []),
     ...(leadsEnabled && canReadUnits ? ["unidades" as const] : []),
     ...(canReadAttendants ? ["attendants" as const] : []),
+    ...(canManageQueues ? ["conversation-queues" as const] : []),
     ...(appointmentsEnabled && canReadUnits ? ["atendon-meet" as const, "google-meet" as const] : []),
     ...(canReadSignature ? ["signature" as const] : []),
     ...(session?.activeWorkspace ? ["panel-notifications" as const] : []),
     ...(canReadAgendaNotifications ? ["agenda-notifications" as const] : [])
   ], [
     canReadAttendants,
+    canManageQueues,
     canReadAgendaNotifications,
     canReadCategories,
     canReadPartners,
@@ -174,8 +180,9 @@ export default function ConfigPage() {
     if (requested === "google-meet" && canReadUnits) setResource("google-meet");
     if (requested === "atendon-meet" && canReadUnits) setResource("atendon-meet");
     if (requested === "attendants" && canReadAttendants) setResource("attendants");
+    if (requested === "conversation-queues" && canManageQueues) setResource("conversation-queues");
     if (requested === "workspace" && canUpdateWorkspace) setResource("workspace");
-  }, [canReadAttendants, canReadUnits, canUpdateWorkspace]);
+  }, [canManageQueues, canReadAttendants, canReadUnits, canUpdateWorkspace]);
 
   const load = useCallback(() => {
     setError("");
@@ -183,7 +190,7 @@ export default function ConfigPage() {
       setLoading(false);
       return Promise.resolve();
     }
-    if (resource === "workspace" || resource === "attendants" || resource === "atendon-meet" || resource === "google-meet" || resource === "signature" || resource === "panel-notifications" || resource === "agenda-notifications") {
+    if (resource === "workspace" || resource === "attendants" || resource === "conversation-queues" || resource === "atendon-meet" || resource === "google-meet" || resource === "signature" || resource === "panel-notifications" || resource === "agenda-notifications") {
       setLoading(false);
       return Promise.resolve();
     }
@@ -270,6 +277,8 @@ export default function ConfigPage() {
         <WorkspaceSettingsPanel />
       ) : resource === "attendants" ? (
         <AttendantSettingsPanel canManage={canManageAttendants} />
+      ) : resource === "conversation-queues" ? (
+        <ConversationQueueManager />
       ) : resource === "atendon-meet" ? (
         <AtendonMeetSettingsPanel canManage={canManageUnits} />
       ) : resource === "google-meet" ? (

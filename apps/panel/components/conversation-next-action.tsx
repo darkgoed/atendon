@@ -2,12 +2,8 @@
 
 import { CalendarDots, Check, PencilSimple, X } from "@phosphor-icons/react";
 import { type FormEvent, type ReactElement, useEffect, useMemo, useState } from "react";
-import useSWR from "swr";
 import { ModalDialog } from "@/components/modal-dialog";
 import { api } from "@/lib/api";
-
-type Assignee = { id: string; email: string };
-type AssigneeResponse = { assignees: Assignee[] };
 
 function localValue(value: string | null, timezone: string): string {
   if (!value) return "";
@@ -24,24 +20,21 @@ function localValue(value: string | null, timezone: string): string {
 }
 
 export function ConversationNextAction({
-  leadId, nextAction, nextActionAt, assignedUserEmail, assignedUserId = null,
-  timezone, canManage, onSaved, conversationId, canAssign = false
+  leadId, nextAction, nextActionAt, assignedUserEmail,
+  timezone, canManage, onSaved
 }: {
   leadId: string;
   nextAction: string | null;
   nextActionAt: string | null;
   assignedUserEmail: string | null;
-  assignedUserId?: string | null;
   timezone: string;
   canManage: boolean;
   onSaved: () => void | Promise<void>;
-  conversationId?: string;
-  canAssign?: boolean;
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const [action, setAction] = useState(nextAction ?? "");
   const [when, setWhen] = useState(localValue(nextActionAt, timezone));
-  const [assignee, setAssignee] = useState(assignedUserId ?? "");
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -50,22 +43,17 @@ export function ConversationNextAction({
     const timer = window.setInterval(() => setClock(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, []);
-  const { data: assigneeData, error: assigneeError } = useSWR<AssigneeResponse>(
-    canAssign && conversationId ? "/conversations/assignees" : null,
-    (url: string) => api<AssigneeResponse>(url), { revalidateOnFocus: false, dedupingInterval: 15_000 }
-  );
 
   useEffect(() => {
     if (!open) return;
     setAction(nextAction ?? "");
     setWhen(localValue(nextActionAt, timezone));
-    setAssignee(assignedUserId ?? "");
+
     setError("");
     setNotice("");
-  }, [assignedUserId, nextAction, nextActionAt, open, timezone]);
+  }, [nextAction, nextActionAt, open, timezone]);
 
   const due = useMemo(() => Boolean(nextActionAt && new Date(nextActionAt).getTime() <= clock), [clock, nextActionAt]);
-  const hasAssignmentChange = Boolean(canAssign && conversationId && assignee !== (assignedUserId ?? ""));
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -87,17 +75,6 @@ export function ConversationNextAction({
       });
       followUpSaved = true;
       await onSaved();
-      if (hasAssignmentChange) {
-        try {
-          await api(`/conversations/${conversationId}/assign`, {
-            method: "PATCH", body: JSON.stringify({ userId: assignee || null })
-          });
-          await onSaved();
-        } catch (assignmentError) {
-          setError(`Próxima ação salva, mas o responsável não foi atualizado: ${assignmentError instanceof Error ? assignmentError.message : "falha desconhecida"}`);
-          return;
-        }
-      }
       setNotice("Próxima ação atualizada.");
       setOpen(false);
     } catch (saveError) {
@@ -125,7 +102,7 @@ export function ConversationNextAction({
           <div className="flex items-center justify-between"><h2 id="next-action-dialog-title" className="text-base font-semibold">Próxima ação</h2><button type="button" className="btn p-2" onClick={() => setOpen(false)} disabled={busy} aria-label="Fechar"><X size={16} /></button></div>
           <label className="field"><span className="label">Descrição <b aria-hidden="true">*</b></span><textarea className="input min-h-24" value={action} maxLength={500} required onChange={(event) => setAction(event.target.value)} /><small className="text-[var(--faint)]">{action.length}/500</small></label>
           <label className="field"><span className="label">Data e hora local <b aria-hidden="true">*</b></span><input className="input" type="datetime-local" value={when} required onChange={(event) => setWhen(event.target.value)} /><small className="text-[var(--faint)]">Fuso do workspace: {timezone}</small></label>
-          {canAssign && conversationId ? <label className="field"><span className="label">Responsável</span>{assigneeError ? <p className="error" role="alert">Não foi possível carregar os responsáveis.</p> : <select className="input" value={assignee} disabled={busy} onChange={(event) => setAssignee(event.target.value)}><option value="">Sem responsável</option>{(assigneeData?.assignees ?? []).map((item) => <option key={item.id} value={item.id}>{item.email}</option>)}</select>}</label> : null}
+
           {error ? <p className="error" role="alert">{error}</p> : null}
           <div className="flex justify-end gap-2"><button type="button" className="btn" onClick={() => setOpen(false)} disabled={busy}>Cancelar</button><button type="submit" className="btn primary" disabled={busy}>{busy ? "Salvando…" : <><Check size={14} /> Salvar</>}</button></div>
         </form>

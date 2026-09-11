@@ -304,14 +304,19 @@ export async function applyStructuredStageEffects(
   let nextActionAt: Date | null = null;
   const hasSaleMetadata = Boolean(payload?.sale_product || payload?.sale_channel || payload?.sale_source);
   if (targetStatus === "fechado") {
-    if (!payload?.sale_value || payload.loss_reason || payload.loss_reason_note || payload.next_action || payload.next_action_at) throw httpError(400,"Informe somente os dados da venda para fechar o lead");
+    if (!payload?.sale_value || !payload.sale_product?.trim() || !payload.sale_source?.trim() || !payload.sale_channel?.trim() || !payload.responsavel_member_id || payload.loss_reason || payload.loss_reason_note || payload.next_action || payload.next_action_at) throw httpError(400,"Informe valor, produto, origem, modalidade e responsável para fechar o lead");
+    const responsible = await client.query<{ id: string }>(
+      "SELECT id FROM workspace_members WHERE workspace_id=$1 AND id=$2 AND status='active'",
+      [input.tenantId,payload.responsavel_member_id]
+    );
+    if (!responsible.rows[0]) throw httpError(400,"Responsável deve ser um membro ativo do workspace");
     outcome="fechado"; saleValue=payload.sale_value;
   } else if (targetStatus === "perdido") {
-    if (!payload?.loss_reason || payload.sale_value || hasSaleMetadata || payload.next_action || payload.next_action_at) throw httpError(400,"Informe somente o motivo da perda");
+    if (!payload?.loss_reason || payload.sale_value || hasSaleMetadata || payload.responsavel_member_id || payload.next_action || payload.next_action_at) throw httpError(400,"Informe somente o motivo da perda");
     const resolved = await resolveLossReason(client,input.tenantId,payload.loss_reason,payload.loss_reason_note);
     outcome="nao_avancou"; lossReason=resolved.key; lossReasonNote=resolved.note;
   } else if (STAGES_REQUIRING_NEXT_ACTION.has(targetStatus)) {
-    if (!payload?.next_action || !payload.next_action_at || payload.sale_value || hasSaleMetadata || payload.loss_reason || payload.loss_reason_note) throw httpError(400,"Informe somente a próxima ação e sua data");
+    if (!payload?.next_action || !payload.next_action_at || payload.sale_value || hasSaleMetadata || payload.responsavel_member_id || payload.loss_reason || payload.loss_reason_note) throw httpError(400,"Informe somente a próxima ação e sua data");
     outcome=targetStatus as CommercialOutcome;
     nextAction=payload.next_action;
     nextActionAt=assertFuture(payload.next_action_at);
@@ -327,6 +332,7 @@ export async function applyStructuredStageEffects(
        status=$3,pipeline_stage_id=$4,
        commercial_outcome=$5,sale_value=$6,loss_reason=$7,loss_reason_note=$11,outcome_metadata=$12::jsonb,
        next_action=$8,next_action_at=$9,
+       assigned_member_id=CASE WHEN $3='fechado' THEN $13::uuid ELSE assigned_member_id END,
        commercial_updated_at=CASE WHEN $5::text IS NULL THEN commercial_updated_at ELSE now() END,
        commercial_updated_by_user_id=CASE WHEN $5::text IS NULL THEN commercial_updated_by_user_id ELSE $10 END,
        recovery_required=CASE WHEN $3='follow_up' THEN recovery_required ELSE false END,
@@ -334,7 +340,7 @@ export async function applyStructuredStageEffects(
        updated_at=now()
      WHERE tenant_id=$1 AND id=$2
      RETURNING id,status,pipeline_stage_id,assigned_member_id,sdr_member_id,closer_member_id,outcome_metadata`,
-    [input.tenantId,input.lead.id,targetStatus,input.targetStageId,outcome,saleValue,lossReason,nextAction,nextActionAt,input.actor.userId,lossReasonNote,outcomeMetadata]
+    [input.tenantId,input.lead.id,targetStatus,input.targetStageId,outcome,saleValue,lossReason,nextAction,nextActionAt,input.actor.userId,lossReasonNote,outcomeMetadata,payload?.responsavel_member_id ?? null]
   );
   if (targetStatus === "fechado") {
     await captureClosedSalePostSaleClient(

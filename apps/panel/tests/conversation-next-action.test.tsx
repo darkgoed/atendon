@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConversationNextAction } from "@/components/conversation-next-action";
@@ -94,32 +94,24 @@ describe("ConversationNextAction", () => {
     expect(clearIntervalSpy).toHaveBeenCalled();
   });
 
-  it("só mostra responsável com conversationId e usa permissão e ID do contrato", async () => {
+  it("mantém responsável fora do modal e não busca nem altera assignee", async () => {
     const user = userEvent.setup();
     const requests: string[] = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       requests.push(`${String(input)} ${String(init?.body ?? "")}`);
-      if (String(input).endsWith("/conversations/assignees")) {
-        return jsonResponse({ assignees: [{ id: "user-contract-42", email: "real@example.com" }] });
-      }
       return jsonResponse({});
     });
 
-    renderAction({ canAssign: true });
+    renderAction({ assignedUserEmail: "real@example.com" });
     await user.click(screen.getByRole("button", { name: "Editar próxima ação" }));
     expect(screen.queryByLabelText("Responsável")).not.toBeInTheDocument();
-    cleanup();
-
-    renderAction({ canAssign: true, conversationId: "conversation-contract-7" });
-    await user.click(screen.getByRole("button", { name: "Editar próxima ação" }));
-    await waitFor(() => expect(screen.getByLabelText("Responsável")).toBeInTheDocument());
-    expect(requests.some((request) => request.includes("/conversations/assignees"))).toBe(true);
-    expect(within(screen.getByLabelText("Responsável")).getByRole("option", { name: "real@example.com" })).toHaveValue("user-contract-42");
-    await user.selectOptions(screen.getByLabelText("Responsável"), "user-contract-42");
+    expect(screen.getByText("Responsável: real@example.com")).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: /Descrição/ }), "Confirmar dados");
     fireEvent.change(screen.getByLabelText(/Data e hora local/), { target: { value: "2030-05-06T14:30" } });
     await user.click(screen.getByRole("button", { name: "Salvar" }));
-    await waitFor(() => expect(requests.some((request) => request.includes("/conversations/conversation-contract-7/assign") && request.includes('"userId":"user-contract-42"'))).toBe(true));
+    await waitFor(() => expect(requests.some((request) => request.includes("/scheduling/leads/lead-real/follow-up"))).toBe(true));
+    expect(requests.some((request) => request.includes("/conversations/assignees"))).toBe(false);
+    expect(requests.some((request) => request.includes("/conversations/conversation-contract-7/assign"))).toBe(false);
   });
 });
 
@@ -127,23 +119,21 @@ describe("ConversationPreBriefing", () => {
   it("omite campos ausentes, trata attribution como texto e não lança com tudo nulo", () => {
     const { rerender } = render(
       <ConversationPreBriefing
-        contactName="  Ana Souza  "
-        contactPhone={null}
         source={null}
         campaign={null}
         interest={null}
         facebookAttribution={{ origem_facebook: " <img src=x onerror=alert(1)> " }}
       />
     );
-    expect(screen.getByText("Ana Souza")).toBeVisible();
     expect(screen.getByText("<img src=x onerror=alert(1)>")).toBeVisible();
+    expect(screen.queryByText("Ana Souza")).not.toBeInTheDocument();
     expect(screen.queryByText("Telefone")).not.toBeInTheDocument();
     expect(screen.queryByText("Campanha")).not.toBeInTheDocument();
     expect(screen.queryByText("Interesse")).not.toBeInTheDocument();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
 
     expect(() => rerender(
-      <ConversationPreBriefing contactName={null} source={null} campaign={null} interest={null} facebookAttribution={null} />
+      <ConversationPreBriefing source={null} campaign={null} interest={null} facebookAttribution={null} />
     )).not.toThrow();
     expect(screen.getByText("Sem dados de briefing ainda")).toBeVisible();
     expect(screen.queryByText("—")).not.toBeInTheDocument();
@@ -152,7 +142,6 @@ describe("ConversationPreBriefing", () => {
   it("usa origem do Facebook quando source está vazio", () => {
     render(
       <ConversationPreBriefing
-        contactName={null}
         source=""
         campaign={null}
         interest={null}

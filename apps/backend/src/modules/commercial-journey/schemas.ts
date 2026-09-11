@@ -11,6 +11,7 @@ export const commercialOutcomeSchema = z.enum(COMMERCIAL_OUTCOMES);
 export const lossReasonSchema = z.string().trim().regex(/^[a-z0-9_]{2,40}$/, "Motivo de perda inválido");
 export const lossReasonNoteSchema = z.string().trim().min(1).max(500);
 const instant = z.string().datetime({ offset: true });
+const memberId = z.string().uuid();
 const metadata = z.record(z.string(),z.unknown()).optional();
 const nextAction = z.string().trim().min(1).max(500);
 
@@ -19,6 +20,7 @@ export const commercialTransitionPayloadSchema = z.object({
   sale_product: z.string().trim().min(1).max(200).optional(),
   sale_channel: z.string().trim().min(1).max(60).optional(),
   sale_source: z.string().trim().min(1).max(200).optional(),
+  responsavel_member_id: memberId.optional(),
   loss_reason: lossReasonSchema.optional(),
   loss_reason_note: lossReasonNoteSchema.optional(),
   next_action: nextAction.optional(),

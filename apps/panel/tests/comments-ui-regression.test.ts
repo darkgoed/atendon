@@ -46,7 +46,7 @@ beforeAll(async () => {
 });
 
 describe("comments.md UI regressions", () => {
-  it("keeps scheduling, resolving and transferring in the conversation header and secondary actions in More", () => {
+  it("keeps resolving and transferring in the conversation header and scheduling in More", () => {
     const header = between(
       conversationsSource,
       '<header className="conversation-thread__header',
@@ -57,11 +57,12 @@ describe("comments.md UI regressions", () => {
 
     expect(actionsIndex).toBeGreaterThanOrEqual(0);
     expect(moreIndex).toBeGreaterThan(actionsIndex);
-    expect(header.slice(actionsIndex, moreIndex)).toMatch(/\bAgendar\b/);
+    expect(header.slice(actionsIndex, moreIndex)).not.toMatch(/\bAgendar\b/);
     expect(header.slice(actionsIndex, moreIndex)).toMatch(/\bResolver\b/);
     expect(header.slice(actionsIndex, moreIndex)).toMatch(/\bTransferir\b/);
 
     const moreActions = header.slice(moreIndex);
+    expect(moreActions).toMatch(/\bAgendar\b/);
     expect(moreActions).toContain("Avaliar com IA");
     expect(moreActions).toContain("Assumir conversa");
     expect(moreActions).toContain("Assinatura do atendente");

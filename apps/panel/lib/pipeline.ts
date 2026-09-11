@@ -287,9 +287,7 @@ export function buildPipelineTransitionPayload(input: {
   expectedUpdatedAt: string;
   commercial?: PipelineCommercialInput;
 }) {
-  const commercialPayload = input.commercial && "sale_value" in input.commercial
-    ? Object.fromEntries(Object.entries(input.commercial).filter(([key]) => key !== "responsavel_member_id"))
-    : input.commercial;
+  const commercialPayload = input.commercial;
   return {
     stage_id: input.stage.id,
     expected_updated_at: input.expectedUpdatedAt,

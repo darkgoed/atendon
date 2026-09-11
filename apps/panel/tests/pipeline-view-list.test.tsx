@@ -26,6 +26,7 @@ vi.mock("@/components/page-state", () => ({ Empty: ({ children }: { children: Re
 vi.mock("@/components/phosphor-icons", () => ({}));
 
 import PipelinePage from "../app/leads/pipeline/page";
+import { buildPipelineTransitionPayload } from "../lib/pipeline";
 
 describe("pipeline view interactions", () => {
   beforeEach(() => { localStorage.clear(); apiMock.mockClear(); canMoveState.value = true; });
@@ -37,4 +38,12 @@ describe("pipeline view interactions", () => {
   it("omits Mover without permission", async () => { canMoveState.value = false; const user = await mounted(); await user.click(screen.getByRole("button", { name: "Lista" })); expect(screen.queryByRole("button", { name: "Mover" })).toBeNull(); });
   it("does not fetch when only the view changes", async () => { const user = await mounted(); const calls = apiMock.mock.calls.length; await user.click(screen.getByRole("button", { name: "Lista" })); await user.click(screen.getByRole("button", { name: "Kanban" })); expect(apiMock).toHaveBeenCalledTimes(calls); });
   it("persists and rereads the preference", async () => { const user = await mounted(); await user.click(screen.getByRole("button", { name: "Lista" })); expect(localStorage.getItem("atendon.pipeline.view:workspace-1:user-1")).toBe("list"); cleanup(); render(<PipelinePage />); expect(await screen.findByRole("table")).toBeTruthy(); });
+
+  it("keeps the selected responsible member in the stage payload", () => {
+    expect(buildPipelineTransitionPayload({
+      stage: { id: "stage-closed", name: "Venda", color: "#000000", position: 1, technical_status: "fechado", is_default: false },
+      expectedUpdatedAt: "2026-01-01T00:00:00.000Z",
+      commercial: { sale_value: 100, sale_product: "Plano", sale_source: "Indicação", sale_channel: "WhatsApp", responsavel_member_id: "member-1" }
+    }).commercial).toMatchObject({ responsavel_member_id: "member-1" });
+  });
 });

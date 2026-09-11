@@ -38,6 +38,7 @@ type WidgetDefinition = {
   group?: WidgetGroup;
   sizes: WidgetSize[];
   default_size: WidgetSize;
+  selectable?: boolean;
 };
 type CatalogResponse = { widgets: WidgetDefinition[]; default_layout: LayoutItem[] };
 type LayoutResponse = { layout: { items: LayoutItem[]; source: "default" | "saved" } };
@@ -142,7 +143,7 @@ function teamData(data: Record<string, unknown>): DashboardTeamData | null {
 function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record<string, unknown> }) {
   const { isEnabled } = useCapabilities();
   const newMetric = metricData(data);
-  const newTeam = teamData(data);
+  const newTeam = ["sales_by_seller", "sales_value_by_seller", "conversion_by_seller"].includes(widgetKey) ? teamData(data) : null;
   if (newTeam) return <DashboardTeamWidget data={newTeam} percentage={PERCENTAGE_WIDGET_KEYS.has(widgetKey)} />;
   if (newMetric) return <DashboardMetricWidget data={newMetric} percentage={PERCENTAGE_WIDGET_KEYS.has(widgetKey)} />;
 
@@ -381,7 +382,9 @@ export function DashboardWidgets() {
   const groupedDraft = useMemo(() => {
     const groups = new Map<string, LayoutItem[]>();
     [...availableDraft].sort((a, b) => a.order - b.order).forEach((item) => {
-      const group = definitions.get(item.key)?.group ?? "outros";
+      const definition = definitions.get(item.key);
+      if (definition?.selectable === false) return;
+      const group = definition?.group ?? "outros";
       groups.set(group, [...(groups.get(group) ?? []), item]);
     });
     return [...groups.entries()];

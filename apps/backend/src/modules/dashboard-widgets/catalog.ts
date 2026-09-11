@@ -54,6 +54,7 @@ export interface DashboardWidgetDefinition {
   sizes: DashboardWidgetSize[];
   defaultSize: DashboardWidgetSize;
   defaultVisible: boolean;
+  selectable?: boolean;
 }
 
 export interface DashboardLayoutItem {
@@ -66,14 +67,14 @@ export interface DashboardLayoutItem {
 // A ordem do catálogo é a hierarquia padrão da Visão Geral:
 // 1º resultado, 2º conversão, 3º performance, 4º operação.
 export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetDefinition[] = [
-  { key: "commercial_metrics", label: "Resultado comercial", description: "Contatos, agendamentos, calls, no-show e vendas do período.", group: "Vendas", requiredPermissions: ["leads.read", "appointments.read"], sizes: ["wide", "full"], defaultSize: "full", defaultVisible: false },
+  { key: "commercial_metrics", label: "Resultado comercial", description: "Contatos, agendamentos, calls, no-show e vendas do período.", group: "Vendas", requiredPermissions: ["leads.read", "appointments.read"], sizes: ["wide", "full"], defaultSize: "full", defaultVisible: false, selectable: false },
   { key: "conversion_funnel", label: "Funil de conversão", description: "Lead → agendamento → call → venda e as taxas entre as etapas.", group: "Vendas", requiredPermissions: ["leads.read", "appointments.read"], sizes: ["medium", "wide", "full"], defaultSize: "full", defaultVisible: false },
-  { key: "team_load", label: "Performance por closer", description: "Calls, no-shows, vendas e valor vendido por closer no período.", group: "Equipe", requiredPermissions: ["availability.read", "appointments.read"], sizes: ["medium", "wide", "full"], defaultSize: "full", defaultVisible: false },
+  { key: "team_load", label: "Performance por closer", description: "Calls, no-shows, vendas e valor vendido por closer no período.", group: "Equipe", requiredPermissions: ["availability.read", "appointments.read"], sizes: ["medium", "wide", "full"], defaultSize: "full", defaultVisible: false, selectable: false },
   { key: "today_agenda", label: "Agenda do dia", description: "Próximos compromissos acessíveis ao usuário.", group: "Agendamento", requiredPermissions: ["appointments.read"], sizes: ["medium", "wide", "full"], defaultSize: "wide", defaultVisible: false },
   { key: "handoffs", label: "Handoffs na fila", description: "Conversas aguardando atendimento humano agora.", group: "Atendimento", requiredPermissions: ["conversations.read"], sizes: ["small", "medium", "wide"], defaultSize: "medium", defaultVisible: false },
   { key: "operations_summary", label: "Operação", description: "Mensagens, conversas, handoffs, resposta e pendências do período.", group: "Atendimento", requiredPermissions: ["leads.read", "conversations.read"], sizes: ["wide", "full"], defaultSize: "full", defaultVisible: false },
   { key: "whatsapp_connection", label: "Conexão WhatsApp", description: "Estado atual da conexão principal.", group: "Atendimento", requiredPermissions: ["connection.read"], sizes: ["small", "medium"], defaultSize: "small", defaultVisible: false },
-  { key: "open_conversations", label: "Conversas abertas", description: "Conversas em andamento e resolvidas hoje.", group: "Atendimento", requiredPermissions: ["conversations.read"], sizes: ["small", "medium"], defaultSize: "small", defaultVisible: false },
+  { key: "open_conversations", label: "Conversas abertas", description: "Conversas em andamento e resolvidas hoje.", group: "Atendimento", requiredPermissions: ["conversations.read"], sizes: ["small", "medium"], defaultSize: "small", defaultVisible: false, selectable: false },
   { key: "messages_today", label: "Mensagens hoje", description: "Volume de mensagens no dia.", group: "Atendimento", requiredPermissions: ["conversations.read"], sizes: ["small", "medium"], defaultSize: "small", defaultVisible: false },
   { key: "pipeline", label: "Pipeline", description: "Distribuição dos leads por situação.", group: "Vendas", requiredPermissions: ["leads.read"], sizes: ["medium", "wide", "full"], defaultSize: "wide", defaultVisible: false },
   { key: "recent_alerts", label: "Alertas recentes", description: "Sinais operacionais mais recentes.", group: "Atendimento", requiredPermissions: ["dashboard.read"], sizes: ["small", "medium", "wide"], defaultSize: "medium", defaultVisible: false },
@@ -101,7 +102,7 @@ export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetDefinition[] = [
   { key: "sales_organic", label: "Vendas orgânicas", description: "Vendas do período vindas de canais orgânicos.", group: "Origem das vendas", requiredPermissions: ["leads.read", "appointments.read"], sizes: ["small", "medium"], defaultSize: "small", defaultVisible: false },
   { key: "sales_by_seller", label: "Vendas por vendedor", description: "Quantidade de vendas por vendedor no período.", group: "Equipe", requiredPermissions: ["availability.read", "appointments.read"], sizes: ["small", "medium"], defaultSize: "small", defaultVisible: false },
   { key: "sales_value_by_seller", label: "Valor vendido por vendedor", description: "Valor das vendas por vendedor no período.", group: "Equipe", requiredPermissions: ["availability.read", "appointments.read"], sizes: ["small", "medium"], defaultSize: "small", defaultVisible: false },
-  { key: "conversion_by_seller", label: "Conversão por vendedor", description: "Percentual de vendas sobre atendimentos por vendedor.", group: "Equipe", requiredPermissions: ["availability.read", "appointments.read"], sizes: ["small", "medium"], defaultSize: "small", defaultVisible: false }
+  { key: "conversion_by_seller", label: "Conversão por vendedor", description: "Vendas ÷ calls realizadas no período, por vendedor.", group: "Equipe", requiredPermissions: ["availability.read", "appointments.read"], sizes: ["small", "medium"], defaultSize: "small", defaultVisible: false }
 ];
 
 export const DASHBOARD_PRESET_KEYS = ["essencial", "comercial", "gestao_completa"] as const;
@@ -150,7 +151,7 @@ export function dashboardLayoutFromPreset(
 export function availableDashboardWidgets(granted: readonly PermissionKey[]) {
   return DASHBOARD_WIDGET_CATALOG.filter((widget) =>
     widget.requiredPermissions.every((permission) => granted.includes(permission))
-  );
+  ).map((widget) => ({ ...widget, selectable: widget.selectable !== false }));
 }
 
 export function defaultDashboardLayout(catalog: readonly DashboardWidgetDefinition[]): DashboardLayoutItem[] {

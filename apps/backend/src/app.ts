@@ -1580,39 +1580,6 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     }
     return { conversations: result.rows };
   });
-  app.get("/conversations/pending-actions", async (request) => {
-    const session = await requirePermission(request, "conversations.read");
-    const scope = await resolveCaseScope(db, session);
-    const result = await db.query<{
-      items: Array<Record<string, unknown>> | null;
-      total: number;
-      overdue_total: number;
-    }>(`
-      WITH eligible AS (
-        SELECT c.id conversation_id,c.lead_id,c.contact_name,c.contact_phone,
-          lead.next_action,lead.next_action_at,u.email assigned_user_email,
-          c.queue_id,queue.name queue_name,
-          (lead.next_action_at < now()) overdue
-        FROM conversations c
-        JOIN scheduling_leads lead ON lead.id=c.lead_id AND lead.tenant_id=c.tenant_id
-        LEFT JOIN users u ON u.id=c.assigned_user_id
-        LEFT JOIN conversation_queues queue ON queue.id=c.queue_id AND queue.tenant_id=c.tenant_id
-        WHERE c.tenant_id=$1
-          AND (${conversationScopeCondition(scope, "c", "$2")})
-          AND lead.next_action_at IS NOT NULL
-          AND lead.next_action_at <= now() + interval '15 minutes'
-      ), limited AS (
-        SELECT * FROM eligible ORDER BY next_action_at ASC,conversation_id ASC LIMIT 50
-      )
-      SELECT
-        COALESCE((SELECT jsonb_agg(to_jsonb(limited) ORDER BY next_action_at ASC,conversation_id ASC) FROM limited),'[]'::jsonb) items,
-        (SELECT count(*)::int FROM eligible) total,
-        (SELECT count(*) FILTER (WHERE overdue)::int FROM eligible) overdue_total`,
-      [session.tenantId, scope.userId]
-    );
-    const row = result.rows[0];
-    return { items: row?.items ?? [], total: Number(row?.total ?? 0), overdue_total: Number(row?.overdue_total ?? 0) };
-  });
   app.get("/conversations/unread", async (request) => {
     const session = await requirePermission(request, "conversations.read");
     const scope = await resolveCaseScope(db, session);

@@ -152,7 +152,7 @@ async function loadWidgetData(
               count(*) OVER ()::int total,
               count(*) FILTER (WHERE status='connected') OVER ()::int connected
        FROM whatsapp_sessions
-       WHERE tenant_id=$1 AND archived_at IS NULL
+       WHERE tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL
        ORDER BY is_primary DESC, created_at DESC LIMIT 1`,
       [session.tenantId]
     )).rows[0] ?? { status: "disconnected", last_connected_at: null, total: 0, connected: 0 };
@@ -269,8 +269,8 @@ export async function registerDashboardWidgetRoutes(app: FastifyInstance) {
     if (!await featureEnabled(session, reply)) return;
     const catalog = await widgetCatalog(session);
     return {
-      widgets: catalog.map(({ key, label, description, group, sizes, defaultSize }) => ({
-        key,label,description,group,sizes,default_size: defaultSize
+      widgets: catalog.map(({ key, label, description, group, sizes, defaultSize, selectable }) => ({
+        key,label,description,group,sizes,default_size: defaultSize,selectable: selectable !== false
       })),
       default_layout: defaultDashboardLayout(catalog)
     };

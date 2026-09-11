@@ -391,7 +391,13 @@ describe("post-sales REST API", () => {
         lead,
         targetStatus: "fechado",
         targetStageId: closedStageId,
-        payload: { sale_value: 1500 },
+        payload: {
+          sale_value: 1500,
+          sale_product: "Plano Premium",
+          sale_source: "campanha-x",
+          sale_channel: "whatsapp",
+          responsavel_member_id: operatorMemberId
+        },
         actor: { userId: operatorUserId, actorScope: "workspace" }
       });
       await client.query("COMMIT");

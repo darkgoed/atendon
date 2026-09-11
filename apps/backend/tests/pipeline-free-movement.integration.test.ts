@@ -225,11 +225,14 @@ describe("pipeline free movement integration", () => {
     expect(closedWithoutValue.statusCode).toBe(400);
     const lostWithoutReason = await app.inject({ method: "PATCH", url: `/organization/leads/${lossLeadId}/stage`, headers: { cookie: ownerCookie }, payload: { stage_id: await stageId(tenantId, "perdido"), commercial: {} } });
     expect(lostWithoutReason.statusCode).toBe(400);
-    const sale = await app.inject({ method: "PATCH", url: `/organization/leads/${saleLeadId}/stage`, headers: { cookie: ownerCookie }, payload: { stage_id: await stageId(tenantId, "fechado"), commercial: { sale_value: 1250.5, sale_product: "Plano Premium", sale_channel: "whatsapp", sale_source: "campanha-x", outcome_metadata: { external_id: "sale-42", score: 9 } } } });
+    const saleMissingResponsible = await app.inject({ method: "PATCH", url: `/organization/leads/${saleLeadId}/stage`, headers: { cookie: ownerCookie }, payload: { stage_id: await stageId(tenantId, "fechado"), commercial: { sale_value: 1250.5, sale_product: "Plano Premium", sale_channel: "whatsapp", sale_source: "campanha-x" } } });
+    expect(saleMissingResponsible.statusCode).toBe(400);
+    const sale = await app.inject({ method: "PATCH", url: `/organization/leads/${saleLeadId}/stage`, headers: { cookie: ownerCookie }, payload: { stage_id: await stageId(tenantId, "fechado"), commercial: { sale_value: 1250.5, sale_product: "Plano Premium", sale_channel: "whatsapp", sale_source: "campanha-x", responsavel_member_id: operatorMemberId, outcome_metadata: { external_id: "sale-42", score: 9 } } } });
     expect(sale.statusCode).toBe(200);
-    const persisted = (await pool.query("SELECT status,commercial_outcome,sale_value,loss_reason,outcome_metadata FROM scheduling_leads WHERE id=$1", [saleLeadId])).rows[0];
+    const persisted = (await pool.query("SELECT status,commercial_outcome,sale_value,assigned_member_id,loss_reason,outcome_metadata FROM scheduling_leads WHERE id=$1", [saleLeadId])).rows[0];
     expect(persisted).toMatchObject({ status: "fechado", commercial_outcome: "fechado", loss_reason: null, outcome_metadata: { external_id: "sale-42", score: 9, sale_product: "Plano Premium", sale_channel: "whatsapp", sale_source: "campanha-x" } });
     expect(Number(persisted.sale_value)).toBe(1250.5);
+    expect(persisted.assigned_member_id).toBe(operatorMemberId);
     const invalidAtomic = await app.inject({ method: "PATCH", url: `/organization/leads/${lossLeadId}/stage`, headers: { cookie: ownerCookie }, payload: { stage_id: await stageId(tenantId, "perdido"), commercial: { loss_reason: "custom_note", sale_value: 2 } } });
     expect(invalidAtomic.statusCode).toBe(400);
     expect((await pool.query("SELECT status,commercial_outcome,sale_value,loss_reason FROM scheduling_leads WHERE id=$1", [lossLeadId])).rows[0]).toMatchObject({ status: "novo", commercial_outcome: null, sale_value: null, loss_reason: null });

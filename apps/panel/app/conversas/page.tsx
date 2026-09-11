@@ -62,7 +62,7 @@ import { usePermission } from "@/lib/use-permission";
 import { ChannelBadge, type Channel } from "@/components/channel-badge";
 import { ConversationNextAction } from "@/components/conversation-next-action";
 import { ConversationPreBriefing } from "@/components/conversation-pre-briefing";
-import { ConversationQueueManager } from "@/components/conversation-queue-manager";
+
 import type { ConnectionsResponse } from "@/lib/connections";
 import type { PipelineStage } from "@/lib/pipeline";
 import type { PanelNotificationPreferencesResponse } from "@/lib/message-notifications";
@@ -278,6 +278,11 @@ function ConversationItem({ item, selected, showLeadTags, onClick }: { item: Con
             ) : null}
           </span>
         </div>
+        {item.next_action ? (
+          <p className={`mt-1 truncate text-[10px] ${item.next_action_due || (item.next_action_at && new Date(item.next_action_at).getTime() <= Date.now()) ? "font-semibold text-[var(--warn)]" : "text-[var(--faint)]"}`}>
+            Próxima ação: {item.next_action}{item.next_action_at ? ` · ${new Date(item.next_action_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}
+          </p>
+        ) : null}
         {showLeadTags ? <LeadTagChips tags={item.tags} compact /> : null}
       </div>
     </button>
@@ -428,7 +433,7 @@ export default function Conversations() {
   const leadsEnabled = isEnabled("leads_v1");
   const appointmentsEnabled = isEnabled("appointments_v1");
   const canReply = usePermission("conversations.reply");
-  const canManageQueues = usePermission("conversations.queues.manage");
+
   const canChangeAi = usePermission("conversations.reactivate");
   const canCreateAppointment = usePermission("appointments.create");
   const canReadAvailability = usePermission("availability.read");
@@ -1308,10 +1313,7 @@ export default function Conversations() {
         <header className="conversation-screen__header flex shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] px-4">
           <h1>{hasWorkspaceScope ? "Conversas" : "Minhas conversas"}</h1>
           <span className="conversation-screen__summary mono">{items.length} na fila</span>
-          <div className="conversation-screen__actions ml-auto flex items-center gap-2" aria-hidden="true">
-            <span className="conversation-screen__action">Filtros</span>
-            <span className="conversation-screen__action conversation-screen__action--primary">Nova conversa</span>
-          </div>
+
         </header>
         <div
           className="conversation-layout grid min-h-0 min-w-0 flex-1 overflow-hidden"
@@ -1366,7 +1368,7 @@ export default function Conversations() {
             <>
               <div className="mb-2 flex gap-1 overflow-x-auto" aria-label="Filas de atendimento">
                 <button type="button" className={`btn shrink-0 px-2 py-1 text-xs ${!queueFilter ? "primary" : ""}`} onClick={() => setQueueFilter("")}>Todas</button>
-                {(queueData?.queues ?? []).filter((queue) => !queue.archived_at).map((queue) => <button type="button" key={queue.id} className={`btn shrink-0 px-2 py-1 text-xs ${queueFilter === queue.id ? "primary" : ""}`} onClick={() => { setQueueFilter(queue.id); if (queue.is_resolved && hasWorkspaceScope) setFilter("resolved"); }}><span className="mr-1 inline-block size-2 rounded-full" style={{ backgroundColor: queue.color }} aria-hidden="true" />{queue.name} <span className="mono">{queue.conversation_count}</span></button>)}
+                {(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <button type="button" key={queue.id} className={`btn shrink-0 px-2 py-1 text-xs ${queueFilter === queue.id ? "primary" : ""}`} onClick={() => setQueueFilter(queue.id)}><span className="mr-1 inline-block size-2 rounded-full" style={{ backgroundColor: queue.color }} aria-hidden="true" />{queue.name} <span className="mono">{queue.conversation_count}</span></button>)}
               </div>
               <div className="mb-2 flex flex-wrap gap-1.5">
                 <button type="button" disabled={!hasWorkspaceScope} className={`btn px-2 py-1 text-xs ${!hasWorkspaceScope || filter === "mine" ? "primary" : ""}`} onClick={() => { if (hasWorkspaceScope) setFilter(filter === "mine" ? "human" : "mine"); }}>Minhas conversas</button>
@@ -1406,7 +1408,7 @@ export default function Conversations() {
                 Minhas conversas abertas
               </div>
             )}
-            {canManageQueues ? <div className="mt-2"><ConversationQueueManager onSaved={async () => { await Promise.all([mutateList(), mutateQueues()]); }} /></div> : null}
+
           </header>
 
           <div
@@ -1527,16 +1529,7 @@ export default function Conversations() {
                       />
                     ) : null
                   ) : null}
-                  {canReply ? <label className="field"><span className="sr-only">Fila do atendimento</span><select className="input py-1.5 text-xs" aria-label="Fila do atendimento" value={thread.conversation.queue_id ?? ""} onChange={(event) => { if (event.target.value) void moveConversationToQueue(event.target.value); }}><option value="">Sem fila</option>{(queueData?.queues ?? []).filter((queue) => !queue.archived_at).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></label> : null}
-                  {canSchedule ? (
-                    <button type="button" className="btn shrink-0 active:scale-[.98]" onClick={() => setSchedulerOpen(true)}>
-                      <CalendarDots size={14} aria-hidden="true" />
-                      Agendar
-                    </button>
-                  ) : null}
-                  {canReply && thread.conversation.status === "open" && thread.conversation.lead_id ? <button className="btn primary shrink-0 active:scale-[.98]" onClick={() => void followUpConversation()} disabled={followUpPending || changingOwner}>
-                    <ArrowClockwise size={14} aria-hidden="true" /> {followUpPending ? "Enviando…" : "Follow-up"}
-                  </button> : null}
+                  {canReply ? <label className="field"><span className="sr-only">Fila do atendimento</span><select className="input py-1.5 text-xs" aria-label="Fila do atendimento" value={thread.conversation.queue_id ?? ""} onChange={(event) => { if (event.target.value) void moveConversationToQueue(event.target.value); }}><option value="">Sem fila</option>{(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></label> : null}
                   {canReply && thread.conversation.status === "open" ? <button className="btn primary shrink-0 active:scale-[.98]" onClick={resolveConversation} disabled={changingOwner || followUpPending}>
                     <CheckCircle size={14} aria-hidden="true" /> Resolver
                   </button> : null}
@@ -1584,6 +1577,8 @@ export default function Conversations() {
                         if (!activeConversation) return null;
                         return (
                           <>
+                            {canSchedule ? <button className="conversation-action-menu__item" onClick={() => setSchedulerOpen(true)}><CalendarDots size={15} aria-hidden="true" />Agendar</button> : null}
+                            {canReply && activeConversation.status === "open" && activeConversation.lead_id ? <button className="conversation-action-menu__item" onClick={() => void followUpConversation()} disabled={followUpPending || changingOwner}><ArrowClockwise size={15} aria-hidden="true" />{followUpPending ? "Enviando…" : "Follow-up"}</button> : null}
                             <button className="conversation-action-menu__item" onClick={() => void toggleNotificationMute()}>
                               {notificationPreferences?.muted_conversations.some((conversation) => conversation.id === selected)
                                 ? <><BellRinging size={15} aria-hidden="true" />Reativar avisos</>
@@ -1658,7 +1653,7 @@ export default function Conversations() {
                 </div>
               ) : null}
 
-              {thread.conversation.lead_id ? <div className="grid shrink-0 gap-2 border-b border-[var(--border)] p-3 lg:grid-cols-2"><ConversationPreBriefing contactName={thread.conversation.contact_name ?? null} contactPhone={thread.conversation.contact_phone} source={thread.conversation.lead_source ?? null} campaign={thread.conversation.lead_campaign ?? null} interest={thread.conversation.interest ?? null} facebookAttribution={thread.conversation.facebook_attribution} /><ConversationNextAction leadId={thread.conversation.lead_id} nextAction={thread.conversation.next_action ?? null} nextActionAt={thread.conversation.next_action_at ?? null} assignedUserEmail={thread.conversation.assigned_user_email ?? null} assignedUserId={thread.conversation.assigned_user_id ?? null} timezone={timezone} canManage={canReply} canAssign={hasWorkspaceScope && canReply} conversationId={thread.conversation.id} onSaved={async () => { await Promise.all([mutateList(), mutateThread()]); }} /></div> : null}
+              {thread.conversation.lead_id ? <div className="grid shrink-0 gap-2 border-b border-[var(--border)] p-3 lg:grid-cols-2"><ConversationPreBriefing source={thread.conversation.lead_source ?? null} campaign={thread.conversation.lead_campaign ?? null} interest={thread.conversation.interest ?? null} facebookAttribution={thread.conversation.facebook_attribution} /><ConversationNextAction leadId={thread.conversation.lead_id} nextAction={thread.conversation.next_action ?? null} nextActionAt={thread.conversation.next_action_at ?? null} assignedUserEmail={thread.conversation.assigned_user_email ?? null} timezone={timezone} canManage={canReply} onSaved={async () => { await Promise.all([mutateList(), mutateThread()]); }} /></div> : null}
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div className="relative min-h-0 flex-1">
                   <div

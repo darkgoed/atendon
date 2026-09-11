@@ -12,7 +12,7 @@ export class SessionRepository {
       `SELECT s.id, s.tenant_id, s.status, s.instance_name FROM whatsapp_sessions s
        JOIN tenants t ON t.id = s.tenant_id
        WHERE t.status IN ('trial', 'active') AND s.status IN ('connected', 'qr_pending')
-         AND s.archived_at IS NULL
+         AND s.channel = 'whatsapp' AND s.archived_at IS NULL
        ORDER BY s.created_at`
     );
     return Promise.all(result.rows.map(async (row) => {
@@ -65,7 +65,7 @@ export class SessionRepository {
   async primaryId(tenantId: string): Promise<string | null> {
     const result = await this.db.query<{ id: string }>(
       `SELECT id FROM whatsapp_sessions
-       WHERE tenant_id=$1 AND archived_at IS NULL
+       WHERE tenant_id=$1 AND channel = 'whatsapp' AND archived_at IS NULL
        ORDER BY is_primary DESC, created_at DESC
        LIMIT 1`, [tenantId]
     );
