@@ -18,7 +18,7 @@ export async function assertLimitWithinTransaction(client: PoolClient, tenantId:
   if (max === null) return;
   let usage = 0;
   if (limitKey === "MAX_USERS") { const x = await client.query<UsedRow>("SELECT count(*)::int used FROM workspace_members WHERE workspace_id=$1 AND status='active'", [tenantId]); usage = Number(x.rows[0].used); }
-  else if (limitKey === "MAX_WHATSAPP_CONNECTIONS") { const x = await client.query<UsedRow>("SELECT count(*)::int used FROM whatsapp_sessions WHERE tenant_id=$1 AND archived_at IS NULL", [tenantId]); usage = Number(x.rows[0].used); }
+  else if (limitKey === "MAX_WHATSAPP_CONNECTIONS") { const x = await client.query<UsedRow>("SELECT count(*)::int used FROM whatsapp_sessions WHERE tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL", [tenantId]); usage = Number(x.rows[0].used); }
   else if (limitKey === "MAX_AI_INTERACTIONS") { const x = await client.query<UsedRow>("SELECT COALESCE(included_usage,0)+COALESCE(rollover_usage,0)+COALESCE(bonus_usage,0)+COALESCE(overage_usage,0) used FROM usage_periods WHERE tenant_id=$1 AND status='OPEN'", [tenantId]); usage = Number(x.rows[0]?.used ?? 0); }
   if (usage + delta > max) throw planLimitReachedError(limitKey, usage, max, r.rows[0]?.plan_name ?? "");
 }

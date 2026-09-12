@@ -2,6 +2,7 @@ import type { Pool } from "pg";
 import type { Logger } from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { config } from "../src/config.js";
+import { WhatsAppSendRejectedError } from "../src/modules/whatsapp/errors.js";
 import { WhatsAppSessionManager } from "../src/modules/whatsapp/session-manager.js";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -81,6 +82,30 @@ describe("WhatsApp outbound connection recovery", () => {
       expect.objectContaining({ sessionId: "session-1", instanceName: "tenant-instance", operation: "text" }),
       expect.stringContaining("instance restarted")
     );
+  });
+
+  it("keeps a provider-rejected send recoverable when restarting the connection fails", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        status: 400,
+        error: "Bad Request",
+        response: { message: ["Error: Connection Closed"] }
+      }), { status: 400, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response("restart unavailable", { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const query = vi.fn().mockResolvedValue({ rows: [{ instance_name: "tenant-instance" }] });
+    const manager = new WhatsAppSessionManager(
+      { query } as unknown as Pool,
+      { ...config, WHATSAPP_ENABLED: true },
+      { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as Logger
+    );
+
+    await expect(manager.sendText("session-1", "5511999999999", "Olá"))
+      .rejects.toBeInstanceOf(WhatsAppSendRejectedError);
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      expect.stringContaining("/message/sendText/tenant-instance"),
+      expect.stringContaining("/instance/restart/tenant-instance")
+    ]);
   });
 
   it("does not restart an instance for unrelated provider errors", async () => {

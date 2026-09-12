@@ -45,7 +45,7 @@ export async function getOverLimitReport(tenantId: string) {
   const e = await getEffectiveEntitlements(tenantId);
   const [users, whatsapp, ai] = await Promise.all([
     db.query<CountRow>("SELECT count(*)::bigint AS used FROM workspace_members WHERE workspace_id=$1 AND status='active'", [tenantId]),
-    db.query<CountRow>("SELECT count(*)::bigint AS used FROM whatsapp_sessions WHERE tenant_id=$1", [tenantId]),
+    db.query<CountRow>("SELECT count(*)::bigint AS used FROM whatsapp_sessions WHERE tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL", [tenantId]),
     e.periodStart ? db.query("SELECT COALESCE(used,0)::bigint AS used FROM usage_counters WHERE tenant_id=$1 AND metric_key='MAX_AI_INTERACTIONS' AND period_start=$2", [tenantId, e.periodStart]) : Promise.resolve({ rows: [] as CountRow[] })
   ]);
   const usage = { MAX_USERS: Number(users.rows[0]?.used ?? 0), MAX_WHATSAPP_CONNECTIONS: Number(whatsapp.rows[0]?.used ?? 0), MAX_AI_INTERACTIONS: Number(ai.rows[0]?.used ?? 0) };

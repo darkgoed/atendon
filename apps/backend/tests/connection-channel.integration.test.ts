@@ -12,6 +12,9 @@ const app = buildApp();
 const tenants: string[] = [];
 const users: string[] = [];
 let start: { mockRestore(): void; mockClear(): void; mock: { calls: unknown[][] } };
+let reconnect: { mockRestore(): void; mockClear(): void; mock: { calls: unknown[][] } };
+let logoutInstance: { mockRestore(): void; mockClear(): void; mock: { calls: unknown[][] } };
+let deleteInstance: { mockRestore(): void; mockClear(): void; mock: { calls: unknown[][] } };
 let refreshAvatar: { mockRestore(): void };
 let phoneSequence = 0;
 
@@ -106,12 +109,18 @@ async function principal(tenantId: string, permissions: string[]) {
 
 beforeAll(async () => {
   start = vi.spyOn(WhatsAppSessionManager.prototype, "start").mockResolvedValue();
+  reconnect = vi.spyOn(WhatsAppSessionManager.prototype, "reconnect").mockResolvedValue();
+  logoutInstance = vi.spyOn(WhatsAppSessionManager.prototype, "logoutInstance").mockResolvedValue();
+  deleteInstance = vi.spyOn(WhatsAppSessionManager.prototype, "deleteInstance").mockResolvedValue();
   refreshAvatar = vi.spyOn(WhatsAppSessionManager.prototype, "refreshContactAvatar").mockResolvedValue();
   await app.ready();
 });
 
 afterAll(async () => {
   start.mockRestore();
+  reconnect.mockRestore();
+  logoutInstance.mockRestore();
+  deleteInstance.mockRestore();
   refreshAvatar.mockRestore();
   if (tenants.length) await pool.query("DELETE FROM tenants WHERE id=ANY($1::uuid[])", [tenants]);
   if (users.length) await pool.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [users]);
@@ -150,7 +159,7 @@ describe("canal das conexões e conversas", () => {
     expect(after.rows[0].count).toBe(before.rows[0].count);
     const reread = await app.inject({ url: "/connections", headers: { cookie } });
     expect(reread.statusCode).toBe(200);
-    expect(reread.json().limits.used).toBe(before.rows[0].count);
+    expect(reread.json().limits.used).toBe(1);
   }, 15_000);
 
   it("nega leitura a principal sem connection.read", async () => {
@@ -171,6 +180,20 @@ describe("canal das conexões e conversas", () => {
         { id: context.instagramSessionId, channel: "instagram" }
       ]
     });
+  });
+
+  it("mantém endpoints legados de conexão restritos ao canal WhatsApp", async () => {
+    const context = await fixture();
+    const connection = await app.inject({ url: "/connection", headers: { cookie: context.cookie } });
+    expect(connection.statusCode).toBe(200);
+    expect(connection.json().connection.id).toBe(context.sessionId);
+    await pool.query("UPDATE whatsapp_sessions SET is_primary=false WHERE id=$1", [context.sessionId]);
+    await pool.query("UPDATE whatsapp_sessions SET is_primary=true WHERE id=$1", [context.instagramSessionId]);
+    const instagramPrimary = await app.inject({ url: "/connection", headers: { cookie: context.cookie } });
+    expect(instagramPrimary.json().connection.id).toBe(context.sessionId);
+    const reconnect = await app.inject({ method: "POST", url: "/connection/reconnect", headers: { cookie: context.cookie } });
+    expect(reconnect.statusCode).toBe(202);
+    start.mockClear();
   });
 
   it("herda whatsapp e instagram pela sessão, com escopo do tenant", async () => {
@@ -218,7 +241,123 @@ describe("canal das conexões e conversas", () => {
     );
     expect(after.rows[0].count).toBe(before.rows[0].count);
     const listed = await app.inject({ url: "/connections", headers: { cookie: context.cookie } });
-    expect(listed.json().limits.used).toBe(before.rows[0].count);
+    expect(listed.json().limits.used).toBe(1);
+  });
+
+  it("não reconecta sessão Instagram nem chama Evolution", async () => {
+    const context = await fixture();
+    reconnect.mockClear();
+    const before = await pool.query(
+      "SELECT channel,status,is_primary,archived_at FROM whatsapp_sessions WHERE id=$1",
+      [context.instagramSessionId]
+    );
+    const response = await app.inject({
+      method: "POST", url: `/connections/${context.instagramSessionId}/reconnect`, headers: { cookie: context.cookie }
+    });
+    expect(response.statusCode).toBe(404);
+    expect(reconnect).not.toHaveBeenCalled();
+    const after = await pool.query(
+      "SELECT channel,status,is_primary,archived_at FROM whatsapp_sessions WHERE id=$1",
+      [context.instagramSessionId]
+    );
+    expect(after.rows).toEqual(before.rows);
+  });
+
+  it("não promove sessão Instagram nem despromove WhatsApp", async () => {
+    const context = await fixture();
+    reconnect.mockClear();
+    logoutInstance.mockClear();
+    deleteInstance.mockClear();
+    const before = await pool.query(
+      "SELECT id,channel,is_primary,label,status,archived_at FROM whatsapp_sessions WHERE tenant_id=$1 ORDER BY id",
+      [context.tenantId]
+    );
+    const response = await app.inject({
+      method: "PATCH", url: `/connections/${context.instagramSessionId}`,
+      headers: { cookie: context.cookie }, payload: { is_primary: true }
+    });
+    expect(response.statusCode).toBe(404);
+    expect(reconnect).not.toHaveBeenCalled();
+    expect(logoutInstance).not.toHaveBeenCalled();
+    expect(deleteInstance).not.toHaveBeenCalled();
+    const after = await pool.query(
+      "SELECT id,channel,is_primary,label,status,archived_at FROM whatsapp_sessions WHERE tenant_id=$1 ORDER BY id",
+      [context.tenantId]
+    );
+    expect(after.rows).toEqual(before.rows);
+  });
+
+  it("não exclui sessão Instagram nem chama Evolution", async () => {
+    const context = await fixture();
+    logoutInstance.mockClear();
+    deleteInstance.mockClear();
+    const before = await pool.query(
+      "SELECT channel,status,is_primary,archived_at FROM whatsapp_sessions WHERE id=$1",
+      [context.instagramSessionId]
+    );
+    const response = await app.inject({
+      method: "DELETE", url: `/connections/${context.instagramSessionId}`, headers: { cookie: context.cookie }
+    });
+    expect(response.statusCode).toBe(404);
+    expect(logoutInstance).not.toHaveBeenCalled();
+    expect(deleteInstance).not.toHaveBeenCalled();
+    const after = await pool.query(
+      "SELECT channel,status,is_primary,archived_at FROM whatsapp_sessions WHERE id=$1",
+      [context.instagramSessionId]
+    );
+    expect(after.rows).toEqual(before.rows);
+  });
+
+  it("não conta Instagram para manter uma conexão WhatsApp ativa", async () => {
+    const context = await fixture();
+    logoutInstance.mockClear();
+    deleteInstance.mockClear();
+    const response = await app.inject({
+      method: "DELETE", url: `/connections/${context.sessionId}`, headers: { cookie: context.cookie }
+    });
+    expect(response.statusCode).toBe(409);
+    expect(logoutInstance).not.toHaveBeenCalled();
+    expect(deleteInstance).not.toHaveBeenCalled();
+    const remaining = await pool.query(
+      "SELECT channel,status,is_primary,archived_at FROM whatsapp_sessions WHERE id=$1",
+      [context.instagramSessionId]
+    );
+    expect(remaining.rows[0]).toMatchObject({ channel: "instagram", status: "connected", archived_at: null });
+  });
+
+  it("cria a primeira WhatsApp como primária quando só há Instagram ativa", async () => {
+    const context = await fixture();
+    await pool.query("UPDATE whatsapp_sessions SET is_primary=false,archived_at=now() WHERE id=$1", [context.sessionId]);
+    await pool.query("UPDATE whatsapp_sessions SET is_primary=true WHERE id=$1", [context.instagramSessionId]);
+
+    const response = await app.inject({
+      method: "POST", url: "/connections", headers: { cookie: context.cookie },
+      payload: { label: "Primeira WhatsApp" }
+    });
+    expect(response.statusCode).toBe(201);
+    const created = await pool.query<{ is_primary: boolean; channel: string }>(
+      "SELECT is_primary,channel FROM whatsapp_sessions WHERE tenant_id=$1 AND label='Primeira WhatsApp'",
+      [context.tenantId]
+    );
+    expect(created.rows[0]).toEqual({ is_primary: true, channel: "whatsapp" });
+  });
+
+  it("bloqueia criação no limite pelo número real de WhatsApps, ignorando Instagram", async () => {
+    const context = await fixture();
+    await pool.query(
+      "INSERT INTO tenant_entitlement_overrides(tenant_id,kind,entitlement_key,int_value) VALUES($1,'limit','MAX_WHATSAPP_CONNECTIONS',1)",
+      [context.tenantId]
+    );
+    const response = await app.inject({
+      method: "POST", url: "/connections", headers: { cookie: context.cookie },
+      payload: { label: "Excede WhatsApp" }
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("PLAN_LIMIT_REACHED");
+    expect((await pool.query(
+      "SELECT count(*)::int AS count FROM whatsapp_sessions WHERE tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL",
+      [context.tenantId]
+    )).rows[0].count).toBe(1);
   });
 
   it("responde 400 para payload inválido antes de criar conexão", async () => {

@@ -63,6 +63,12 @@ import { ChannelBadge, type Channel } from "@/components/channel-badge";
 import { ConversationNextAction } from "@/components/conversation-next-action";
 import { ConversationPreBriefing } from "@/components/conversation-pre-briefing";
 
+const supportedConversationFilters = new Set(["human", "ai", "mine", "unassigned", "scheduled", "resolved"]);
+
+function normalizeConversationFilter(value: string | null) {
+  return value && supportedConversationFilters.has(value) ? value : "human";
+}
+
 import type { ConnectionsResponse } from "@/lib/connections";
 import type { PipelineStage } from "@/lib/pipeline";
 import type { PanelNotificationPreferencesResponse } from "@/lib/message-notifications";
@@ -444,6 +450,7 @@ export default function Conversations() {
   const [queueFilter, setQueueFilter] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [pendingOnly, setPendingOnly] = useState(false);
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selected, setSelected] = useState("");
@@ -493,7 +500,7 @@ export default function Conversations() {
 
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
-    setFilter(query.get("filtro") ?? "human");
+    setFilter(normalizeConversationFilter(query.get("filtro")));
     const linkedId = query.get("id");
     setSelected(linkedId ?? "");
     deepLinkIdRef.current = linkedId;
@@ -540,6 +547,13 @@ export default function Conversations() {
   const canQueueEvaluation = Boolean(session && canAccessRootWorkspace(session));
   const hasWorkspaceScope = Boolean(session && hasWorkspaceWideCaseScope(session));
   const effectiveFilter = hasWorkspaceScope ? filter : "mine";
+  const advancedFilterCount = [
+    connectionFilter,
+    queueFilter,
+    hasWorkspaceScope && (filter === "mine" || filter === "unassigned") ? filter : "",
+    unreadOnly ? "unread" : "",
+    pendingOnly ? "pending" : ""
+  ].filter(Boolean).length;
   const listKey = session
     ? `/conversations?filter=${effectiveFilter}${debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ""}${queueFilter ? `&queue_id=${queueFilter}` : ""}${connectionFilter ? `&session_id=${connectionFilter}` : ""}${unreadOnly ? "&unread=true" : ""}${pendingOnly ? "&pending_action=true" : ""}`
     : null;
@@ -1054,7 +1068,7 @@ export default function Conversations() {
     const previousList = listData;
     const previousThread = threadData;
     const optimistic = (conversation: Conversation): Conversation => ({ ...conversation, status: "closed", resolved_at: new Date().toISOString() });
-    await mutateList((current) => current ? { conversations: current.conversations.map(optimistic) } : current, { revalidate: false });
+    await mutateList((current) => current ? { conversations: current.conversations.map((item) => item.id === selectedRef.current ? optimistic(item) : item) } : current, { revalidate: false });
     if (previousThread?.conversation.id === selectedRef.current) await mutateThread({ ...previousThread, conversation: optimistic(previousThread.conversation) }, { revalidate: false });
     try {
       await resolveConversationApi(selectedRef.current);
@@ -1151,7 +1165,7 @@ export default function Conversations() {
     const previousThread = threadData;
     const queue = (queueData?.queues ?? []).find((item) => item.id === queueId);
     const optimistic = (conversation: Conversation): Conversation => ({ ...conversation, queue_id: queueId, queue_name: queue?.name ?? conversation.queue_name, queue_color: queue?.color ?? conversation.queue_color, status: queue?.is_resolved ? "closed" : "open" });
-    await mutateList((current) => current ? { conversations: current.conversations.map(optimistic) } : current, { revalidate: false });
+    await mutateList((current) => current ? { conversations: current.conversations.map((item) => item.id === selected ? optimistic(item) : item) } : current, { revalidate: false });
     if (previousThread?.conversation.id === selected) await mutateThread({ ...previousThread, conversation: optimistic(previousThread.conversation) }, { revalidate: false });
     try {
       await api(`/conversations/${selected}/queue`, { method: "PATCH", body: JSON.stringify({ queue_id: queueId }) });
@@ -1356,27 +1370,41 @@ export default function Conversations() {
                 </button>
               ) : null}
             </label>
-            {showConnectionFilter ? (
-              <label className="field mb-2.5">
-                <span className="label">Número</span>
-                <select className="input py-2 text-xs" value={connectionFilter} onChange={(event) => setConnectionFilter(event.target.value)} aria-label="Número">
-                  <option value="">Todos os números</option>
-                  {connections.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                </select>
-              </label>
+            <button
+              type="button"
+              className="btn mb-2 flex w-full items-center justify-between px-2 py-1.5 text-xs"
+              aria-expanded={advancedFiltersOpen}
+              aria-controls="conversation-advanced-filters"
+              onClick={() => setAdvancedFiltersOpen((value) => !value)}
+            >
+              <span>Filtros{advancedFilterCount ? ` (${advancedFilterCount})` : ""}</span>
+              <span aria-hidden="true">{advancedFiltersOpen ? "⌃" : "⌄"}</span>
+            </button>
+            {advancedFiltersOpen ? (
+              <div id="conversation-advanced-filters" aria-label="Filtros avançados" className="mb-2 space-y-2">
+                {showConnectionFilter ? (
+                  <label className="field">
+                    <span className="label">Número</span>
+                    <select className="input py-2 text-xs" value={connectionFilter} onChange={(event) => setConnectionFilter(event.target.value)} aria-label="Número">
+                      <option value="">Todos os números</option>
+                      {connections.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                    </select>
+                  </label>
+                ) : null}
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filas de atendimento">
+                  <button type="button" aria-pressed={!queueFilter} className={`btn px-2 py-1 text-xs ${!queueFilter ? "primary" : ""}`} onClick={() => setQueueFilter("")}>Todas</button>
+                  {(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <button type="button" aria-pressed={queueFilter === queue.id} key={queue.id} className={`btn px-2 py-1 text-xs ${queueFilter === queue.id ? "primary" : ""}`} onClick={() => setQueueFilter(queue.id)}><span className="mr-1 inline-block size-2 rounded-full" style={{ backgroundColor: queue.color }} aria-hidden="true" />{queue.name} <span className="mono">{queue.conversation_count}</span></button>)}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <button type="button" disabled={!hasWorkspaceScope} aria-pressed={hasWorkspaceScope && filter === "mine"} className={`btn px-2 py-1 text-xs ${!hasWorkspaceScope || filter === "mine" ? "primary" : ""}`} onClick={() => { if (hasWorkspaceScope) setFilter(filter === "mine" ? "human" : "mine"); }}>Minhas conversas</button>
+                  {hasWorkspaceScope ? <button type="button" aria-pressed={filter === "unassigned"} className={`btn px-2 py-1 text-xs ${filter === "unassigned" ? "primary" : ""}`} onClick={() => setFilter(filter === "unassigned" ? "human" : "unassigned")}>Sem responsável</button> : null}
+                  <button type="button" aria-pressed={unreadOnly} className={`btn px-2 py-1 text-xs ${unreadOnly ? "primary" : ""}`} onClick={() => setUnreadOnly((value) => !value)}>Não lidas</button>
+                  <button type="button" aria-pressed={pendingOnly} className={`btn px-2 py-1 text-xs ${pendingOnly ? "primary" : ""}`} onClick={() => setPendingOnly((value) => !value)}>Pendências</button>
+                </div>
+                <button type="button" className="btn px-2 py-1 text-xs" onClick={() => { setConnectionFilter(""); setQueueFilter(""); setFilter(hasWorkspaceScope ? "human" : "mine"); setUnreadOnly(false); setPendingOnly(false); setAdvancedFiltersOpen(false); }}>Limpar filtros</button>
+              </div>
             ) : null}
-            <>
-              <div className="mb-2 flex gap-1 overflow-x-auto" aria-label="Filas de atendimento">
-                <button type="button" className={`btn shrink-0 px-2 py-1 text-xs ${!queueFilter ? "primary" : ""}`} onClick={() => setQueueFilter("")}>Todas</button>
-                {(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <button type="button" key={queue.id} className={`btn shrink-0 px-2 py-1 text-xs ${queueFilter === queue.id ? "primary" : ""}`} onClick={() => setQueueFilter(queue.id)}><span className="mr-1 inline-block size-2 rounded-full" style={{ backgroundColor: queue.color }} aria-hidden="true" />{queue.name} <span className="mono">{queue.conversation_count}</span></button>)}
-              </div>
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                <button type="button" disabled={!hasWorkspaceScope} className={`btn px-2 py-1 text-xs ${!hasWorkspaceScope || filter === "mine" ? "primary" : ""}`} onClick={() => { if (hasWorkspaceScope) setFilter(filter === "mine" ? "human" : "mine"); }}>Minhas conversas</button>
-                {hasWorkspaceScope ? <button type="button" className={`btn px-2 py-1 text-xs ${filter === "unassigned" ? "primary" : ""}`} onClick={() => setFilter(filter === "unassigned" ? "human" : "unassigned")}>Sem responsável</button> : null}
-                <button type="button" className={`btn px-2 py-1 text-xs ${unreadOnly ? "primary" : ""}`} onClick={() => setUnreadOnly((value) => !value)}>Não lidas</button>
-                <button type="button" className={`btn px-2 py-1 text-xs ${pendingOnly ? "primary" : ""}`} onClick={() => setPendingOnly((value) => !value)}>Pendências</button>
-              </div>
-            </>
+
             {hasWorkspaceScope ? (
               <div className="conversation-filter-tabs grid grid-cols-4 gap-1 rounded-[10px] border border-[var(--border)] bg-transparent p-1">
                 {[
@@ -1529,7 +1557,10 @@ export default function Conversations() {
                       />
                     ) : null
                   ) : null}
-                  {canReply ? <label className="field"><span className="sr-only">Fila do atendimento</span><select className="input py-1.5 text-xs" aria-label="Fila do atendimento" value={thread.conversation.queue_id ?? ""} onChange={(event) => { if (event.target.value) void moveConversationToQueue(event.target.value); }}><option value="">Sem fila</option>{(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></label> : null}
+                  {canReply ? thread.conversation.status === "closed"
+                    ? <span className="text-xs text-[var(--muted)]" aria-label="Fila atual">Fila: {thread.conversation.queue_name ?? "Sem fila"}</span>
+                    : <label className="field"><span className="sr-only">Fila do atendimento</span><select className="input py-1.5 text-xs" aria-label="Fila do atendimento" value={thread.conversation.queue_id ?? ""} onChange={(event) => { if (event.target.value) void moveConversationToQueue(event.target.value); }}><option value="">Sem fila</option>{(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></label>
+                    : null}
                   {canReply && thread.conversation.status === "open" ? <button className="btn primary shrink-0 active:scale-[.98]" onClick={resolveConversation} disabled={changingOwner || followUpPending}>
                     <CheckCircle size={14} aria-hidden="true" /> Resolver
                   </button> : null}

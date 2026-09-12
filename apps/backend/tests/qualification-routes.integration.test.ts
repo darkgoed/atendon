@@ -8,6 +8,7 @@ import { config } from "../src/config.js";
 import { OpenRouterClient } from "../src/modules/ai-router/openrouter.js";
 import { QualificationService } from "../src/modules/qualification/service.js";
 import { WhatsAppSessionManager } from "../src/modules/whatsapp/session-manager.js";
+import { WhatsAppSendRejectedError } from "../src/modules/whatsapp/errors.js";
 
 const pool=new pg.Pool({connectionString:config.DATABASE_URL});
 const app=buildApp();
@@ -138,6 +139,70 @@ describe("API de configuração Newave",()=>{
   it("permite consulta com agent.read e exige agent.manage para salvar",async()=>{
     expect((await app.inject({url:"/qualification/flows/newave",headers:{cookie:readCookie}})).statusCode).toBe(200);
     expect((await app.inject({method:"PUT",url:"/qualification/flows/newave",headers:{cookie:readCookie},payload:{nome:"Bloqueado",ativo:false}})).statusCode).toBe(403);
+  });
+
+  it("lista e aceita apenas sessões WhatsApp nos gatilhos de qualificação",async()=>{
+    const instagram=(await pool.query<{id:string}>(
+      "INSERT INTO whatsapp_sessions(tenant_id,status,channel) VALUES($1,'connected','instagram') RETURNING id",[tenantId]
+    )).rows[0].id;
+    try {
+      const sessions=await app.inject({url:"/qualification/sessions",headers:{cookie}});
+      expect(sessions.statusCode).toBe(200);
+      expect(sessions.json().sessions.map((item:{id:string})=>item.id)).toContain(sessionId);
+      expect(sessions.json().sessions.map((item:{id:string})=>item.id)).not.toContain(instagram);
+      const rejected=await app.inject({method:"PUT",url:"/qualification/flows/instagram-trigger",headers:{cookie},payload:{nome:"Instagram",ativo:false,sessoes:[instagram]}});
+      expect(rejected.statusCode).toBe(400);
+      expect(rejected.json().error).toContain("WhatsApp");
+    } finally {
+      await pool.query("DELETE FROM whatsapp_sessions WHERE id=$1",[instagram]);
+    }
+  });
+
+  it("mantém qualificações do mesmo telefone isoladas por sessão e canal",async()=>{
+    await app.inject({method:"PUT",url:"/qualification/flows/channel-isolation",headers:{cookie},payload:{nome:"Isolamento",ativo:true,ctwa:true}});
+    const instagram=(await pool.query<{id:string}>(
+      "INSERT INTO whatsapp_sessions(tenant_id,status,channel) VALUES($1,'connected','instagram') RETURNING id",[tenantId]
+    )).rows[0].id;
+    const phone=nextPhone();
+    const whatsappConversation=(await pool.query<{id:string}>(
+      "INSERT INTO conversations(tenant_id,session_id,contact_phone) VALUES($1,$2,$3) RETURNING id",[tenantId,sessionId,phone]
+    )).rows[0].id;
+    const instagramConversation=(await pool.query<{id:string}>(
+      "INSERT INTO conversations(tenant_id,session_id,contact_phone) VALUES($1,$2,$3) RETURNING id",[tenantId,instagram,phone]
+    )).rows[0].id;
+    try {
+      const whatsapp=await service.handleInbound({tenantId,sessionId,contactPhone:phone,text:"Anúncio",externalId:`wa-${randomUUID()}`,referral:{sourceType:"ad",sourceId:"wa"}});
+      expect(whatsapp).not.toBeNull();
+      const instagramResult=await service.handleInbound({tenantId,sessionId:instagram,contactPhone:phone,text:"Anúncio",externalId:`ig-${randomUUID()}`,referral:{sourceType:"ad",sourceId:"ig"}});
+      expect(instagramResult).toBeNull();
+      const states=await pool.query("SELECT DISTINCT q.id FROM lead_qualifications q JOIN scheduling_leads l ON l.id=q.lead_id WHERE q.tenant_id=$1 AND l.phone=$2",[tenantId,phone]);
+      expect(states.rows).toEqual([{id:expect.any(String)}]);
+      await service.pauseForConversation(tenantId,whatsappConversation,"test");
+      expect((await pool.query("SELECT ai_active FROM conversations WHERE id=$1",[whatsappConversation])).rows[0].ai_active).toBe(false);
+      expect((await pool.query("SELECT ai_active FROM conversations WHERE id=$1",[instagramConversation])).rows[0].ai_active).toBe(true);
+    } finally {
+      await pool.query("DELETE FROM conversations WHERE id IN ($1,$2)",[whatsappConversation,instagramConversation]);
+      await pool.query("DELETE FROM whatsapp_sessions WHERE id=$1",[instagram]);
+    }
+  });
+
+  it("não reenvia falha ambígua e permite retry somente de rejeição tipada",async()=>{
+    const item=await activeQualification("outbox");
+    const outbox=(await pool.query<{id:string}>("SELECT id FROM qualification_message_outbox WHERE qualification_id=$1",[item.qualification_id])).rows[0].id;
+    const unknown={sendText:vi.fn().mockRejectedValueOnce(new Error("timeout"))};
+    await expect(service.deliverOutboxById(outbox,unknown as never)).rejects.toThrow("timeout");
+    expect((await pool.query("SELECT status FROM qualification_message_outbox WHERE id=$1",[outbox])).rows[0].status).toBe("failed");
+    expect((await service.listPendingOutbox()).some((row)=>row.id===outbox)).toBe(false);
+
+    const retryItem=await activeQualification("typed-rejection");
+    const retryId=(await pool.query<{id:string}>("SELECT id FROM qualification_message_outbox WHERE qualification_id=$1",[retryItem.qualification_id])).rows[0].id;
+    const typed={sendText:vi.fn()
+      .mockRejectedValueOnce(new WhatsAppSendRejectedError("Connection Closed"))
+      .mockResolvedValueOnce({externalId:"retry-ok"})};
+    await expect(service.deliverOutboxById(retryId,typed as never)).rejects.toThrow("Connection Closed");
+    expect((await pool.query("SELECT status FROM qualification_message_outbox WHERE id=$1",[retryId])).rows[0].status).toBe("pending");
+    await pool.query("UPDATE qualification_message_outbox SET next_attempt_at=now() WHERE id=$1",[retryId]);
+    await expect(service.deliverOutboxById(retryId,typed as never)).resolves.toBe("retry-ok");
   });
 
   it("valida sessões no tenant e expõe somente configuração própria",async()=>{

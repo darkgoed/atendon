@@ -2444,7 +2444,7 @@ export async function openAppointmentConversation(
     }
     const session = await client.query<{ id: string }>(
       `SELECT id FROM whatsapp_sessions
-       WHERE tenant_id=$1 AND status='connected' AND archived_at IS NULL
+       WHERE tenant_id=$1 AND channel='whatsapp' AND status='connected' AND archived_at IS NULL
        ORDER BY is_primary DESC,last_connected_at DESC NULLS LAST,created_at DESC
        LIMIT 1`,
       [tenantId]

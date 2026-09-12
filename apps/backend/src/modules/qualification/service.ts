@@ -9,6 +9,7 @@ import {
 } from "./flow.js";
 import { classifyBoolean, matchAnswer, matchAnswerCandidates, normalizeText } from "./normalizer.js";
 import { ensureCaseAssignment } from "../assignments/service.js";
+import { isWhatsAppSendRejectedError } from "../whatsapp/errors.js";
 
 export interface QualificationInbound {
   tenantId: string;
@@ -130,12 +131,12 @@ async function queueOutbox(client: PoolClient, input: QualificationInbound, qual
   return { reply: queued.rows[0].message, outboxId: queued.rows[0].id };
 }
 
-async function pauseQualificationByPhone(client: PoolClient, tenantId: string, contactPhone: string, reason: string): Promise<void> {
+async function pauseQualificationByConversation(client: PoolClient, tenantId: string, conversationId: string, reason: string): Promise<void> {
   const paused = await client.query<{ lead_id: string }>(
     `UPDATE lead_qualifications q SET status='pausado',updated_at=now()
-     FROM scheduling_leads l
-     WHERE l.id=q.lead_id AND l.tenant_id=q.tenant_id AND q.tenant_id=$1 AND l.phone=$2 AND q.status='em_andamento'
-     RETURNING q.lead_id`, [tenantId, contactPhone]
+     FROM conversations c
+     WHERE c.id=$2 AND c.tenant_id=$1 AND c.lead_id=q.lead_id AND c.tenant_id=q.tenant_id AND q.status='em_andamento'
+     RETURNING q.lead_id`, [tenantId, conversationId]
   );
   if (paused.rows[0]) await client.query(
     "INSERT INTO scheduling_lead_events(lead_id,tenant_id,event_type,details) VALUES($1,$2,'formulario_pausado',$3)",
@@ -145,13 +146,18 @@ async function pauseQualificationByPhone(client: PoolClient, tenantId: string, c
 
 export class QualificationService {
   async handleInbound(input: QualificationInbound, aiClassify?: AiOptionClassifier): Promise<QualificationOutcome | null> {
+    const channel = await db.query<{ channel: string }>(
+      "SELECT channel FROM whatsapp_sessions WHERE id=$1 AND tenant_id=$2 AND archived_at IS NULL", [input.sessionId, input.tenantId]
+    );
+    if (channel.rows[0]?.channel !== "whatsapp") return null;
     const snapshot = await db.query<StateRow>(
       `SELECT q.id,q.lead_id,q.flow_id,q.current_step,q.status,q.answers,q.pending_value,q.ask_pending,
               q.last_inbound_external_id,q.definition_snapshot
        FROM scheduling_leads l
        JOIN lead_qualifications q ON q.lead_id=l.id AND q.tenant_id=l.tenant_id
-       WHERE l.tenant_id=$1 AND l.phone=$2`,
-      [input.tenantId, input.contactPhone]
+       JOIN conversations c ON c.lead_id=l.id AND c.tenant_id=l.tenant_id
+       WHERE l.tenant_id=$1 AND l.phone=$2 AND c.session_id=$3`,
+      [input.tenantId, input.contactPhone, input.sessionId]
     );
     const state = snapshot.rows[0];
     if (!state) return this.startFlow(input);
@@ -186,10 +192,10 @@ export class QualificationService {
     return this.applyPrompt(input, state, { pendingValue: null, askPending: false }, clarifyPrompt(step, candidates), "clarification");
   }
 
-  async pauseForHuman(tenantId: string, contactPhone: string): Promise<void> {
+  async pauseForHuman(tenantId: string, conversationId: string): Promise<void> {
     await withTransaction(async (client) => {
-      await client.query("UPDATE conversations SET ai_active=false,handoff_reason='manually_paused',handoff_error_code=NULL WHERE tenant_id=$1 AND contact_phone=$2", [tenantId, contactPhone]);
-      await pauseQualificationByPhone(client, tenantId, contactPhone, "atendimento_humano");
+      const changed = await client.query("UPDATE conversations SET ai_active=false,handoff_reason='manually_paused',handoff_error_code=NULL WHERE tenant_id=$1 AND id=$2", [tenantId, conversationId]);
+      if (changed.rowCount) await pauseQualificationByConversation(client, tenantId, conversationId, "atendimento_humano");
     });
   }
 
@@ -200,7 +206,7 @@ export class QualificationService {
          WHERE tenant_id=$1 AND id=$2 RETURNING contact_phone`, [tenantId, conversationId]
       );
       if (!conversation.rows[0]) return false;
-      await pauseQualificationByPhone(client, tenantId, conversation.rows[0].contact_phone, reason);
+      await pauseQualificationByConversation(client, tenantId, conversationId, reason);
       return true;
     });
     logger.info({ tenantId, conversationId, reason }, "Qualification paused for human conversation action");
@@ -219,15 +225,15 @@ export class QualificationService {
         const exists = await client.query("SELECT 1 FROM conversations WHERE id=$1 AND tenant_id=$2", [conversationId, tenantId]);
         return exists.rows[0] ? "conflict" : "missing";
       }
-      await pauseQualificationByPhone(client, tenantId, claimed.rows[0].contact_phone, "conversation_claimed");
+      await pauseQualificationByConversation(client, tenantId, conversationId, "conversation_claimed");
       return "claimed";
     });
   }
 
   async assignConversation(tenantId: string, conversationId: string, userId: string | null): Promise<{ found: boolean; previousUserId: string | null }> {
     return withTransaction(async (client) => {
-      const current = await client.query<{ assigned_user_id: string | null; contact_phone: string }>(
-        "SELECT assigned_user_id,contact_phone FROM conversations WHERE id=$1 AND tenant_id=$2 FOR UPDATE", [conversationId, tenantId]
+      const current = await client.query<{ assigned_user_id: string | null }>(
+        "SELECT assigned_user_id FROM conversations WHERE id=$1 AND tenant_id=$2 FOR UPDATE", [conversationId, tenantId]
       );
       if (!current.rows[0]) return { found: false, previousUserId: null };
       await client.query(
@@ -239,7 +245,7 @@ export class QualificationService {
            handoff_error_code=CASE WHEN $3::uuid IS NULL THEN handoff_error_code ELSE NULL END
          WHERE id=$1 AND tenant_id=$2`, [conversationId, tenantId, userId]
       );
-      if (userId) await pauseQualificationByPhone(client, tenantId, current.rows[0].contact_phone, "conversation_assigned");
+      if (userId) await pauseQualificationByConversation(client, tenantId, conversationId, "conversation_assigned");
       return { found: true, previousUserId: current.rows[0].assigned_user_id };
     });
   }
@@ -283,14 +289,14 @@ export class QualificationService {
       if (action === "pause") {
         if (row.status !== "em_andamento") throw httpError(409, "Formulário não está em andamento");
         await client.query("UPDATE lead_qualifications SET status='pausado',updated_at=now() WHERE id=$1", [row.id]);
-        await client.query("UPDATE conversations SET ai_active=false,handoff_reason='manually_paused',handoff_error_code=NULL WHERE tenant_id=$1 AND contact_phone=$2", [tenantId, row.phone]);
+        await client.query("UPDATE conversations SET ai_active=false,handoff_reason='manually_paused',handoff_error_code=NULL WHERE tenant_id=$1 AND lead_id=$2 AND session_id IN (SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 AND channel='whatsapp')", [tenantId, leadId]);
         await event("formulario_pausado", { motivo: "manual" });
         return { status: "pausado", etapa_atual: row.current_step };
       }
       if (action === "resume") {
         if (row.status !== "pausado") throw httpError(409, "Formulário não está pausado");
         await client.query("UPDATE lead_qualifications SET status='em_andamento',ask_pending=true,updated_at=now() WHERE id=$1", [row.id]);
-        await client.query("UPDATE conversations SET ai_active=true,handoff_reason=NULL,handoff_error_code=NULL,status='open',resolved_at=NULL WHERE tenant_id=$1 AND contact_phone=$2", [tenantId, row.phone]);
+        await client.query("UPDATE conversations SET ai_active=true,handoff_reason=NULL,handoff_error_code=NULL,status='open',resolved_at=NULL WHERE tenant_id=$1 AND lead_id=$2 AND session_id IN (SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 AND channel='whatsapp')", [tenantId, leadId]);
         await event("formulario_retomado");
         return { status: "em_andamento", etapa_atual: row.current_step, pergunta_atual: renderQuestion(definition.steps[row.current_step]) };
       }
@@ -300,7 +306,7 @@ export class QualificationService {
          answered_count=0,total_questions=$3,last_inbound_external_id=NULL,updated_at=now() WHERE id=$1`,
         [row.id, definition.start, totalQuestions(definition)]
       );
-      await client.query("UPDATE conversations SET ai_active=true,handoff_reason=NULL,handoff_error_code=NULL,status='open',resolved_at=NULL WHERE tenant_id=$1 AND contact_phone=$2", [tenantId, row.phone]);
+      await client.query("UPDATE conversations SET ai_active=true,handoff_reason=NULL,handoff_error_code=NULL,status='open',resolved_at=NULL WHERE tenant_id=$1 AND lead_id=$2 AND session_id IN (SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 AND channel='whatsapp')", [tenantId, leadId]);
       await event("formulario_reiniciado");
       return { status: "em_andamento", etapa_atual: definition.start, pergunta_atual: renderQuestion(definition.steps[definition.start]) };
     });
@@ -310,6 +316,8 @@ export class QualificationService {
     const result = await db.query<OutboxRow>(
       `SELECT id,tenant_id,session_id,contact_phone,contact_jid,message,inbound_external_id FROM qualification_message_outbox
        WHERE status='pending' AND next_attempt_at<=now() AND (claimed_at IS NULL OR claimed_at<now()-interval '2 minutes')
+         AND EXISTS (SELECT 1 FROM whatsapp_sessions s WHERE s.id=qualification_message_outbox.session_id
+           AND s.tenant_id=qualification_message_outbox.tenant_id AND s.channel='whatsapp' AND s.archived_at IS NULL)
        ORDER BY created_at LIMIT $1`, [limit]
     );
     return result.rows;
@@ -320,6 +328,8 @@ export class QualificationService {
       `UPDATE qualification_message_outbox SET claimed_at=now()
        WHERE id=$1 AND status='pending' AND next_attempt_at<=now()
          AND (claimed_at IS NULL OR claimed_at<now()-interval '2 minutes')
+         AND EXISTS (SELECT 1 FROM whatsapp_sessions s WHERE s.id=qualification_message_outbox.session_id
+           AND s.tenant_id=qualification_message_outbox.tenant_id AND s.channel='whatsapp' AND s.archived_at IS NULL)
        RETURNING id,tenant_id,session_id,contact_phone,contact_jid,message,inbound_external_id`, [row.id]
     );
     if (!claimed.rows[0]) return "";
@@ -348,8 +358,9 @@ export class QualificationService {
     } catch (error) {
       await db.query(
         `UPDATE qualification_message_outbox SET attempts=attempts+1,last_error=$2,claimed_at=NULL,
-         next_attempt_at=now() + make_interval(secs => LEAST(300, power(2,LEAST(attempts,8))::int))
-         WHERE id=$1 AND status='pending'`, [current.id, error instanceof Error ? error.message : String(error)]
+         status=CASE WHEN $3::boolean THEN 'pending' ELSE 'failed' END,
+         next_attempt_at=CASE WHEN $3::boolean THEN now() + make_interval(secs => LEAST(300, power(2,LEAST(attempts,8))::int)) ELSE next_attempt_at END
+         WHERE id=$1 AND status='pending'`, [current.id, error instanceof Error ? error.message : String(error), isWhatsAppSendRejectedError(error)]
       );
       throw error;
     }
@@ -385,13 +396,12 @@ export class QualificationService {
 
     return withTransaction(async (client) => {
       const existingLead = await client.query<{ id: string }>(
-        `SELECT id FROM scheduling_leads
-         WHERE tenant_id=$1
-           AND regexp_replace(phone,'\\D','','g')=regexp_replace($2,'\\D','','g')
-         ORDER BY created_at,id
-         LIMIT 1
-         FOR UPDATE`,
-        [input.tenantId, input.contactPhone]
+        `SELECT l.id FROM scheduling_leads l
+         JOIN conversations c ON c.lead_id=l.id AND c.tenant_id=l.tenant_id
+         WHERE l.tenant_id=$1 AND c.session_id=$3
+           AND regexp_replace(l.phone,'\\D','','g')=regexp_replace($2,'\\D','','g')
+         ORDER BY l.created_at,l.id LIMIT 1 FOR UPDATE OF l`,
+        [input.tenantId, input.contactPhone, input.sessionId]
       );
       const lead = existingLead.rows[0]
         ? await client.query<{ id: string; created: boolean }>(

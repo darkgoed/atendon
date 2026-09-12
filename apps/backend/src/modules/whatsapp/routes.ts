@@ -67,7 +67,7 @@ export async function registerWhatsAppConnectionRoutes(
         disconnected_reason: connection.disconnectedReason,
         created_at: connection.createdAt
       })),
-      limits: { used: connections.length, max }
+      limits: { used: connections.filter((connection) => connection.channel === "whatsapp").length, max }
     };
   });
 
@@ -82,11 +82,21 @@ export async function registerWhatsAppConnectionRoutes(
     }
     const created = await withTenantTransaction(db, session.tenantId, async (client) => {
       await assertLimitWithinTransaction(client, session.tenantId, "MAX_WHATSAPP_CONNECTIONS");
+      await client.query(
+        `UPDATE whatsapp_sessions
+         SET is_primary=false
+         WHERE tenant_id=$1 AND channel <> 'whatsapp' AND is_primary AND archived_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM whatsapp_sessions
+             WHERE tenant_id=$1 AND channel='whatsapp' AND is_primary AND archived_at IS NULL
+           )`,
+        [session.tenantId]
+      );
       const row = await client.query<{ id: string }>(
         `INSERT INTO whatsapp_sessions(tenant_id,label,is_primary,channel)
          SELECT $1,$2,NOT EXISTS(
            SELECT 1 FROM whatsapp_sessions
-           WHERE tenant_id=$1 AND is_primary AND archived_at IS NULL
+           WHERE tenant_id=$1 AND channel='whatsapp' AND is_primary AND archived_at IS NULL
          ),$3
          RETURNING id`,
         [session.tenantId, body.label, body.channel]
@@ -110,7 +120,7 @@ export async function registerWhatsAppConnectionRoutes(
     const { id } = connectionParams.parse(request.params);
     const owned = await db.query<{ id: string }>(
       `SELECT id FROM whatsapp_sessions
-       WHERE id=$2 AND tenant_id=$1 AND archived_at IS NULL`,
+       WHERE id=$2 AND tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL`,
       [session.tenantId, id]
     );
     if (!owned.rows[0]) return reply.status(404).send({ error: "Conexão não encontrada" });
@@ -125,7 +135,7 @@ export async function registerWhatsAppConnectionRoutes(
     const updated = await withTenantTransaction(db, session.tenantId, async (client) => {
       const target = await client.query<{ id: string }>(
         `SELECT id FROM whatsapp_sessions
-         WHERE id=$2 AND tenant_id=$1 AND archived_at IS NULL
+         WHERE id=$2 AND tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL
          FOR UPDATE`,
         [session.tenantId, id]
       );
@@ -134,15 +144,15 @@ export async function registerWhatsAppConnectionRoutes(
       if (body.is_primary) {
         await client.query(
           `UPDATE whatsapp_sessions SET is_primary=false
-           WHERE tenant_id=$1 AND is_primary AND archived_at IS NULL`,
+           WHERE tenant_id=$1 AND channel='whatsapp' AND is_primary AND archived_at IS NULL`,
           [session.tenantId]
         );
       }
       const row = await client.query<{ id: string; label: string; is_primary: boolean }>(
         `UPDATE whatsapp_sessions
-         SET label=COALESCE($3,label), is_primary=COALESCE($4,is_primary)
-         WHERE id=$2 AND tenant_id=$1 AND archived_at IS NULL
-         RETURNING id,label,is_primary`,
+        SET label=COALESCE($3,label), is_primary=COALESCE($4,is_primary)
+        WHERE id=$2 AND tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL
+        RETURNING id,label,is_primary`,
         [session.tenantId, id, body.label ?? null, body.is_primary ?? null]
       );
       return row.rows[0] ?? null;
@@ -162,7 +172,7 @@ export async function registerWhatsAppConnectionRoutes(
         instance_name: string;
       }>(
         `SELECT id,is_primary,instance_name FROM whatsapp_sessions
-         WHERE tenant_id=$1 AND archived_at IS NULL
+         WHERE tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL
          ORDER BY is_primary DESC,created_at
          FOR UPDATE`,
         [session.tenantId]

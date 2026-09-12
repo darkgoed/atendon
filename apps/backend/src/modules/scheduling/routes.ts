@@ -746,7 +746,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
     // (validada como do próprio tenant) ou a primária.
     const session = await db.query<{ instance_name: string | null }>(
       `SELECT instance_name FROM whatsapp_sessions
-       WHERE tenant_id=$1 AND archived_at IS NULL AND ($2::uuid IS NULL OR id=$2)
+       WHERE tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL AND ($2::uuid IS NULL OR id=$2)
        ORDER BY is_primary DESC, created_at DESC LIMIT 1`,
       [tenantId, query.session_id ?? null]
     );
@@ -760,7 +760,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
     const body = schedulingNotificationSettingsBody.parse(request.body);
     const session = await db.query<{ id: string }>(
       `SELECT id FROM whatsapp_sessions
-       WHERE tenant_id=$1 AND archived_at IS NULL AND ($2::uuid IS NULL OR id=$2)
+       WHERE tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL AND ($2::uuid IS NULL OR id=$2)
        ORDER BY is_primary DESC, created_at DESC LIMIT 1`,
       [tenantId, body.sessionId ?? null]
     );

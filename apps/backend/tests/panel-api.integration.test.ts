@@ -9,6 +9,8 @@ import { config } from "../src/config.js";
 import { MessageRepository } from "../src/modules/messages/repository.js";
 import { aiTurnProgressStore } from "../src/modules/realtime/ai-turn-progress.js";
 import { WhatsAppSessionManager } from "../src/modules/whatsapp/session-manager.js";
+import { WhatsAppSendRejectedError } from "../src/modules/whatsapp/errors.js";
+import { QualificationService } from "../src/modules/qualification/service.js";
 import { inboundQueue, inboundRecoveryJobId } from "../src/queue/message-queue.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
@@ -1085,7 +1087,7 @@ describe("panel API tenant isolation",()=>{
     const failedText=`Mensagem recuperável ${randomUUID()}`;
     const newerDisconnectedSession=randomUUID();
     const closed=vi.spyOn(WhatsAppSessionManager.prototype,"sendText").mockRejectedValue(
-      new Error("Evolution API recusou a operação (HTTP 400): Error: Connection Closed")
+      new WhatsAppSendRejectedError("Connection Closed")
     );
     try{
       const failed=await app.inject({
@@ -1135,7 +1137,7 @@ describe("panel API tenant isolation",()=>{
     const failedText=`Mensagem ambígua ${randomUUID()}`;
     const requestKey=`ambiguous-${randomUUID()}`;
     const closed=vi.spyOn(WhatsAppSessionManager.prototype,"sendText").mockRejectedValueOnce(
-      new Error("Evolution API recusou a operação (HTTP 400): Error: Connection Closed")
+      new WhatsAppSendRejectedError("Connection Closed")
     );
     try{
       await app.inject({
@@ -1211,6 +1213,106 @@ describe("panel API tenant isolation",()=>{
       await app.inject({method:"PATCH",url:`/conversations/${conversationA}/reactivate`,headers:{cookie:cookieA}});
     }
   });
+  it("rejects WhatsApp message routes for Instagram conversations before any effect", async () => {
+    const original = (await pool.query<{ channel: string }>("SELECT s.channel FROM conversations c JOIN whatsapp_sessions s ON s.id=c.session_id WHERE c.id=$1", [conversationA])).rows[0].channel;
+    await pool.query("UPDATE whatsapp_sessions SET channel='instagram' WHERE id=(SELECT session_id FROM conversations WHERE id=$1)", [conversationA]);
+    const sendText = vi.spyOn(WhatsAppSessionManager.prototype, "sendText");
+    const sendMedia = vi.spyOn(WhatsAppSessionManager.prototype, "sendMedia");
+    const pause = vi.spyOn(QualificationService.prototype, "pauseForConversation");
+    try {
+      for (const [url, payload] of [
+        [`/conversations/${conversationA}/messages`, { text: "não enviar" }],
+        [`/conversations/${conversationA}/messages`, { mediaType: "image", mimeType: "image/png", fileName: "x.png", dataBase64: "iVBORw0KGgo=" }],
+        [`/conversations/${conversationA}/reply-with-ai`, undefined]
+      ] as const) {
+        const response = await app.inject({ method: "POST", url, headers: { cookie: cookieA, "idempotency-key": `instagram-${randomUUID()}` }, ...(payload ? { payload } : {}) });
+        expect(response.statusCode).toBe(409);
+        expect(response.json()).toEqual({ error: "Esta conversa pertence ao canal Instagram e não pode ser enviada pelo WhatsApp" });
+      }
+      expect(sendText).not.toHaveBeenCalled();
+      expect(sendMedia).not.toHaveBeenCalled();
+      expect(pause).not.toHaveBeenCalled();
+    } finally {
+      sendText.mockRestore(); sendMedia.mockRestore(); pause.mockRestore();
+      await pool.query("UPDATE whatsapp_sessions SET channel=$2 WHERE id=(SELECT session_id FROM conversations WHERE id=$1)", [conversationA, original]);
+    }
+  });
+
+  it("rejects every WhatsApp-only message effect for Instagram and keeps local deletion available", async () => {
+    const original = (await pool.query<{ channel: string }>("SELECT s.channel FROM conversations c JOIN whatsapp_sessions s ON s.id=c.session_id WHERE c.id=$1", [conversationA])).rows[0].channel;
+    await pool.query("UPDATE whatsapp_sessions SET channel='instagram' WHERE id=(SELECT session_id FROM conversations WHERE id=$1)", [conversationA]);
+    const messages = await pool.query<{ id: string }>(
+      `INSERT INTO messages(conversation_id,sender,content,external_message_id)
+       VALUES ($1,'human','canal instagram follow-up','external-follow-up'),
+              ($1,'human','canal instagram reaction','external-reaction'),
+              ($1,'human','canal instagram edit','external-edit'),
+              ($1,'human','canal instagram delete','external-delete')
+       RETURNING id`,
+      [conversationA]
+    );
+    const [followUpMessage, reactionMessage, editMessage, deleteMessage] = messages.rows;
+    const sendText = vi.spyOn(WhatsAppSessionManager.prototype, "sendText");
+    const sendReaction = vi.spyOn(WhatsAppSessionManager.prototype, "sendReactionStrict");
+    const updateText = vi.spyOn(WhatsAppSessionManager.prototype, "updateText");
+    const deleteForEveryone = vi.spyOn(WhatsAppSessionManager.prototype, "deleteMessageForEveryone");
+    try {
+      const followUp = await app.inject({
+        method: "POST", url: `/conversations/${conversationA}/follow-up`,
+        headers: { cookie: cookieA, "idempotency-key": `instagram-follow-up-${randomUUID()}` }
+      });
+      expect(followUp.statusCode).toBe(409);
+      expect(followUp.json()).toEqual({ error: "Esta conversa pertence ao canal Instagram e não pode ser enviada pelo WhatsApp" });
+
+      const reaction = await app.inject({
+        method: "POST", url: `/conversations/${conversationA}/messages/${reactionMessage.id}/react`,
+        headers: { cookie: cookieA }, payload: { emoji: "👍" }
+      });
+      expect(reaction.statusCode).toBe(409);
+      expect(reaction.json()).toEqual({ error: "Esta conversa pertence ao canal Instagram e não pode ser enviada pelo WhatsApp" });
+
+      const edit = await app.inject({
+        method: "PATCH", url: `/conversations/${conversationA}/messages/${editMessage.id}`,
+        headers: { cookie: cookieA }, payload: { text: "não editar" }
+      });
+      expect(edit.statusCode).toBe(409);
+      expect(edit.json()).toEqual({ error: "Esta conversa pertence ao canal Instagram e não pode ser enviada pelo WhatsApp" });
+
+      const everyone = await app.inject({
+        method: "DELETE", url: `/conversations/${conversationA}/messages/${deleteMessage.id}`,
+        headers: { cookie: cookieA }, payload: { forEveryone: true }
+      });
+      expect(everyone.statusCode).toBe(409);
+      expect(everyone.json()).toEqual({ error: "Esta conversa pertence ao canal Instagram e não pode ser enviada pelo WhatsApp" });
+
+      const untouched = await pool.query<{ content: string; deleted_at: Date | null; deleted_for_everyone_at: Date | null }>(
+        "SELECT content,deleted_at,deleted_for_everyone_at FROM messages WHERE id=ANY($1::uuid[]) ORDER BY id",
+        [messages.rows.map((message) => message.id)]
+      );
+      expect(untouched.rows).toHaveLength(4);
+      expect(untouched.rows.every((message) => message.deleted_at === null && message.deleted_for_everyone_at === null)).toBe(true);
+      expect(sendText).not.toHaveBeenCalled();
+      expect(sendReaction).not.toHaveBeenCalled();
+      expect(updateText).not.toHaveBeenCalled();
+      expect(deleteForEveryone).not.toHaveBeenCalled();
+
+      const local = await app.inject({
+        method: "DELETE", url: `/conversations/${conversationA}/messages/${followUpMessage.id}`,
+        headers: { cookie: cookieA }, payload: { forEveryone: false }
+      });
+      expect(local.statusCode).toBe(200);
+      expect(local.json()).toEqual({ ok: true });
+      const localState = await pool.query<{ deleted_at: Date | null; deleted_for_everyone_at: Date | null }>(
+        "SELECT deleted_at,deleted_for_everyone_at FROM messages WHERE id=$1", [followUpMessage.id]
+      );
+      expect(localState.rows[0].deleted_at).not.toBeNull();
+      expect(localState.rows[0].deleted_for_everyone_at).toBeNull();
+    } finally {
+      sendText.mockRestore(); sendReaction.mockRestore(); updateText.mockRestore(); deleteForEveryone.mockRestore();
+      await pool.query("DELETE FROM messages WHERE id=ANY($1::uuid[])", [messages.rows.map((message) => message.id)]);
+      await pool.query("UPDATE whatsapp_sessions SET channel=$2 WHERE id=(SELECT session_id FROM conversations WHERE id=$1)", [conversationA, original]);
+    }
+  });
+
   it("returns AI stickers as visual messages without exposing a file name",async()=>{
     const sticker=await pool.query<{id:string}>(
       `INSERT INTO ai_stickers(

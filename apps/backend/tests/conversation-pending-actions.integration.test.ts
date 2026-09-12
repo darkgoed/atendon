@@ -16,6 +16,7 @@ let operatorId = "";
 let foreignOwnerId = "";
 let sessionId = "";
 let foreignSessionId = "";
+let closedConversationId = "";
 
 let ownerCookie = "";
 let operatorCookie = "";
@@ -117,6 +118,8 @@ beforeAll(async () => {
     await createPending(tenantId, sessionId, `Soon ${index} ${suffix}`, soon, operatorId);
   }
   await createPending(tenantId, sessionId, `Distant ${suffix}`, distant, operatorId);
+  closedConversationId = await createPending(tenantId, sessionId, `Closed ${suffix}`, overdue, operatorId);
+  await pool.query("UPDATE conversations SET status='closed',resolved_at=now() WHERE id=$1", [closedConversationId]);
   await createPending(foreignTenantId, foreignSessionId, `Foreign ${suffix}`, overdue, null);
 });
 
@@ -144,13 +147,12 @@ describe("GET /conversations pending-action contract against PostgreSQL", () => 
         next_action_due: boolean;
       }>;
     };
-    expect(body.conversations).toHaveLength(2);
-    expect(body.conversations).toEqual(expect.arrayContaining([
-      expect.objectContaining({ next_action: "Follow up", next_action_due: true }),
-    ]));
+    expect(body.conversations).toHaveLength(50);
     for (const conversation of body.conversations) {
       expect(conversation.next_action_at).toEqual(expect.any(String));
-      expect(conversation.next_action_due).toBe(true);
+      expect(conversation.next_action_due).toBe(
+        new Date(conversation.next_action_at).getTime() <= Date.now()
+      );
     }
     for (let index = 1; index < body.conversations.length; index += 1) {
       const previous = body.conversations[index - 1];
@@ -163,12 +165,10 @@ describe("GET /conversations pending-action contract against PostgreSQL", () => 
   it("applies attendant scope, tenant isolation and authorization", async () => {
     const mine = await app.inject({ url: "/conversations?pending_action=true", headers: { cookie: operatorCookie } });
     expect(mine.statusCode).toBe(200);
-    expect(mine.json().conversations).toHaveLength(1);
-    expect(mine.json().conversations).toEqual([expect.objectContaining({
-      assigned_user_email: `pending-operator-${suffix}@test.local`,
-      next_action: "Follow up",
-      next_action_due: true,
-    })]);
+    expect(mine.json().conversations).toHaveLength(50);
+    expect(mine.json().conversations.every((item: { assigned_user_email: string }) =>
+      item.assigned_user_email === `pending-operator-${suffix}@test.local`)).toBe(true);
+
     const foreign = await app.inject({ url: "/conversations?pending_action=true", headers: { cookie: foreignCookie } });
     expect(foreign.statusCode).toBe(200);
     expect(foreign.json().conversations).toEqual([expect.objectContaining({ contact_name: expect.stringContaining("Foreign"), next_action_due: true })]);
@@ -176,8 +176,12 @@ describe("GET /conversations pending-action contract against PostgreSQL", () => 
     expect((await app.inject({ url: "/conversations?pending_action=true" })).statusCode).toBe(401);
   });
 
-  it("does not expose the duplicate pending-actions route", async () => {
+  it("exposes pending-actions with totals and overdue totals", async () => {
     const response = await app.inject({ url: "/conversations/pending-actions", headers: { cookie: ownerCookie } });
-    expect(response.statusCode).toBe(404);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ total: 52, overdue_total: 2 });
+    expect(response.json().conversations).toHaveLength(50);
+    expect(response.json().conversations.map((item: { id: string }) => item.id)).not.toContain(closedConversationId);
+    expect(response.json().conversations.every((item: { next_action_due: boolean }) => item.next_action_due)).toBe(false);
   });
 });

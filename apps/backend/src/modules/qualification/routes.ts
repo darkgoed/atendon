@@ -46,7 +46,7 @@ export async function registerQualificationRoutes(app: FastifyInstance) {
     const session = await requirePermission(request, "agent.read");
     const result = await db.query(
       `SELECT id,label,phone_number,is_primary,status,created_at FROM whatsapp_sessions
-       WHERE tenant_id=$1 AND archived_at IS NULL
+       WHERE tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL
        ORDER BY is_primary DESC, created_at DESC`,
       [session.tenantId]
     );
@@ -71,10 +71,10 @@ export async function registerQualificationRoutes(app: FastifyInstance) {
     const definition = flowDefinitionSchema.parse({ ...base, triggers });
     if (definition.triggers.session_ids.length) {
       const valid = await db.query<{ id: string }>(
-        "SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 AND id=ANY($2::uuid[])",
+        "SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL AND id=ANY($2::uuid[])",
         [session.tenantId, definition.triggers.session_ids]
       );
-      if (valid.rowCount !== definition.triggers.session_ids.length) throw httpError(400, "Uma ou mais sessões não pertencem à organização");
+      if (valid.rowCount !== definition.triggers.session_ids.length) throw httpError(400, "Uma ou mais sessões não pertencem à organização ou não são WhatsApp");
     }
     if (body.ativo) {
       const issues = activationIssues(definition);

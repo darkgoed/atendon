@@ -7,6 +7,7 @@ import type { OutboundMediaPayload } from "./evolution-client.js";
 import { SessionRepository } from "./session-repository.js";
 import { isWithinBusinessHours, loadBusinessHoursConfig } from "./business-hours.js";
 import { isQuarantinedPhone } from "../../phone.js";
+import { WhatsAppSendRejectedError } from "./errors.js";
 
 const PRESENCE_REFRESH_INTERVAL_MS = 30_000;
 const PRESENCE_REFRESH_MAX_BACKOFF_MS = 10 * 60_000;
@@ -167,9 +168,16 @@ export class WhatsAppSessionManager implements MessageGateway {
           { err: recoveryError, originalError: error, sessionId, instanceName, operation },
           "Evolution connection recovery failed"
         );
-        throw error;
+        throw new WhatsAppSendRejectedError(error.message, { cause: error });
       }
-      return send(instanceName);
+      try {
+        return await send(instanceName);
+      } catch (retryError) {
+        if (isEvolutionConnectionClosedError(retryError)) {
+          throw new WhatsAppSendRejectedError(retryError.message, { cause: retryError });
+        }
+        throw retryError;
+      }
     }
   }
 

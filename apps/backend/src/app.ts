@@ -147,6 +147,11 @@ const messageSchema = z.union([
 ]);
 const messageReactionSchema = z.object({ emoji: z.string().trim().min(1).max(8).nullable() });
 const messageEditSchema = z.object({ text: z.string().trim().min(1).max(4_000) });
+const WHATSAPP_CHANNEL_ERROR = "Esta conversa pertence ao canal Instagram e não pode ser enviada pelo WhatsApp";
+
+function whatsappChannelError(channel: "whatsapp" | "instagram" | null | undefined) {
+  return channel === "instagram" ? WHATSAPP_CHANNEL_ERROR : null;
+}
 const messageDeleteSchema = z.object({ forEveryone: z.boolean().default(false) });
 const conversationsQuerySchema = z.object({
   filter: z.enum(["all", "human", "ai", "mine", "unassigned", "scheduled", "resolved"]).catch("all"),
@@ -972,7 +977,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
           count(*) OVER ()::int total,
           count(*) FILTER (WHERE status='connected') OVER ()::int connected
         FROM whatsapp_sessions
-        WHERE tenant_id = $1 AND archived_at IS NULL
+        WHERE tenant_id = $1 AND channel='whatsapp' AND archived_at IS NULL
         ORDER BY is_primary DESC, created_at DESC LIMIT 1`, [session.tenantId]),
       db.query(`SELECT count(*) FILTER (WHERE c.status='open')::int open,
         count(*) FILTER (WHERE c.status='open' AND c.ai_active=false AND c.handoff_reason IS DISTINCT FROM 'manually_paused')::int handoff,
@@ -1032,7 +1037,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
   app.get("/connection", async (request) => {
     const session = await requirePermission(request, "connection.read");
     const result = await db.query(`SELECT id, phone_number, status, qr_code, last_connected_at, disconnected_reason, created_at
-      FROM whatsapp_sessions WHERE tenant_id=$1 AND archived_at IS NULL
+      FROM whatsapp_sessions WHERE tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL
       ORDER BY is_primary DESC, created_at DESC LIMIT 1`, [session.tenantId]);
     return { connection: result.rows[0] ?? null };
   });
@@ -1040,7 +1045,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
   app.post("/connection/reconnect", async (request, reply) => {
     const session = await requirePermission(request, "connection.manage");
     const result = await db.query<{ id: string }>(
-      `SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 AND archived_at IS NULL
+      `SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL
        ORDER BY is_primary DESC, created_at DESC LIMIT 1`,
       [session.tenantId]
     );
@@ -1512,7 +1517,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
       "AND ($4::uuid IS NULL OR c.queue_id=$4)",
       "AND ($5::uuid IS NULL OR c.session_id=$5)",
       unread === "true" ? "AND EXISTS (SELECT 1 FROM messages unread_message WHERE unread_message.conversation_id=c.id AND unread_message.sender='contact' AND unread_message.created_at > COALESCE(c.last_read_at,'-infinity'))" : unread === "false" ? "AND NOT EXISTS (SELECT 1 FROM messages read_message WHERE read_message.conversation_id=c.id AND read_message.sender='contact' AND read_message.created_at > COALESCE(c.last_read_at,'-infinity'))" : "",
-      pending_action === "true" ? "AND lead.next_action_at IS NOT NULL AND lead.next_action_at <= now()" : pending_action === "false" ? "AND (lead.next_action_at IS NULL OR lead.next_action_at > now())" : ""
+      pending_action === "true" ? "AND lead.next_action_at IS NOT NULL AND lead.next_action_at <= now()+interval '15 minutes'" : pending_action === "false" ? "AND (lead.next_action_at IS NULL OR lead.next_action_at > now()+interval '15 minutes')" : ""
     ].join(" ");
     const search = "AND ($2::text = '' OR strpos(lower(COALESCE(c.contact_name,'')),lower($2)) > 0 OR strpos(c.contact_phone,$2) > 0)";
     const values = [session.tenantId, q ?? "", session.userId, queue_id ?? null, session_id ?? null];
@@ -1579,6 +1584,38 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
       }
     }
     return { conversations: result.rows };
+  });
+  app.get("/conversations/pending-actions", async (request) => {
+    const session = await requirePermission(request, "conversations.read");
+    const scope = await resolveCaseScope(db, session);
+    const result = await db.query(`
+      WITH pending AS (
+        SELECT c.id,c.session_id,c.lead_id,c.contact_phone,c.contact_name,c.contact_avatar_url avatar_url,
+          c.ai_active,c.handoff_reason,c.status,c.last_message_at,c.assigned_user_id,c.queue_id,
+          ws.channel,u.email assigned_user_email,lead.next_action,lead.next_action_at,
+          (lead.next_action_at <= now()) next_action_due,
+          (lead.next_action_at <= now()) overdue,
+          count(*) OVER ()::int total,
+          count(*) FILTER (WHERE lead.next_action_at <= now()) OVER ()::int overdue_total
+        FROM conversations c
+        LEFT JOIN users u ON u.id=c.assigned_user_id
+        LEFT JOIN whatsapp_sessions ws ON ws.id=c.session_id AND ws.tenant_id=c.tenant_id
+        JOIN scheduling_leads lead ON lead.id=c.lead_id AND lead.tenant_id=c.tenant_id
+        WHERE c.tenant_id=$1
+          AND c.status='open'
+          AND (${conversationScopeCondition(scope, "c", "$2")})
+          AND lead.next_action_at IS NOT NULL
+          AND lead.next_action_at <= now()+interval '15 minutes'
+      )
+      SELECT * FROM pending ORDER BY next_action_at ASC,id LIMIT 50`,
+      [session.tenantId, session.userId]
+    );
+    const first = result.rows[0] as { total?: number; overdue_total?: number } | undefined;
+    return {
+      conversations: result.rows,
+      total: Number(first?.total ?? 0),
+      overdue_total: Number(first?.overdue_total ?? 0)
+    };
   });
   app.get("/conversations/unread", async (request) => {
     const session = await requirePermission(request, "conversations.read");
@@ -2037,15 +2074,18 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
         contact_phone: string;
         contact_jid: string | null;
         contact_name: string | null;
+        channel: "whatsapp" | "instagram";
         agent_is_active: boolean;
       }>(
         `SELECT conversation.session_id,conversation.contact_phone,conversation.contact_jid,
-                conversation.contact_name,COALESCE(agent.is_active,false) agent_is_active
+                conversation.contact_name,ws.channel,COALESCE(agent.is_active,false) agent_is_active
          FROM conversations conversation
+         LEFT JOIN whatsapp_sessions ws ON ws.id=conversation.session_id AND ws.tenant_id=conversation.tenant_id
          LEFT JOIN LATERAL (
            SELECT config.is_active FROM agent_configs config
            WHERE config.tenant_id=conversation.tenant_id
-           ORDER BY config.updated_at DESC,config.id
+             AND (config.session_id=conversation.session_id OR config.session_id IS NULL)
+           ORDER BY (config.session_id IS NOT NULL) DESC,config.updated_at DESC,config.id
            LIMIT 1
          ) agent ON true
          WHERE conversation.id=$1 AND conversation.tenant_id=$2
@@ -2055,6 +2095,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
       );
       const current = conversation.rows[0];
       if (!current) return { status: "missing" as const };
+      if (current.channel === "instagram") return { status: "instagram_channel" as const };
       if (!current.session_id) return { status: "no_session" as const };
       if (!current.agent_is_active) return { status: "agent_inactive" as const };
       const latest = await client.query<{
@@ -2140,6 +2181,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     });
 
     if (recovery.status === "missing") return reply.status(404).send({ error: "Conversa não encontrada" });
+    if (recovery.status === "instagram_channel") return reply.status(409).send({ error: "Esta conversa pertence ao canal Instagram e não pode ser enviada pelo WhatsApp" });
     if (recovery.status === "no_session") return reply.status(409).send({ error: "A conversa não possui uma conexão do WhatsApp" });
     if (recovery.status === "agent_inactive") return reply.status(409).send({ error: "Ative o agente de IA antes de solicitar uma resposta" });
     if (recovery.status === "already_answered") return reply.status(409).send({ error: "A última mensagem desta conversa não é do contato ou já recebeu resposta" });
@@ -2394,12 +2436,15 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     const idempotencyKey = parseIdempotencyKey(request.headers["idempotency-key"]);
     const fingerprint = payloadFingerprint({ conversationId: id });
     const scope = await resolveCaseScope(db, session);
-    const conversation = await db.query<{ session_id: string; contact_phone: string; contact_jid: string | null; status: string }>(
-      `SELECT c.session_id,c.contact_phone,c.contact_jid,c.status FROM conversations c
+    const conversation = await db.query<{ session_id: string; contact_phone: string; contact_jid: string | null; channel: "whatsapp" | "instagram" | null; status: string }>(
+      `SELECT c.session_id,c.contact_phone,c.contact_jid,ws.channel,c.status FROM conversations c
+       LEFT JOIN whatsapp_sessions ws ON ws.id=c.session_id AND ws.tenant_id=c.tenant_id
        WHERE c.id=$1 AND c.tenant_id=$2 AND (${conversationScopeCondition(scope, "c", "$3")})`,
       [id, session.tenantId, scope.userId]
     );
     if (!conversation.rows[0]) return reply.status(404).send({ error: "Conversa não encontrada" });
+    const channelError = whatsappChannelError(conversation.rows[0].channel);
+    if (channelError) return reply.status(409).send({ error: channelError });
     if (conversation.rows[0].status !== "open") return reply.status(409).send({ error: "Reabra a conversa antes de fazer follow-up" });
     const row = conversation.rows[0];
     const processor = new AiFollowUpProcessor(new AiFollowUpRepository(db, config), whatsapp, new OpenRouterClient(config));
@@ -2436,16 +2481,18 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     const session = await requirePermission(request, "conversations.reply"); const { id } = idParams.parse(request.params); const body = messageSchema.parse(request.body);
     const scope = await resolveCaseScope(db, session);
     const idempotencyKey = parseIdempotencyKey(request.headers["idempotency-key"]);
-    const result = await db.query<{ session_id: string; contact_phone: string; contact_jid: string | null; ai_active: boolean; status: string }>(
+    const result = await db.query<{ session_id: string; contact_phone: string; contact_jid: string | null; channel: "whatsapp" | "instagram"; ai_active: boolean; status: string }>(
       `SELECT conversation.session_id,conversation.contact_phone,conversation.contact_jid,
-              conversation.ai_active,conversation.status
+              ws.channel,conversation.ai_active,conversation.status
        FROM conversations conversation
+       LEFT JOIN whatsapp_sessions ws ON ws.id=conversation.session_id AND ws.tenant_id=conversation.tenant_id
        WHERE conversation.id=$1 AND conversation.tenant_id=$2
          AND (${conversationScopeCondition(scope, "conversation", "$3")})`,
       [id, session.tenantId, scope.userId]
     );
     if (!result.rows[0]) return reply.status(404).send({ error: "Conversa não encontrada" });
     const row = result.rows[0];
+    if (row.channel === "instagram") return reply.status(409).send({ error: "Esta conversa pertence ao canal Instagram e não pode ser enviada pelo WhatsApp" });
     if (row.status !== "open") return reply.status(409).send({ error: "Reabra a conversa antes de responder" });
     if (row.ai_active) return reply.status(409).send({ error: "Pause a IA desta conversa antes de responder manualmente" });
     const repository = new MessageRepository(db);
@@ -2524,13 +2571,14 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
   ) {
     const scope = await resolveCaseScope(db, session);
     const result = await db.query<{
-      session_id: string; contact_phone: string; contact_jid: string | null;
+      session_id: string; contact_phone: string; contact_jid: string | null; channel: "whatsapp" | "instagram" | null;
       sender: "contact" | "agent" | "human"; external_message_id: string | null; media_type: string | null;
       deleted_at: Date | null; deleted_for_everyone_at: Date | null;
     }>(
-      `SELECT c.session_id, c.contact_phone, c.contact_jid,
+      `SELECT c.session_id, c.contact_phone, c.contact_jid, ws.channel,
               m.sender, m.external_message_id, m.media_type, m.deleted_at, m.deleted_for_everyone_at
        FROM conversations c JOIN messages m ON m.conversation_id=c.id
+       LEFT JOIN whatsapp_sessions ws ON ws.id=c.session_id AND ws.tenant_id=c.tenant_id
        WHERE c.id=$1 AND m.id=$2 AND c.tenant_id=$3
          AND (${conversationScopeCondition(scope, "c", "$4")})`,
       [conversationId, messageId, session.tenantId, scope.userId]
@@ -2544,6 +2592,8 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     const { emoji } = messageReactionSchema.parse(request.body);
     const message = await loadOwnConversationMessage(session, id, messageId);
     if (!message) return reply.status(404).send({ error: "Mensagem não encontrada" });
+    const channelError = whatsappChannelError(message.channel);
+    if (channelError) return reply.status(409).send({ error: channelError });
     if (!message.external_message_id || !message.contact_jid) {
       return reply.status(409).send({ error: "Mensagem ainda não confirmada pelo WhatsApp" });
     }
@@ -2563,6 +2613,8 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     const { text } = messageEditSchema.parse(request.body);
     const message = await loadOwnConversationMessage(session, id, messageId);
     if (!message) return reply.status(404).send({ error: "Mensagem não encontrada" });
+    const channelError = whatsappChannelError(message.channel);
+    if (channelError) return reply.status(409).send({ error: channelError });
     if (message.sender !== "human") return reply.status(409).send({ error: "Só é possível editar mensagens enviadas por você" });
     if (message.media_type) return reply.status(409).send({ error: "Não é possível editar mensagens de mídia" });
     if (message.deleted_at) return reply.status(409).send({ error: "Mensagem apagada não pode ser editada" });
@@ -2590,6 +2642,8 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     if (!message) return reply.status(404).send({ error: "Mensagem não encontrada" });
     if (message.deleted_at) return { ok: true };
     if (forEveryone) {
+      const channelError = whatsappChannelError(message.channel);
+      if (channelError) return reply.status(409).send({ error: channelError });
       if (message.sender !== "human") return reply.status(409).send({ error: "Só é possível apagar para todos suas próprias mensagens" });
       if (!message.external_message_id || !message.contact_jid) {
         return reply.status(409).send({ error: "Mensagem ainda não confirmada pelo WhatsApp" });

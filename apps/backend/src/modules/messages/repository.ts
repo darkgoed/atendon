@@ -17,6 +17,7 @@ import {
   type TransactionalClaim
 } from "./transactional-outcome.js";
 import { isCapabilityEnabled, isFeatureFlagEnabled, type CapabilityKey } from "../operations/feature-flags.js";
+import { isWhatsAppSendRejectedError } from "../whatsapp/errors.js";
 import { enqueueAiFollowUp } from "../../queue/ai-follow-up-queue.js";
 import { assignConversationToNamedAttendant, ensureCaseAssignment } from "../assignments/service.js";
 import { extractPrefilledFields } from "./prefilled-context-policy.js";
@@ -884,7 +885,9 @@ export class MessageRepository {
            FROM conversations c
            JOIN LATERAL (
              SELECT active_version_id FROM agent_configs
-             WHERE tenant_id=c.tenant_id ORDER BY updated_at DESC,id LIMIT 1
+             WHERE tenant_id=c.tenant_id
+               AND (session_id=c.session_id OR session_id IS NULL)
+             ORDER BY (session_id IS NOT NULL) DESC, updated_at DESC,id LIMIT 1
            ) a ON true
            WHERE c.id = $1 AND c.tenant_id = $2
            ON CONFLICT (provider_message_key) DO UPDATE SET sender='agent', content=EXCLUDED.content,
@@ -1095,7 +1098,9 @@ export class MessageRepository {
          FROM conversations c
          JOIN LATERAL (
            SELECT active_version_id FROM agent_configs
-           WHERE tenant_id=c.tenant_id ORDER BY updated_at DESC,id LIMIT 1
+           WHERE tenant_id=c.tenant_id
+             AND (session_id=c.session_id OR session_id IS NULL)
+           ORDER BY (session_id IS NOT NULL) DESC, updated_at DESC,id LIMIT 1
          ) a ON true
          WHERE c.id=$1 AND c.tenant_id=$2
          ON CONFLICT (provider_message_key) DO UPDATE SET
@@ -1483,9 +1488,9 @@ export class MessageRepository {
       const message = error instanceof Error ? error.message : String(error);
       await this.db.query(
         `UPDATE outbound_message_requests
-         SET status='failed',error_message=$3,completed_at=now()
+         SET status=$3,error_message=$4,completed_at=now()
          WHERE tenant_id=$1 AND idempotency_key=$2 AND status='pending'`,
-        [input.tenantId, idempotencyKey, message]
+        [input.tenantId, idempotencyKey, isWhatsAppSendRejectedError(error) ? "failed" : "ambiguous", message]
       );
       throw error;
     }
@@ -1550,23 +1555,25 @@ export class MessageRepository {
       oldest_at: Date | null;
     }>(
       `SELECT
-         count(*) FILTER (WHERE request.status='failed' AND request.recovery_payload IS NOT NULL)::int AS available,
-         count(*) FILTER (WHERE request.status='ambiguous')::int AS ambiguous,
-         count(*) FILTER (WHERE request.status='failed' AND request.recovery_payload IS NULL)::int AS legacy_unrecoverable,
-         min(request.created_at) FILTER (WHERE request.status='failed' AND request.recovery_payload IS NOT NULL) AS oldest_at,
-         EXISTS (
-           SELECT 1
-           FROM outbound_message_requests recoverable
-           JOIN conversations conversation
-             ON conversation.id=recoverable.conversation_id AND conversation.tenant_id=recoverable.tenant_id
-           JOIN whatsapp_sessions connection
-             ON connection.id=conversation.session_id AND connection.tenant_id=conversation.tenant_id
-           WHERE recoverable.tenant_id=$1 AND recoverable.status='failed'
-             AND recoverable.recovery_payload IS NOT NULL
-             AND connection.archived_at IS NULL AND connection.status='connected'
-         ) AS has_connected_session
-       FROM outbound_message_requests request
-       WHERE request.tenant_id=$1`,
+        count(*) FILTER (WHERE request.status='failed' AND request.recovery_payload IS NOT NULL AND connection.channel='whatsapp')::int AS available,
+        count(*) FILTER (WHERE request.status='ambiguous' AND connection.channel='whatsapp')::int AS ambiguous,
+        count(*) FILTER (WHERE request.status='failed' AND request.recovery_payload IS NULL AND connection.channel='whatsapp')::int AS legacy_unrecoverable,
+        min(request.created_at) FILTER (WHERE request.status='failed' AND request.recovery_payload IS NOT NULL AND connection.channel='whatsapp') AS oldest_at,
+        EXISTS (
+          SELECT 1
+          FROM outbound_message_requests recoverable
+          JOIN conversations conversation
+            ON conversation.id=recoverable.conversation_id AND conversation.tenant_id=recoverable.tenant_id
+          JOIN whatsapp_sessions connection
+            ON connection.id=conversation.session_id AND connection.tenant_id=conversation.tenant_id
+          WHERE recoverable.tenant_id=$1 AND recoverable.status='failed'
+            AND recoverable.recovery_payload IS NOT NULL
+            AND connection.channel='whatsapp' AND connection.archived_at IS NULL AND connection.status='connected'
+        ) AS has_connected_session
+      FROM outbound_message_requests request
+      JOIN conversations conversation ON conversation.id=request.conversation_id AND conversation.tenant_id=request.tenant_id
+      JOIN whatsapp_sessions connection ON connection.id=conversation.session_id AND connection.tenant_id=conversation.tenant_id
+      WHERE request.tenant_id=$1`,
       [tenantId]
     );
     const row = result.rows[0];
@@ -1603,7 +1610,12 @@ export class MessageRepository {
          SET status='ambiguous',error_message='Recuperação interrompida após início do envio',completed_at=now()
          WHERE tenant_id=$1 AND status='pending' AND recovery_attempts>0
            AND recovery_payload IS NOT NULL
-           AND processing_started_at < now()-interval '5 minutes'`,
+           AND processing_started_at < now()-interval '5 minutes'
+           AND EXISTS (
+             SELECT 1 FROM conversations c
+             JOIN whatsapp_sessions s ON s.id=c.session_id AND s.tenant_id=c.tenant_id
+             WHERE c.id=outbound_message_requests.conversation_id AND s.channel='whatsapp'
+           )`,
         [tenantId]
       );
       const selected = await claim.query<RecoveryRow>(
@@ -1616,6 +1628,7 @@ export class MessageRepository {
            ON connection.id=conversation.session_id AND connection.tenant_id=conversation.tenant_id
          WHERE request.tenant_id=$1 AND request.status='failed'
            AND request.recovery_payload IS NOT NULL
+           AND connection.channel='whatsapp'
            AND connection.archived_at IS NULL AND connection.status='connected'
          ORDER BY request.created_at,request.id
          FOR UPDATE OF request SKIP LOCKED
@@ -1669,11 +1682,12 @@ export class MessageRepository {
       } catch (error) {
         await this.db.query(
           `UPDATE outbound_message_requests
-           SET status='failed',error_message=$3,completed_at=now()
+           SET status=$3,error_message=$4,completed_at=now()
            WHERE id=$1 AND tenant_id=$2 AND status='pending'`,
-          [row.id, tenantId, error instanceof Error ? error.message : String(error)]
+          [row.id, tenantId, isWhatsAppSendRejectedError(error) ? "failed" : "ambiguous", error instanceof Error ? error.message : String(error)]
         );
-        failedCount += 1;
+        if (isWhatsAppSendRejectedError(error)) failedCount += 1;
+        else ambiguousCount += 1;
         continue;
       }
 
@@ -1727,8 +1741,9 @@ export class MessageRepository {
     }
 
     const remaining = await this.db.query<{ count: number }>(
-      `SELECT count(*)::int AS count FROM outbound_message_requests
-       WHERE tenant_id=$1 AND status='failed' AND recovery_payload IS NOT NULL`,
+      `SELECT count(*)::int AS count FROM outbound_message_requests request
+       WHERE request.tenant_id=$1 AND request.status='failed' AND request.recovery_payload IS NOT NULL
+         AND EXISTS (SELECT 1 FROM conversations c JOIN whatsapp_sessions s ON s.id=c.session_id AND s.tenant_id=c.tenant_id WHERE c.id=request.conversation_id AND s.channel='whatsapp')`,
       [tenantId]
     );
     return {

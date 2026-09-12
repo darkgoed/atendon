@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { config } from "../src/config.js";
 import { parseIdempotencyKey, payloadFingerprint } from "../src/modules/messages/idempotency.js";
 import { MessageRepository, type ToolCallJournalInput } from "../src/modules/messages/repository.js";
+import { WhatsAppSendRejectedError } from "../src/modules/whatsapp/errors.js";
 import { isFeatureFlagEnabled } from "../src/modules/operations/feature-flags.js";
 import { MeetingContactDeliveryRepository } from "../src/modules/scheduling/meeting-contact-delivery.js";
 
@@ -77,6 +78,30 @@ describe("manual outbound idempotency key validation", () => {
 });
 
 describe("persistent idempotency for outbound effects", () => {
+  it("uses the shared active version for a fallback on a connection without an override", async () => {
+    const overrideSession = (await pool.query<{ id: string }>(
+      "INSERT INTO whatsapp_sessions(tenant_id,status) VALUES($1,'connected') RETURNING id", [tenantA]
+    )).rows[0].id;
+    const override = (await pool.query<{ id: string }>(
+      `INSERT INTO agent_configs(tenant_id,session_id,system_prompt,ai_model)
+       VALUES($1,$2,'override','model/override') RETURNING id`, [tenantA, overrideSession]
+    )).rows[0].id;
+    const overrideVersion = (await pool.query<{ active_version_id: string }>(
+      "SELECT active_version_id FROM agent_configs WHERE id=$1", [override]
+    )).rows[0].active_version_id;
+
+    await repository.recordFallback({
+      tenantId: tenantA, sessionId: sessionA, conversationId: conversationA,
+      mediaType: "image", text: "fallback", externalId: `fallback-${randomUUID()}`
+    });
+    const recorded = await pool.query<{ agent_config_version_id: string }>(
+      "SELECT agent_config_version_id FROM messages WHERE conversation_id=$1 AND content='fallback' ORDER BY created_at DESC LIMIT 1",
+      [conversationA]
+    );
+    expect(recorded.rows[0].agent_config_version_id).toBe(agentVersionA);
+    expect(recorded.rows[0].agent_config_version_id).not.toBe(overrideVersion);
+  });
+
   it("sends once under concurrency and replays the same external id", async () => {
     const key = `manual-${randomUUID()}`;
     const send = vi.fn(async () => {
@@ -148,6 +173,59 @@ describe("persistent idempotency for outbound effects", () => {
       sentByUserId: userA
     }, send)).rejects.toThrow("Envio anterior falhou");
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it("marks a send exception ambiguous and never offers it to automatic recovery", async () => {
+    const key = `ambiguous-${randomUUID()}`;
+    const send = vi.fn().mockRejectedValue(new Error("provider timeout"));
+    await expect(repository.sendManualMessageOnce({
+      tenantId: tenantA, conversationId: conversationA, sessionId: sessionA,
+      contactPhone: "5511900010101", text: "Pode ter enviado", idempotencyKey: key,
+      sentByUserId: userA
+    }, send)).rejects.toThrow("provider timeout");
+    expect((await pool.query<{ status: string }>(
+      "SELECT status FROM outbound_message_requests WHERE tenant_id=$1 AND idempotency_key=$2", [tenantA, key]
+    )).rows[0].status).toBe("ambiguous");
+    const retry = vi.fn().mockResolvedValue({ externalId: "must-not-send" });
+    await expect(repository.recoverFailedManualMessages(tenantA, retry)).resolves.toMatchObject({ sent: 0 });
+    expect(retry).not.toHaveBeenCalled();
+  });
+
+  it("marks an explicitly rejected send as failed and offers it to recovery", async () => {
+    const key = `rejected-${randomUUID()}`;
+    const send = vi.fn().mockRejectedValue(new WhatsAppSendRejectedError("Connection Closed"));
+    await expect(repository.sendManualMessageOnce({
+      tenantId: tenantA, conversationId: conversationA, sessionId: sessionA,
+      contactPhone: "5511900010101", text: "Pode recuperar", idempotencyKey: key,
+      sentByUserId: userA
+    }, send)).rejects.toThrow("Connection Closed");
+    expect((await pool.query<{ status: string }>(
+      "SELECT status FROM outbound_message_requests WHERE tenant_id=$1 AND idempotency_key=$2", [tenantA, key]
+    )).rows[0].status).toBe("failed");
+  });
+
+  it("does not recover failed manual messages from an Instagram connection", async () => {
+    const instagramSession = (await pool.query<{ id: string }>(
+      "INSERT INTO whatsapp_sessions(tenant_id,status,channel) VALUES($1,'connected','instagram') RETURNING id", [tenantA]
+    )).rows[0].id;
+    const instagramConversation = (await pool.query<{ id: string }>(
+      "INSERT INTO conversations(tenant_id,session_id,contact_phone) VALUES($1,$2,'5511900010102') RETURNING id",
+      [tenantA, instagramSession]
+    )).rows[0].id;
+    await pool.query(
+      `INSERT INTO outbound_message_requests(tenant_id,conversation_id,idempotency_key,request_hash,status,recovery_payload)
+       VALUES($1,$2,$3,$4,'failed',$5::jsonb)`,
+      [tenantA, instagramConversation, `instagram-${randomUUID()}`, "hash-instagram", JSON.stringify({ sendText: "não enviar", displayText: "não enviar", sentByUserId: userA })]
+    );
+    const retry = vi.fn().mockResolvedValue({ externalId: "must-not-send" });
+    await expect(repository.recoverFailedManualMessages(tenantA, retry)).resolves.toMatchObject({});
+    expect(retry).not.toHaveBeenCalledWith(expect.objectContaining({ text: "não enviar" }));
+    expect((await pool.query<{ status: string }>(
+      "SELECT status FROM outbound_message_requests WHERE conversation_id=$1", [instagramConversation]
+    )).rows[0].status).toBe("failed");
+    await pool.query("DELETE FROM outbound_message_requests WHERE conversation_id=$1", [instagramConversation]);
+    await pool.query("DELETE FROM conversations WHERE id=$1", [instagramConversation]);
+    await pool.query("DELETE FROM whatsapp_sessions WHERE id=$1", [instagramSession]);
   });
 
   it("stops polling a fresh in-flight reservation within a bounded time", async () => {
