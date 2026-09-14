@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { beforeAll, describe, expect, it } from "vitest";
 
 let agendaActionsSource = "";
-const styleFiles = ["tokens.css", "base.css", "components.css", "shell.css", "domains/feedback.css", "domains/agenda.css", "domains/conversations.css", "domains/pipeline.css", "domains/auth.css", "domains/post-sales.css", "domains/agenda-calendar.css", "domains/leads.css"];
+const styleFiles = ["tokens.css", "base.css", "components.css", "shell.css", "domains/feedback.css", "domains/agenda.css", "domains/conversations.css", "domains/pipeline.css", "domains/auth.css", "domains/post-sales.css", "domains/agenda-calendar.css", "domains/leads.css", "domains/settings.css", "domains/overview.css", "domains/tripz-ai.css"];
 const readStyleSource = () => Promise.all(styleFiles.map((file) => readFile(new URL(`../styles/${file}`, import.meta.url), "utf8"))).then((sources) => sources.join("\n"));
 
 let agendaCalendarSource = "";
@@ -237,10 +237,13 @@ describe("comments.md UI regressions", () => {
     expect(leadDetailSource).not.toContain("data.eventos");
   });
 
-  it("reserves an internal top lane for usage tooltips so hover content is not clipped", () => {
-    const usageStyles = between(globalStyles, "/* Uso —", "/* Login —");
-    expect(usageStyles).toContain("padding:72px 12px 28px");
-    expect(usageStyles).toContain("top:-62px");
-    expect(usageStyles).toContain("max-height:128px");
+  // A página de Uso foi reconstruída no design system (seções de dados densas em
+  // vez de gráfico de barras com tooltip absoluta), então a faixa reservada para a
+  // tooltip não existe mais. A intenção preservada é: nenhum conteúdo de Uso pode
+  // ficar clipado, e as seções usam divisores tokenizados.
+  it("renders usage as tokenized data sections without clipped content", () => {
+    expect(globalStyles).toMatch(/\.billing-data-list > div \{[^}]*border-block-end:\s*1px solid var\(--border-subtle\)/);
+    expect(globalStyles).toMatch(/\.billing-alert \{[^}]*var\(--danger/);
+    expect(globalStyles).not.toContain("padding:72px 12px 28px");
   });
 });

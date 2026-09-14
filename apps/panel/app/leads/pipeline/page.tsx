@@ -60,7 +60,7 @@ const fallbackStatusTransitions: Record<string, readonly string[]> = {
   fechado: [],
   perdido: ["em_atendimento", "follow_up", "fechado"]
 };
-const fallbackColors = ["var(--text-8)", "var(--info)", "var(--text-6)", "var(--primary)", "var(--cat-referral)", "var(--urgent)", "var(--warn)", "var(--info)", "var(--ok)", "var(--danger)"];
+const fallbackColors = ["var(--text-muted)", "var(--info)", "var(--text-muted)", "var(--primary)", "var(--cat-3)", "var(--danger)", "var(--warning)", "var(--info)", "var(--success)", "var(--danger)"];
 const fallbackStages: PipelineStage[] = CANONICAL_PIPELINE_STATUSES.map((status, index) => ({ id: `fallback:${status}`, name: pipelineStatusLabel(status), color: fallbackColors[index], position: (index + 1) * 10, capacity_target: null, technical_status: status, is_default: true }));
 
 const fallbackTransitions = Object.entries(fallbackStatusTransitions).flatMap(([source, targets]) => targets.map((target) => `fallback:${source}:fallback:${target}`));

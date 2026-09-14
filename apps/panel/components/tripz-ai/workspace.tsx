@@ -31,21 +31,21 @@ function readableError(error: unknown, fallback: string): string {
 
 function WorkspaceEmpty({ creating, onCreate, onOpenHistory }: { creating: boolean; onCreate: () => void; onOpenHistory: (event: React.MouseEvent<HTMLElement>) => void }) {
   return (
-    <section className="relative grid min-h-0 min-w-0 place-items-center overflow-y-auto bg-[var(--app)] px-5 py-12" aria-label="Tripz IA sem proposta selecionada">
-      <button type="button" className="absolute left-3 top-3 grid h-10 w-10 place-items-center border border-[var(--border)] bg-[var(--panel)] text-[var(--muted)] transition-[background,transform] hover:bg-[var(--active)] active:translate-y-px lg:hidden" onClick={onOpenHistory} aria-label="Abrir histórico">
+    <section className="relative grid min-h-0 min-w-0 place-items-center overflow-y-auto tripz-bg-bg px-5 py-12" aria-label="Tripz IA sem proposta selecionada">
+      <button type="button" className="absolute left-3 top-3 grid h-10 w-10 place-items-center border tripz-border-border tripz-bg-surface tripz-text-text_secondary transition-[background,transform] hover:tripz-bg-surface_active active:translate-y-px lg:hidden" onClick={onOpenHistory} aria-label="Abrir histórico">
         <AirplaneTilt size={18} aria-hidden="true" />
       </button>
       <div className="grid w-full max-w-[48rem] grid-cols-1 gap-8 md:grid-cols-[minmax(0,1fr)_12rem] md:items-end">
-        <div className="border-l-2 border-[var(--accent)] pl-6 sm:pl-9">
-          <span className="font-mono text-[9px] uppercase tracking-[.2em] text-[var(--accent)]">Copiloto de propostas</span>
-          <h1 className="mb-0 mt-4 text-3xl font-semibold leading-[1.08] tracking-[-.045em] text-[var(--text)] sm:text-4xl">Da conversa ao PDF,<br />sem perder o contexto.</h1>
-          <p className="mb-0 mt-5 max-w-[50ch] text-[13px] leading-6 text-[var(--muted)]">Organize voos, hospedagem, imagens, valores e roteiro em uma sessão independente do atendimento.</p>
+        <div className="border-l-2 tripz-border-primary pl-6 sm:pl-9">
+          <span className="font-mono text-[9px] uppercase tracking-[.2em] tripz-text-primary">Copiloto de propostas</span>
+          <h1 className="mb-0 mt-4 text-3xl font-semibold leading-[1.08] tracking-[-.045em] tripz-text-text sm:text-4xl">Da conversa ao PDF,<br />sem perder o contexto.</h1>
+          <p className="mb-0 mt-5 max-w-[50ch] text-[13px] leading-6 tripz-text-text_secondary">Organize voos, hospedagem, imagens, valores e roteiro em uma sessão independente do atendimento.</p>
           <button type="button" className="btn primary mt-7 min-h-10 px-4" onClick={onCreate} disabled={creating}>
             <Plus size={15} weight="bold" aria-hidden="true" />{creating ? "Criando…" : "Criar nova proposta"}
           </button>
         </div>
-        <div className="hidden border-t border-[var(--border)] pt-4 text-[10px] leading-5 text-[var(--faint-text)] md:block">
-          <Sparkle size={18} className="mb-3 text-[var(--accent)]" weight="duotone" aria-hidden="true" />
+        <div className="hidden border-t tripz-border-border pt-4 text-[10px] leading-5 tripz-text-text_muted md:block">
+          <Sparkle size={18} className="mb-3 tripz-text-primary" weight="duotone" aria-hidden="true" />
           Envie somente os materiais fornecidos pelo cliente. A Tripz IA não pesquisa preços nem serviços externos.
         </div>
       </div>
@@ -321,9 +321,9 @@ export function TripzWorkspace() {
       {historyError && !historyData ? (
         <section className="grid min-h-0 place-items-center p-6 text-center" role="alert">
           <div className="max-w-sm">
-            <WarningCircle size={28} weight="duotone" className="mx-auto text-[var(--warn)]" aria-hidden="true" />
-            <h1 className="mb-0 mt-4 text-base text-[var(--text)]">Não foi possível abrir a Tripz IA</h1>
-            <p className="mb-0 mt-2 text-xs leading-5 text-[var(--muted)]">{readableError(historyError, "Falha ao carregar as propostas.")}</p>
+            <WarningCircle size={28} weight="duotone" className="mx-auto tripz-text-warning" aria-hidden="true" />
+            <h1 className="mb-0 mt-4 text-base tripz-text-text">Não foi possível abrir a Tripz IA</h1>
+            <p className="mb-0 mt-2 text-xs leading-5 tripz-text-text_secondary">{readableError(historyError, "Falha ao carregar as propostas.")}</p>
             <button type="button" className="btn mt-5" onClick={() => void mutateHistory()}><ArrowClockwise size={14} aria-hidden="true" />Tentar novamente</button>
           </div>
         </section>
@@ -366,20 +366,20 @@ export function TripzWorkspace() {
 
       {deleteTarget ? (
         <ModalDialog labelledBy="tripz-delete-title" describedBy="tripz-delete-description" onClose={() => { if (!deleting) setDeleteTarget(null); }}>
-          <span className="grid h-10 w-10 place-items-center border border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn)]"><Trash size={18} weight="duotone" aria-hidden="true" /></span>
+          <span className="grid h-10 w-10 place-items-center border tripz-border-warning_border tripz-bg-warning_subtle tripz-text-warning"><Trash size={18} weight="duotone" aria-hidden="true" /></span>
           <h2 id="tripz-delete-title">Excluir esta proposta?</h2>
           <p id="tripz-delete-description">A conversa “{deleteTarget.title}”, seus anexos e documentos deixam de aparecer no histórico.</p>
-          <div className="flex justify-end gap-2 border-t border-[var(--border)] pt-4">
+          <div className="flex justify-end gap-2 border-t tripz-border-border pt-4">
             <button type="button" className="btn" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancelar</button>
-            <button type="button" className="btn warn" disabled={deleting} onClick={() => void confirmDelete()}>{deleting ? "Excluindo…" : "Excluir proposta"}</button>
+            <button type="button" className="btn btn--danger" disabled={deleting} onClick={() => void confirmDelete()}>{deleting ? "Excluindo…" : "Excluir proposta"}</button>
           </div>
         </ModalDialog>
       ) : null}
 
       {workspaceError ? (
-        <div className="fixed bottom-4 left-4 right-4 z-[3] flex items-start justify-between gap-3 border border-[var(--warn-border)] bg-[var(--dialog)] p-3 text-xs text-[var(--warn)] sm:left-auto sm:max-w-sm" role="alert">
+        <div className="fixed bottom-4 left-4 right-4 z-[3] flex items-start justify-between gap-3 border tripz-border-warning_border tripz-bg-surface_elevated p-3 text-xs tripz-text-warning sm:left-auto sm:max-w-sm" role="alert">
           <span>{workspaceError}</span>
-          <button type="button" className="grid h-6 w-6 shrink-0 place-items-center bg-transparent transition-transform active:scale-[.96]" onClick={() => setWorkspaceError("")} aria-label="Fechar aviso"><X size={14} aria-hidden="true" /></button>
+          <button type="button" className="grid h-6 w-6 shrink-0 place-items-center tripz-bg-transparent transition-transform active:scale-[.96]" onClick={() => setWorkspaceError("")} aria-label="Fechar aviso"><X size={14} aria-hidden="true" /></button>
         </div>
       ) : null}
     </div>

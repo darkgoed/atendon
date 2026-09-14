@@ -5,7 +5,7 @@ import { whatsappReconnectSupportHref } from "../lib/whatsapp-support";
 export function WhatsAppDisconnectedHelp() {
   return (
     <a
-      className="btn warn mt-3 inline-flex"
+      className="btn mt-3 inline-flex"
       href={whatsappReconnectSupportHref()}
       target="_blank"
       rel="noreferrer"

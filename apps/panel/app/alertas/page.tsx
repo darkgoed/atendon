@@ -181,11 +181,11 @@ export default function AlertsPage() {
           <h1>Alertas operacionais</h1>
           <p>Novas reuniões direcionadas e falhas do sistema continuam disponíveis depois que o aviso rápido desaparece.</p>
         </div>
-        <div className="flex items-center gap-3 border-l border-[var(--border)] pl-5">
-          <BellRinging size={20} className="text-[var(--warn)]" aria-hidden="true" />
+        <div className="flex items-center gap-3 border-l  pl-5">
+          <BellRinging size={20} className="" aria-hidden="true" />
           <div>
-            <strong className="mono block text-xl leading-none text-[var(--text)]">{data?.unread ?? 0}</strong>
-            <span className="text-xs text-[var(--muted)]">não lidos</span>
+            <strong className="mono block text-xl leading-none ">{data?.unread ?? 0}</strong>
+            <span className="text-xs ">não lidos</span>
           </div>
         </div>
       </header>
@@ -204,35 +204,35 @@ export default function AlertsPage() {
         <Empty>Nenhum alerta foi registrado para você neste workspace.</Empty>
       ) : (
         <>
-          <section aria-label="Histórico de alertas" className="border-y border-[var(--border)]">
+          <section aria-label="Histórico de alertas" className="border-y ">
             {alerts.map((alert) => {
               const unread = alert.can_acknowledge && !alert.read_at;
               const meeting = meetingMetadata(alert);
               return (
                 <article
-                  className={`channels-ai-alert-item md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center ${unread ? "text-[var(--text)]" : "text-[var(--muted)]"}`}
+                  className={`channels-ai-alert-item md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center ${unread ? "" : ""}`}
                   key={alert.id}
                 >
-                  <span className={`channels-ai-alert-icon ${unread ? "border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn)]" : "text-[var(--faint)]"}`}>
+                  <span className={`channels-ai-alert-icon ${unread ? "  " : ""}`}>
                     {meeting ? <VideoCamera size={18} weight={unread ? "fill" : "regular"} aria-hidden="true" /> : unread ? <BellRinging size={18} weight="fill" aria-hidden="true" /> : <Check size={18} weight="bold" aria-hidden="true" />}
                   </span>
                   <div className="channels-ai-min-zero">
                     <div className="flex flex-wrap items-center gap-2">
                       <strong className="text-sm">{meeting ? meetingTitle(meeting) : alert.message}</strong>
-                      {unread ? <span className="rounded border border-[var(--warn-border)] px-2 py-0.5 type-caption font-semibold uppercase tracking-[.1em] text-[var(--warn)]">Novo</span> : null}
+                      {unread ? <span className="rounded border  px-2 py-0.5 type-caption font-semibold uppercase tracking-[.1em] ">Novo</span> : null}
                     </div>
                     {meeting ? (
-                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-[var(--muted)]">
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs ">
                         <span>{meeting.contact_phone}</span>
                         <span>{meetingDateTime(meeting)}</span>
                         {meeting.meet_url?.startsWith("https://meet.google.com/") ? (
-                          <a className="inline-flex items-center gap-1.5 font-medium text-[var(--accent-soft)] underline underline-offset-4 active:scale-[0.98]" href={meeting.meet_url} target="_blank" rel="noreferrer">
+                          <a className="inline-flex items-center gap-1.5 font-medium  underline underline-offset-4 active:scale-[0.98]" href={meeting.meet_url} target="_blank" rel="noreferrer">
                             <VideoCamera size={14} aria-hidden="true" /> Abrir Google Meet
                           </a>
                         ) : <span>Sem link de reunião</span>}
                       </div>
                     ) : null}
-                    <time className="mono mt-2 flex items-center gap-1.5 type-caption text-[var(--faint)]" dateTime={alert.created_at}>
+                    <time className="mono mt-2 flex items-center gap-1.5 type-caption " dateTime={alert.created_at}>
                       <ClockCounterClockwise size={13} aria-hidden="true" />
                       {formatPanelDateTime(alert.created_at, { dateStyle: "medium", timeStyle: "short" })}
                     </time>
@@ -249,7 +249,7 @@ export default function AlertsPage() {
                       {dismissing === alert.id ? "Dispensando…" : "Dispensar"}
                     </Button>
                   ) : (
-                    <span className="mono type-caption uppercase tracking-[.1em] text-[var(--faint)] md:text-right">
+                    <span className="mono type-caption uppercase tracking-[.1em]  md:text-right">
                       {alert.can_acknowledge ? "Revisado" : "Somente leitura"}
                     </span>
                   )}
@@ -262,7 +262,7 @@ export default function AlertsPage() {
               <button className="btn channels-ai-touch" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} type="button">
                 Mais recentes
               </button>
-              <span className="mono type-caption text-[var(--faint)]">
+              <span className="mono type-caption ">
                 {offset + 1}–{Math.min(offset + alerts.length, data.total)} de {data.total}
               </span>
               <button className="btn channels-ai-touch" disabled={offset + PAGE_SIZE >= data.total} onClick={() => setOffset(offset + PAGE_SIZE)} type="button">

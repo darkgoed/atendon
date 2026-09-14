@@ -19,19 +19,19 @@ export function TripzMessageBubble({
       className={`${styles.message} ${fromUser ? styles.messageUser : styles.messageAi}`}
       aria-label={fromUser ? "Mensagem enviada por você" : "Resposta da Tripz IA"}
     >
-      <header className={`flex items-center gap-2 px-1 text-[10px] font-medium ${fromUser ? "flex-row-reverse text-[var(--faint-text)]" : "text-[var(--accent-soft)]"}`}>
-        <span className={`grid h-5 w-5 place-items-center border ${fromUser ? "border-[var(--strong)] bg-[var(--panel)]" : "border-[var(--border-ai)] bg-[var(--accent-bg)]"}`} aria-hidden="true">
+      <header className={`flex items-center gap-2 px-1 text-[10px] font-medium ${fromUser ? "flex-row-reverse tripz-text-text_muted" : "tripz-text-primary"}`}>
+        <span className={`grid h-5 w-5 place-items-center border ${fromUser ? "tripz-border-border_strong tripz-bg-surface" : "tripz-border-primary_border tripz-bg-primary_subtle"}`} aria-hidden="true">
           {fromUser ? <User size={11} weight="bold" /> : <Robot size={12} weight="duotone" />}
         </span>
         <span>{fromUser ? "Você" : "Tripz IA"}</span>
-        <time className="font-mono font-normal text-[var(--faint-text)]" dateTime={message.createdAt}>
+        <time className="font-mono font-normal tripz-text-text_muted" dateTime={message.createdAt}>
           {formatTripzTimestamp(message.createdAt)}
         </time>
       </header>
 
       {message.content ? (
         <div className={`${fromUser ? styles.messageBodyUser : styles.messageBody} px-4 py-3`}>
-          <p className="m-0 whitespace-pre-wrap text-[13px] leading-6 text-[var(--body)]">{message.content}</p>
+          <p className="m-0 whitespace-pre-wrap text-[13px] leading-6 tripz-text-text_secondary">{message.content}</p>
         </div>
       ) : null}
 

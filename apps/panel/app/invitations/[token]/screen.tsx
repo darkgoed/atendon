@@ -132,7 +132,7 @@ export default function InvitationAcceptPage({ token }: { token: string }) {
                     </label>
                   </>
                 )}
-                <button type="submit" className="btn primary" disabled={submitting}>
+                <button type="submit" className="btn btn-primary" disabled={submitting} data-loading={submitting || undefined}>
                   {submitting ? "Confirmando…" : "Aceitar convite"}
                   <ArrowRight size={16} aria-hidden="true" />
                 </button>

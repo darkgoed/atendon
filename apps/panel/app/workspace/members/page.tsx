@@ -176,9 +176,9 @@ export default function WorkspaceMembersPage() {
 
       {error ? <p className="error mb-4" role="alert">{error}</p> : null}
       {dataError ? (
-        <section className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-4" role="alert">
+        <section className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-4" role="alert">
           <p className="error">{dataError instanceof Error ? dataError.message : "Não foi possível carregar os membros."}</p>
-          <button type="button" className="btn warn" onClick={() => void Promise.all([mutateMembers(), mutateRoles(), mutateInvitations()])}>Tentar novamente</button>
+          <button type="button" className="btn" onClick={() => void Promise.all([mutateMembers(), mutateRoles(), mutateInvitations()])}>Tentar novamente</button>
         </section>
       ) : null}
 
@@ -288,7 +288,7 @@ export default function WorkspaceMembersPage() {
                                   </button>
                                 ) : null}
                                 {canRemoveMembers && !member.is_owner_role ? (
-                                  <button type="button" className="btn warn" disabled={locked} onClick={() => void removeMember(member.id)}>
+                                  <button type="button" className="btn" disabled={locked} onClick={() => void removeMember(member.id)}>
                                     <Trash size={16} aria-hidden="true" />
                                     Remover
                                   </button>
@@ -386,7 +386,7 @@ export default function WorkspaceMembersPage() {
                         </td>
                         <td data-label="Ações">
                           {canInvite && invitation.status === "pending" ? (
-                            <button type="button" className="btn warn" disabled={busyInvitationId === invitation.id} onClick={() => void revokeInvitation(invitation.id)}>
+                            <button type="button" className="btn" disabled={busyInvitationId === invitation.id} onClick={() => void revokeInvitation(invitation.id)}>
                               <Trash size={16} aria-hidden="true" />
                               Revogar
                             </button>

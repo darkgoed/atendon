@@ -1,0 +1,30 @@
+/* Tripz-AI — classes utilitárias globais tokenizadas (extraídas do CSS module,
+   onde :global() é inválido em seletor puro). */
+.tripz-text-primary { color: var(--primary-text); }
+.tripz-text-warning { color: var(--warning); }
+.tripz-text-success { color: var(--success); }
+.tripz-text-text { color: var(--text); }
+.tripz-text-text-secondary { color: var(--text-secondary); }
+.tripz-text-text-muted { color: var(--text-muted); }
+.tripz-bg-bg { background: var(--bg); }
+.tripz-bg-surface { background: var(--surface); }
+.tripz-bg-surface_elevated { background: var(--surface-elevated); }
+.tripz-bg-surface_active { background: var(--surface-active); }
+.tripz-bg-primary { background: var(--primary); }
+.tripz-bg-primary_subtle { background: var(--primary-subtle); }
+.tripz-bg-warning_subtle { background: var(--warning-subtle); }
+.tripz-bg-transparent { background: transparent; }
+.tripz-border-border { border-color: var(--border); }
+.tripz-border-border_strong { border-color: var(--border-strong); }
+.tripz-border-primary { border-color: var(--primary); }
+.tripz-border-primary_border { border-color: var(--primary-border); }
+.tripz-border-warning { border-color: var(--warning); }
+.tripz-border-warning_border { border-color: var(--warning-border); }
+.tripz-border-transparent { border-color: transparent; }
+.tripz-text-transparent { color: transparent; }
+.tripz-text-primary_fg { color: var(--primary-foreground); }
+.tripz-text-text_muted { color: var(--text-muted); }
+.tripz-text-text_secondary { color: var(--text-secondary); }
+.tripz-bg-sidebar { background: var(--sidebar); }
+.tripz-bg-success { background: var(--success); }
+.tripz-bg-text_muted { background: var(--text-muted); }

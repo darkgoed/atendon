@@ -86,23 +86,23 @@ export function ConversationNextAction({
   }
 
   return (
-    <section className={`card ${due ? "border-[var(--warn-border)]" : ""}`} aria-labelledby="conversation-next-action-title">
+    <section className={`card conversation-next-action${due ? " is-overdue" : ""}`} aria-labelledby="conversation-next-action-title">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div id="conversation-next-action-title" className="cardtitle flex items-center gap-1.5"><CalendarDots size={14} aria-hidden="true" /> Próxima ação</div>
-          {due ? <strong className="mt-1 block text-xs text-[var(--warn)]">Pendência</strong> : null}
-          <p className={`mt-1 whitespace-pre-wrap text-sm ${due ? "text-[var(--warn)]" : "text-[var(--text-3)]"}`}>{nextAction || "Nenhuma próxima ação definida."}</p>
-          {nextActionAt ? <time className="mono mt-1 block text-xs text-[var(--faint)]">{new Date(nextActionAt).toLocaleString("pt-BR", { timeZone: timezone })}</time> : null}
-          {assignedUserEmail ? <p className="mt-1 text-xs text-[var(--faint)]">Responsável: {assignedUserEmail}</p> : null}
+          {due ? <strong className="mt-1 block text-xs conversation-next-action__flag">Pendência</strong> : null}
+          <p className={`mt-1 whitespace-pre-wrap text-sm conversation-next-action__text${due ? " is-overdue" : ""}`}>{nextAction || "Nenhuma próxima ação definida."}</p>
+          {nextActionAt ? <time className="mono mt-1 block text-xs type-meta">{new Date(nextActionAt).toLocaleString("pt-BR", { timeZone: timezone })}</time> : null}
+          {assignedUserEmail ? <p className="mt-1 text-xs type-meta">Responsável: {assignedUserEmail}</p> : null}
         </div>
         {canManage ? <Button type="button" className="btn shrink-0 p-2" onClick={() => setOpen(true)} aria-label="Editar próxima ação"><PencilSimple size={14} /></Button> : null}
       </div>
-      {notice ? <p className="mt-2 text-xs text-[var(--ok)]" role="status">{notice}</p> : null}
+      {notice ? <p className="mt-2 text-xs type-meta" role="status">{notice}</p> : null}
       {open ? <ModalDialog labelledBy="next-action-dialog-title" onClose={() => { if (!busy) setOpen(false); }}>
         <form onSubmit={save} className="grid gap-4">
           <div className="flex items-center justify-between"><h2 id="next-action-dialog-title" className="text-base font-semibold">Próxima ação</h2><Button type="button" className="btn p-2" onClick={() => setOpen(false)} disabled={busy} aria-label="Fechar"><X size={16} /></Button></div>
-          <label className="field"><span className="label">Descrição <b aria-hidden="true">*</b></span><Textarea className="input min-h-24" value={action} maxLength={500} required onChange={(event) => setAction(event.target.value)} /><small className="text-[var(--faint)]">{action.length}/500</small></label>
-          <label className="field"><span className="label">Data e hora local <b aria-hidden="true">*</b></span><Input className="input" type="datetime-local" value={when} required onChange={(event) => setWhen(event.target.value)} /><small className="text-[var(--faint)]">Fuso do workspace: {timezone}</small></label>
+          <label className="field"><span className="label">Descrição <b aria-hidden="true">*</b></span><Textarea className="input min-h-24" value={action} maxLength={500} required onChange={(event) => setAction(event.target.value)} /><small className="">{action.length}/500</small></label>
+          <label className="field"><span className="label">Data e hora local <b aria-hidden="true">*</b></span><Input className="input" type="datetime-local" value={when} required onChange={(event) => setWhen(event.target.value)} /><small className="">Fuso do workspace: {timezone}</small></label>
 
           {error ? <p className="error" role="alert">{error}</p> : null}
           <div className="flex justify-end gap-2"><Button type="button" className="btn" onClick={() => setOpen(false)} disabled={busy}>Cancelar</Button><Button type="submit" className="btn primary" disabled={busy}>{busy ? "Salvando…" : <><Check size={14} /> Salvar</>}</Button></div>

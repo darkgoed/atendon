@@ -40,8 +40,8 @@ function CapabilityUnavailable({ name, catalogError }: { name: string; catalogEr
   const { retry } = useCapabilities();
   return (
     <Shell>
-      <section className="mx-auto grid max-w-2xl gap-5 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-5 py-8 sm:grid-cols-[44px_minmax(0,1fr)]" role="alert">
-        <span className="grid size-11 place-items-center rounded-full border border-[var(--warn-border)] text-[var(--warn)]">
+      <section className="mx-auto grid max-w-2xl gap-5 border-y guard-border-warning_border guard-bg-warning_subtle px-5 py-8 sm:grid-cols-[44px_minmax(0,1fr)]" role="alert">
+        <span className="grid size-11 place-items-center rounded-full border guard-border-warning_border guard-text-warning">
           <LockSimple size={21} aria-hidden="true" />
         </span>
         <div>
@@ -49,7 +49,7 @@ function CapabilityUnavailable({ name, catalogError }: { name: string; catalogEr
           <h1 className="mt-1 text-xl font-semibold tracking-tight">Funcionalidade indisponível para esta empresa</h1>
           <p className="sub mt-2">{catalogError ? "Não foi possível confirmar o catálogo com segurança." : `${name} não está habilitado neste workspace.`} Conversas continua disponível.</p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Link className="btn primary active:scale-[.98]" href="/conversas"><ChatsCircle size={16} aria-hidden="true" />Voltar para Conversas</Link>
+            <Link className="btn btn-primary active:scale-[.98]" href="/conversas"><ChatsCircle size={16} aria-hidden="true" />Voltar para Conversas</Link>
             {catalogError ? <button type="button" className="btn active:scale-[.98]" onClick={() => void retry()}><ArrowClockwise size={16} aria-hidden="true" />Tentar novamente</button> : null}
           </div>
         </div>
@@ -132,7 +132,7 @@ function ProtectedPanel({ children, path }: { children: ReactNode; path: string 
         <strong>Não foi possível validar sua sessão</strong>
         <p>Nenhum módulo foi aberto. Tente novamente ou volte ao login.</p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" className="btn warn" onClick={() => void mutate()}><ArrowClockwise size={16} aria-hidden="true" />Tentar novamente</button>
+          <button type="button" className="btn btn--danger" onClick={() => void mutate()}><ArrowClockwise size={16} aria-hidden="true" />Tentar novamente</button>
           <Link className="btn" href="/login">Voltar ao login</Link>
         </div>
       </div>

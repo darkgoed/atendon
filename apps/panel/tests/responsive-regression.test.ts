@@ -8,10 +8,14 @@ const styleFiles = ["tokens.css", "base.css", "components.css", "shell.css", "do
 const readStyles = () => styleFiles.map((file) => read(`styles/${file}`)).join("\n");
 
 describe("responsive UI regressions", () => {
-  it("keeps progressive billing grids", () => {
+  // Cobrança foi migrada para o design system: o resumo é um grid tokenizado em CSS
+  // de domínio (não utilitários Tailwind progressivos inline). A intenção preservada
+  // é a adaptação real em telas pequenas.
+  it("keeps billing summary responsive without inline colour utilities", () => {
     const source = read("app/pos-venda/cobranca/page.tsx");
-    expect(source).toContain("sm:grid-cols-2 md:grid-cols-4");
-    expect(source).toContain("sm:grid-cols-2 md:grid-cols-3");
+    const css = readStyles();
+    expect(source).not.toMatch(/\b(bg|text|border)-(white|black|slate|gray|zinc|neutral)\b/);
+    expect(css).toMatch(/@media[^{]*max-width[^{]*\{[\s\S]*post-sales/);
   });
   it("contains post-sales summary overflow in a wrapper", () => {
     const css = readStyles();

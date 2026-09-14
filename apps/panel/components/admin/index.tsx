@@ -3,7 +3,7 @@ import { Button, Field, PageHeader, TableScroll } from "@/components/ui";
 import styles from "./admin.module.css";
 
 export function AdminPage({ children, className = "", ...props }: Omit<HTMLAttributes<HTMLDivElement>, "children"> & { children: ReactNode }) {
-  return <div {...props} className={`${styles.page} ${className}`.trim()}>{children}</div>;
+  return <div {...props} className={`${styles.page} admin-page ${className}`.trim()}>{children}</div>;
 }
 
 export function AdminPageHeader({ title, description, actions }: { title: ReactNode; description?: ReactNode; actions?: ReactNode }) {

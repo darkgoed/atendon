@@ -310,11 +310,6 @@ export function Shell({
             {mobileNavOpen ? <X size={18} aria-hidden="true" /> : <List size={18} aria-hidden="true" />}
           </button>
         </div>
-        <button type="button" className="palette-trigger" onClick={() => setPaletteOpen(true)} aria-label="Buscar página (Ctrl+K)" title="Buscar página (Ctrl+K)">
-          <MagnifyingGlass size={15} aria-hidden="true" />
-          <span>Buscar…</span>
-          <kbd>Ctrl K</kbd>
-        </button>
         <div className="mobile-nav-panel">
         <div className="nav-scroll-region">
           <nav ref={navRef} className="nav" aria-label="Navegação principal">
@@ -427,13 +422,26 @@ export function Shell({
         </div>
       </aside>
       <header className="topbar">
-        <div className="topbar__tenant">
-          <i className={`dot ${workspaceStatus !== "active" ? "warn" : ""}`} aria-hidden="true" />
-          <strong>{workspaceName}</strong>
-          {workspaceSlug ? <span className="topbar__slug mono">{workspaceSlug}</span> : null}
-          <span className="topbar__role">{accessStatusLabel(workspaceStatus)}</span>
+        <div className="topbar__context">
+          <div className="topbar__tenant">
+            <i className={`dot ${workspaceStatus !== "active" ? "warn" : ""}`} aria-hidden="true" />
+            <strong>{workspaceName}</strong>
+            {workspaceSlug ? <span className="topbar__slug mono">{workspaceSlug}</span> : null}
+            <span className="topbar__role">{accessStatusLabel(workspaceStatus)}</span>
+          </div>
+          {currentItem ? (
+            <>
+              <span className="topbar__crumb-sep" aria-hidden="true">/</span>
+              <span className="topbar__crumb">{caseScopedNavigationLabel(session, currentItem.href, currentItem.label)}</span>
+            </>
+          ) : null}
         </div>
         <div className="topbar__meta">
+          <button type="button" className="palette-trigger" onClick={() => setPaletteOpen(true)} aria-label="Buscar página (Ctrl+K)" title="Buscar página (Ctrl+K)">
+            <MagnifyingGlass size={15} aria-hidden="true" />
+            <span>Buscar…</span>
+            <kbd>Ctrl K</kbd>
+          </button>
           {showRootBanner ? (
             <Link className="topbar__root" href="/root/workspaces" title="Acesso assistido ROOT — todas as ações ficam auditadas neste workspace">
               ROOT

@@ -90,7 +90,7 @@ export default function RequiredPasswordChangePage() {
           </Field>
 
           {error ? <p className="error" role="alert">{error}</p> : null}
-          <Button type="submit" tone="primary" className="button-wide" icon={<Key size={18} aria-hidden="true" />} disabled={saving}>
+          <Button type="submit" tone="primary" className="button-wide" icon={<Key size={18} aria-hidden="true" />} loading={saving}>
             {saving ? "Salvando…" : "Criar senha e continuar"}
           </Button>
         </form>

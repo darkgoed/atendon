@@ -17,7 +17,7 @@ export default function AccessDeniedPage() {
         <h1>Você não tem permissão para abrir esta área.</h1>
         <p>Troque de workspace, use um perfil com acesso compatível ou volte para uma seção liberada da sua sessão.</p>
         <div className="denied-actions">
-          <Link className="btn primary" href="/">Ir para o painel</Link>
+          <Link className="btn btn-primary" href="/">Ir para o painel</Link>
           <Link className="btn" href="/login">Entrar com outra conta</Link>
         </div>
       </div>

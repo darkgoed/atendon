@@ -259,7 +259,7 @@ export default function WorkspaceRolesPage() {
 
           <div className="admin-actions admin-actions--end">
             {editor.id ? (
-              <button type="button" className="btn warn" disabled={!canDelete || saving || editingProtectedRole || editor.memberCount > 0} onClick={() => void removeRole()}>
+              <button type="button" className="btn" disabled={!canDelete || saving || editingProtectedRole || editor.memberCount > 0} onClick={() => void removeRole()}>
                 <Trash size={16} aria-hidden="true" />
                 Excluir
               </button>

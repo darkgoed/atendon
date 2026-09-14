@@ -12,7 +12,7 @@ export function BrandMark({ className = "" }: { className?: string }) {
         fill="currentColor"
         fillRule="evenodd"
       />
-      <path d="M26.5 5.25h13L33 16.5l-6.5-11.25Z" fill="var(--accent)" />
+      <path d="M26.5 5.25h13L33 16.5l-6.5-11.25Z" fill="var(--primary)" />
     </svg>
   );
 }

@@ -144,12 +144,12 @@ export function AiFollowUpSettingsPanel() {
   return (
     <div className="channels-ai-grid md:grid-cols-[minmax(0,1.45fr)_minmax(280px,.55fr)]">
       <form className="channels-ai-section channels-ai-form channels-ai-form--wide" onSubmit={submit}>
-        <div className="mb-6 flex items-start justify-between gap-5 border-b border-[var(--border)] pb-5">
+        <div className="mb-6 flex items-start justify-between gap-5 border-b  pb-5">
           <div>
             <div className="cardtitle">Cadência automática</div>
             <p className="sub mt-1 channels-ai-reading-width">Após o intervalo, a IA relê a conversa e só envia se a resposta for necessária para avançar ao agendamento ou ao fechamento com o SDR ou especialista. Qualquer resposta do contato encerra a sequência atual.</p>
           </div>
-          <label className="flex shrink-0 items-center gap-3 text-sm font-medium text-[var(--body)]">
+          <label className="flex shrink-0 items-center gap-3 text-sm font-medium ">
             <input
               type="checkbox"
               checked={settings.enabled}
@@ -160,7 +160,7 @@ export function AiFollowUpSettingsPanel() {
         </div>
 
         {error ? <p className="error mb-5" role="alert">{error}</p> : null}
-        {saved ? <p className="mb-5 text-sm text-[var(--accent-soft)]" role="status">Configuração salva.</p> : null}
+        {saved ? <p className="mb-5 text-sm " role="status">Configuração salva.</p> : null}
 
         <div className="grid gap-3">
           <div className="flex items-end justify-between gap-4">
@@ -193,7 +193,7 @@ export function AiFollowUpSettingsPanel() {
             return (
               <div key={index} className="channels-ai-attempt">
                 <div className="grid items-center gap-3 sm:grid-cols-[92px_minmax(0,1fr)_minmax(130px,auto)_40px]">
-                  <strong className="text-xs text-[var(--heading)]">{index + 1}ª tentativa</strong>
+                  <strong className="text-xs ">{index + 1}ª tentativa</strong>
                   <input
                     className="input"
                     type="number"
@@ -229,7 +229,7 @@ export function AiFollowUpSettingsPanel() {
                   </Button>
                 </div>
 
-                <div className="grid gap-3 border-t border-[var(--border)] pt-4 sm:grid-cols-[minmax(150px,.65fr)_minmax(0,1fr)]">
+                <div className="grid gap-3 border-t  pt-4 sm:grid-cols-[minmax(150px,.65fr)_minmax(0,1fr)]">
                   <label className="field">
                     <span>Formato do envio</span>
                     <select
@@ -279,13 +279,13 @@ export function AiFollowUpSettingsPanel() {
                   <div className="channels-ai-media-preview">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={apiContentUrl(`/ai-follow-ups/media/${selectedImage.id}/content`)} alt={selectedImage.name} className="channels-ai-preview-thumb" />
-                    <div><strong className="text-sm text-[var(--heading)]">{selectedImage.name}</strong><p className="sub mt-1 text-xs">{selectedImage.description}</p></div>
+                    <div><strong className="text-sm ">{selectedImage.name}</strong><p className="sub mt-1 text-xs">{selectedImage.description}</p></div>
                   </div>
                 ) : selectedSticker ? (
                   <div className="channels-ai-media-preview">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={apiContentUrl(`/ai-stickers/${selectedSticker.id}/content`)} alt={selectedSticker.name} className="channels-ai-preview-sticker" />
-                    <div><strong className="text-sm text-[var(--heading)]">{selectedSticker.name}</strong><p className="sub mt-1 text-xs">Será enviada sozinha, sem texto adicional.</p></div>
+                    <div><strong className="text-sm ">{selectedSticker.name}</strong><p className="sub mt-1 text-xs">Será enviada sozinha, sem texto adicional.</p></div>
                   </div>
                 ) : selectedAudio ? (<div className="channels-ai-media-preview channels-ai-media-preview--wide"><audio controls className="w-full" src={apiContentUrl(`/ai-follow-ups/media/${selectedAudio.id}/content`)} /><p className="sub mt-1 text-xs">Nota de voz, sem legenda.</p></div>)
                 : selectedVideo ? (<div className="channels-ai-media-preview channels-ai-media-preview--wide"><video controls className="w-full" src={apiContentUrl(`/ai-follow-ups/media/${selectedVideo.id}/content`)} /><p className="sub mt-1 text-xs">O texto da IA será enviado como legenda.</p></div>) : null}
@@ -294,7 +294,7 @@ export function AiFollowUpSettingsPanel() {
           })}
         </div>
 
-        <div className="mt-7 flex items-center justify-between gap-4 border-t border-[var(--border)] pt-5">
+        <div className="mt-7 flex items-center justify-between gap-4 border-t  pt-5">
           <span className="sub text-xs">Alterações também atualizam sequências que ainda estão aguardando.</span>
           <Button type="submit" tone="primary" className="channels-ai-touch" disabled={saving}>
             <FloppyDisk aria-hidden="true" />
@@ -303,10 +303,10 @@ export function AiFollowUpSettingsPanel() {
         </div>
       </form>
 
-      <aside className="border-t border-[var(--border)] pt-5 md:border-l md:border-t-0 md:pl-6 md:pt-1" aria-label="Como funcionam os follow-ups">
-        <form className="grid gap-3 border-b border-[var(--border)] pb-6" onSubmit={uploadImage}>
+      <aside className="border-t  pt-5 md:border-l md:border-t-0 md:pl-6 md:pt-1" aria-label="Como funcionam os follow-ups">
+        <form className="grid gap-3 border-b  pb-6" onSubmit={uploadImage}>
           <div>
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--heading)]"><ImageSquare size={17} aria-hidden="true" />Mídias de cases</h2>
+            <h2 className="flex items-center gap-2 text-sm font-semibold "><ImageSquare size={17} aria-hidden="true" />Mídias de cases</h2>
             <p className="sub mt-1 text-xs leading-relaxed">Adicione imagens, áudio OGG/MP3 ou vídeo MP4. Áudio é enviado como nota de voz sem legenda; vídeo recebe a legenda da IA.</p>
           </div>
           <label className="field">
@@ -333,13 +333,13 @@ export function AiFollowUpSettingsPanel() {
             <UploadSimple size={16} aria-hidden="true" />
             {uploading ? "Adicionando…" : "Adicionar mídia"}
           </Button>
-          <div className="flex items-start gap-2 text-xs text-[var(--muted)]">
+          <div className="flex items-start gap-2 text-xs ">
             <Sticker className="mt-0.5 shrink-0" size={15} aria-hidden="true" />
             <p>As figurinhas vêm da biblioteca logo abaixo nesta página e sempre são enviadas sem texto.</p>
           </div>
         </form>
 
-        <h2 className="mt-6 text-sm font-semibold text-[var(--heading)]">Como a sequência decide</h2>
+        <h2 className="mt-6 text-sm font-semibold ">Como a sequência decide</h2>
         <div className="mt-5 grid gap-5">
           <FollowUpRule Icon={ClockCountdown} title="Segue a linha do tempo" description="Cada tentativa usa seu atraso cumulativo desde a resposta original da IA: por exemplo, 2h, 24h e 72h." />
           <FollowUpRule Icon={ChatCircleDots} title="Avalia a necessidade" description="A IA só retoma perguntas cuja resposta bloqueia o agendamento ou o fechamento pelo SDR ou especialista, como a confirmação de um horário oferecido." />
@@ -352,5 +352,5 @@ export function AiFollowUpSettingsPanel() {
 }
 
 function FollowUpRule({ Icon, title, description }: { Icon: typeof ClockCountdown; title: string; description: string }) {
-  return <div className="grid grid-cols-[32px_1fr] gap-3"><div className="channels-ai-number"><Icon size={16} aria-hidden="true" /></div><div><strong className="block text-sm text-[var(--heading)]">{title}</strong><p className="sub mt-1 text-xs leading-relaxed">{description}</p></div></div>;
+  return <div className="grid grid-cols-[32px_1fr] gap-3"><div className="channels-ai-number"><Icon size={16} aria-hidden="true" /></div><div><strong className="block text-sm ">{title}</strong><p className="sub mt-1 text-xs leading-relaxed">{description}</p></div></div>;
 }

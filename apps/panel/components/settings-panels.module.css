@@ -11,17 +11,17 @@
 .destinations { display: grid; gap: var(--space-3); }
 .destinationHeader { display: flex; align-items: end; justify-content: space-between; gap: var(--space-4); }
 .destinationGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: var(--space-3); }
-.settingsDestination { display: flex; align-items: flex-start; gap: var(--space-3); min-height: 4.5rem; padding: var(--space-4); border: 1px solid var(--border); color: var(--body); text-decoration: none; }
-.settingsDestination:hover { border-color: var(--accent); color: var(--heading); }
+.settingsDestination { display: flex; align-items: flex-start; gap: var(--space-3); min-height: 4.5rem; padding: var(--space-4); border: 1px solid var(--border); color: var(--text-secondary); text-decoration: none; }
+.settingsDestination:hover { border-color: var(--primary); color: var(--text); }
 .settingsDestination span { display: grid; gap: var(--space-1); min-width: 0; }
-.settingsDestination small { color: var(--muted); }
+.settingsDestination small { color: var(--text-secondary); }
 .tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
-.tab { min-height: 2.75rem; padding: var(--space-3) var(--space-4); border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); white-space: nowrap; }
-.tabActive { border-bottom-color: var(--accent); color: var(--accent-soft); }
+.tab { min-height: 2.75rem; padding: var(--space-3) var(--space-4); border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); white-space: nowrap; }
+.tabActive { border-bottom-color: var(--primary); color: var(--primary-text); }
 .catalogLayout { display: grid; gap: var(--space-4); min-width: 0; }
 .catalogLayoutManaged { grid-template-columns: minmax(0, 1fr) minmax(18rem, 26rem); }
 .catalogTable { width: 100%; min-width: 32rem; text-align: left; }
-.editorPlaceholder { min-height: 16rem; display: grid; place-items: center; text-align: center; color: var(--faint); }
+.editorPlaceholder { min-height: 16rem; display: grid; place-items: center; text-align: center; color: var(--text-muted); }
 .surface { display: grid; gap: var(--space-5); min-width: 0; }
 .form { display: grid; gap: var(--space-5); max-width: 48rem; }
 .section { display: grid; gap: var(--space-4); padding-block: var(--space-5); border-block: 1px solid var(--border); }

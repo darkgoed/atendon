@@ -88,7 +88,7 @@ export function PipelineCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       aria-busy={pending}
-      className={`pipeline-card group border ${selected ? "border-[var(--primary)]" : "border-[var(--border)]"} ${canMove && !pending ? "cursor-grab active:cursor-grabbing" : ""} ${pending ? "opacity-60" : ""} ${compact ? "p-2" : "p-2.5"}`}
+      className={`pipeline-card group border ${selected ? "border-primary" : "border-semantic"} ${canMove && !pending ? "cursor-grab active:cursor-grabbing" : ""} ${pending ? "opacity-60" : ""} ${compact ? "p-2" : "p-2.5"}`}
     >
       <div className="flex min-w-0 items-start gap-2">
         {canSelect ? <input type="checkbox" checked={selected} onChange={onToggleSelected} aria-label={`Selecionar ${lead.nome ?? lead.telefone}`} disabled={pending} /> : null}
@@ -120,7 +120,7 @@ export function PipelineCard({
 
       {visible("nextMeeting") && lead.latest_appointment ? (
         <div className="pipeline-card__meeting">
-          <CalendarBlank className="mt-px shrink-0 text-[var(--faint)]" size={13} aria-hidden="true" />
+          <CalendarBlank className="mt-px shrink-0 type-muted" size={13} aria-hidden="true" />
           <span className="min-w-0"><span className="block truncate">{formatDateTime(lead.latest_appointment.start, timezone)}</span><span className="pipeline-card__meeting-status">{lead.latest_appointment.status.replaceAll("_", " ")}</span></span>
         </div>
       ) : null}

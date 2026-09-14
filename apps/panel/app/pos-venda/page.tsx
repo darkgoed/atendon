@@ -199,7 +199,7 @@ export default function PostSalesPage() {
           <div className="post-sales-head__actions">
             <Link className="btn" href="/pos-venda/cobranca">Cobranças de crediário</Link>
             {canManage ? <Link className="btn" href="/pos-venda/configurar"><ClipboardText size={16} aria-hidden="true" /> Configurar checklist</Link> : null}
-            <button className="btn primary" type="button" onClick={() => setCreateOpen(true)}><Plus size={16} aria-hidden="true" /> Novo cliente</button>
+            <button className="btn btn-primary" type="button" onClick={() => setCreateOpen(true)}><Plus size={16} aria-hidden="true" /> Novo cliente</button>
           </div>
         </header>
 
@@ -254,7 +254,7 @@ export default function PostSalesPage() {
                   <UserCircle size={32} aria-hidden="true" />
                   <strong>Nenhum cliente nesta visão</strong>
                   <p>Ajuste os filtros ou cadastre o primeiro cliente manualmente.</p>
-                  <button className="btn primary" type="button" onClick={() => setCreateOpen(true)}>Cadastrar cliente</button>
+                  <button className="btn btn-primary" type="button" onClick={() => setCreateOpen(true)}>Cadastrar cliente</button>
                 </div>
               ) : clients.map((client, index) => (
                 <button
@@ -304,7 +304,7 @@ export default function PostSalesPage() {
                     </div>
                   </header>
 
-                  {actionMessage ? <p className="post-sales-feedback accent" role="status">{actionMessage}</p> : null}
+                  {actionMessage ? <p className="post-sales-feedback post-sales-feedback--success" role="status">{actionMessage}</p> : null}
                   {actionError ? <p className="post-sales-feedback error" role="alert">{actionError}</p> : null}
 
                   <section className="post-sales-detail__overview" aria-label="Resumo do cliente">
@@ -339,7 +339,7 @@ export default function PostSalesPage() {
                 </div>
                 <div className="post-sales-detail__sticky">
                   <span><NotePencil size={15} aria-hidden="true" /> Alterações são salvas automaticamente</span>
-                  <button className="btn warn" type="button" onClick={() => void archiveClient(detail.client)}>
+                  <button className="btn btn--danger" type="button" onClick={() => void archiveClient(detail.client)}>
                     <Archive size={15} aria-hidden="true" /> {detail.client.archived_at ? "Restaurar cliente" : "Arquivar cliente"}
                   </button>
                 </div>
@@ -453,7 +453,7 @@ function ClientEditor({
           <label className="field"><span className="label">Data da ação</span><Input name="next_action_at" type="datetime-local" defaultValue={client.next_action_at ? localMinute(client.next_action_at, timezone) : ""} disabled={saving} /></label>
           <label className="field post-sales-client-editor__notes"><span className="label">Observação</span><Textarea name="notes" rows={4} defaultValue={client.notes ?? ""} disabled={saving} /></label>
           {inlineError ? <p className="error post-sales-client-editor__error" role="alert">{inlineError}</p> : null}
-          <div className="post-sales-client-editor__actions"><button className="btn" type="button" onClick={() => setOpen(false)} disabled={saving}>Cancelar</button><button className="btn primary" type="submit" disabled={saving}>{saving ? "Salvando…" : "Salvar alterações"}</button></div>
+          <div className="post-sales-client-editor__actions"><button className="btn" type="button" onClick={() => setOpen(false)} disabled={saving}>Cancelar</button><button className="btn btn-primary" type="submit" disabled={saving}>{saving ? "Salvando…" : "Salvar alterações"}</button></div>
         </form>
       ) : client.notes ? <p className="post-sales-client-editor__preview">{client.notes}</p> : null}
     </section>
@@ -539,7 +539,7 @@ function CreateClientDialog({
         <label className="field post-sales-create-form__notes"><span className="label">Observação</span><Textarea name="notes" rows={3} disabled={saving} /></label>
         {error ? <p className="error post-sales-create-form__error" role="alert">{error}</p> : null}
         {existingId ? <button className="btn post-sales-create-form__existing" type="button" onClick={() => onExisting(existingId)}>Abrir cadastro existente</button> : null}
-        <div className="post-sales-create-form__actions"><button className="btn" type="button" onClick={onClose} disabled={saving}>Cancelar</button><button className="btn primary" type="submit" disabled={saving}>{saving ? "Adicionando…" : "Adicionar cliente"}</button></div>
+        <div className="post-sales-create-form__actions"><button className="btn" type="button" onClick={onClose} disabled={saving}>Cancelar</button><button className="btn btn-primary" type="submit" disabled={saving}>{saving ? "Adicionando…" : "Adicionar cliente"}</button></div>
       </form>
     </ModalDialog>
   );
@@ -558,5 +558,5 @@ function SelectClientState() {
 }
 
 function InlineFailure({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return <div className="post-sales-failure" role="alert"><strong>Não foi possível carregar</strong><p>{message}</p><button className="btn warn" type="button" onClick={onRetry}>Tentar novamente</button></div>;
+  return <div className="post-sales-failure" role="alert"><strong>Não foi possível carregar</strong><p>{message}</p><button className="btn btn--danger" type="button" onClick={onRetry}>Tentar novamente</button></div>;
 }

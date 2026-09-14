@@ -10,7 +10,7 @@
  */
 export function FeatureLocked({ featureName, requiredPlans }: { featureName: string; requiredPlans: readonly string[] }) {
   const plans = requiredPlans.length ? requiredPlans.join(", ") : "um plano superior";
-  return <section className="card" aria-label={`${featureName} indisponível`}>
+  return <section className="panel" aria-label={`${featureName} indisponível`}>
     <h2 className="cardtitle"><span>{featureName}</span></h2>
     <p className="sub">Disponível a partir do plano {plans}.</p>
     <p className="sub">Fale com o responsável pela sua conta para liberar este recurso.</p>

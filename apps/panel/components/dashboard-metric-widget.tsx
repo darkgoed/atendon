@@ -17,11 +17,11 @@ export function DashboardMetricWidget({ data, percentage = false }: { data: Dash
 }
 
 export function DashboardTeamWidget({ data, percentage = false }: { data: DashboardTeamData; percentage?: boolean }) {
-  if (!data.items.length) return <p className="py-6 text-sm text-[var(--muted)]">Nenhum resultado por equipe no período.</p>;
+  if (!data.items.length) return <p className="py-6 text-sm ">Nenhum resultado por equipe no período.</p>;
   return (
     <div className="space-y-2">
       {data.items.map((item) => (
-        <div key={item.member_id} className="flex items-center justify-between gap-3 border-b border-[var(--border)] py-2 last:border-b-0">
+        <div key={item.member_id} className="flex items-center justify-between gap-3 border-b  py-2 last:border-b-0">
           <span className="truncate text-sm">{item.name}</span>
           <strong className="mono shrink-0 tabular-nums">{percentage ? `${Number(item.value).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` : formatValue(item.value, data.currency)}</strong>
         </div>

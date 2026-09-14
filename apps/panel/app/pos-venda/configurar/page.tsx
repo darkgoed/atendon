@@ -148,9 +148,9 @@ export default function PostSalesChecklistSettingsPage() {
         <Link className="btn" href="/pos-venda"><ArrowLeft size={16} aria-hidden="true" /> Voltar à carteira</Link>
       </header>
 
-      {message ? <p className="post-sales-feedback accent" role="status">{message}</p> : null}
+      {message ? <p className="post-sales-feedback post-sales-feedback--success" role="status">{message}</p> : null}
       {error ? <p className="post-sales-feedback error" role="alert">{error}</p> : null}
-      {loadError ? <div className="post-sales-failure" role="alert"><strong>Não foi possível carregar o checklist</strong><p>{loadError.message}</p><button className="btn warn" type="button" onClick={() => void mutate()}>Tentar novamente</button></div> : null}
+      {loadError ? <div className="post-sales-failure" role="alert"><strong>Não foi possível carregar o checklist</strong><p>{loadError.message}</p><button className="btn btn--danger" type="button" onClick={() => void mutate()}>Tentar novamente</button></div> : null}
 
       <div className="post-sales-template-layout">
         <section className="post-sales-template-main">
@@ -159,7 +159,7 @@ export default function PostSalesChecklistSettingsPage() {
               <span className="label">Novo item</span>
               <span className="post-sales-template-create__input">
                 <Input name="description" placeholder="Ex.: oferecer treinamento da equipe" maxLength={500} required disabled={creating} />
-                <button className="btn primary" type="submit" disabled={creating}><Plus size={16} aria-hidden="true" /> {creating ? "Adicionando…" : "Adicionar"}</button>
+                <button className="btn btn-primary" type="submit" disabled={creating}><Plus size={16} aria-hidden="true" /> {creating ? "Adicionando…" : "Adicionar"}</button>
               </span>
             </label>
             <p>O item será incluído como pendente, sem alterar respostas já registradas.</p>
@@ -181,7 +181,7 @@ export default function PostSalesChecklistSettingsPage() {
                       {editingId === item.id ? (
                         <form className="post-sales-template-item__edit" onSubmit={(event) => void renameItem(event, item)}>
                           <label className="field"><span className="sr-only">Descrição do item</span><Input name="description" defaultValue={item.description} required data-autofocus disabled={pendingId === item.id} /></label>
-                          <button className="btn primary" type="submit" aria-label="Salvar descrição" disabled={pendingId === item.id}><FloppyDisk size={15} aria-hidden="true" /> Salvar</button>
+                          <button className="btn btn-primary" type="submit" aria-label="Salvar descrição" disabled={pendingId === item.id}><FloppyDisk size={15} aria-hidden="true" /> Salvar</button>
                           <button className="btn" type="button" aria-label="Cancelar edição" onClick={() => cancelEditing(item.id)}><X size={15} aria-hidden="true" /></button>
                         </form>
                       ) : (
@@ -228,7 +228,7 @@ export default function PostSalesChecklistSettingsPage() {
           <p className="post-sales-archive-confirmation">Arquivar &ldquo;{pendingArchive.description}&rdquo;? O histórico de respostas é mantido.</p>
           <div className="flex justify-end gap-2">
             <button type="button" className="btn" onClick={() => setPendingArchive(null)}>Cancelar</button>
-            <button type="button" className="btn warn" data-autofocus onClick={() => { void setArchived(pendingArchive, true); setPendingArchive(null); }}>Arquivar</button>
+            <button type="button" className="btn btn--danger" data-autofocus onClick={() => { void setArchived(pendingArchive, true); setPendingArchive(null); }}>Arquivar</button>
           </div>
         </ModalDialog>
       ) : null}

@@ -122,9 +122,9 @@ export function PipelineTransitionDialog({
         <div>
           <span className="eyebrow">MOVIMENTAÇÃO SEGURA</span>
           <h2 id="pipeline-transition-title" className="mt-2 text-lg font-semibold">Mover {lead.nome ?? "lead"}</h2>
-          <p id="pipeline-transition-description" className="mt-1 text-xs leading-relaxed text-[var(--muted)]">Escolha a etapa e registre os dados exigidos para manter o histórico comercial consistente.</p>
+          <p id="pipeline-transition-description" className="mt-1 text-xs leading-relaxed type-secondary">Escolha a etapa e registre os dados exigidos para manter o histórico comercial consistente.</p>
         </div>
-        <button type="button" className="grid size-9 shrink-0 place-items-center rounded border border-[var(--border)] active:scale-[.94]" onClick={onClose} disabled={pending} aria-label="Fechar movimentação">
+        <button type="button" className="grid size-9 shrink-0 place-items-center rounded border border-semantic is-pressable" onClick={onClose} disabled={pending} aria-label="Fechar movimentação">
           <X size={16} aria-hidden="true" />
         </button>
       </div>
@@ -186,9 +186,9 @@ export function PipelineTransitionDialog({
 
         {validationError ? <p className="error" role="alert">{validationError}</p> : null}
         {error ? <p className="error" role="alert">{error}</p> : null}
-        <div className="flex flex-col-reverse gap-2 border-t border-[var(--border)] pt-4 sm:flex-row sm:justify-end">
-          <button type="button" className="btn justify-center active:scale-[.98]" onClick={onClose} disabled={pending}>Cancelar</button>
-          <button type="submit" className="btn primary justify-center active:scale-[.98]" disabled={!target || pending}>
+        <div className="flex flex-col-reverse gap-2 border-t border-semantic pt-4 sm:flex-row sm:justify-end">
+          <button type="button" className="btn justify-center is-pressable" onClick={onClose} disabled={pending}>Cancelar</button>
+          <button type="submit" className="btn primary justify-center is-pressable" disabled={!target || pending}>
             {pending ? "Movendo…" : "Confirmar movimento"}
             <ArrowRight size={15} aria-hidden="true" />
           </button>

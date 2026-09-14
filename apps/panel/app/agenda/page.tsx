@@ -133,9 +133,9 @@ function AgendaContent() {
               <span><i className="agenda-legend__swatch agenda-legend__swatch--block" />Bloqueio</span>
             </div>
           </nav>
-          {!actions.createTarget && actions.actionError ? <p className="error mb-4" role="alert">{actions.actionError}</p> : null}
-          {actions.notice ? <p className="accent mb-4 text-sm" role="status" aria-live="polite">{actions.notice}</p> : null}
-          {timeBlockActionError || timeBlocksError ? <p className="error mb-4" role="alert">{timeBlockActionError || messageFrom(timeBlocksError, "Não foi possível carregar seus bloqueios.")}</p> : null}
+          {!actions.createTarget && actions.actionError ? <p className="agenda-alert agenda-alert--error" role="alert">{actions.actionError}</p> : null}
+          {actions.notice ? <p className="agenda-notice" role="status" aria-live="polite">{actions.notice}</p> : null}
+          {timeBlockActionError || timeBlocksError ? <p className="agenda-alert agenda-alert--error" role="alert">{timeBlockActionError || messageFrom(timeBlocksError, "Não foi possível carregar seus bloqueios.")}</p> : null}
           <AgendaTimeBlockList blocks={timeBlocks} timezone={timezone} deletingId={deletingTimeBlockId} onDelete={deleteTimeBlock} />
           {availability.status === "loading" && hasAvailabilityForPeriod ? <p className="sub mb-4" role="status" aria-live="polite">Atualizando a disponibilidade sem ocultar os últimos dados válidos.</p> : null}
           {availability.status === "ready" && availability.failedDays.length > 0 ? <AvailabilityWarning failedDays={availability.failedDays} retrying={actions.retrying} onRetry={actions.refreshAgenda} /> : null}
@@ -184,18 +184,18 @@ function buildTimeGrid(days: Date[], slots: Record<string, Slot[]>, appointments
 
 function AvailabilityWarning({ failedDays, retrying, onRetry }: { failedDays: string[]; retrying: boolean; onRetry: () => Promise<void> }) {
   return (
-    <section className="mb-5 flex flex-wrap items-center justify-between gap-4 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-4" role="status" aria-live="polite">
-      <div className="flex min-w-0 flex-1 items-start gap-3"><WarningCircle className="mt-0.5 shrink-0 text-[var(--warn)]" size={20} aria-hidden="true" /><div><strong className="block text-sm text-[var(--warn)]">Disponibilidade atualizada parcialmente</strong><p className="mt-1 text-sm text-[var(--warn-muted)]">Falha em {failedDays.map((date) => new Date(`${date}T00:00:00.000Z`).toLocaleDateString("pt-BR", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "2-digit" })).join(", ")}. Os demais dias continuam válidos; onde havia dados anteriores, eles foram preservados e sinalizados.</p></div></div>
-      <button type="button" className="btn warn" disabled={retrying} onClick={() => void onRetry()}>{retrying ? "Tentando novamente…" : "Tentar dias com falha novamente"}</button>
+    <section className="mb-5 flex flex-wrap items-center justify-between gap-4 border-y agenda-border-warning agenda-bg-warning px-4 py-4" role="status" aria-live="polite">
+      <div className="flex min-w-0 flex-1 items-start gap-3"><WarningCircle className="mt-0.5 shrink-0 agenda-tone-warning" size={20} aria-hidden="true" /><div><strong className="block text-sm agenda-tone-warning">Disponibilidade atualizada parcialmente</strong><p className="mt-1 text-sm agenda-tone-warning">Falha em {failedDays.map((date) => new Date(`${date}T00:00:00.000Z`).toLocaleDateString("pt-BR", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "2-digit" })).join(", ")}. Os demais dias continuam válidos; onde havia dados anteriores, eles foram preservados e sinalizados.</p></div></div>
+      <button type="button" className="btn" disabled={retrying} onClick={() => void onRetry()}>{retrying ? "Tentando novamente…" : "Tentar dias com falha novamente"}</button>
     </section>
   );
 }
 
 function PendingWarning({ count, onShow }: { count: number; onShow: () => void }) {
   return (
-    <section className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-3" aria-live="polite">
-      <div className="flex items-start gap-3"><WarningCircle className="mt-0.5 shrink-0 text-[var(--warn)]" size={19} aria-hidden="true" /><div><strong className="block text-sm text-[var(--warn)]">{count} {count === 1 ? "reunião aguarda" : "reuniões aguardam"} resultado</strong><p className="mt-0.5 text-xs text-[var(--warn-muted)]">Registre o desfecho para manter o acompanhamento comercial atualizado.</p></div></div>
-      <button type="button" className="btn warn" onClick={onShow}>Ver resultados pendentes</button>
+    <section className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border agenda-border-warning agenda-bg-warning px-4 py-3" aria-live="polite">
+      <div className="flex items-start gap-3"><WarningCircle className="mt-0.5 shrink-0 agenda-tone-warning" size={19} aria-hidden="true" /><div><strong className="block text-sm agenda-tone-warning">{count} {count === 1 ? "reunião aguarda" : "reuniões aguardam"} resultado</strong><p className="mt-0.5 text-xs agenda-tone-warning">Registre o desfecho para manter o acompanhamento comercial atualizado.</p></div></div>
+      <button type="button" className="btn" onClick={onShow}>Ver resultados pendentes</button>
     </section>
   );
 }

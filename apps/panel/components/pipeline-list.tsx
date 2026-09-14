@@ -27,7 +27,7 @@ export function PipelineList({ leads, stages, members, legacy, loading, canMove,
         const stage = stages.find((item) => item.id === currentPipelineStageId(lead, stages, legacy));
         return <tr key={lead.id}>
           {canSelect ? <td data-label="Selecionar"><input type="checkbox" aria-label={`Selecionar ${lead.nome ?? lead.telefone}`} checked={selectedIds.has(lead.id)} onChange={() => onToggleSelected(lead.id)} /></td> : null}
-          <td data-label="Lead"><strong>{lead.nome ?? "Sem nome"}</strong><span className="block text-xs text-[var(--muted)]">{lead.telefone}</span></td>
+          <td data-label="Lead"><strong>{lead.nome ?? "Sem nome"}</strong><span className="block text-xs type-secondary">{lead.telefone}</span></td>
           <td data-label="Estágio atual">{stage?.name ?? pipelineStatusLabel(lead.status)}</td>
           <td data-label="Responsável">{memberName(lead)}</td>
           <td data-label="Idade no estágio">{formatPipelineAge(lead.atualizado_em)}</td>

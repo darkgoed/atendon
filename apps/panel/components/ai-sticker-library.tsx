@@ -138,11 +138,11 @@ export function AiStickerLibrary() {
   return <>
     <header className="pagehead items-start">
       <div>
-        <div className="mb-3 flex items-center gap-2 text-[var(--accent-soft)]"><Sticker size={18}/><span className="mono type-caption uppercase tracking-[.16em]">Biblioteca da IA</span></div>
+        <div className="mb-3 flex items-center gap-2 text-[var(--primary)]"><Sticker size={18}/><span className="mono type-caption uppercase tracking-[.16em]">Biblioteca da IA</span></div>
         <h1>Figurinhas com contexto</h1>
         <p>A IA escolhe somente itens ativos e usa sua descrição para entender o momento certo.</p>
       </div>
-      <div className="mono border-l border-[var(--border)] pl-5 text-right type-caption uppercase tracking-[.12em] text-[var(--faint)]">
+      <div className="mono border-l border-[var(--border)] pl-5 text-right type-caption uppercase tracking-[.12em] text-[var(--text-muted)]">
         <strong className="block text-2xl font-semibold text-[var(--text)]">{stickers.length}</strong>
         {pendingCount} aguardando revisão
       </div>
@@ -156,7 +156,7 @@ export function AiStickerLibrary() {
         {isLoading ? <LoadingState label="Carregando figurinhas" />
           : error ? <ErrorState>{error.message}</ErrorState>
           : stickers.length === 0 ? <Card className="channels-ai-section channels-ai-section--flat channels-ai-empty flex flex-col items-start justify-center py-12">
-              <Sticker size={38} className="mb-5 text-[var(--faint)]"/><h2 className="text-lg font-semibold">Nenhuma figurinha cadastrada</h2><p className="sub mt-2 max-w-lg">Envie um WebP pelo formulário ou mande uma figurinha pelo WhatsApp conectado para iniciar a biblioteca.</p>
+              <Sticker size={38} className="mb-5 text-[var(--text-muted)]"/><h2 className="text-lg font-semibold">Nenhuma figurinha cadastrada</h2><p className="sub mt-2 max-w-lg">Envie um WebP pelo formulário ou mande uma figurinha pelo WhatsApp conectado para iniciar a biblioteca.</p>
             </Card>
           : <div className="channels-ai-list">
             {stickers.map((sticker) => {
@@ -172,9 +172,9 @@ export function AiStickerLibrary() {
                   <label className="field"><span>Nome</span><input className="input" value={draft.name} onChange={(event) => changeDraft(sticker, { name: event.target.value })}/></label>
                   <label className="field"><span>Tags separadas por vírgula</span><input className="input" value={draft.tags.join(", ")} onChange={(event) => changeDraft(sticker, { tags: event.target.value.split(",") })}/></label>
                   <label className="field sm:col-span-2"><span>Quando a IA pode usar</span><textarea className="input channels-ai-textarea-compact resize-y" placeholder="Ex.: comemorar quando o cliente confirma o agendamento" value={draft.description} onChange={(event) => changeDraft(sticker, { description: event.target.value })}/></label>
-                  <div className="sm:col-span-2 flex flex-wrap items-center gap-3 type-caption text-[var(--faint)]">
+                  <div className="sm:col-span-2 flex flex-wrap items-center gap-3 type-caption text-[var(--text-muted)]">
                     <span className="mono uppercase tracking-[.1em]">{sticker.source === "whatsapp_sent" ? "Importada do WhatsApp" : "Enviada pelo painel"}</span><span>{formatSize(sticker.size_bytes)}</span>
-                    <label className="ml-auto flex items-center gap-2 text-xs text-[var(--muted)]"><input type="checkbox" checked={draft.enabled} onChange={(event) => changeDraft(sticker, { enabled: event.target.checked })}/>Disponível para a IA</label>
+                    <label className="ml-auto flex items-center gap-2 text-xs text-[var(--text-secondary)]"><input type="checkbox" checked={draft.enabled} onChange={(event) => changeDraft(sticker, { enabled: event.target.checked })}/>Disponível para a IA</label>
                   </div>
                 </div>
                 <div className="flex items-start gap-2 md:flex-col">
@@ -197,11 +197,11 @@ export function AiStickerLibrary() {
         </form>
 
         <section className="border-t border-[var(--border)] pt-5">
-          <div className="mb-3 flex items-center gap-2"><WhatsappLogo size={18} className="text-[var(--accent-soft)]"/><h2 className="text-base font-semibold">Trazer uma favorita</h2></div>
-          <ol className="grid gap-3 text-sm leading-relaxed text-[var(--muted)]">
-            <li className="flex gap-3"><span className="mono text-[var(--accent-soft)]">01</span><span>Abra o WhatsApp conectado ao AtendON.</span></li>
-            <li className="flex gap-3"><span className="mono text-[var(--accent-soft)]">02</span><span>Envie a figurinha favorita em uma conversa individual.</span></li>
-            <li className="flex gap-3"><span className="mono text-[var(--accent-soft)]">03</span><span>Ela aparecerá aqui desativada. Descreva o uso e salve para liberar à IA.</span></li>
+          <div className="mb-3 flex items-center gap-2"><WhatsappLogo size={18} className="text-[var(--primary)]"/><h2 className="text-base font-semibold">Trazer uma favorita</h2></div>
+          <ol className="grid gap-3 text-sm leading-relaxed text-[var(--text-secondary)]">
+            <li className="flex gap-3"><span className="mono text-[var(--primary)]">01</span><span>Abra o WhatsApp conectado ao AtendON.</span></li>
+            <li className="flex gap-3"><span className="mono text-[var(--primary)]">02</span><span>Envie a figurinha favorita em uma conversa individual.</span></li>
+            <li className="flex gap-3"><span className="mono text-[var(--primary)]">03</span><span>Ela aparecerá aqui desativada. Descreva o uso e salve para liberar à IA.</span></li>
           </ol>
           <p className="sub mt-4">O WhatsApp não disponibiliza a lista de favoritas para sincronização direta; o envio único permite importar o arquivo com segurança.</p>
         </section>

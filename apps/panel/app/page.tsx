@@ -122,35 +122,31 @@ export default function Overview() {
           onCustomEndChange={setCustomEnd}
         /> : null}
         <div className={styles.realtimeBand}>
-          <span className="label">ATENDIMENTO EM TEMPO REAL</span>
+          <span className="type-overline">Atendimento em tempo real</span>
         </div>
-        <section className="grid4">
-          <div className="card">
-            <span className="label">Conexão WhatsApp</span>
-            <div className={`mt-2.5 flex items-center gap-2 text-lg font-semibold leading-tight ${data.connection.status === "connected" ? "accent" : "warning"}`}>
+        <section className="overview-metric-band" aria-label="Resumo da operação">
+          <div>
+            <span className="type-overline">Conexão WhatsApp</span>
+            <div className={`overview-status mt-2 ${data.connection.status === "connected" ? "is-success" : "is-warning"}`}>
               <i className={`dot ${data.connection.status !== "connected" ? "warn" : ""}`} aria-hidden="true" />
-              {data.connection.status === "connected" ? "Conectado" : "Desconectado"}
+              <strong>{data.connection.status === "connected" ? "Conectado" : "Desconectado"}</strong>
             </div>
-            <p className="sub mono">status: {data.connection.status}</p>
+            <p className="type-meta mono">status: {data.connection.status}</p>
           </div>
-          <div className="card warn">
-            <span className="label">Aguardando humano</span>
-            <div className="metric warning">{data.counts.handoff}</div>
-            <p className="sub">
-              {hasWorkspaceScope
-                ? `${data.counts.handoff_unassigned} sem responsável · ${data.counts.handoff_over_sla} acima de 15 min`
-                : `${data.counts.handoff_over_sla} dos seus atendimentos acima de 15 min`}
-            </p>
+          <div>
+            <span className="type-overline">Aguardando humano</span>
+            <div className="type-metric">{data.counts.handoff}</div>
+            <p className="type-meta">{hasWorkspaceScope ? `${data.counts.handoff_unassigned} sem responsável · ${data.counts.handoff_over_sla} acima de 15 min` : `${data.counts.handoff_over_sla} dos seus atendimentos acima de 15 min`}</p>
           </div>
-          <div className="card">
-            <span className="label">Conversas abertas</span>
-            <div className="metric">{data.counts.open}</div>
-            <p className="sub">{data.counts.ai_open} com IA · {data.counts.resolved_today} resolvidas hoje</p>
+          <div>
+            <span className="type-overline">Conversas abertas</span>
+            <div className="type-metric">{data.counts.open}</div>
+            <p className="type-meta">{data.counts.ai_open} com IA · {data.counts.resolved_today} resolvidas hoje</p>
           </div>
-          <div className="card">
-            <span className="label">Mensagens hoje</span>
-            <div className="metric">{data.counts.messagesToday}</div>
-            <p className="sub">contato, IA e humano</p>
+          <div>
+            <span className="type-overline">Mensagens hoje</span>
+            <div className="type-metric">{data.counts.messagesToday}</div>
+            <p className="type-meta">contato, IA e humano</p>
           </div>
         </section>
 
@@ -167,16 +163,16 @@ export default function Overview() {
                     <ContactAvatar
                       name={item.contact_name ?? item.contact_phone}
                       src={item.avatar_url}
-                      className={`${styles.handoffAvatar} text-xs text-[var(--warn)]`}
+                      className={`${styles.handoffAvatar} text-xs `}
                     />
                     <div className={styles.handoffMeta}>
                       <strong className="block truncate text-sm">{item.contact_name ?? item.contact_phone}</strong>
-                      <span className="text-xs text-[var(--warn-muted)]">
+                      <span className="text-xs ">
                         {handoffReasonLabel(item.handoff_reason)} · {waitingLabel(Number(item.waiting_minutes))}
                         {item.assigned_user_email ? ` · ${item.assigned_user_email}` : " · sem responsável"}
                       </span>
                     </div>
-                    <Link className="btn warn" href={`/conversas?id=${item.id}`}>Abrir</Link>
+                    <Link className="btn" href={`/conversas?id=${item.id}`}>Abrir</Link>
                   </div>
                 ))}
               </div>

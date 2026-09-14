@@ -50,28 +50,28 @@ export function ConversationReferral({ attribution }: { attribution: Attribution
 
   return (
     <section
-      className="conversation-referral mb-4 overflow-hidden rounded-lg border border-[var(--primary-tint-border)] bg-[var(--primary-tint-bg)]"
+      className="conversation-referral mb-4 overflow-hidden rounded-lg border  "
       aria-label={`Origem da conversa: ${platform}`}
     >
       <div className="conversation-referral__body">
-        <div className="bg-[var(--primary)]" aria-hidden="true" />
+        <div className="" aria-hidden="true" />
         <div className="min-w-0 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[var(--primary-tint-border)] text-[var(--primary-text)]">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border  ">
                 <PlatformIcon size={19} weight="duotone" aria-hidden="true" />
               </span>
               <div className="min-w-0">
-                <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--primary-text)]">
+                <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider ">
                   <Megaphone size={13} weight="bold" aria-hidden="true" />
                   {sourceType === "ad" ? `Anúncio do ${platform}` : `Origem ${platform}`}
                 </span>
-                <p className="mt-1 text-xs text-[var(--muted)]">Este contato iniciou a conversa por uma campanha da Meta.</p>
+                <p className="mt-1 text-xs ">Este contato iniciou a conversa por uma campanha da Meta.</p>
               </div>
             </div>
             {sourceUrl ? (
               <a
-                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-4)] transition hover:border-[var(--border-hover)] hover:text-[var(--text)] active:scale-95"
+                className="inline-flex items-center gap-1.5 rounded-md border  px-2.5 py-1.5 text-xs font-medium  transition hover: hover: active:scale-95"
                 href={sourceUrl}
                 target="_blank"
                 rel="noreferrer"
@@ -87,7 +87,7 @@ export function ConversationReferral({ attribution }: { attribution: Attribution
               // A URL vem sanitizada do backend e é renderizada sem enviar o referrer do painel.
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                className="aspect-video w-full rounded-md border border-[var(--border)] object-cover sm:aspect-square"
+                className="aspect-video w-full rounded-md border  object-cover sm:aspect-square"
                 src={thumbnailUrl}
                 alt="Prévia visual da campanha"
                 loading="lazy"
@@ -95,10 +95,10 @@ export function ConversationReferral({ attribution }: { attribution: Attribution
               />
             ) : null}
             <div className="min-w-0">
-              {headline ? <strong className="block text-sm leading-snug text-[var(--text)]">{headline}</strong> : null}
-              {body && body !== headline ? <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-[var(--body)]">{body}</p> : null}
+              {headline ? <strong className="block text-sm leading-snug ">{headline}</strong> : null}
+              {body && body !== headline ? <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed ">{body}</p> : null}
               {sourceId ? (
-                <p className="mono mt-3 truncate text-xs text-[var(--faint)]" title={sourceId}>
+                <p className="mono mt-3 truncate text-xs " title={sourceId}>
                   ID do anúncio · {sourceId}
                 </p>
               ) : null}
@@ -106,11 +106,11 @@ export function ConversationReferral({ attribution }: { attribution: Attribution
           </div>
 
           {fields.length > 0 ? (
-            <dl className="mt-4 grid gap-x-6 gap-y-3 border-t border-[var(--border)] pt-4 sm:grid-cols-2">
+            <dl className="mt-4 grid gap-x-6 gap-y-3 border-t  pt-4 sm:grid-cols-2">
               {fields.map(([label, answer]) => (
                 <div key={label} className="min-w-0">
-                  <dt className="text-xs font-medium uppercase tracking-wide text-[var(--faint)]">{label}</dt>
-                  <dd className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-[var(--text)]">{answer}</dd>
+                  <dt className="text-xs font-medium uppercase tracking-wide ">{label}</dt>
+                  <dd className="mt-1 whitespace-pre-wrap text-xs leading-relaxed ">{answer}</dd>
                 </div>
               ))}
             </dl>

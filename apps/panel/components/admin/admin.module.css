@@ -63,8 +63,8 @@
   padding: var(--space-3) var(--space-4);
 }
 
-.statusError { background: var(--danger-bg); border-color: var(--danger-border); }
-.statusNotice { background: var(--accent-soft); border-color: var(--accent); }
+.statusError { background: var(--danger-subtle); border-color: var(--danger-border); }
+.statusNotice { background: var(--primary-subtle); border-color: var(--primary-border); }
 
 .metricGrid {
   display: grid;
@@ -73,8 +73,8 @@
 }
 
 .metricValue {
-  color: var(--heading);
-  font-size: var(--text-2xl);
+  color: var(--text);
+  font-size: var(--text-metric);
   font-variant-numeric: tabular-nums;
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tight);

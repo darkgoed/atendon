@@ -4,7 +4,7 @@ export function ReadableDetails({ details, emptyLabel = "Sem detalhes adicionais
   const entries = readableDetails(details);
 
   if (entries.length === 0) {
-    return <span className="text-xs text-[var(--faint)]">{emptyLabel}</span>;
+    return <span className="type-muted">{emptyLabel}</span>;
   }
 
   return (

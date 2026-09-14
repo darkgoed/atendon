@@ -427,7 +427,7 @@ export default function LeadDetail() {
   return (
     <Shell>
       <div className="lead-detail-page">
-      <Link href="/leads" className="lead-detail-page__back inline-flex items-center gap-2 text-xs text-[var(--muted)]">
+      <Link href="/leads" className="lead-detail-page__back inline-flex items-center gap-2 text-xs type-secondary">
         <ArrowLeft aria-hidden="true" />
         Voltar aos leads
       </Link>
@@ -462,7 +462,7 @@ export default function LeadDetail() {
                     <p className="mono truncate">{data.lead.telefone} · {statusLabel(data.lead.status)}</p>
                     {pendingResults ? <span className="crm-notice mt-2">{pendingResults} resultado(s) pendente(s)</span> : null}
                   </div>
-                  {canUpdateStatus ? <button type="button" className="mt-0.5 shrink-0 text-[var(--muted)] transition-colors hover:text-[var(--text)]" onClick={beginIdentityEdit} aria-label="Editar nome e telefone"><PencilSimple size={17} aria-hidden="true" /></button> : null}
+                  {canUpdateStatus ? <button type="button" className="mt-0.5 shrink-0 lead-detail-edit type-secondary transition-token" onClick={beginIdentityEdit} aria-label="Editar nome e telefone"><PencilSimple size={17} aria-hidden="true" /></button> : null}
                 </div>
               )}
             </div>
@@ -477,7 +477,7 @@ export default function LeadDetail() {
             <div className="lead-detail-main">
               {data.qualificacao ? (
                 <section className="card" aria-labelledby="qualification-title">
-                  <div className="flex flex-wrap items-center justify-between gap-3"><div id="qualification-title" className="cardtitle">Qualificação contextual</div><strong className="flex items-center gap-1.5 text-lg text-[var(--accent-soft)]"><Star size={18} weight="fill" aria-hidden="true" />{data.qualificacao.estrelas} de 5</strong></div>
+                  <div className="flex flex-wrap items-center justify-between gap-3"><div id="qualification-title" className="cardtitle">Qualificação contextual</div><strong className="flex items-center gap-1.5 text-lg type-primary"><Star size={18} weight="fill" aria-hidden="true" />{data.qualificacao.estrelas} de 5</strong></div>
                   <dl className="mb-4 grid gap-3 text-sm md:grid-cols-2">
                     <Item label="Situação" value={data.qualificacao.requer_decisao_humana ? "Requer decisão humana" : "Oportunidade qualificada"} />
                     <Item label="Avaliado em" value={data.qualificacao.avaliado_em ? new Date(data.qualificacao.avaliado_em).toLocaleString("pt-BR", { timeZone: data.timezone }) : undefined} />
@@ -489,7 +489,7 @@ export default function LeadDetail() {
                       {commercialPreparationAnswers(data.qualificacao.respostas).map((item) => <Item key={item.key} label={item.label} value={item.value} />)}
                     </dl>
                   ) : null}
-                  <div className="rounded border border-[var(--border)] p-4"><strong className="mb-2 block text-xs">Resumo</strong><p className="whitespace-pre-wrap text-sm text-[var(--body)]">{data.qualificacao.resumo ?? "—"}</p></div>
+                  <div className="rounded border border-semantic p-4"><strong className="mb-2 block text-xs">Resumo</strong><p className="whitespace-pre-wrap text-sm type-secondary">{data.qualificacao.resumo ?? "—"}</p></div>
                 </section>
               ) : (
                 <section className="card" aria-labelledby="qualification-title">
@@ -502,7 +502,7 @@ export default function LeadDetail() {
                   <div id="internal-notes-title" className="cardtitle">Notas internas</div>
                   <p className="sub mb-4">Visíveis apenas para membros autorizados do workspace.</p>
                   {canManageFollowUp ? (
-                    <form className="mb-5 border-b border-[var(--border)] pb-5" onSubmit={addNote}>
+                    <form className="mb-5 border-b border-semantic pb-5" onSubmit={addNote}>
                       <label className="field">
                         <span className="label">Nova nota</span>
                         <textarea className="input min-h-24 resize-y" value={note} onChange={(event) => setNote(event.target.value)} maxLength={4000} required placeholder="Registre contexto útil para o próximo atendimento" />
@@ -518,8 +518,8 @@ export default function LeadDetail() {
                   {followUpData?.notas.length ? (
                     <div className="grid gap-3">
                       {followUpData.notas.map((item) => (
-                        <article key={item.id} className="rounded border border-[var(--border)] p-4">
-                          <p className="whitespace-pre-wrap text-sm text-[var(--body)]">{item.nota}</p>
+                        <article key={item.id} className="rounded border border-semantic p-4">
+                          <p className="whitespace-pre-wrap text-sm type-secondary">{item.nota}</p>
                           <footer className="crm-detail-note__footer">
                             <span>{item.autor_email}</span>
                             <time className="mono">{new Date(item.criado_em).toLocaleString("pt-BR", { timeZone: followUpData.follow_up.timezone })}</time>
@@ -570,7 +570,7 @@ export default function LeadDetail() {
                       </dl>
                       <p className="crm-detail-timezone">Fuso: {followUpData.follow_up.timezone}</p>
                       {canManageFollowUp ? (
-                        <form className="grid gap-3 border-t border-[var(--border)] pt-4" onSubmit={saveFollowUp}>
+                        <form className="grid gap-3 border-t border-semantic pt-4" onSubmit={saveFollowUp}>
                           <label className="field">
                             <span className="label">Responsável</span>
                             <select className="input" value={responsibleMemberId} onChange={(event) => setResponsibleMemberId(event.target.value)}>
@@ -629,7 +629,7 @@ export default function LeadDetail() {
                     <span className="label">Motivo</span>
                     <textarea name="motivo" className="input min-h-24 resize-y" required placeholder="Contexto para o atendente responsável" />
                   </label>
-                  <button disabled={sending} className="btn warn mt-3 w-full">{sending ? "Transferindo…" : "Transferir manualmente"}</button>
+                  <button disabled={sending} className="btn mt-3 w-full">{sending ? "Transferindo…" : "Transferir manualmente"}</button>
                 </form>
               ) : (
                 <section className="card" aria-label="Transferência para atendimento humano">
@@ -666,5 +666,5 @@ export default function LeadDetail() {
 }
 
 function Item({ label, value }: { label: string; value?: string }) {
-  return <div><dt className="label">{label}</dt><dd className="mt-1 text-[var(--body)]">{value ?? "—"}</dd></div>;
+  return <div><dt className="label">{label}</dt><dd className="mt-1 type-secondary">{value ?? "—"}</dd></div>;
 }
