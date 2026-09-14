@@ -63,6 +63,7 @@ export function AgendaTimeBlockDialog({ open, anchor, timezone, onClose, onSaved
   if (!open) return null;
   return (
     <ModalDialog
+      className="agenda-time-block-dialog"
       labelledBy="agenda-time-block-title"
       describedBy="agenda-time-block-description"
       onClose={saving ? () => undefined : onClose}

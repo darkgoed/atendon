@@ -106,7 +106,7 @@ export function ConversationStatusPicker({
     <>
       <button
         type="button"
-        className="conversation-status-picker btn shrink-0 active:scale-[.98]"
+        className="conversation-status-picker btn shrink-0 active:scale-95"
         onClick={() => { setError(""); setOpen(true); }}
         disabled={disabled}
         title={disabled ? "Nenhuma mudança de etapa comercial disponível" : `Etapa comercial atual: ${pipelineStage.name}`}

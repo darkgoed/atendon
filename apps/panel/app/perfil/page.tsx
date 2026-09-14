@@ -6,6 +6,8 @@ import useSWR from "swr";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import type { PanelSession } from "@/lib/session";
+import { Button, Card, Field, Input, PageHeader, Section } from "@/components/ui";
+import styles from "@/components/settings-panels.module.css";
 
 const fetcher = <T,>(url: string) => api<T>(url);
 
@@ -67,12 +69,7 @@ export default function ProfilePage() {
 
   return (
     <Shell>
-      <header className="pagehead" style={{ "--eyebrow": '"PAINEL · CONTA"' } as React.CSSProperties}>
-        <div>
-          <h1>Perfil</h1>
-          <p>Atualize o acesso da sua conta no painel.</p>
-        </div>
-      </header>
+      <PageHeader title="Perfil" description="Atualize o acesso da sua conta no painel." />
 
       {sessionError ? (
         <section className="mb-5 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-4" role="alert">
@@ -81,54 +78,39 @@ export default function ProfilePage() {
         </section>
       ) : null}
 
-      <section className="admin-grid admin-grid--sidebar">
+      <div className={styles.surface}>
+      <div className="admin-grid admin-grid--sidebar">
         <form key={session?.user.email ?? "loading"} className="card admin-card" aria-busy={saving || sessionLoading} onSubmit={submit}>
-          <div className="cardtitle">
-            <span>Dados de acesso</span>
+          <Section title="Dados de acesso" className={styles.section}>
             <UserCircle size={18} className="accent" aria-hidden="true" />
-          </div>
-          <div className="admin-form">
-            <label className="field">
-              <span className="label">Nome</span>
-              <input className="input" name="name" type="text" defaultValue={session?.user.name ?? ""} placeholder="Como você quer ser identificado nas mensagens" disabled={saving || !session} />
-            </label>
-            <label className="field">
-              <span className="label">E-mail</span>
-              <input className="input" name="email" type="email" defaultValue={session?.user.email ?? ""} disabled={saving || !session} required />
-            </label>
-            <label className="field">
-              <span className="label">Senha atual</span>
-              <input className="input" name="currentPassword" type="password" autoComplete="current-password" placeholder="Necessária só para alterar e-mail ou senha" disabled={saving || !session} />
-            </label>
-            <label className="field">
-              <span className="label">Nova senha</span>
-              <input className="input" name="newPassword" type="password" autoComplete="new-password" minLength={12} placeholder="Opcional" disabled={saving || !session} />
-            </label>
-            <label className="field">
-              <span className="label">Confirmar nova senha</span>
-              <input className="input" name="confirmPassword" type="password" autoComplete="new-password" minLength={12} placeholder="Opcional" disabled={saving || !session} />
-            </label>
+          <div className={styles.form}>
+            <Field label="Nome"><Input name="name" type="text" defaultValue={session?.user.name ?? ""} placeholder="Como você quer ser identificado nas mensagens" disabled={saving || !session} /></Field>
+            <Field label="E-mail"><Input name="email" type="email" defaultValue={session?.user.email ?? ""} disabled={saving || !session} required /></Field>
+            <Field label="Senha atual" hint="Necessária só para alterar e-mail ou senha"><Input name="currentPassword" type="password" autoComplete="current-password" disabled={saving || !session} /></Field>
+            <Field label="Nova senha" hint="Opcional"><Input name="newPassword" type="password" autoComplete="new-password" minLength={12} disabled={saving || !session} /></Field>
+            <Field label="Confirmar nova senha" hint="Opcional"><Input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} disabled={saving || !session} /></Field>
             {error ? <p className="error" role="alert">{error}</p> : null}
             {message ? <p className="accent text-sm" role="status">{message}</p> : null}
-            <button type="submit" className="btn primary" disabled={saving || !session}>
+            <Button type="submit" tone="primary" disabled={saving || !session}>
               {saving ? "Salvando…" : "Salvar perfil"}
-            </button>
+            </Button>
           </div>
+          </Section>
         </form>
 
-        <div className="card admin-card">
-          <div className="cardtitle">
-            <span>Sessão atual</span>
+        <Card className="admin-card">
+          <Section title="Sessão atual" className={styles.section}>
             <CheckCircle size={18} className="accent" aria-hidden="true" />
-          </div>
           <dl className="admin-meta-list">
             <div><dt>Usuário</dt><dd>{session?.user.email ?? (sessionError ? "Indisponível" : "Carregando…")}</dd></div>
             <div><dt>Tipo</dt><dd>{session?.user.isRoot ? "ROOT" : "Workspace"}</dd></div>
             <div><dt>Workspace</dt><dd>{session?.activeWorkspace?.name ?? "-"}</dd></div>
             <div><dt>Função</dt><dd>{session?.activeWorkspace?.role ?? "-"}</dd></div>
           </dl>
-        </div>
-      </section>
+          </Section>
+        </Card>
+      </div>
+      </div>
     </Shell>
   );
 }

@@ -3,6 +3,7 @@
 import { ArrowBendUpLeft, File, Microphone, Paperclip, PaperPlaneRight, X } from "@phosphor-icons/react";
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { VoiceInput, VoiceMessagePlayer } from "@/components/ui/voice-input";
+import { Button, Input, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
 import { audioDisplayName } from "@/lib/audio-waveform";
 import { confirmedFailedSend, definitiveProviderRejection } from "@/lib/conversation-send";
@@ -215,13 +216,13 @@ export function ConversationComposer({
             </strong>
             <span className="line-clamp-2">{replyTo.content}</span>
           </span>
-          <button type="button" onClick={onCancelReply} className="btn shrink-0 p-1.5" aria-label="Cancelar resposta" disabled={sending}>
+          <Button type="button" onClick={onCancelReply} className="btn shrink-0 p-1.5" aria-label="Cancelar resposta" disabled={sending}>
             <X size={14} />
-          </button>
+          </Button>
         </div>
       ) : null}
       {attachment ? (
-        <div className="mb-3 flex items-center gap-3 rounded-[10px] border border-[var(--border)] px-3 py-2.5">
+        <div className="mb-3 flex items-center gap-3 rounded-md border border-[var(--border)] px-3 py-2.5">
           {attachment.mediaType === "image" && previewUrl ? (
             <>
               {/* Blob previews are local, short-lived URLs and cannot be handled by the Next image optimizer. */}
@@ -237,11 +238,11 @@ export function ConversationComposer({
             <strong className="block truncate text-xs text-[var(--text)]">
               {attachment.mediaType === "audio" ? audioDisplayName(attachment.file.name) : attachment.file.name}
             </strong>
-            <span className="mono mt-1 block text-[10px] uppercase tracking-[0.08em] text-[var(--faint)]">{attachment.mediaType} · {formatBytes(attachment.file.size)}</span>
+            <span className="mono mt-1 block text-xs uppercase tracking-wide text-[var(--faint)]">{attachment.mediaType} · {formatBytes(attachment.file.size)}</span>
           </div>
-          <button type="button" onClick={() => setAttachment(null)} className="btn p-2 active:scale-[.98]" aria-label="Remover anexo" disabled={sending}>
+          <Button type="button" onClick={() => setAttachment(null)} className="btn p-2 active:scale-95" aria-label="Remover anexo" disabled={sending}>
             <X size={16} />
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -255,7 +256,7 @@ export function ConversationComposer({
       ) : null}
 
       <div className="conversation-composer__controls grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-end gap-2">
-        <input
+        <Input
           ref={fileInputRef}
           className="sr-only"
           type="file"
@@ -268,15 +269,15 @@ export function ConversationComposer({
             event.target.value = "";
           }}
         />
-        <button type="button" className="btn h-11 w-11 p-0 active:scale-[.98]" onClick={() => fileInputRef.current?.click()} aria-label="Anexar arquivo" disabled={sending || recording}>
+        <Button type="button" className="btn h-11 w-11 p-0 active:scale-95" onClick={() => fileInputRef.current?.click()} aria-label="Anexar arquivo" disabled={sending || recording}>
           <Paperclip size={19} />
-        </button>
-        <button type="button" className="btn h-11 w-11 p-0 active:scale-[.98]" onClick={startRecording} aria-label="Gravar áudio" disabled={sending || recording}>
+        </Button>
+        <Button type="button" className="btn h-11 w-11 p-0 active:scale-95" onClick={startRecording} aria-label="Gravar áudio" disabled={sending || recording}>
           <Microphone size={19} />
-        </button>
+        </Button>
         <label className="field gap-0">
           <span className="sr-only">Mensagem</span>
-          <textarea
+          <Textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={handleComposerKeyDown}
@@ -286,10 +287,10 @@ export function ConversationComposer({
             disabled={sending || recording || attachment?.mediaType === "audio"}
           />
         </label>
-        <button className="conversation-composer__send btn primary h-11 active:scale-[.98]" aria-label={sending ? "Enviando mensagem" : "Enviar mensagem"} disabled={sending || recording || (!draft.trim() && !attachment)}>
+        <Button type="submit" className="conversation-composer__send btn primary h-11 active:scale-95" aria-label={sending ? "Enviando mensagem" : "Enviar mensagem"} disabled={sending || recording || (!draft.trim() && !attachment)}>
           {sending ? <span className="h-4 w-4 animate-pulse rounded-full border border-current" aria-hidden="true" /> : <PaperPlaneRight size={16} aria-hidden="true" />}
           <span>{sending ? "Enviando…" : "Enviar"}</span>
-        </button>
+        </Button>
       </div>
       <div className="conversation-composer__footer">
         <div className="conversation-composer__quick-replies" aria-label="Respostas rápidas">

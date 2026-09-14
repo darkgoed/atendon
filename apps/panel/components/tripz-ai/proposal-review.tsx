@@ -10,6 +10,7 @@ import {
   type TripzDocument,
   type TripzProposal
 } from "../../lib/tripz-ai";
+import styles from "./tripz-ai.module.css";
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -89,7 +90,7 @@ export function TripzProposalReview({
 
   return (
     <ModalDialog
-      className="!w-[min(72rem,100%)] !max-h-[calc(100dvh-24px)] !gap-0 !overflow-hidden !p-0"
+      className={styles.reviewModal}
       labelledBy="tripz-review-title"
       describedBy="tripz-review-description"
       onClose={onClose}

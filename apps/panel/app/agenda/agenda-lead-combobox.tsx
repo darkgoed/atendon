@@ -3,6 +3,7 @@
 import { Check, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
+import { Button } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatBrazilianPhone } from "@/lib/phone";
 import type { AppointmentLead } from "./agenda-types";
@@ -100,9 +101,9 @@ export function AgendaLeadCombobox({ selected, disabled, onSelect }: {
           }}
         />
         {selected ? (
-          <button type="button" className="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded text-[var(--muted)] hover:bg-[var(--active)]" aria-label="Limpar lead selecionado" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => { onSelect(null); setQuery(""); setOpen(true); }}>
+          <Button className="agenda-lead-combobox__clear absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded" aria-label="Limpar lead selecionado" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => { onSelect(null); setQuery(""); setOpen(true); }}>
             <X size={15} aria-hidden="true" />
-          </button>
+          </Button>
         ) : null}
       </div>
       {showResults ? (

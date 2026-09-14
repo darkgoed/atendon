@@ -40,12 +40,12 @@ export function PipelineViewPreferences({
       icon={<SlidersHorizontal size={15} aria-hidden="true" />}
       label="Exibição"
       buttonClassName="btn active:scale-[.98]"
-      panelClassName="grid w-[min(360px,calc(100vw-32px))] gap-4 rounded border border-[var(--border)] bg-[var(--dialog)] p-4 shadow-[0_16px_36px_color-mix(in_srgb,var(--app)_34%,transparent)]"
+      panelClassName="pipeline-popover grid gap-4"
     >
       {() => <>
         <div>
           <strong className="text-sm">Exibição do quadro</strong>
-          <p className="mt-1 text-[11px] leading-relaxed text-[var(--muted)]">Estas escolhas ficam salvas apenas para o seu usuário.</p>
+          <p className="pipeline-preference-copy">Estas escolhas ficam salvas apenas para o seu usuário.</p>
         </div>
         <fieldset className="grid gap-2">
           <legend className="label mb-1">Densidade</legend>

@@ -4,6 +4,9 @@ import { ChatCircleDots, ClockCountdown, FloppyDisk, ImageSquare, Plus, Prohibit
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Field, Input, Textarea } from "@/components/ui/field";
+
 import { formatFollowUpDelay, isValidFollowUpDelays, normalizeFollowUpDelivery, type AiFollowUpSettings, type FollowUpDelivery } from "@/lib/ai-follow-ups";
 
 type FollowUpMedia = { id: string; name: string; description: string; mime_type: string; file_name: string; size_bytes: number };
@@ -131,20 +134,20 @@ export function AiFollowUpSettingsPanel() {
 
   if (loading) {
     return (
-      <div className="grid gap-4 md:grid-cols-[minmax(0,1.45fr)_minmax(280px,.55fr)]" aria-busy="true" aria-label="Carregando follow-ups da IA">
-        <div className="card grid gap-4"><div className="skeleton h-8 w-2/5" /><div className="skeleton h-20" /><div className="skeleton h-28" /></div>
-        <div className="card grid gap-3"><div className="skeleton h-6 w-1/2" /><div className="skeleton h-16" /><div className="skeleton h-16" /></div>
+      <div className="channels-ai-grid" aria-busy="true" aria-label="Carregando follow-ups da IA">
+        <div className="channels-ai-section channels-ai-grid"><div className="skeleton channels-ai-skeleton--row" /><div className="skeleton channels-ai-skeleton" /><div className="skeleton channels-ai-skeleton--large" /></div>
+        <div className="channels-ai-section channels-ai-grid"><div className="skeleton channels-ai-skeleton--row" /><div className="skeleton channels-ai-skeleton" /><div className="skeleton channels-ai-skeleton" /></div>
       </div>
     );
   }
 
   return (
-    <div className="grid gap-5 md:grid-cols-[minmax(0,1.45fr)_minmax(280px,.55fr)]">
-      <form className="card" onSubmit={submit}>
+    <div className="channels-ai-grid md:grid-cols-[minmax(0,1.45fr)_minmax(280px,.55fr)]">
+      <form className="channels-ai-section channels-ai-form channels-ai-form--wide" onSubmit={submit}>
         <div className="mb-6 flex items-start justify-between gap-5 border-b border-[var(--border)] pb-5">
           <div>
             <div className="cardtitle">Cadência automática</div>
-            <p className="sub mt-1 max-w-[62ch]">Após o intervalo, a IA relê a conversa e só envia se a resposta for necessária para avançar ao agendamento ou ao fechamento com o SDR ou especialista. Qualquer resposta do contato encerra a sequência atual.</p>
+            <p className="sub mt-1 channels-ai-reading-width">Após o intervalo, a IA relê a conversa e só envia se a resposta for necessária para avançar ao agendamento ou ao fechamento com o SDR ou especialista. Qualquer resposta do contato encerra a sequência atual.</p>
           </div>
           <label className="flex shrink-0 items-center gap-3 text-sm font-medium text-[var(--body)]">
             <input
@@ -165,9 +168,9 @@ export function AiFollowUpSettingsPanel() {
               <div className="label">Tentativas cumulativas</div>
               <p className="sub mt-1 text-xs">Cada valor é contado desde a resposta original da IA, não desde a tentativa anterior.</p>
             </div>
-            <button
+            <Button
               type="button"
-              className="btn"
+              className=""
               disabled={settings.delaysMinutes.length >= 10 || (settings.delaysMinutes.at(-1) ?? 0) >= 43_200}
               onClick={() => {
                 setSettings((current) => ({
@@ -179,7 +182,7 @@ export function AiFollowUpSettingsPanel() {
               }}
             >
               <Plus size={15} aria-hidden="true" />Adicionar
-            </button>
+            </Button>
           </div>
           {settings.delaysMinutes.map((delay, index) => {
             const delivery = settings.delivery[index] ?? { type: "text" as const };
@@ -188,7 +191,7 @@ export function AiFollowUpSettingsPanel() {
             const selectedAudio = delivery.type === "audio" ? media.find((item) => item.id === delivery.assetId) : undefined;
             const selectedVideo = delivery.type === "video" ? media.find((item) => item.id === delivery.assetId) : undefined;
             return (
-              <div key={index} className="grid gap-4 rounded border border-[var(--border)] p-4">
+              <div key={index} className="channels-ai-attempt">
                 <div className="grid items-center gap-3 sm:grid-cols-[92px_minmax(0,1fr)_minmax(130px,auto)_40px]">
                   <strong className="text-xs text-[var(--heading)]">{index + 1}ª tentativa</strong>
                   <input
@@ -207,9 +210,9 @@ export function AiFollowUpSettingsPanel() {
                     }}
                   />
                   <span className="sub text-xs">{formatFollowUpDelay(delay)} após a origem</span>
-                  <button
+                  <Button
                     type="button"
-                    className="btn h-10 px-2"
+                    className="channels-ai-touch px-2"
                     aria-label={`Remover tentativa ${index + 1}`}
                     disabled={settings.delaysMinutes.length === 1}
                     onClick={() => {
@@ -223,7 +226,7 @@ export function AiFollowUpSettingsPanel() {
                     }}
                   >
                     <Trash size={15} aria-hidden="true" />
-                  </button>
+                  </Button>
                 </div>
 
                 <div className="grid gap-3 border-t border-[var(--border)] pt-4 sm:grid-cols-[minmax(150px,.65fr)_minmax(0,1fr)]">
@@ -273,19 +276,19 @@ export function AiFollowUpSettingsPanel() {
                 </div>
 
                 {selectedImage ? (
-                  <div className="grid grid-cols-[72px_1fr] items-center gap-3 rounded bg-[var(--active)] p-3">
+                  <div className="channels-ai-media-preview">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={apiContentUrl(`/ai-follow-ups/media/${selectedImage.id}/content`)} alt={selectedImage.name} className="h-16 w-18 rounded object-cover" />
+                    <img src={apiContentUrl(`/ai-follow-ups/media/${selectedImage.id}/content`)} alt={selectedImage.name} className="channels-ai-preview-thumb" />
                     <div><strong className="text-sm text-[var(--heading)]">{selectedImage.name}</strong><p className="sub mt-1 text-xs">{selectedImage.description}</p></div>
                   </div>
                 ) : selectedSticker ? (
-                  <div className="grid grid-cols-[72px_1fr] items-center gap-3 rounded bg-[var(--active)] p-3">
+                  <div className="channels-ai-media-preview">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={apiContentUrl(`/ai-stickers/${selectedSticker.id}/content`)} alt={selectedSticker.name} className="h-16 w-18 object-contain" />
+                    <img src={apiContentUrl(`/ai-stickers/${selectedSticker.id}/content`)} alt={selectedSticker.name} className="channels-ai-preview-sticker" />
                     <div><strong className="text-sm text-[var(--heading)]">{selectedSticker.name}</strong><p className="sub mt-1 text-xs">Será enviada sozinha, sem texto adicional.</p></div>
                   </div>
-                ) : selectedAudio ? (<div className="rounded bg-[var(--active)] p-3"><audio controls className="w-full" src={apiContentUrl(`/ai-follow-ups/media/${selectedAudio.id}/content`)} /><p className="sub mt-1 text-xs">Nota de voz, sem legenda.</p></div>)
-                : selectedVideo ? (<div className="rounded bg-[var(--active)] p-3"><video controls className="w-full" src={apiContentUrl(`/ai-follow-ups/media/${selectedVideo.id}/content`)} /><p className="sub mt-1 text-xs">O texto da IA será enviado como legenda.</p></div>) : null}
+                ) : selectedAudio ? (<div className="channels-ai-media-preview channels-ai-media-preview--wide"><audio controls className="w-full" src={apiContentUrl(`/ai-follow-ups/media/${selectedAudio.id}/content`)} /><p className="sub mt-1 text-xs">Nota de voz, sem legenda.</p></div>)
+                : selectedVideo ? (<div className="channels-ai-media-preview channels-ai-media-preview--wide"><video controls className="w-full" src={apiContentUrl(`/ai-follow-ups/media/${selectedVideo.id}/content`)} /><p className="sub mt-1 text-xs">O texto da IA será enviado como legenda.</p></div>) : null}
               </div>
             );
           })}
@@ -293,10 +296,10 @@ export function AiFollowUpSettingsPanel() {
 
         <div className="mt-7 flex items-center justify-between gap-4 border-t border-[var(--border)] pt-5">
           <span className="sub text-xs">Alterações também atualizam sequências que ainda estão aguardando.</span>
-          <button className="btn primary active:scale-[0.98]" disabled={saving}>
+          <Button type="submit" tone="primary" className="channels-ai-touch" disabled={saving}>
             <FloppyDisk aria-hidden="true" />
             {saving ? "Salvando…" : "Salvar cadência"}
-          </button>
+          </Button>
         </div>
       </form>
 
@@ -319,19 +322,17 @@ export function AiFollowUpSettingsPanel() {
               }}
             />
           </label>
-          <label className="field">
-            <span>Nome para seleção</span>
-            <input className="input" value={uploadName} maxLength={100} onChange={(event) => setUploadName(event.target.value)} placeholder="Case Newave — 14 dias" />
-          </label>
-          <label className="field">
-            <span>Contexto para a legenda</span>
-            <textarea className="input min-h-24 resize-y" value={uploadDescription} maxLength={500} onChange={(event) => setUploadDescription(event.target.value)} placeholder="Resultados de vendas do novo cliente Newave nos primeiros 14 dias." />
+          <Field label="Nome para seleção">
+            <Input value={uploadName} maxLength={100} onChange={(event) => setUploadName(event.target.value)} placeholder="Case Newave — 14 dias" />
+          </Field>
+          <Field label="Contexto para a legenda">
+            <Textarea className="channels-ai-textarea-compact resize-y" value={uploadDescription} maxLength={500} onChange={(event) => setUploadDescription(event.target.value)} placeholder="Resultados de vendas do novo cliente Newave nos primeiros 14 dias." />
             <small className="sub">A IA usa somente estes fatos para apresentar o case, sem inventar resultados.</small>
-          </label>
-          <button className="btn active:scale-[0.98]" disabled={!uploadFile || !uploadName.trim() || !uploadDescription.trim() || uploading}>
+          </Field>
+          <Button type="submit" className="channels-ai-touch" disabled={!uploadFile || !uploadName.trim() || !uploadDescription.trim() || uploading}>
             <UploadSimple size={16} aria-hidden="true" />
             {uploading ? "Adicionando…" : "Adicionar mídia"}
-          </button>
+          </Button>
           <div className="flex items-start gap-2 text-xs text-[var(--muted)]">
             <Sticker className="mt-0.5 shrink-0" size={15} aria-hidden="true" />
             <p>As figurinhas vêm da biblioteca logo abaixo nesta página e sempre são enviadas sem texto.</p>
@@ -351,5 +352,5 @@ export function AiFollowUpSettingsPanel() {
 }
 
 function FollowUpRule({ Icon, title, description }: { Icon: typeof ClockCountdown; title: string; description: string }) {
-  return <div className="grid grid-cols-[32px_1fr] gap-3"><div className="grid h-8 w-8 place-items-center rounded-full border border-[var(--border)] text-[var(--accent-soft)]"><Icon size={16} aria-hidden="true" /></div><div><strong className="block text-sm text-[var(--heading)]">{title}</strong><p className="sub mt-1 text-xs leading-relaxed">{description}</p></div></div>;
+  return <div className="grid grid-cols-[32px_1fr] gap-3"><div className="channels-ai-number"><Icon size={16} aria-hidden="true" /></div><div><strong className="block text-sm text-[var(--heading)]">{title}</strong><p className="sub mt-1 text-xs leading-relaxed">{description}</p></div></div>;
 }

@@ -107,7 +107,7 @@ export function NotificationCenter({ enabled, avoidBottomComposer = false }: { e
                   aria-label={`Abrir conversa com ${conversation.contact_name ?? conversation.contact_phone}, ${conversation.unread_count} não lidas`}
                 >
                   <span className="notification-center__icon" aria-hidden="true">
-                    <ContactAvatar name={conversation.contact_name ?? conversation.contact_phone} src={conversation.avatar_url} className="h-7 w-7 text-[11px]" />
+                    <ContactAvatar name={conversation.contact_name ?? conversation.contact_phone} src={conversation.avatar_url} className="h-7 w-7 type-caption" />
                   </span>
                   <span className="notification-center__content">
                     <strong>{conversation.contact_name ?? conversation.contact_phone}</strong>

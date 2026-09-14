@@ -173,35 +173,35 @@ export function MeetRoom({ endpoint, publicAccess = false }: { endpoint: string;
   }
 
   return (
-    <main className="grid min-h-[100dvh] grid-rows-[52px_minmax(0,1fr)] overflow-hidden bg-[#0E1315] text-[#F2F3F1]">
-      <header className="flex min-w-0 items-center justify-between gap-4 border-b border-white/10 bg-[#171B1D] px-4 sm:px-6">
+    <main className="meet-room">
+      <header className="meet-room__header">
         <div className="flex min-w-0 items-center gap-3">
           <BrandMark className="size-7 shrink-0" />
           <div className="min-w-0">
             <strong className="block truncate text-sm">AtendON Meet</strong>
-            <span className="flex items-center gap-1.5 text-[10px] text-[#A7ABA6]"><ShieldCheck size={12} aria-hidden="true" /> Sala protegida</span>
+            <span className="meet-room__status"><ShieldCheck size={12} aria-hidden="true" /> Sala protegida</span>
           </div>
         </div>
-        {!publicAccess ? <Link href="/agenda" className="btn border-white/10 bg-transparent text-[#C7CAC6] active:translate-y-px"><ArrowLeft size={15} aria-hidden="true" />Voltar à agenda</Link> : null}
+        {!publicAccess ? <Link href="/agenda" className="btn meet-room__back"><ArrowLeft size={15} aria-hidden="true" />Voltar à agenda</Link> : null}
       </header>
 
-      <section className="relative min-h-0 bg-[#0E1315]" aria-label="Sala de videochamada">
-        <div ref={parentRef} className="absolute inset-0 [&>iframe]:block [&>iframe]:h-full [&>iframe]:w-full [&>iframe]:border-0" />
+      <section className="meet-room__stage" aria-label="Sala de videochamada">
+        <div ref={parentRef} className="meet-room__frame" />
         {phase === "loading" ? (
-          <div className="absolute inset-0 grid place-items-center bg-[#0E1315] p-6" role="status" aria-live="polite">
-            <div className="grid w-full max-w-sm gap-5 border-y border-white/10 py-7 text-left">
-              <span className="grid size-11 place-items-center rounded-full border border-cyan-300/25 text-cyan-300"><VideoCamera size={21} aria-hidden="true" /></span>
-              <div><strong className="block text-lg">Preparando sua sala</strong><p className="mt-1 text-sm text-[#A7ABA6]">Validando o acesso e conectando áudio e vídeo.</p></div>
-              <span className="skeleton h-1.5 w-full" aria-hidden="true" />
+          <div className="meet-room__overlay" role="status" aria-live="polite">
+            <div className="meet-room__message">
+              <span className="meet-room__icon"><VideoCamera size={21} aria-hidden="true" /></span>
+              <div><strong>Preparando sua sala</strong><p>Validando o acesso e conectando áudio e vídeo.</p></div>
+              <span className="skeleton meet-room__progress" aria-hidden="true" />
             </div>
           </div>
         ) : null}
         {phase === "error" || phase === "ended" ? (
-          <div className="absolute inset-0 grid place-items-center bg-[#0E1315]/95 p-6" role={phase === "error" ? "alert" : "status"}>
-            <div className="grid w-full max-w-md justify-items-start gap-4 border-y border-white/10 py-8">
+          <div className="meet-room__overlay meet-room__overlay--ended" role={phase === "error" ? "alert" : "status"}>
+            <div className="meet-room__message meet-room__message--error">
               <span className="label">{phase === "error" ? "Falha na conexão" : "Reunião encerrada"}</span>
               <h1 className="m-0 text-2xl tracking-tight">{phase === "error" ? "Não foi possível entrar na sala" : "A chamada foi finalizada"}</h1>
-              <p className="m-0 text-sm leading-relaxed text-[#A7ABA6]">{phase === "error" ? error : "Você já pode fechar esta página ou entrar novamente."}</p>
+              <p>{phase === "error" ? error : "Você já pode fechar esta página ou entrar novamente."}</p>
               <div className="flex flex-wrap gap-2">
                 <button type="button" className="btn primary active:scale-[.98]" onClick={retry}><ArrowClockwise size={16} aria-hidden="true" />{phase === "error" ? "Tentar novamente" : "Entrar novamente"}</button>
                 {!publicAccess ? <Link href="/agenda" className="btn active:translate-y-px">Voltar à agenda</Link> : null}

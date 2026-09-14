@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Tag as TagIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { useCaseOrganizationEnabled } from "@/lib/organization";
@@ -25,8 +25,8 @@ export function LeadTagChips({ tags, compact = false }: { tags?: LeadTag[]; comp
       {tags.map((tag) => (
         <span
           key={tag.id}
-          className={`inline-flex max-w-32 items-center truncate rounded-sm border px-1.5 ${compact ? "py-0 text-[9px]" : "py-0.5 text-[10px]"}`}
-          style={{ borderColor: tag.color, color: tag.color }}
+          className={`lead-tag-chip ${compact ? "lead-tag-chip--compact" : ""}`}
+          style={{ "--tag-color": tag.color } as CSSProperties}
           title={tag.name}
         >
           {tag.name}
@@ -74,10 +74,10 @@ export function LeadTagPicker({
 
   return (
     <PopoverMenu
-      buttonClassName="btn min-h-7 px-2 py-1 text-[10px] active:scale-[.98]"
+      buttonClassName="btn crm-compact-button"
       icon={<TagIcon size={13} aria-hidden="true" />}
       label="Etiquetas"
-      panelClassName="grid w-[min(256px,calc(100vw-32px))] gap-1 rounded border border-[var(--border)] bg-[var(--dialog)] p-2 shadow-[0_16px_36px_color-mix(in_srgb,var(--app)_34%,transparent)]"
+      panelClassName="pipeline-popover pipeline-popover--tags grid gap-1"
     >
       {() => (
         <>
@@ -95,7 +95,7 @@ export function LeadTagPicker({
                 disabled={pendingId != null}
                 aria-pressed={active}
               >
-                <span className="size-2.5 rounded-full" style={{ backgroundColor: tag.color }} aria-hidden="true" />
+                <span className="lead-tag-picker__color" style={{ "--tag-color": tag.color } as CSSProperties} aria-hidden="true" />
                 <span className="min-w-0 flex-1 truncate">{tag.name}</span>
                 {active ? <Check size={14} weight="bold" aria-label="Aplicada" /> : null}
               </button>

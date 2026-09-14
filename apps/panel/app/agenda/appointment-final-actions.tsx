@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
+import { Button } from "@/components/ui";
 import { lossReasonRequiresNote, useLossReasons } from "@/lib/loss-reasons";
 import {
   buildCancellationPayload,
@@ -135,10 +136,10 @@ export function AppointmentOutcomeForm({ timezone, submitting, serverError, onBa
       ) : null}
       {draft.outcome === "nao_avancou" ? <LossReasonField value={draft.lossReason} note={draft.lossReasonNote ?? ""} disabled={submitting} onChange={(value) => { setDraft((current) => ({ ...current, lossReason: value })); clearError(); }} onNoteChange={(value) => { setDraft((current) => ({ ...current, lossReasonNote: value })); clearError(); }} /> : null}
       {error || serverError ? <p className="error" role="alert">{error || serverError}</p> : null}
-      <div className="flex flex-wrap justify-end gap-2">
-        <button type="button" className="btn" disabled={submitting} onClick={onBack}>Voltar</button>
-        <button type="submit" className="btn primary active:scale-[.98]" disabled={submitting}>{submitting ? "Salvando…" : "Salvar resultado"}</button>
-      </div>
+        <div className="agenda-final-action-actions">
+          <Button disabled={submitting} onClick={onBack}>Voltar</Button>
+          <Button tone="primary" type="submit" disabled={submitting}>{submitting ? "Salvando…" : "Salvar resultado"}</Button>
+        </div>
     </form>
   );
 }
@@ -190,10 +191,10 @@ export function AppointmentCancellationForm({ timezone, submitting, serverError,
       {draft.disposition === "recover" ? <NextActionFields action={draft.nextAction} actionAt={draft.nextActionAtLocal} timezone={timezone} disabled={submitting} onAction={(value) => { setDraft((current) => ({ ...current, nextAction: value })); clearError(); }} onActionAt={(value) => { setDraft((current) => ({ ...current, nextActionAtLocal: value })); clearError(); }} /> : null}
       {draft.disposition === "lost" ? <LossReasonField value={draft.lossReason} note={draft.lossReasonNote ?? ""} disabled={submitting} onChange={(value) => { setDraft((current) => ({ ...current, lossReason: value })); clearError(); }} onNoteChange={(value) => { setDraft((current) => ({ ...current, lossReasonNote: value })); clearError(); }} /> : null}
       {error || serverError ? <p className="error" role="alert">{error || serverError}</p> : null}
-      <div className="flex flex-wrap justify-end gap-2">
-        <button type="button" className="btn" disabled={submitting} onClick={onBack}>Voltar</button>
-        <button type="submit" className="btn warn active:scale-[.98]" disabled={submitting}>{submitting ? "Cancelando…" : "Confirmar cancelamento"}</button>
-      </div>
+        <div className="agenda-final-action-actions">
+          <Button disabled={submitting} onClick={onBack}>Voltar</Button>
+          <Button tone="danger" type="submit" disabled={submitting}>{submitting ? "Cancelando…" : "Confirmar cancelamento"}</Button>
+        </div>
     </form>
   );
 }

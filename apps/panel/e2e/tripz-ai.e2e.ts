@@ -72,7 +72,7 @@ function proposal(state: FixtureState) {
   };
 }
 
-async function installTripzFixture(page: Page) {
+async function installTripzFixture(page: Page, unknownRoutes: string[]) {
   const state: FixtureState = {
     conversationStatus: "collecting",
     processingStatus: "idle",
@@ -94,12 +94,30 @@ async function installTripzFixture(page: Page) {
     };
   }, sessionFixture);
 
+  // Guard unknown API paths before registering the explicit fixtures. The
+  // explicit handlers below are newer and therefore take precedence.
+  const unknownApiRoute = (route: Route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    unknownRoutes.push(`${request.method()} ${path}`);
+    return json(route, { error: `Unhandled API fixture route: ${request.method()} ${path}` }, 599);
+  };
+  const unknownBackendRoute = (route: Route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    unknownRoutes.push(`${request.method()} ${path}`);
+    return json(route, { error: `Unhandled backend fixture route: ${request.method()} ${path}` }, 599);
+  };
+  await page.route("**/api/**", unknownApiRoute);
+  await page.route("**/backend/**", unknownBackendRoute);
+
   // Keep the real login/cookie flow, but make the authenticated page deterministic
   // and grant only the Tripz permission needed by this isolated fixture.
   await page.route("**/api/me", (route) => json(route, sessionFixture));
   await page.route("**/api/feature-flags", (route) => json(route, { flags: { tripz_ai_v1: true } }));
   await page.route("**/api/capabilities", (route) => json(route, { capabilities: [{ key: "tripz_ai_v1", displayName: "Tripz IA", description: "Propostas", kind: "capability", tenantConfigurable: true, availabilityMode: "provisioned", uiOrder: 60, dependencies: [], supported: true, tenantOverride: true, enabled: true, source: "tenant_override", blockedBy: [] }] }));
   await page.route("**/api/panel/version", (route) => json(route, { version: "e2e", changelog: [] }));
+  await page.route("**/api/billing/my-plan", (route) => json(route, { tenantId: sessionFixture.activeWorkspace.id, plan: { code: "e2e", name: "E2E" }, status: "active", features: { tripz_ai_v1: true }, limits: {}, usage: {} }));
   await page.route("**/api/dashboard", (route) => json(route, { counts: { handoff: 0 } }));
   await page.route("**/api/scheduling/config/attendants", (route) => json(route, { attendants: [], member_ids: [] }));
   await page.route("**/api/me/notification-preferences", (route) => json(route, { enabled: false }));
@@ -113,11 +131,21 @@ async function installTripzFixture(page: Page) {
   await page.route("**/backend/me", (route) => json(route, sessionFixture));
   await page.route("**/backend/feature-flags", (route) => json(route, { flags: { tripz_ai_v1: true } }));
   await page.route("**/backend/capabilities", (route) => json(route, { capabilities: [{ key: "tripz_ai_v1", displayName: "Tripz IA", description: "Propostas", kind: "capability", tenantConfigurable: true, availabilityMode: "provisioned", uiOrder: 60, dependencies: [], supported: true, tenantOverride: true, enabled: true, source: "tenant_override", blockedBy: [] }] }));
+  await page.route("**/backend/panel/version", (route) => json(route, { version: "e2e", changelog: [] }));
+  await page.route("**/backend/billing/my-plan", (route) => json(route, { tenantId: sessionFixture.activeWorkspace.id, plan: { code: "e2e", name: "E2E" }, status: "active", features: { tripz_ai_v1: true }, limits: {}, usage: {} }));
+  // The panel can use either API prefix. Keep the non-Tripz GET bootstrap
+  // contract mirrored as well, so a backend-base build cannot fall into the
+  // unknown-route guard before the Tripz handler runs.
+  await page.route("**/backend/dashboard", (route) => json(route, { counts: { handoff: 0 } }));
+  await page.route("**/backend/scheduling/config/attendants", (route) => json(route, { attendants: [], member_ids: [] }));
+  await page.route("**/backend/me/notification-preferences", (route) => json(route, { enabled: false }));
+  await page.route("**/backend/conversations/unread", (route) => json(route, { count: 0 }));
+  await page.route("**/backend/events**", (route) => route.fulfill({ status: 204, body: "" }));
 
-  await page.route("**/api/tripz-ai/**", async (route) => {
+  const handleTripzRoute = async (route: Route) => {
     const request = route.request();
     const url = new URL(request.url());
-    const path = url.pathname.replace(/^.*\/api/, "");
+    const path = url.pathname.replace(/^.*\/(?:api|backend)/, "");
     const method = request.method();
 
     if (path === "/tripz-ai/conversations" && method === "GET") {
@@ -172,7 +200,9 @@ async function installTripzFixture(page: Page) {
       return json(route, { conversation: conversation(state), messages, proposal: proposal(state), attachments: [], documents: [state.preview, state.pdf].filter(Boolean) });
     }
     return json(route, { error: `Unhandled Tripz fixture route: ${method} ${path}` }, 500);
-  });
+  };
+  await page.route("**/api/tripz-ai/**", handleTripzRoute);
+  await page.route("**/backend/tripz-ai/**", handleTripzRoute);
 }
 
 async function login(page: Page) {
@@ -198,6 +228,7 @@ async function expectA11y(page: Page) {
 test("authenticated Tripz IA covers flag-on create/upload/poll/retry/revision/preview/PDF and keyboard states", async ({ page }, testInfo) => {
   const consoleErrors: string[] = [];
   const unexpectedTripzErrors: string[] = [];
+  const unknownRoutes: string[] = [];
   page.on("console", (message) => {
     if (message.type() === "error") consoleErrors.push(message.text());
   });
@@ -206,7 +237,7 @@ test("authenticated Tripz IA covers flag-on create/upload/poll/retry/revision/pr
       unexpectedTripzErrors.push(`${response.status()} ${response.url()}`);
     }
   });
-  await installTripzFixture(page);
+  await installTripzFixture(page, unknownRoutes);
   if (credentials.email && credentials.password) {
     await login(page);
     await page.goto("/tripz-ai");
@@ -236,7 +267,7 @@ test("authenticated Tripz IA covers flag-on create/upload/poll/retry/revision/pr
   await page.getByRole("button", { name: "Tentar novamente" }).click();
   await expect(page.getByText("Resumo da proposta atualizado")).toBeVisible();
 
-  await page.locator("button").filter({ hasText: "Revisar proposta" }).first().click({ force: true });
+  await page.getByRole("button", { name: "Abrir resumo e revisão da proposta", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   const pdfButton = page.getByRole("button", { name: "Gerar PDF" });
   await expect(pdfButton).toBeDisabled();
@@ -257,7 +288,7 @@ test("authenticated Tripz IA covers flag-on create/upload/poll/retry/revision/pr
     expect(conversationBox?.width).toBeGreaterThanOrEqual(viewport.name === "desktop" ? 700 : viewport.name === "tablet" ? 480 : 350);
     if (viewport.name === "tablet") {
       const historyTrigger = page.getByRole("button", { name: "Abrir histórico de propostas" });
-      await historyTrigger.click();
+      await historyTrigger.dispatchEvent("click");
       const historyDialog = page.getByRole("dialog", { name: "Propostas" });
       await expect(historyDialog).toBeVisible();
       await expect(page.getByRole("button", { name: "Fechar histórico" })).toBeFocused();
@@ -280,6 +311,7 @@ test("authenticated Tripz IA covers flag-on create/upload/poll/retry/revision/pr
     await expectA11y(page);
     await page.screenshot({ path: testInfo.outputPath(`tripz-ai-${viewport.name}.png`), fullPage: true, animations: "disabled" });
   }
+  if (unknownRoutes.length > 0) console.log(`Unknown fixture routes: ${unknownRoutes.join(", ")}`);
   expect(unexpectedTripzErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);
 });

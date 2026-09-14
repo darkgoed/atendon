@@ -39,6 +39,7 @@ import { useRealtimeSignals } from "@/lib/realtime";
 import { canAccessWithSession, hasWorkspaceWideCaseScope, type PanelSession } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
 import { usePipelinePreferences } from "@/lib/use-pipeline-preferences";
+import { Button } from "@/components/ui";
 import { readPipelineViewPreference, writePipelineViewPreference } from "@/lib/pipeline-view";
 
 type PipelineResponse = { leads: PipelineLead[]; timezone?: string };
@@ -268,17 +269,14 @@ export default function PipelinePage() {
         <div className="flex min-w-0 items-baseline gap-2">
           <h1 className="truncate">{hasWorkspaceScope ? "Pipeline" : "Meu pipeline"}</h1>
           <div className="pipeline-page__view" aria-label="Visualização do pipeline">
-            <button type="button" aria-pressed={viewMode === "kanban"} onClick={() => changeView("kanban")}>Kanban</button>
-            <button type="button" aria-pressed={viewMode === "list"} onClick={() => changeView("list")}>Lista</button>
+            <Button type="button" aria-pressed={viewMode === "kanban"} onClick={() => changeView("kanban")}>Kanban</Button>
+            <Button type="button" aria-pressed={viewMode === "list"} onClick={() => changeView("list")}>Lista</Button>
           </div>
           <span className="mono pipeline-page__count" role="status" aria-live="polite">{loading ? "carregando…" : `${leads.length} lead(s)`}</span>
         </div>
         <div className="pipeline-page__actions">
           <SavedViewsControl resource="pipeline" filters={pipelineFiltersForSavedView(filters)} onApply={(saved) => setFilters(applyPipelineSavedView(saved))} />
-          <label className="inline-flex min-h-9 items-center gap-2 rounded border border-[var(--border)] px-3 text-xs">
-            <input type="checkbox" checked={showAllStages} onChange={(event) => setShowAllStages(event.target.checked)} />
-            Mostrar todas as etapas
-          </label>
+          <Button type="button" className="pipeline-page__stage-toggle" aria-pressed={showAllStages} onClick={() => setShowAllStages((current) => !current)}>Mostrar todas as etapas</Button>
           <PipelineViewPreferences value={preferences} onChange={setPreferences} />
           <PipelineSettings stages={pipelineData?.stages ?? []} transitions={pipelineData?.transitions ?? []} followUpConfig={pipelineData?.follow_up_config} onChanged={mutatePipeline} />
         </div>
@@ -293,8 +291,8 @@ export default function PipelinePage() {
         </dl>
       </div>
 
-      {actionError && !intent ? <div className="mb-3 flex shrink-0 items-center justify-between gap-3 border border-[var(--warn-border)] px-3 py-2 text-xs text-[var(--warn)]" role="alert"><span>{actionError}</span><button type="button" className="btn min-h-8 px-2 py-1 text-[11px]" onClick={retry}><ArrowClockwise size={13} aria-hidden="true" />Atualizar</button></div> : null}
-      {loadError && leads.length > 0 ? <div className="mb-3 flex shrink-0 items-center justify-between gap-3 border border-[var(--warn-border)] px-3 py-2 text-xs text-[var(--warn)]" role="alert"><span>Os dados exibidos podem estar desatualizados: {loadError}</span><button type="button" className="btn min-h-8 px-2 py-1 text-[11px]" onClick={retry}><ArrowClockwise size={13} aria-hidden="true" />Tentar novamente</button></div> : null}
+      {actionError && !intent ? <div className="pipeline-error"><span>{actionError}</span><button type="button" className="btn crm-compact-button" onClick={retry}><ArrowClockwise size={13} aria-hidden="true" />Atualizar</button></div> : null}
+      {loadError && leads.length > 0 ? <div className="pipeline-stale"><span>Os dados exibidos podem estar desatualizados: {loadError}</span><button type="button" className="btn crm-compact-button" onClick={retry}><ArrowClockwise size={13} aria-hidden="true" />Tentar novamente</button></div> : null}
 
       <div className="pipeline-page__board">
         {viewMode === "list" ? <PipelineList

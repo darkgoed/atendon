@@ -6,6 +6,7 @@ import useSWR from "swr";
 import { api } from "@/lib/api";
 import { useCaseOrganizationEnabled } from "@/lib/organization";
 import { usePermission } from "@/lib/use-permission";
+import { Button } from "@/components/ui";
 import type { LeadTag } from "@/components/lead-tag-picker";
 
 type BulkAction = "assign" | "tags_add" | "tags_remove" | "move_stage";
@@ -107,11 +108,11 @@ export function BulkLeadActions({ selected, onClear, onChanged }: { selected: Bu
     finally { setPending(false); }
   }
 
-  if (!open && !applied) return <button type="button" className="btn" onClick={() => setOpen(true)} aria-expanded={false}>Ações em lote ({selected.length})</button>;
+  if (!open && !applied) return <Button onClick={() => setOpen(true)} aria-expanded={false}>Ações em lote ({selected.length})</Button>;
 
-  if (applied) return <aside className="fixed bottom-4 left-1/2 z-20 flex w-[min(620px,calc(100vw-32px))] -translate-x-1/2 items-center gap-3 rounded border border-[var(--ok-border)] bg-[var(--dialog)] p-3 shadow-[0_18px_46px_color-mix(in_srgb,var(--app)_42%,transparent)]" role="status"><CheckSquare size={20} className="text-[var(--ok)]" aria-hidden="true" /><p className="min-w-0 flex-1 text-xs"><strong className="block">{applied.result.count} lead(s) atualizados</strong><span className="text-[var(--muted)]">Operação concluída de forma atômica.</span></p>{applied.result.undoable && undoSeconds > 0 ? <button type="button" className="btn" onClick={() => void undo()} disabled={pending}><ArrowCounterClockwise size={15} />Desfazer · {undoSeconds}s</button> : null}<button type="button" className="grid size-8 place-items-center rounded active:scale-[.94]" onClick={() => setApplied(null)} aria-label="Fechar confirmação"><X size={15} /></button>{error ? <p className="error" role="alert">{error}</p> : null}</aside>;
+  if (applied) return <aside className="bulk-lead-actions bulk-lead-actions--applied" role="status"><CheckSquare size={20} className="text-[var(--ok)]" aria-hidden="true" /><p className="bulk-lead-actions__copy"><strong>{applied.result.count} lead(s) atualizados</strong><span>Operação concluída de forma atômica.</span></p>{applied.result.undoable && undoSeconds > 0 ? <button type="button" className="btn" onClick={() => void undo()} disabled={pending}><ArrowCounterClockwise size={15} />Desfazer · {undoSeconds}s</button> : null}<button type="button" className="bulk-lead-actions__close" onClick={() => setApplied(null)} aria-label="Fechar confirmação"><X size={15} /></button>{error ? <p className="error" role="alert">{error}</p> : null}</aside>;
 
-  return <aside className="fixed bottom-4 left-1/2 z-20 grid w-[min(760px,calc(100vw-32px))] -translate-x-1/2 gap-3 rounded border border-[var(--border-ai)] bg-[var(--dialog)] p-3 shadow-[0_18px_46px_color-mix(in_srgb,var(--app)_42%,transparent)] sm:grid-cols-[auto_minmax(150px,1fr)_minmax(170px,1fr)_auto] sm:items-end" aria-label="Ações em lote">
+  return <aside className="bulk-lead-actions" aria-label="Ações em lote">
     <div className="flex items-center gap-2 self-center"><CheckSquare size={19} className="text-[var(--accent)]" /><strong className="text-xs">{selected.length} selecionado(s)</strong></div>
     <label className="field"><span className="label">Ação</span><select className="input" value={action} onChange={(event) => setAction(event.target.value as BulkAction)}>{availableActions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
     <label className="field"><span className="label">Destino</span><select className="input" value={targetId} onChange={(event) => { setTargetId(event.target.value); setPreview(null); setApplyKey(null); }}><option value="">{action === "assign" ? "Sem responsável" : "Selecione"}</option>{action === "move_stage" ? pipelineData?.stages.filter((stage) => !stage.archived_at).map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>) : action === "assign" ? attendantData?.attendants.filter((attendant) => attendant.selected).map((attendant) => <option key={attendant.member_id} value={attendant.member_id}>{attendant.email}{attendant.availability_status === "available" ? " · disponível" : ""}</option>) : tagData?.tags.filter((tag) => !tag.archived_at).map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select></label>

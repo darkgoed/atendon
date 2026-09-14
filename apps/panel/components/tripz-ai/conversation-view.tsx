@@ -11,6 +11,7 @@ import {
 } from "../../lib/tripz-ai";
 import { TripzComposer } from "./composer";
 import { TripzMessageBubble } from "./message-bubble";
+import styles from "./tripz-ai.module.css";
 
 function MessagesSkeleton() {
   return (
@@ -110,7 +111,7 @@ export function TripzConversationView({
   proposal?: TripzProposal;
   loading: boolean;
   error?: string;
-  onOpenHistory: () => void;
+  onOpenHistory: (event: React.MouseEvent<HTMLElement>) => void;
   onOpenReview: () => void;
   onRetry: () => void;
   onRetryTurn: (messageId: string) => Promise<void>;
@@ -127,8 +128,8 @@ export function TripzConversationView({
   }, [messages.length, conversation.processingStatus]);
 
   return (
-    <section className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-[var(--app)]" aria-label={`Conversa ${conversation.title}`}>
-      <header className="flex min-h-16 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--topbar)] px-3 py-3 sm:px-5">
+    <section className={styles.conversation} aria-label={`Conversa ${conversation.title}`}>
+      <header className={`${styles.conversationHeader} flex min-h-16 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--topbar)] px-3 py-3 sm:px-5`}>
         <div className="flex min-w-0 items-center gap-3">
           <button type="button" className="grid h-9 w-9 shrink-0 place-items-center border border-[var(--border)] bg-transparent text-[var(--muted)] transition-[background,transform] hover:bg-[var(--active)] hover:text-[var(--text)] active:translate-y-px lg:hidden" onClick={onOpenHistory} aria-label="Abrir histórico de propostas">
             <List size={17} aria-hidden="true" />
@@ -148,7 +149,7 @@ export function TripzConversationView({
         </button>
       </header>
 
-      <div ref={scrollRef} className="min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6" aria-busy={loading}>
+      <div ref={scrollRef} className={`${styles.scrollRegion} min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6`} aria-busy={loading}>
         {loading ? <MessagesSkeleton /> : error ? (
           <div className="mx-auto grid min-h-full w-full max-w-[36rem] place-items-center py-10 text-center" role="alert">
             <div>

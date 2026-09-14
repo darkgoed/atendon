@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import type { PanelSession } from "@/lib/session";
+import { AdminMetricGrid, AdminMetricValue, AdminPage, AdminPageHeader, AdminSection } from "@/components/admin";
 
 type BillingMetric = {
   tenantId: string;
@@ -35,18 +36,17 @@ export default function MetricsPage() {
 
   if (!root) return <Shell><div className="card"><p>Esta área está disponível apenas para usuários ROOT.</p></div></Shell>;
 
-  return <Shell>
-    <header className="pagehead"><div><h1>Métricas SaaS</h1><p>Agregados exatos de receita, custo e transações.</p></div></header>
-    <section className="card">
-      <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Filtros de métricas">
+  return <Shell><AdminPage>
+    <AdminPageHeader title="Métricas SaaS" description="Agregados exatos de receita, custo e transações." />
+    <AdminSection className="card" title="Filtros" description="Refine o período e o escopo da consulta.">      <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Filtros de métricas">
         {([["tenantId", "Tenant ID"], ["planId", "Plano ID"], ["start", "De"], ["end", "Até"]] as const).map(([name, label]) => <label className="field" key={name}>
           <span className="label">{label}</span>
           <input className="input" name={name} type={name === "start" || name === "end" ? "date" : "text"} value={filters[name]} onChange={(event) => setFilters({ ...filters, [name]: event.target.value })} />
         </label>)}
       </form>
-    </section>
-    {error ? <p className="error">Não foi possível carregar as métricas.</p> : !data ? <div className="card mt-4">Carregando…</div> : <section className="grid gap-4 mt-4 sm:grid-cols-2 lg:grid-cols-4">
-      {([["Receita", money(totals.revenueCents)], ["Custo", money(totals.costCents)], ["Transações", totals.transactions.toLocaleString("pt-BR")], ["Empresas", tenants.toLocaleString("pt-BR")]] as const).map(([label, value]) => <article className="card" key={label}><p className="sub">{label}</p><strong className="text-xl">{value}</strong></article>)}
-    </section>}
-  </Shell>;
+    </AdminSection>
+    {error ? <p className="error">Não foi possível carregar as métricas.</p> : !data ? <div className="card">Carregando…</div> : <AdminMetricGrid>
+      {([["Receita", money(totals.revenueCents)], ["Custo", money(totals.costCents)], ["Transações", totals.transactions.toLocaleString("pt-BR")], ["Empresas", tenants.toLocaleString("pt-BR")]] as const).map(([label, value]) => <article className="card" key={label}><p className="sub">{label}</p><AdminMetricValue>{value}</AdminMetricValue></article>)}
+    </AdminMetricGrid>}
+  </AdminPage></Shell>;
 }

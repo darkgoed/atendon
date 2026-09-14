@@ -11,6 +11,8 @@ import { alertHistoryPollingDelay } from "@/lib/alerts";
 import { panelFeatureEnabled, type PanelFeatureFlagsResponse } from "@/lib/feature-flags";
 import { useRealtimeSignals } from "@/lib/realtime";
 import { canAccessRootWorkspace, type PanelSession } from "@/lib/session";
+import { Button } from "@/components/ui/button";
+import styles from "../channels-ai.module.css";
 
 type OperationalAlert = {
   id: string;
@@ -173,7 +175,7 @@ export default function AlertsPage() {
   const alerts = data?.alerts ?? [];
 
   return (
-    <Shell>
+    <Shell><div className={`${styles.channelsAiPage} channels-ai-page`}>
       <header className="pagehead">
         <div>
           <h1>Alertas operacionais</h1>
@@ -190,11 +192,11 @@ export default function AlertsPage() {
 
       {error ? <p className="error mb-4" role="alert">{error.message}</p> : null}
       {!data && !error ? (
-        <section className="overflow-hidden border-y border-[var(--border)]">
+        <section className="channels-ai-alert-list">
           {[0, 1, 2].map((item) => (
-            <div className="grid grid-cols-[auto_1fr] gap-4 border-b border-[var(--border)] py-5 last:border-0" key={item}>
-              <div className="skeleton size-9 rounded-full" />
-              <div className="grid gap-2"><div className="skeleton h-4 w-3/5" /><div className="skeleton h-3 w-32" /></div>
+            <div className="channels-ai-alert-item" key={item}>
+              <div className="skeleton channels-ai-alert-icon" />
+              <div className="grid gap-2"><div className="skeleton channels-ai-skeleton--row" /><div className="skeleton channels-ai-skeleton--tiny" /></div>
             </div>
           ))}
         </section>
@@ -208,16 +210,16 @@ export default function AlertsPage() {
               const meeting = meetingMetadata(alert);
               return (
                 <article
-                  className={`grid gap-4 border-b border-[var(--border)] py-5 last:border-0 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center ${unread ? "text-[var(--text)]" : "text-[var(--muted)]"}`}
+                  className={`channels-ai-alert-item md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center ${unread ? "text-[var(--text)]" : "text-[var(--muted)]"}`}
                   key={alert.id}
                 >
-                  <span className={`grid size-10 place-items-center rounded-full border ${unread ? "border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn)]" : "border-[var(--border)] text-[var(--faint)]"}`}>
+                  <span className={`channels-ai-alert-icon ${unread ? "border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn)]" : "text-[var(--faint)]"}`}>
                     {meeting ? <VideoCamera size={18} weight={unread ? "fill" : "regular"} aria-hidden="true" /> : unread ? <BellRinging size={18} weight="fill" aria-hidden="true" /> : <Check size={18} weight="bold" aria-hidden="true" />}
                   </span>
-                  <div className="min-w-0">
+                  <div className="channels-ai-min-zero">
                     <div className="flex flex-wrap items-center gap-2">
                       <strong className="text-sm">{meeting ? meetingTitle(meeting) : alert.message}</strong>
-                      {unread ? <span className="rounded border border-[var(--warn-border)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[.1em] text-[var(--warn)]">Novo</span> : null}
+                      {unread ? <span className="rounded border border-[var(--warn-border)] px-2 py-0.5 type-caption font-semibold uppercase tracking-[.1em] text-[var(--warn)]">Novo</span> : null}
                     </div>
                     {meeting ? (
                       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-[var(--muted)]">
@@ -230,23 +232,24 @@ export default function AlertsPage() {
                         ) : <span>Sem link de reunião</span>}
                       </div>
                     ) : null}
-                    <time className="mono mt-2 flex items-center gap-1.5 text-[11px] text-[var(--faint)]" dateTime={alert.created_at}>
+                    <time className="mono mt-2 flex items-center gap-1.5 type-caption text-[var(--faint)]" dateTime={alert.created_at}>
                       <ClockCounterClockwise size={13} aria-hidden="true" />
                       {formatPanelDateTime(alert.created_at, { dateStyle: "medium", timeStyle: "short" })}
                     </time>
                   </div>
                   {unread ? (
-                    <button
-                      className="btn min-h-11 justify-self-start active:scale-[.98] md:justify-self-end"
+                    <Button
+                      tone="default"
+                      className="channels-ai-touch justify-self-start md:justify-self-end"
                       disabled={dismissing === alert.id}
                       onClick={() => void dismiss(alert.id)}
                       type="button"
                     >
                       <Check size={16} weight="bold" aria-hidden="true" />
                       {dismissing === alert.id ? "Dispensando…" : "Dispensar"}
-                    </button>
+                    </Button>
                   ) : (
-                    <span className="mono text-[10px] uppercase tracking-[.1em] text-[var(--faint)] md:text-right">
+                    <span className="mono type-caption uppercase tracking-[.1em] text-[var(--faint)] md:text-right">
                       {alert.can_acknowledge ? "Revisado" : "Somente leitura"}
                     </span>
                   )}
@@ -256,19 +259,19 @@ export default function AlertsPage() {
           </section>
           {data && data.total > PAGE_SIZE ? (
             <nav aria-label="Paginação dos alertas" className="mt-5 flex items-center justify-between gap-4">
-              <button className="btn min-h-11 active:scale-[.98]" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} type="button">
+              <button className="btn channels-ai-touch" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} type="button">
                 Mais recentes
               </button>
-              <span className="mono text-[11px] text-[var(--faint)]">
+              <span className="mono type-caption text-[var(--faint)]">
                 {offset + 1}–{Math.min(offset + alerts.length, data.total)} de {data.total}
               </span>
-              <button className="btn min-h-11 active:scale-[.98]" disabled={offset + PAGE_SIZE >= data.total} onClick={() => setOffset(offset + PAGE_SIZE)} type="button">
+              <button className="btn channels-ai-touch" disabled={offset + PAGE_SIZE >= data.total} onClick={() => setOffset(offset + PAGE_SIZE)} type="button">
                 Anteriores
               </button>
             </nav>
           ) : null}
         </>
       )}
-    </Shell>
+    </div></Shell>
   );
 }

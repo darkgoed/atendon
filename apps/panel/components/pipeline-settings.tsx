@@ -7,6 +7,9 @@ import { api } from "@/lib/api";
 import { useCaseOrganizationEnabled } from "@/lib/organization";
 import { CANONICAL_PIPELINE_STATUSES, pipelineStatusLabel, type PipelineFollowUpConfig } from "@/lib/pipeline";
 import { usePermission } from "@/lib/use-permission";
+import { Button, Field, Input, Select } from "@/components/ui";
+import { SETTINGS_COLOR_DEFAULTS } from "@/components/settings-colors";
+import styles from "@/components/settings-panels.module.css";
 
 export type ConfigurablePipelineStage = {
   id: string;
@@ -51,7 +54,7 @@ export function PipelineSettings({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [technicalStatus, setTechnicalStatus] = useState("novo");
-  const [color, setColor] = useState("#3B82F6");
+  const [color, setColor] = useState<string>(SETTINGS_COLOR_DEFAULTS.pipelineStage);
   const [capacity, setCapacity] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -85,7 +88,7 @@ export function PipelineSettings({
   }
 
   return <>
-    <button type="button" className="btn" onClick={() => setOpen(true)}><SlidersHorizontal size={15} aria-hidden="true" />Configurar</button>
+    <Button onClick={() => setOpen(true)}><SlidersHorizontal size={15} aria-hidden="true" />Configurar</Button>
     {open ? (
       <ModalDialog className="pipeline-settings-dialog" labelledBy="pipeline-settings-title" describedBy="pipeline-settings-description" onClose={() => { if (!pending) setOpen(false); }}>
         <header className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-4 py-4 sm:px-5">
@@ -105,10 +108,10 @@ export function PipelineSettings({
             </aside>
           ) : null}
 
-          <section aria-labelledby="pipeline-active-stages-title">
+          <section className={styles.dialogSection} aria-labelledby="pipeline-active-stages-title">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 id="pipeline-active-stages-title" className="text-sm font-semibold">Etapas ativas</h3>
-              <span className="mono text-[10px] text-[var(--muted)]">{stages.filter((stage) => !stage.archived_at).length} etapa(s)</span>
+              <span className="mono type-caption text-[var(--muted)]">{stages.filter((stage) => !stage.archived_at).length} etapa(s)</span>
             </div>
             <div className="grid gap-2">
               {stages.filter((stage) => !stage.archived_at).sort((left, right) => left.position - right.position).map((stage) => (
@@ -118,15 +121,15 @@ export function PipelineSettings({
             </div>
           </section>
 
-          <section className="mt-5 rounded-lg border border-[var(--border)] bg-[var(--panel)] p-4">
+          <section className={styles.dialogSection}>
             <h3 className="text-sm font-semibold">Adicionar etapa</h3>
             <p className="mt-1 text-xs text-[var(--muted)]">Use uma etapa manual apenas quando ela representar uma fase comercial real.</p>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <label className="field lg:col-span-2"><span className="label">Nome</span><input className="input" value={name} onChange={(event) => setName(event.target.value)} maxLength={80} /></label>
-              <label className="field lg:col-span-2"><span className="label">Status técnico</span><select className="input" value={technicalStatus} onChange={(event) => setTechnicalStatus(event.target.value)}>{technicalStatuses.map((status) => <option key={status} value={status}>{pipelineStatusLabel(status)}</option>)}</select></label>
-              <label className="field"><span className="label">Cor</span><input className="input h-10 p-1" type="color" value={color} onChange={(event) => setColor(event.target.value.toUpperCase())} /></label>
-              <label className="field lg:col-span-2"><span className="label">Meta de capacidade</span><input className="input" type="number" min="1" value={capacity} onChange={(event) => setCapacity(event.target.value)} placeholder="Sem meta" /></label>
-              <button type="button" className="btn primary self-end" onClick={() => void createStage()} disabled={!name.trim() || pending}><Plus size={15} aria-hidden="true" />{pending ? "Criando…" : "Adicionar"}</button>
+              <Field className="lg:col-span-2" label="Nome"><Input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} /></Field>
+              <Field className="lg:col-span-2" label="Status técnico"><Select value={technicalStatus} onChange={(event) => setTechnicalStatus(event.target.value)}>{technicalStatuses.map((status) => <option key={status} value={status}>{pipelineStatusLabel(status)}</option>)}</Select></Field>
+              <Field label="Cor"><Input className="h-10 p-1" type="color" value={color} onChange={(event) => setColor(event.target.value.toUpperCase())} /></Field>
+              <Field className="lg:col-span-2" label="Meta de capacidade"><Input type="number" min="1" value={capacity} onChange={(event) => setCapacity(event.target.value)} placeholder="Sem meta" /></Field>
+              <Button tone="primary" className="self-end" onClick={() => void createStage()} disabled={!name.trim() || pending}><Plus size={15} aria-hidden="true" />{pending ? "Criando…" : "Adicionar"}</Button>
             </div>
             {error ? <p className="error mt-2" role="alert">{error}</p> : null}
           </section>
@@ -189,11 +192,11 @@ function StageEditor({ stage, stages, transitions, onChanged }: { stage: Configu
   }
 
   return <details className="group overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--panel)]">
-    <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 px-3 active:scale-[.99]"><span className="size-2.5 rounded-full" style={{ backgroundColor: stage.color }} /><span className="min-w-0 flex-1 truncate text-sm font-medium">{stage.name}</span><span className="rounded bg-[var(--active)] px-2 py-1 text-[9px] text-[var(--muted)]">{pipelineStatusLabel(stage.technical_status)}</span><span className="mono text-[9px] text-[var(--faint)]">#{stage.position}</span></summary>
+    <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 px-3 active:scale-[.99]"><span className="size-2.5 rounded-full" style={{ backgroundColor: stage.color }} /><span className="min-w-0 flex-1 truncate text-sm font-medium">{stage.name}</span><span className="rounded bg-[var(--active)] px-2 py-1 type-caption text-[var(--muted)]">{pipelineStatusLabel(stage.technical_status)}</span><span className="mono type-caption text-[var(--faint)]">#{stage.position}</span></summary>
     <div className="grid gap-4 border-t border-[var(--border)] p-3 sm:p-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="field"><span className="label">Nome</span><input className="input" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} /></label>
-        <label className="field"><span className="label">Cor</span><input className="input h-10 p-1" type="color" value={draft.color} onChange={(event) => setDraft((current) => ({ ...current, color: event.target.value.toUpperCase() }))} /></label>
+        <Field label="Nome"><Input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} /></Field>
+        <Field label="Cor"><Input className="h-10 p-1" type="color" value={draft.color} onChange={(event) => setDraft((current) => ({ ...current, color: event.target.value.toUpperCase() }))} /></Field>
         <label className="field"><span className="label">Ordem</span><input className="input" type="number" min="0" value={draft.position} onChange={(event) => setDraft((current) => ({ ...current, position: event.target.value }))} /></label>
         <label className="field"><span className="label">Meta</span><input className="input" type="number" min="1" value={draft.capacity} onChange={(event) => setDraft((current) => ({ ...current, capacity: event.target.value }))} placeholder="Sem meta" /></label>
       </div>

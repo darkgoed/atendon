@@ -99,7 +99,7 @@ export default function InvitationAcceptPage({ token }: { token: string }) {
         {loading ? (
           <div role="status" aria-busy="true">
             <span className="sr-only">Carregando convite</span>
-            <div className="skeleton" style={{ height: 96 }} aria-hidden="true" />
+            <div className="skeleton invitation-loading" aria-hidden="true" />
           </div>
         ) : null}
         {error ? <p className="error" role="alert">{error}</p> : null}

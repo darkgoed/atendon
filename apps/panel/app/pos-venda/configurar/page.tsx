@@ -18,6 +18,7 @@ import { useRef, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { ModalDialog } from "@/components/modal-dialog";
 import { Shell } from "@/components/shell";
+import { Input } from "@/components/ui";
 import { api } from "@/lib/api";
 import { isPostSaleVersionConflict, type PostSaleTemplateItem } from "@/lib/post-sales";
 
@@ -139,7 +140,7 @@ export default function PostSalesChecklistSettingsPage() {
 
   return (
     <Shell>
-      <header className="pagehead" style={{ "--eyebrow": '"PAINEL · PÓS-VENDA"' } as React.CSSProperties}>
+      <header className="pagehead post-sales-head">
         <div>
           <h1>Configurar checklist</h1>
           <p>Defina a sequência real da empresa. Novos itens chegam pendentes aos clientes ativos.</p>
@@ -157,7 +158,7 @@ export default function PostSalesChecklistSettingsPage() {
             <label className="field">
               <span className="label">Novo item</span>
               <span className="post-sales-template-create__input">
-                <input className="input" name="description" placeholder="Ex.: oferecer treinamento da equipe" maxLength={500} required disabled={creating} />
+                <Input name="description" placeholder="Ex.: oferecer treinamento da equipe" maxLength={500} required disabled={creating} />
                 <button className="btn primary" type="submit" disabled={creating}><Plus size={16} aria-hidden="true" /> {creating ? "Adicionando…" : "Adicionar"}</button>
               </span>
             </label>
@@ -179,7 +180,7 @@ export default function PostSalesChecklistSettingsPage() {
                       <span className="post-sales-template-item__position mono">{String(index + 1).padStart(2, "0")}</span>
                       {editingId === item.id ? (
                         <form className="post-sales-template-item__edit" onSubmit={(event) => void renameItem(event, item)}>
-                          <label className="field"><span className="sr-only">Descrição do item</span><input className="input" name="description" defaultValue={item.description} required data-autofocus disabled={pendingId === item.id} /></label>
+                          <label className="field"><span className="sr-only">Descrição do item</span><Input name="description" defaultValue={item.description} required data-autofocus disabled={pendingId === item.id} /></label>
                           <button className="btn primary" type="submit" aria-label="Salvar descrição" disabled={pendingId === item.id}><FloppyDisk size={15} aria-hidden="true" /> Salvar</button>
                           <button className="btn" type="button" aria-label="Cancelar edição" onClick={() => cancelEditing(item.id)}><X size={15} aria-hidden="true" /></button>
                         </form>
@@ -224,7 +225,7 @@ export default function PostSalesChecklistSettingsPage() {
       {pendingArchive ? (
         <ModalDialog labelledBy="confirm-archive-title" onClose={() => setPendingArchive(null)}>
           <h2 id="confirm-archive-title" className="text-base">Arquivar item</h2>
-          <p className="text-sm text-[var(--muted)]">Arquivar &ldquo;{pendingArchive.description}&rdquo;? O histórico de respostas é mantido.</p>
+          <p className="post-sales-archive-confirmation">Arquivar &ldquo;{pendingArchive.description}&rdquo;? O histórico de respostas é mantido.</p>
           <div className="flex justify-end gap-2">
             <button type="button" className="btn" onClick={() => setPendingArchive(null)}>Cancelar</button>
             <button type="button" className="btn warn" data-autofocus onClick={() => { void setArchived(pendingArchive, true); setPendingArchive(null); }}>Arquivar</button>

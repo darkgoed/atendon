@@ -153,7 +153,7 @@ function AppointmentRecordings({ appointmentId, timezone }: { appointmentId: str
           <span className="label">Mídia da reunião</span>
           <h3 id={`appointment-recordings-${appointmentId}`} className="mt-1 text-sm font-semibold text-[var(--heading)]">Gravações</h3>
         </div>
-        {!isLoading && !error ? <span className="mono text-[10px] text-[var(--faint)]">{recordings.length} arquivo(s)</span> : null}
+        {!isLoading && !error ? <span className="mono type-caption text-[var(--faint)]">{recordings.length} arquivo(s)</span> : null}
       </div>
 
       {isLoading ? (
@@ -182,9 +182,9 @@ function AppointmentRecordings({ appointmentId, timezone }: { appointmentId: str
                 <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
                   <div className="grid min-w-0 grid-cols-[30px_minmax(0,1fr)] items-center gap-3">
                     <span className="grid size-8 place-items-center rounded-full border border-[var(--border)] text-[var(--accent-soft)]"><FileVideo size={16} aria-hidden="true" /></span>
-                    <div className="min-w-0"><strong className="block truncate text-xs">{recording.file_name || `Gravação ${index + 1}`}</strong><span className="mono mt-1 block text-[10px] text-[var(--faint-text)]">{formatRecordingDate(recordedAt, timezone)} · {formatRecordingSize(recording.size_bytes)}</span></div>
+                    <div className="min-w-0"><strong className="block truncate text-xs">{recording.file_name || `Gravação ${index + 1}`}</strong><span className="mono mt-1 block type-caption text-[var(--faint-text)]">{formatRecordingDate(recordedAt, timezone)} · {formatRecordingSize(recording.size_bytes)}</span></div>
                   </div>
-                  {playable ? <a className="btn px-2 py-1 text-xs active:translate-y-px" href={fileUrl} download={recording.file_name || undefined}><DownloadSimple size={14} aria-hidden="true" />Baixar</a> : <span className="mono text-[10px] uppercase text-[var(--warn)]">{recording.status}</span>}
+                  {playable ? <a className="btn px-2 py-1 text-xs active:translate-y-px" href={fileUrl} download={recording.file_name || undefined}><DownloadSimple size={14} aria-hidden="true" />Baixar</a> : <span className="mono type-caption uppercase text-[var(--warn)]">{recording.status}</span>}
                 </div>
                 {playable ? <video className="block max-h-64 w-full border border-[var(--border)] bg-[var(--surface-3)]" controls preload="metadata" crossOrigin="use-credentials" src={fileUrl}>Seu navegador não consegue reproduzir esta gravação.</video> : <p className="sub m-0 text-xs">A gravação ainda está sendo processada.</p>}
               </article>

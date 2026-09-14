@@ -1,0 +1,99 @@
+.page {
+  display: grid;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.header {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  justify-content: space-between;
+}
+
+.header > div { min-width: min(100%, 34rem); }
+
+.toolbar {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.toolbar > * { flex: 1 1 12rem; min-width: min(100%, 12rem); }
+.toolbar > button, .toolbar > a { flex: 0 1 auto; }
+
+.section {
+  min-width: 0;
+}
+
+.sectionHeader {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.sectionHeader h2 { margin: 0; }
+
+.tableScroll {
+  max-inline-size: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+}
+
+.tableScroll table { min-inline-size: 46rem; }
+
+.actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.actionsEnd { justify-content: flex-end; }
+
+.status {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+}
+
+.statusError { background: var(--danger-bg); border-color: var(--danger-border); }
+.statusNotice { background: var(--accent-soft); border-color: var(--accent); }
+
+.metricGrid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+}
+
+.metricValue {
+  color: var(--heading);
+  font-size: var(--text-2xl);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+}
+
+.dialogBody {
+  max-block-size: min(70vh, 42rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.formGrid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+}
+
+@media (max-width: 48rem) {
+  .page { gap: var(--space-5); }
+  .tableScroll table { min-inline-size: 42rem; }
+  .dialogBody { max-block-size: 62vh; }
+}

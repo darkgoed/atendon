@@ -7,12 +7,14 @@ import useSWR from "swr";
 import { ContactAvatar } from "@/components/contact-avatar";
 import { Empty, LoadingCards } from "@/components/page-state";
 import { Shell } from "@/components/shell";
+import { PageHeader } from "@/components/ui";
 import { CommercialDashboard, type CommercialDashboardData } from "@/components/commercial-dashboard";
 import { DashboardWidgets } from "@/components/dashboard-widgets";
 import { api } from "@/lib/api";
 import { useCapabilities } from "@/lib/capabilities";
 import { panelFeatureEnabled, type PanelFeatureFlagsResponse } from "@/lib/feature-flags";
 import { handoffReasonLabel } from "@/lib/labels";
+import styles from "@/components/metrics-dashboard.module.css";
 import { useRealtimeSignals } from "@/lib/realtime";
 import {
   canAccessRootWorkspace,
@@ -105,12 +107,7 @@ export default function Overview() {
 
   return (
     <Shell>
-      <header className="pagehead" style={{ "--eyebrow": '"PAINEL · HOJE"' } as React.CSSProperties}>
-        <div>
-          <h1>{hasWorkspaceScope ? "Visão geral" : "Minha operação"}</h1>
-          <p>{hasWorkspaceScope ? "O pulso do atendimento hoje." : "Seus atendimentos, leads e reuniões em um só lugar."}</p>
-        </div>
-      </header>
+      <PageHeader title={hasWorkspaceScope ? "Visão geral" : "Minha operação"} description={hasWorkspaceScope ? "O pulso do atendimento hoje." : "Seus atendimentos, leads e reuniões em um só lugar."} />
       {error ? <p className="error" role="alert">{error.message}</p> : !data ? <LoadingCards /> : <>
         {appointmentsEnabled ? <CommercialDashboard
           data={data.commercial}
@@ -124,7 +121,7 @@ export default function Overview() {
           }}
           onCustomEndChange={setCustomEnd}
         /> : null}
-        <div className="mb-4 border-b border-[var(--border)] pb-3">
+        <div className={styles.realtimeBand}>
           <span className="label">ATENDIMENTO EM TEMPO REAL</span>
         </div>
         <section className="grid4">
@@ -166,13 +163,13 @@ export default function Overview() {
             {data.handoffs.length === 0 ? <Empty>Nenhuma conversa aguardando humano.</Empty> : (
               <div className="grid gap-2">
                 {data.handoffs.map((item) => (
-                  <div key={item.id} className="flex items-center gap-3 rounded-[9px] border border-[var(--warn-border)] bg-[var(--warn-bg)] p-3">
+                  <div key={item.id} className={styles.handoffItem}>
                     <ContactAvatar
                       name={item.contact_name ?? item.contact_phone}
                       src={item.avatar_url}
-                      className="size-9 border-[var(--warn-border)] text-xs text-[var(--warn)]"
+                      className={`${styles.handoffAvatar} text-xs text-[var(--warn)]`}
                     />
-                    <div className="min-w-0 flex-1">
+                    <div className={styles.handoffMeta}>
                       <strong className="block truncate text-sm">{item.contact_name ?? item.contact_phone}</strong>
                       <span className="text-xs text-[var(--warn-muted)]">
                         {handoffReasonLabel(item.handoff_reason)} · {waitingLabel(Number(item.waiting_minutes))}
@@ -184,7 +181,7 @@ export default function Overview() {
                 ))}
               </div>
             )}
-            <p className="sub mt-4 border-t border-[var(--border)] pt-4">
+            <p className={`sub ${styles.handoffNote}`}>
               Mais antiga: {waitingLabel(Number(data.counts.oldest_handoff_minutes))}.
               {hasWorkspaceScope
                 ? " O atendente responsável também é avisado no WhatsApp da empresa."

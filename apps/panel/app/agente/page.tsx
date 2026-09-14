@@ -5,6 +5,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { usePermission } from "@/lib/use-permission";
+import styles from "../channels-ai.module.css";
 
 type AgentForm = {
   systemPrompt: string;
@@ -177,7 +178,7 @@ export default function Agent() {
 
 
   return (
-    <Shell>
+    <Shell><div className={`${styles.channelsAiPage} channels-ai-page`}>
       <header className="pagehead">
         <div>
           <h1>Agente principal</h1>
@@ -202,7 +203,7 @@ export default function Agent() {
               </select>
             </label>
           ) : null}
-          <span className={`mono rounded-full border px-3 py-2 text-[10px] font-semibold uppercase tracking-[.12em] ${form?.isActive ? "border-[var(--border-ai)] text-[var(--accent-soft)]" : "border-[var(--warn-border)] text-[var(--warn)]"}`}>
+          <span className={`mono rounded-full border px-3 py-2 type-caption font-semibold uppercase tracking-[.12em] ${form?.isActive ? "border-[var(--border-ai)] text-[var(--accent-soft)]" : "border-[var(--warn-border)] text-[var(--warn)]"}`}>
             {form?.isActive ? "IA ligada" : "IA desligada"}
           </span>
           <button type="button" className={`btn active:scale-[.98] ${form?.isActive ? "warn" : "primary"}`} disabled={!canManage || !form || changingStatus || targetNeedsOverride} onClick={toggleAgent}>
@@ -234,23 +235,23 @@ export default function Agent() {
       {loaded && form && !canManage ? <p className="sub mb-4" role="status">Acesso somente leitura. As configurações e o estado da IA não podem ser alterados.</p> : null}
 
       {!loaded ? (
-        <div className="skeleton h-96" aria-hidden="true" />
+        <div className="skeleton channels-ai-skeleton--large" aria-hidden="true" />
       ) : !form ? (
         <p className="error" role="alert">{state}</p>
       ) : (
         <fieldset className="contents" disabled={!canManage}>
           <div className="agent-layout">
             <section className="agent-main">
-              <div className="flex min-h-[520px] flex-col">
-                <div className="cardtitle">
-                  <span><label htmlFor="agent-system-prompt">Instruções do agente</label> <small className="mono ml-2 text-[10px] text-[var(--faint)]">system_prompt</small></span>
-                  <span className="mono text-[10px] text-[var(--faint)]">{form.systemPrompt.length} caracteres</span>
+              <div className="flex channels-ai-agent-editor flex-col">
+                <div className="cardtitle channels-ai-section-title">
+                  <span><label htmlFor="agent-system-prompt">Instruções do agente</label> <small className="mono ml-2 type-caption text-[var(--faint)]">system_prompt</small></span>
+                  <span className="mono type-caption text-[var(--faint)]">{form.systemPrompt.length} caracteres</span>
                 </div>
-                <textarea id="agent-system-prompt" className="input min-h-96 flex-1 resize-none leading-relaxed" value={form.systemPrompt} onChange={(event) => change({ systemPrompt: event.target.value })} />
+                <textarea id="agent-system-prompt" className="input channels-ai-prompt flex-1 resize-none leading-relaxed" value={form.systemPrompt} onChange={(event) => change({ systemPrompt: event.target.value })} />
                 <p className="sub mt-3">Proteções contra injeção de prompt, fuga de contexto e exposição de dados continuam ativas automaticamente. O comportamento do atendimento vem do que você escrever aqui.</p>
               </div>
               <div className="line-section grid gap-4">
-                <div className="cardtitle mb-0">Ferramentas habilitadas</div>
+                <div className="cardtitle channels-ai-section-title">Ferramentas habilitadas</div>
                 <p className="sub">O agente só enxerga e executa as ferramentas selecionadas.</p>
                 <div className="grid gap-2 md:grid-cols-2">
                   {availableTools.map((tool) => (
@@ -260,16 +261,16 @@ export default function Agent() {
                     </label>
                   ))}
                 </div>
-                <div className="cardtitle mb-0 mt-4">Respostas para mídia</div>
-                <Field label="Áudio"><textarea className="input min-h-20 resize-y" value={form.mediaFallbackAudio} onChange={(event) => change({ mediaFallbackAudio: event.target.value })} /></Field>
-                <Field label="Imagem"><textarea className="input min-h-20 resize-y" value={form.mediaFallbackImage} onChange={(event) => change({ mediaFallbackImage: event.target.value })} /></Field>
-                <Field label="Documento"><textarea className="input min-h-20 resize-y" value={form.mediaFallbackDocument} onChange={(event) => change({ mediaFallbackDocument: event.target.value })} /></Field>
+                <div className="cardtitle channels-ai-section-title">Respostas para mídia</div>
+                <Field label="Áudio"><textarea className="input channels-ai-textarea-compact resize-y" value={form.mediaFallbackAudio} onChange={(event) => change({ mediaFallbackAudio: event.target.value })} /></Field>
+                <Field label="Imagem"><textarea className="input channels-ai-textarea-compact resize-y" value={form.mediaFallbackImage} onChange={(event) => change({ mediaFallbackImage: event.target.value })} /></Field>
+                <Field label="Documento"><textarea className="input channels-ai-textarea-compact resize-y" value={form.mediaFallbackDocument} onChange={(event) => change({ mediaFallbackDocument: event.target.value })} /></Field>
               </div>
             </section>
 
             <aside className="agent-side">
               <section className="grid gap-4">
-                <div className="cardtitle mb-0">OpenRouter</div>
+                <div className="cardtitle channels-ai-section-title">OpenRouter</div>
                 <Field label="Provider"><input className="input mono text-xs" placeholder="anthropic, openai, google..." value={form.openRouterProvider} onChange={(event) => change({ openRouterProvider: event.target.value })} /></Field>
                 <Field label="Modelo"><input className="input mono text-xs" value={form.aiModel} onChange={(event) => change({ aiModel: event.target.value })} /></Field>
                 <Field label="Chave da API"><input className="input mono text-xs" type="password" autoComplete="new-password" placeholder={form.hasOpenRouterApiKey ? "Chave configurada · digite para substituir" : "sk-or-v1-..."} value={form.openRouterApiKey} onChange={(event) => change({ openRouterApiKey: event.target.value, clearOpenRouterApiKey: false })} /></Field>
@@ -283,7 +284,7 @@ export default function Agent() {
                 <p className="sub">A chave é criptografada no servidor e nunca é retornada ao navegador.</p>
               </section>
               <section className="line-section grid gap-5">
-                <div className="cardtitle mb-0">Parâmetros</div>
+                <div className="cardtitle channels-ai-section-title">Parâmetros</div>
                 <Field label="Nível de raciocínio">
                   <select className="input" value={form.reasoningEffort} onChange={(event) => change({ reasoningEffort: event.target.value as AgentForm["reasoningEffort"] })}>
                     <option value="low">Baixo, mais rápido</option>
@@ -308,7 +309,7 @@ export default function Agent() {
       )}
 
 
-    </Shell>
+    </div></Shell>
   );
 }
 

@@ -6,8 +6,8 @@ export function LoadingCards({ label = "Carregando conteúdo" }: { label?: strin
       <span className="sr-only">{label}</span>
       {[1, 2, 3, 4].map((item) => (
         <div className="card" key={item} aria-hidden="true">
-          <div className="skeleton" style={{ height: 14, width: "48%" }} />
-          <div className="skeleton" style={{ height: 34, width: "68%", marginTop: 18 }} />
+          <div className="loading-cards__line loading-cards__line--wide" />
+          <div className="loading-cards__line loading-cards__line--tall" />
         </div>
       ))}
     </div>

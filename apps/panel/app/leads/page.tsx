@@ -18,6 +18,7 @@ import { applyLeadSavedViewFilters, leadFiltersForSavedView, useCaseOrganization
 import { useRealtimeSignals } from "@/lib/realtime";
 import { hasWorkspaceWideCaseScope, type PanelSession } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
+import { Button, Select } from "@/components/ui";
 
 type Option = { id: string; nome: string };
 type Qualification = {
@@ -138,12 +139,12 @@ export default function LeadsPage() {
     <div className="leads-page">
     <header className="leads-page__header">
       <div><h1>{hasWorkspaceScope ? "Leads" : "Meus leads"}</h1><p>{hasWorkspaceScope ? "Qualificação contextual, decisão humana e reuniões em um só fluxo." : "Leads atribuídos a você, com qualificação, histórico e próximas ações."}</p></div>
-      <div className="leads-page__actions">
+      <div className="leads-page__actions flex min-h-8 flex-nowrap items-center">
         <SavedViewsControl resource="leads" filters={leadFiltersForSavedView(filters)} onApply={applySavedFilters} />
-        <button type="button" className="btn" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>Filtros{activeFilterCount ? ` (${activeFilterCount})` : ""}</button>
+        <Button aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>Filtros{activeFilterCount ? ` (${activeFilterCount})` : ""}</Button>
         <TagCatalogSettings />
         <BulkLeadActions selected={selectedItems} onClear={() => setSelectedIds(new Set())} onChanged={mutate} />
-        <span className="mono text-[10.5px] text-[var(--text-6)]" role="status" aria-live="polite">{loading ? "carregando…" : `${leads.length} resultado(s)`}</span>
+        <span className="crm-meta mono" role="status" aria-live="polite">{loading ? "carregando…" : `${leads.length} resultado(s)`}</span>
       </div>
     </header>
     {filtersOpen ? <section className="leads-filters" aria-label="Filtros de leads">
@@ -157,7 +158,7 @@ export default function LeadsPage() {
     <section className="leads-table-surface responsive-table-wrap overflow-y-auto">
       {loading ? <div className="grid gap-2 p-4" role="status" aria-label="Carregando leads">{[1, 2, 3, 4].map((item) => <div key={item} className="skeleton h-12" aria-hidden="true" />)}</div>
         : leads.length === 0 ? <Empty>Nenhum lead corresponde aos filtros.</Empty>
-          : <table className={`responsive-table leads-table w-full whitespace-nowrap ${canReadFollowUp ? "min-w-[980px]" : "min-w-[780px]"} border-collapse text-left`}>
+          : <table className={`responsive-table leads-table crm-lead-table whitespace-nowrap ${canReadFollowUp ? "crm-lead-table--follow-up" : "crm-lead-table--basic"}`}>
             <thead><tr>{["Lead", "Etapa", "Contexto", ...(canReadFollowUp ? ["Acompanhamento"] : []), "Atualizado", "Ações"].map((label) => <th key={label}>{label}</th>)}</tr></thead>
             <tbody>{leads.map((lead) => <tr key={lead.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--active)]">
               <td data-label="Lead">
@@ -177,7 +178,7 @@ export default function LeadsPage() {
                   {!lead.qualificacao && canQualifyLeads ? (
                     <button
                       type="button"
-                      className="btn primary min-h-8 px-2.5 py-1.5 text-[11px]"
+                      className="btn primary crm-compact-button"
                       onClick={() => void qualifyLead(lead)}
                       disabled={qualifyingLeadId !== null}
                     >
@@ -185,7 +186,7 @@ export default function LeadsPage() {
                       {qualifyingLeadId === lead.id ? "Qualificando…" : "Qualificar com IA"}
                     </button>
                   ) : null}
-                  <Link className="btn min-h-8 px-2.5 py-1.5 text-[11px]" href={`/leads/${lead.id}`}>Ver detalhes</Link>
+                  <Link className="btn crm-compact-button" href={`/leads/${lead.id}`}>Ver detalhes</Link>
                 </div>
               </td>
             </tr>)}</tbody>
@@ -196,5 +197,5 @@ export default function LeadsPage() {
 }
 
 function Filter({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Option[] }) {
-  return <label className="field"><span className="label">{label}</span><select className="input" value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option.id} value={option.id}>{option.nome}</option>)}</select></label>;
+  return <label className="field"><span className="label">{label}</span><Select value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option.id} value={option.id}>{option.nome}</option>)}</Select></label>;
 }

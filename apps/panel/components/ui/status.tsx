@@ -1,0 +1,6 @@
+import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
+
+type StateProps = HTMLAttributes<HTMLDivElement>;
+export const EmptyState = forwardRef<HTMLDivElement, StateProps & { title?: ReactNode }>(function EmptyState({ title, children, className = "", ...props }, ref) { return <div {...props} ref={ref} className={`empty${className ? ` ${className}` : ""}`} role="status">{title && <strong>{title}</strong>}{children && <div>{children}</div>}</div>; });
+export const ErrorState = forwardRef<HTMLDivElement, StateProps & { title?: ReactNode }>(function ErrorState({ title = "Algo deu errado", children, className = "", ...props }, ref) { return <div {...props} ref={ref} className={`error${className ? ` ${className}` : ""}`} role="alert"><strong>{title}</strong>{children && <div>{children}</div>}</div>; });
+export const LoadingState = forwardRef<HTMLDivElement, StateProps & { label?: string }>(function LoadingState({ label = "Carregando conteúdo", className = "", ...props }, ref) { return <div {...props} ref={ref} className={`loading-state${className ? ` ${className}` : ""}`} role="status" aria-live="polite" aria-busy="true"><span className="sr-only">{label}</span><div className="skeleton" aria-hidden="true" /></div>; });

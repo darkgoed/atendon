@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const css = readFileSync(resolve(__dirname, '../app/globals.css'), 'utf8');
+const css = [
+  'tokens.css', 'base.css', 'components.css', 'shell.css',
+  ...['feedback','agenda','conversations','pipeline','auth','post-sales','agenda-calendar','leads'].map((name) => `domains/${name}.css`)
+].map((file) => readFileSync(resolve(__dirname, `../styles/${file}`), 'utf8')).join('\n');
 
 describe('font mono token', () => {
   it('uses the replacement token and removes the legacy mono family from CSS', () => {

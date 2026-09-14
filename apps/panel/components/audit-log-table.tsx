@@ -1,4 +1,6 @@
 import { Empty } from "@/components/page-state";
+import { TableScroll } from "@/components/ui";
+import styles from "@/components/admin/admin.module.css";
 import { ReadableDetails } from "@/components/readable-details";
 import { actorScopeLabel, auditActionLabel, auditResourceLabel } from "@/lib/labels";
 import type { AuditLogEntry } from "@/lib/audit-ui";
@@ -9,7 +11,7 @@ export function AuditLogTable({ logs, showWorkspace = false }: { logs: readonly 
   if (logs.length === 0) return <Empty>Nenhum evento encontrado para o filtro atual.</Empty>;
 
   return (
-    <div className="admin-table-wrap responsive-table-wrap">
+    <TableScroll className={styles.tableScroll}>
       <table className="admin-table responsive-table">
         <thead>
           <tr>
@@ -45,6 +47,6 @@ export function AuditLogTable({ logs, showWorkspace = false }: { logs: readonly 
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

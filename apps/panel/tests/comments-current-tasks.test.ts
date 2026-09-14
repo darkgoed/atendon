@@ -2,6 +2,9 @@ import { readFile } from "node:fs/promises";
 import { beforeAll, describe, expect, it } from "vitest";
 
 let agendaActions = "";
+const styleFiles = ["tokens.css", "base.css", "components.css", "shell.css", "domains/feedback.css", "domains/agenda.css", "domains/conversations.css", "domains/pipeline.css", "domains/auth.css", "domains/post-sales.css", "domains/agenda-calendar.css", "domains/leads.css"];
+const readStyleSource = () => Promise.all(styleFiles.map((file) => readFile(new URL(`../styles/${file}`, import.meta.url), "utf8"))).then((sources) => sources.join("\n"));
+
 let agendaDetail = "";
 let alerts = "";
 let configurations = "";
@@ -17,7 +20,7 @@ beforeAll(async () => {
     readFile(new URL("../app/alertas/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/configuracoes/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/conversas/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readStyleSource(),
     readFile(new URL("../app/root/workspaces/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/panel-manifest.ts", import.meta.url), "utf8")
   ]);

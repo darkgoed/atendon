@@ -1,7 +1,7 @@
 "use client";
 
 import { AirplaneTilt, ArrowClockwise, Plus, Sparkle, Trash, WarningCircle, X } from "@phosphor-icons/react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { ModalDialog } from "../modal-dialog";
 import {
@@ -22,13 +22,14 @@ import {
 } from "../../lib/tripz-ai";
 import { TripzConversationView } from "./conversation-view";
 import { TripzHistorySidebar } from "./history-sidebar";
+import styles from "./tripz-ai.module.css";
 import { TripzProposalReview } from "./proposal-review";
 
 function readableError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-function WorkspaceEmpty({ creating, onCreate, onOpenHistory }: { creating: boolean; onCreate: () => void; onOpenHistory: () => void }) {
+function WorkspaceEmpty({ creating, onCreate, onOpenHistory }: { creating: boolean; onCreate: () => void; onOpenHistory: (event: React.MouseEvent<HTMLElement>) => void }) {
   return (
     <section className="relative grid min-h-0 min-w-0 place-items-center overflow-y-auto bg-[var(--app)] px-5 py-12" aria-label="Tripz IA sem proposta selecionada">
       <button type="button" className="absolute left-3 top-3 grid h-10 w-10 place-items-center border border-[var(--border)] bg-[var(--panel)] text-[var(--muted)] transition-[background,transform] hover:bg-[var(--active)] active:translate-y-px lg:hidden" onClick={onOpenHistory} aria-label="Abrir histórico">
@@ -55,6 +56,11 @@ function WorkspaceEmpty({ creating, onCreate, onOpenHistory }: { creating: boole
 export function TripzWorkspace() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const historyTriggerRef = useRef<HTMLElement>(null);
+  const openHistory = useCallback((event: React.SyntheticEvent<HTMLElement>) => {
+    historyTriggerRef.current = event.currentTarget;
+    setHistoryOpen(true);
+  }, []);
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TripzConversation | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -293,7 +299,7 @@ export function TripzWorkspace() {
   };
 
   return (
-    <div className="relative grid h-full min-h-0 w-full grid-cols-1 overflow-hidden bg-[var(--app)] lg:grid-cols-[17.5rem_minmax(0,1fr)]">
+    <div className={styles.workspace}>
       <TripzHistorySidebar
         conversations={conversations}
         selectedId={selectedId}
@@ -304,6 +310,7 @@ export function TripzWorkspace() {
         hasMore={Boolean(nextHistoryCursor)}
         mobileOpen={historyOpen}
         onCloseMobile={() => setHistoryOpen(false)}
+        mobileTriggerRef={historyTriggerRef}
         onCreate={() => void createConversation()}
         onSelect={openConversation}
         onDelete={setDeleteTarget}
@@ -327,14 +334,14 @@ export function TripzWorkspace() {
           proposal={proposal}
           loading={detailLoading}
           error={detailError ? readableError(detailError, "Falha ao carregar a conversa.") : undefined}
-          onOpenHistory={() => setHistoryOpen(true)}
+          onOpenHistory={openHistory}
           onOpenReview={() => setReviewOpen(true)}
           onRetry={() => void refreshConversation()}
           onRetryTurn={retryTurn}
           onSent={refreshConversation}
         />
       ) : (
-        <WorkspaceEmpty creating={creating} onCreate={() => void createConversation()} onOpenHistory={() => setHistoryOpen(true)} />
+        <WorkspaceEmpty creating={creating} onCreate={() => void createConversation()} onOpenHistory={openHistory} />
       )}
 
       {reviewOpen && selectedId ? (

@@ -115,9 +115,12 @@ function SlotCell({ slot, timezone, isToday, availabilityFailed, items, dragging
     <div
       onDragOver={(event) => { if (acceptsDrop) event.preventDefault(); }}
       onDrop={() => { if (acceptsDrop) void onDrop(slot.start); }}
-      role="button" tabIndex={canSchedule ? 0 : -1}
-      onKeyDown={(event) => { if (canSchedule && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onSelectSlot?.(slot); } }}
-      onClick={(event) => { if (canSchedule && !(event.target as HTMLElement).closest("article,button,a")) onSelectSlot?.(slot); }}
+      {...(items.length === 0 && canSchedule ? {
+        role: "button" as const,
+        tabIndex: 0,
+        onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectSlot?.(slot); } },
+        onClick: () => onSelectSlot?.(slot)
+      } : {})}
       className={`agenda-cell agenda-cell--open ${slot.vagas > 0 ? "" : "agenda-cell--full"} ${canSchedule ? "agenda-cell--clickable" : ""} ${acceptsDrop ? "agenda-cell--drop" : ""} ${isToday ? "is-today" : ""}`}
     >
       {nowPosition !== null ? <span className="agenda-now-indicator" style={{ "--agenda-now": `${nowPosition}%` } as React.CSSProperties} aria-hidden="true" /> : null}
@@ -133,12 +136,12 @@ function SlotCell({ slot, timezone, isToday, availabilityFailed, items, dragging
             onDragEnd={() => onDrag("")}
             onClick={() => onOpen(item)}
             style={{ "--appointment-color": item.responsavel?.cor_agenda ?? "var(--primary)" } as React.CSSProperties}
-            className={`agenda-appointment agenda-appointment--${item.status} cursor-pointer ${isAppointmentResultPending(item, now) ? "ring-1 ring-inset ring-[var(--warn)]" : ""} ${isActiveAppointment(item.status) && canReschedule ? "cursor-grab active:cursor-grabbing" : ""}`}
+            className={`agenda-appointment agenda-appointment--${item.status} ${isAppointmentResultPending(item, now) ? "agenda-appointment--pending" : ""} ${isActiveAppointment(item.status) && canReschedule ? "agenda-appointment--draggable" : ""}`}
           >
             <button type="button" className="agenda-appointment__contact" onClick={(event) => { event.stopPropagation(); onOpen(item); }} aria-label={`Abrir detalhes de ${item.lead_nome ?? item.lead_telefone}`}>{item.lead_nome ?? item.lead_telefone}</button>
             <span className="agenda-appointment__time">{new Date(item.start).toLocaleTimeString("pt-BR", { timeZone: timezone, hour: "2-digit", minute: "2-digit" })} — {new Date(item.end).toLocaleTimeString("pt-BR", { timeZone: timezone, hour: "2-digit", minute: "2-digit" })}</span>
             <span className={`agenda-appointment__status ${isAppointmentResultPending(item, now) ? "text-[var(--warn)]" : ""}`}>{isAppointmentResultPending(item, now) ? "Resultado pendente" : APPOINTMENT_STATUS_LABELS[item.status]}</span>
-            <span className="truncate text-[10px] text-[var(--faint)]">{item.responsavel?.email ?? "Sem responsável"}</span>
+            <span className="truncate type-caption text-[var(--faint)]">{item.responsavel?.email ?? "Sem responsável"}</span>
           </article>
         ))}
       </div>

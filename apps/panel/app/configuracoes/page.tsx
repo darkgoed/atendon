@@ -28,6 +28,8 @@ import { usePermission } from "@/lib/use-permission";
 import type { PanelNotificationPreferencesResponse } from "@/lib/message-notifications";
 import { WebPushSettings } from "@/components/web-push-settings";
 import { ConversationQueueManager } from "@/components/conversation-queue-manager";
+import { Button, Field as UiField, Input } from "@/components/ui";
+import styles from "@/components/settings-panels.module.css";
 
 type CatalogResource = "categorias" | "parceiros" | "unidades";
 type Resource = CatalogResource | "workspace" | "attendants" | "conversation-queues" | "atendon-meet" | "google-meet" | "signature" | "panel-notifications" | "agenda-notifications";
@@ -229,25 +231,25 @@ export default function ConfigPage() {
           <p>Conexões, equipe, IA e regras operacionais em um único lugar.</p>
         </div>
         {catalogTabs.includes(resource as CatalogResource) && canManage ? (
-          <button type="button" className="btn primary" onClick={() => setEditing({})}>
+          <Button type="button" tone="primary" onClick={() => setEditing({})}>
             <Plus aria-hidden="true" />
             Novo cadastro
-          </button>
+          </Button>
         ) : null}
       </header>
 
       {visibleSettingsDestinations.length > 0 ? (
-        <section className="mb-7" aria-labelledby="settings-destinations-title">
-          <div className="mb-3 flex items-end justify-between gap-4">
+        <section className={styles.destinations} aria-labelledby="settings-destinations-title">
+          <div className={styles.destinationHeader}>
             <div>
               <span className="label">Administração</span>
               <h2 id="settings-destinations-title" className="mt-1 text-base">Áreas de configuração</h2>
             </div>
-            <span className="mono text-[10px] text-[var(--faint)]">{visibleSettingsDestinations.length} área(s)</span>
+            <span className="mono type-caption text-[var(--faint)]">{visibleSettingsDestinations.length} área(s)</span>
           </div>
-          <nav className="settings-destinations" aria-label="Áreas de configuração">
+          <nav className={styles.destinationGrid} aria-label="Áreas de configuração">
             {visibleSettingsDestinations.map(({ href, label, description, Icon }) => (
-              <Link key={href} href={href} className="settings-destination active:translate-y-px">
+              <Link key={href} href={href} className={styles.settingsDestination}>
                 <Icon size={19} aria-hidden="true" />
                 <span>
                   <strong>{label}</strong>
@@ -259,14 +261,14 @@ export default function ConfigPage() {
         </section>
       ) : null}
 
-      {visibleTabs.length > 0 ? <nav className="section-tabs mb-4 flex max-w-full gap-2 overflow-x-auto border-b border-[var(--border)]" aria-label="Configurações operacionais">
+      {visibleTabs.length > 0 ? <nav className={styles.tabs} aria-label="Configurações operacionais">
         {visibleTabs.map((tab) => (
           <button
             type="button"
             aria-pressed={resource === tab}
             key={tab}
             onClick={() => setResource(tab)}
-            className={`shrink-0 whitespace-nowrap border-b-2 px-4 py-3 text-sm ${resource === tab ? "border-[var(--accent)] text-[var(--accent-soft)]" : "border-transparent text-[var(--muted)]"}`}
+            className={`${styles.tab} ${resource === tab ? styles.tabActive : ""}`}
           >
             {resourceLabels[tab]}
           </button>
@@ -293,8 +295,8 @@ export default function ConfigPage() {
         {error ? <p className="error mb-4" role="alert">{error}</p> : null}
         {!canManage && !loading ? <p className="sub mb-4" role="status">Esta seção está disponível somente para consulta.</p> : null}
 
-        <div className={`grid gap-4${canManage ? " xl:grid-cols-[1fr_420px]" : ""}`}>
-        <section className="card responsive-table-wrap p-0" aria-label={resourceLabels[resource]}>
+        <div className={`${styles.catalogLayout} ${canManage ? styles.catalogLayoutManaged : ""}`}>
+        <section className="card responsive-table-wrap" aria-label={resourceLabels[resource]}>
           {loading ? (
             <div className="grid gap-2 p-4" aria-busy="true" aria-label="Carregando catálogo">
               {[1, 2, 3].map((item) => <div key={item} className="skeleton h-12" />)}
@@ -302,7 +304,7 @@ export default function ConfigPage() {
           ) : items.length === 0 ? (
             <Empty>Nenhum cadastro nesta seção.</Empty>
           ) : (
-            <table className={`responsive-table w-full text-left${canManage ? " min-w-[620px]" : " min-w-[520px]"}`}>
+            <table className={`responsive-table ${styles.catalogTable}`}>
               <thead>
                 <tr className="border-b border-[var(--border)] text-xs text-[var(--muted)]">
                   <th className="px-4 py-3">ID</th>
@@ -348,7 +350,7 @@ export default function ConfigPage() {
             onError={setError}
           />
         ) : (
-          <aside className="card hidden min-h-64 place-items-center text-center text-[var(--faint)] xl:grid">
+          <aside className={`card ${styles.editorPlaceholder}`}>
             Selecione um cadastro para editar<br />ou crie um novo.
           </aside>
         ) : null}
@@ -692,7 +694,7 @@ function PanelNotificationSettingsPanel() {
           <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
             {data.muted_conversations.map((conversation) => (
               <div key={conversation.id} className="flex items-center justify-between gap-4 py-3">
-                <div className="min-w-0"><strong className="block truncate text-sm">{conversation.contact_name?.trim() || conversation.contact_phone}</strong><span className="mono text-[10px] text-[var(--faint)]">{conversation.contact_phone}</span></div>
+                <div className="min-w-0"><strong className="block truncate text-sm">{conversation.contact_name?.trim() || conversation.contact_phone}</strong><span className="mono type-caption text-[var(--faint)]">{conversation.contact_phone}</span></div>
                 <button type="button" className="btn" onClick={() => void unmute(conversation.id)}>Reativar avisos</button>
               </div>
             ))}
@@ -971,8 +973,8 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
       {feedback ? <p className="mb-4 text-sm text-[var(--accent-soft)]" role="status">{feedback}</p> : null}
       {data?.attendants.length ? (
         <div className="responsive-table-wrap">
-          <table className="responsive-table w-full min-w-[760px] text-left text-xs">
-            <thead className="border-b border-[var(--border)] text-[10px] uppercase tracking-[.08em] text-[var(--faint)]">
+          <table className="responsive-table settings-table-minwidth w-full text-left text-xs">
+            <thead className="border-b border-[var(--border)] type-caption uppercase tracking-[.08em] text-[var(--faint)]">
               <tr>
                 <th className="pb-3 font-medium">No pool</th>
                 <th className="pb-3 font-medium">Atendente</th>
@@ -1002,7 +1004,7 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
                     </td>
                     <td data-label="Atendente" className="py-3">
                       <strong className="block text-sm">{member.email}{member.is_current ? " · você" : ""}</strong>
-                      <span className="mono text-[10px] uppercase tracking-[.08em] text-[var(--faint)]">{member.funcao}</span>
+                      <span className="mono type-caption uppercase tracking-[.08em] text-[var(--faint)]">{member.funcao}</span>
                     </td>
                     <td data-label="Cor na agenda" className="py-3">
                       {selected ? (
@@ -1018,10 +1020,10 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
                               [member.member_id]: event.target.value
                             }))}
                           />
-                          <span className="mono text-[10px] text-[var(--faint)]">{colorDraft}</span>
+                          <span className="mono type-caption text-[var(--faint)]">{colorDraft}</span>
                           <button
                             type="button"
-                            className="btn px-2 py-1 text-[10px]"
+                            className="btn px-2 py-1 type-caption"
                             disabled={
                               !canManage
                               || changingColorMemberId === member.member_id
@@ -1036,7 +1038,7 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
                     </td>
                     <td data-label="Disponibilidade" className="py-3">
                       {selected && member.availability_status ? (
-                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-medium ${available ? "border-[var(--ok-border)] bg-[var(--ok-bg)] text-[var(--ok)]" : "border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn)]"}`}>
+                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 type-caption font-medium ${available ? "border-[var(--ok-border)] bg-[var(--ok-bg)] text-[var(--ok)]" : "border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn)]"}`}>
                           <i className={`size-1.5 rounded-full ${available ? "bg-[var(--ok)]" : "bg-[var(--warn)]"}`} aria-hidden="true" />
                           {availabilityLabel(member.availability_status)}
                         </span>
@@ -1045,8 +1047,8 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
                     <td data-label="Carga ativa" className="mono py-3 text-right font-semibold">{member.active_appointments}</td>
                     <td data-label="Controle" className="py-3">
                       <div className="flex justify-end gap-2">
-                        <button type="button" className="btn px-2 py-1 text-[10px]" disabled={!controls.canSetAvailable} onClick={() => void setAvailability(member, "available")}>Disponível</button>
-                        <button type="button" className="btn warn px-2 py-1 text-[10px]" disabled={!controls.canSetUnavailable} onClick={() => void setAvailability(member, "unavailable")}>Indisponível</button>
+                        <button type="button" className="btn px-2 py-1 type-caption" disabled={!controls.canSetAvailable} onClick={() => void setAvailability(member, "available")}>Disponível</button>
+                        <button type="button" className="btn warn px-2 py-1 type-caption" disabled={!controls.canSetUnavailable} onClick={() => void setAvailability(member, "unavailable")}>Indisponível</button>
                       </div>
                     </td>
                   </tr>
@@ -1322,14 +1324,14 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
         </fieldset>
 
         <div className="grid gap-5 md:grid-cols-2">
-          <Field label="Momento da criação">
-            <input className="input" value="Ao confirmar o agendamento" readOnly />
+          <UiField label="Momento da criação">
+            <Input value="Ao confirmar o agendamento" readOnly />
             <span className="sub text-xs">O mesmo link é salvo antes da confirmação chegar ao contato.</span>
-          </Field>
-          <Field label="Conta organizadora">
-            <input className="input" value={data?.settings.oauth_email ?? "Conecte uma conta Google"} readOnly />
+          </UiField>
+          <UiField label="Conta organizadora">
+            <Input value={data?.settings.oauth_email ?? "Conecte uma conta Google"} readOnly />
             <span className="sub text-xs">Definida automaticamente pelo login OAuth.</span>
-          </Field>
+          </UiField>
         </div>
 
         <div className="mt-7 border-t border-[var(--border)] pt-5">
@@ -1405,25 +1407,21 @@ function Editor({ resource, item, onCancel, onSaved, onError }: { resource: Cata
   }
 
   return (
-    <form className="card" onSubmit={submit}>
+    <form className={`card ${styles.form}`} onSubmit={submit}>
       <div className="cardtitle">{existing ? "Editar" : "Novo"} {resource.slice(0, -1)}</div>
-      <div className="grid gap-4">
-        <Field label="ID (slug)"><input name="id" className="input" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" defaultValue={item.id ?? ""} readOnly={existing} /></Field>
-        <Field label="Nome"><input name="nome" className="input" required defaultValue={item.nome ?? ""} /></Field>
+      <div className={styles.fieldGrid}>
+        <UiField label="ID (slug)"><Input name="id" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" defaultValue={item.id ?? ""} readOnly={existing} /></UiField>
+        <UiField label="Nome"><Input name="nome" required defaultValue={item.nome ?? ""} /></UiField>
         {resource === "categorias" ? <Toggle name="ativa" label="Categoria ativa" checked={item.ativa ?? true} /> : null}
-        {resource === "parceiros" ? <><Field label="Ordem de prioridade"><input name="ordem_prioridade" className="input" type="number" min="1" required defaultValue={item.ordem_prioridade ?? 1} /></Field><Field label="Link da proposta"><input name="link_proposta" className="input" type="url" required defaultValue={item.link_proposta ?? ""} /></Field><Toggle name="ativo" label="Parceiro ativo" checked={item.ativo ?? true} /></> : null}
-        {resource === "unidades" ? <><div className="grid grid-cols-2 gap-3"><Field label="Abertura"><input name="horario_abertura" className="input" type="time" required defaultValue={item.horario_abertura ?? "09:00"} /></Field><Field label="Fechamento"><input name="horario_fechamento" className="input" type="time" required defaultValue={item.horario_fechamento ?? "18:00"} /></Field></div><Field label="Dias de funcionamento"><div className="grid grid-cols-4 gap-2">{["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((label, index) => <label key={label} className="flex items-center gap-2 rounded border border-[var(--border)] p-2 text-xs"><input type="checkbox" name="dias_funcionamento" value={index} defaultChecked={(item.dias_funcionamento ?? [1, 2, 3, 4, 5]).includes(index)} />{label}</label>)}</div></Field><div className="grid grid-cols-2 gap-3"><Field label="Duração (min)"><input name="duracao_slot_min" className="input" type="number" min="1" required defaultValue={item.duracao_slot_min ?? 60} /></Field><Field label="Capacidade"><input name="capacidade_simultanea" className="input" type="number" min="1" required defaultValue={item.capacidade_simultanea ?? 1} /></Field></div></> : null}
+        {resource === "parceiros" ? <><UiField label="Ordem de prioridade"><Input name="ordem_prioridade" type="number" min="1" required defaultValue={item.ordem_prioridade ?? 1} /></UiField><UiField label="Link da proposta"><Input name="link_proposta" type="url" required defaultValue={item.link_proposta ?? ""} /></UiField><Toggle name="ativo" label="Parceiro ativo" checked={item.ativo ?? true} /></> : null}
+        {resource === "unidades" ? <><div className={styles.fieldGrid}><UiField label="Abertura"><Input name="horario_abertura" type="time" required defaultValue={item.horario_abertura ?? "09:00"} /></UiField><UiField label="Fechamento"><Input name="horario_fechamento" type="time" required defaultValue={item.horario_fechamento ?? "18:00"} /></UiField></div><UiField label="Dias de funcionamento"><div className={styles.choiceGrid}>{["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((label, index) => <label key={label} className={styles.choice}><input type="checkbox" name="dias_funcionamento" value={index} defaultChecked={(item.dias_funcionamento ?? [1, 2, 3, 4, 5]).includes(index)} />{label}</label>)}</div></UiField><div className={styles.fieldGrid}><UiField label="Duração (min)"><Input name="duracao_slot_min" type="number" min="1" required defaultValue={item.duracao_slot_min ?? 60} /></UiField><UiField label="Capacidade"><Input name="capacidade_simultanea" type="number" min="1" required defaultValue={item.capacidade_simultanea ?? 1} /></UiField></div></> : null}
       </div>
-      <div className="mt-5 flex justify-end gap-2">
-        <button type="button" className="btn" onClick={onCancel}>Cancelar</button>
-        <button className="btn primary" disabled={saving}>{saving ? "Salvando…" : "Salvar"}</button>
+      <div className={styles.saveActions}>
+        <Button type="button" onClick={onCancel}>Cancelar</Button>
+        <Button type="submit" tone="primary" disabled={saving}>{saving ? "Salvando…" : "Salvar"}</Button>
       </div>
     </form>
   );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="field"><span className="label">{label}</span>{children}</label>;
 }
 
 function Toggle({ name, label, checked, disabled=false }: { name: string; label: string; checked: boolean; disabled?:boolean }) {

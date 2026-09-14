@@ -6,22 +6,42 @@
 <meta http-equiv="refresh" content="5" />
 <title>AtendON — Atualizando</title>
 <style>
-  :root { color-scheme: dark; }
+  /* Local outage tokens mirror apps/panel/styles/tokens.css. This page must
+     remain self-contained because it is served without the panel runtime. */
+  :root {
+    color-scheme: dark;
+    --ink: #101719;
+    --surface: #172124;
+    --petrol: #0e7490;
+    --petrol-bright: #67e8f9;
+    --paper: #f4f3ee;
+    --text: #f3f5f3;
+    --muted: #a1afab;
+    --border: #2d3b3f;
+    --border-strong: #3b4b50;
+    --radius: 8px;
+    --space: 16px;
+    --font-sans: "Manrope", system-ui, sans-serif;
+  }
   * { box-sizing: border-box; }
   body { margin:0; min-height:100dvh; display:grid; place-items:center; padding:32px 20px;
-    background:#0b0c0f; color:#e7e7ea; font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; }
-  .card { width:min(480px,100%); display:grid; gap:16px; padding:28px; border:1px solid #26272c; }
-  .brand { display:flex; align-items:center; gap:10px; font-size:16px; font-weight:700; }
-  .brand svg { width:26px; height:21px; color:#e7e7ea; }
-  .spinner { width:26px; height:26px; border:2px solid #26272c; border-top-color:#7c7cff; border-radius:50%; animation:spin 0.8s linear infinite; }
+    background:var(--ink); color:var(--text); font:14px/1.5 var(--font-sans); }
+  .card { width:min(480px,100%); display:grid; gap:var(--space); padding:clamp(24px,5vw,32px); background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:0 12px 32px rgb(0 0 0 / .22); }
+  .brand { display:flex; align-items:center; gap:10px; color:var(--petrol-bright); font-size:16px; font-weight:700; }
+  .brand svg { width:26px; height:21px; color:currentColor; }
+  .spinner { width:26px; height:26px; border:2px solid var(--border); border-top-color:var(--petrol-bright); border-radius:50%; animation:spin 0.8s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
-  .eyebrow { text-transform:uppercase; letter-spacing:.1em; font-size:11px; font-weight:700; color:#9a9aa2; }
-  h1 { margin:0; font-size:26px; line-height:1.1; }
-  p { margin:0; color:#9a9aa2; }
+  .eyebrow { text-transform:uppercase; letter-spacing:.1em; font-size:12px; line-height:1.45; font-weight:700; color:var(--muted); }
+  h1 { margin:0; color:var(--text); font-size:clamp(24px,5vw,28px); line-height:1.2; }
+  p { margin:0; color:var(--muted); }
   .actions { display:flex; flex-wrap:wrap; gap:10px; padding-top:4px; }
-  .btn { display:inline-flex; align-items:center; gap:7px; border:1px solid #3a3b42; padding:9px 16px;
-    color:#e7e7ea; text-decoration:none; font-size:13px; font-weight:600; }
-  .btn.primary { background:#1f2937; border-color:#7c7cff; color:#c7c7ff; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:44px; border:1px solid var(--border-strong); border-radius:6px; padding:10px 16px;
+    color:var(--text); text-decoration:none; font-size:13px; font-weight:600; }
+  .btn.primary { background:var(--petrol); border-color:var(--petrol); color:var(--paper); }
+  :where(.btn):focus-visible { outline:3px solid currentColor; outline-offset:3px; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important; scroll-behavior:auto !important; }
+  }
 </style>
 </head>
 <body>
@@ -29,7 +49,7 @@
     <div class="brand">
       <svg viewBox="0 0 40 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <path d="M14.5 3.5a12.5 12.5 0 1 0 0 25 12.5 12.5 0 0 0 0-25Zm0 5.25a7.25 7.25 0 1 1 0 14.5 7.25 7.25 0 0 1 0-14.5Z" fill="currentColor" fill-rule="evenodd" />
-        <path d="M26.5 5.25h13L33 16.5l-6.5-11.25Z" fill="#7c7cff" />
+        <path d="M26.5 5.25h13L33 16.5l-6.5-11.25Z" fill="currentColor" />
       </svg>
       <span>AtendON</span>
     </div>

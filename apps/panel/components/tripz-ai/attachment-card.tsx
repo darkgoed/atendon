@@ -9,6 +9,7 @@ import {
   tripzAttachmentStatusLabel,
   type TripzAttachment
 } from "../../lib/tripz-ai";
+import styles from "./tripz-ai.module.css";
 
 export function TripzAttachmentCard({
   attachment,
@@ -23,7 +24,7 @@ export function TripzAttachmentCard({
 
   return (
     <a
-      className="group grid min-w-0 grid-cols-[3.25rem_minmax(0,1fr)] overflow-hidden border border-[var(--border)] bg-[var(--panel-secondary)] text-left text-[var(--body)] no-underline transition-[border-color,transform,opacity] duration-200 hover:border-[var(--strong)] active:translate-y-px"
+      className={styles.attachmentPreview}
       href={href}
       target="_blank"
       rel="noreferrer"

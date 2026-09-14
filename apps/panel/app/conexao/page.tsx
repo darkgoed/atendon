@@ -19,6 +19,8 @@ import {
   type ConnectionsResponse
 } from "@/lib/connections";
 import { usePermission } from "@/lib/use-permission";
+import { Button } from "@/components/ui/button";
+import styles from "../channels-ai.module.css";
 
 const POLL_INTERVAL_MS = 3_000;
 const MAX_BACKOFF_MS = 30_000;
@@ -308,32 +310,32 @@ export default function Connection() {
   const connectedCount = connections.filter((item) => item.status === "connected").length;
 
   return (
-    <Shell>
+    <Shell><div className={`${styles.channelsAiPage} channels-ai-page`}>
       <header className="pagehead">
         <div><h1>Conexão</h1><p>Vincule o WhatsApp usado pelo agente.</p></div>
         <div className="flex flex-wrap items-center gap-3">
           {loaded && connections.length ? (
-            <span className="mono rounded-md border border-[var(--border-ai)] px-3 py-2 text-[11px] text-[var(--accent-soft)]">
+            <span className="mono rounded-md border border-[var(--border-ai)] px-3 py-2 type-caption text-[var(--accent-soft)]">
               {connectedCount} de {connections.length} conectado{connections.length === 1 ? "" : "s"}
             </span>
           ) : null}
           {canManageConnection ? (
-            <button
+            <Button
               type="button"
-              className="btn"
+              className=""
               disabled={atLimit || adding}
               title={limitTitle}
               onClick={() => { setActionError(""); setNotice(""); setAddOpen(true); }}
             >
               <Plus size={16} aria-hidden="true" />
               Adicionar número
-            </button>
+            </Button>
           ) : <span className="text-sm text-[var(--muted)]" role="status">Acesso somente leitura. O gerenciamento das conexões está indisponível.</span>}
         </div>
       </header>
 
       {addOpen && canManageConnection ? (
-        <section className="card mb-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end" role="dialog" aria-labelledby="add-connection-title">
+        <section className="channels-ai-section channels-ai-form-grid mb-5" role="dialog" aria-labelledby="add-connection-title">
           <label className="field">
             <span id="add-connection-title" className="label">Rótulo do número</span>
             <input className="input" maxLength={60} value={newLabel} autoFocus onChange={(event) => setNewLabel(event.target.value)} placeholder="Ex.: Comercial" aria-label="Rótulo do número" />
@@ -349,7 +351,7 @@ export default function Connection() {
       {confirmingReconnect && canManageConnection && reconnectTarget ? (
         <section
           id="connection-reconnect-confirmation"
-          className="mb-5 grid gap-4 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+          className="channels-ai-alert mb-5"
           role="alertdialog"
           aria-labelledby="connection-reconnect-title"
           aria-describedby="connection-reconnect-description"
@@ -358,7 +360,7 @@ export default function Connection() {
             <Warning className="mt-0.5 shrink-0 text-[var(--warn)]" size={20} aria-hidden="true" />
             <div>
               <strong id="connection-reconnect-title" className="block text-sm text-[var(--text)]">Confirmar reconexão de “{reconnectTarget.label}”?</strong>
-              <p id="connection-reconnect-description" className="mt-1 max-w-[65ch] text-sm leading-relaxed text-[var(--warn-muted)]">
+              <p id="connection-reconnect-description" className="mt-1 channels-ai-reading-width text-sm leading-relaxed text-[var(--warn-muted)]">
                 A sessão atual poderá ser interrompida e um novo QR Code será gerado. O atendimento automático pode ficar indisponível até a leitura do novo código.
               </p>
               {actionError ? <p className="error mt-3" role="alert">{actionError}</p> : null}
@@ -375,14 +377,14 @@ export default function Connection() {
       ) : null}
 
       {confirmedAction ? (
-        <section className="mb-5 grid gap-4 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center" role="alertdialog" aria-labelledby="connection-action-title" aria-describedby="connection-action-description">
+        <section className="channels-ai-alert mb-5" role="alertdialog" aria-labelledby="connection-action-title" aria-describedby="connection-action-description">
           <div className="flex items-start gap-3">
             <Warning className="mt-0.5 shrink-0 text-[var(--warn)]" size={20} aria-hidden="true" />
             <div>
               <strong id="connection-action-title" className="block text-sm text-[var(--text)]">
                 {confirmedAction.kind === "promote" ? `Tornar “${confirmedAction.connection.label}” principal?` : `Remover “${confirmedAction.connection.label}”?`}
               </strong>
-              <p id="connection-action-description" className="mt-1 max-w-[65ch] text-sm leading-relaxed text-[var(--warn-muted)]">
+              <p id="connection-action-description" className="mt-1 channels-ai-reading-width text-sm leading-relaxed text-[var(--warn-muted)]">
                 {confirmedAction.kind === "promote"
                   ? "Os fluxos sem número escolhido passarão a usar esta conexão."
                   : "A conexão será arquivada, mas o histórico das conversas continuará disponível."}
@@ -418,7 +420,7 @@ export default function Connection() {
 
       {degraded ? (
         <section className="mb-5 flex flex-wrap items-center justify-between gap-4 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-4" role="status" aria-live="polite">
-          <div className="flex min-w-0 items-start gap-3">
+          <div className="flex channels-ai-min-zero items-start gap-3">
             <Warning className="mt-0.5 shrink-0 text-[var(--warn)]" size={19} aria-hidden="true" />
             <div>
               <strong className="block text-sm text-[var(--warn)]">Atualização temporariamente indisponível</strong>
@@ -426,7 +428,7 @@ export default function Connection() {
                 Exibindo o último estado válido{lastUpdatedAt ? `, atualizado às ${lastUpdatedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : ""}.
                 {retryDelayMs ? ` Nova tentativa automática em aproximadamente ${retryDelaySeconds}s.` : ""}
               </p>
-              <p className="mono mt-1 text-[10px] text-[var(--warn-muted)]">{pollingError}</p>
+              <p className="mono mt-1 type-caption text-[var(--warn-muted)]">{pollingError}</p>
             </div>
           </div>
           <button type="button" className="btn warn" disabled={pollingRetrying || reconnecting} onClick={() => retryPollingRef.current()}>
@@ -437,9 +439,9 @@ export default function Connection() {
       ) : null}
 
       {!loaded && !pollingError ? (
-        <div className="grid gap-3 py-6" aria-busy="true" aria-label="Carregando conexões" role="status">
+        <div className="channels-ai-grid py-6" aria-busy="true" aria-label="Carregando conexões" role="status">
           <span className="sr-only">Carregando conexões</span>
-          <div className="skeleton h-96" />
+          <div className="skeleton channels-ai-skeleton--large" />
         </div>
       ) : null}
 
@@ -463,17 +465,17 @@ export default function Connection() {
       {loaded && connections.length === 0 ? <Empty>Nenhuma sessão de WhatsApp configurada.</Empty> : null}
 
       {loaded && connections.length ? (
-        <div className="grid gap-8">
+        <div className="channels-ai-grid">
           {connections.map((item) => {
             const pending = item.status === "qr_pending";
             const busy = actingConnectionId === item.id || (reconnecting && reconnectTarget?.id === item.id);
             return (
-              <article key={item.id} role="group" aria-label={`Conexão ${item.label}`} className="grid gap-4">
+              <article key={item.id} role="group" aria-label={`Conexão ${item.label}`} className="channels-ai-connection">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-3">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <div className="flex channels-ai-min-zero flex-wrap items-center gap-2">
                     <h2 className="truncate text-lg font-semibold text-[var(--text)]">{item.label}</h2>
-                    {item.is_primary ? <span className="mono rounded border border-[var(--border-ai)] bg-[var(--accent-bg)] px-2 py-0.5 text-[10px] text-[var(--accent-soft)]">Principal</span> : null}
-                    <span className={`mono rounded-md border px-2 py-1 text-[10px] ${item.status === "connected" ? "border-[var(--border-ai)] text-[var(--accent-soft)]" : "border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn)]"}`}>status: {item.status}</span>
+                    {item.is_primary ? <span className="mono rounded border border-[var(--border-ai)] bg-[var(--accent-bg)] px-2 py-0.5 type-caption text-[var(--accent-soft)]">Principal</span> : null}
+                    <span className={`mono rounded-md border px-2 py-1 type-caption ${item.status === "connected" ? "border-[var(--border-ai)] text-[var(--accent-soft)]" : "border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn)]"}`}>status: {item.status}</span>
                   </div>
                   {canManageConnection ? (
                     <div className="flex flex-wrap gap-2">
@@ -486,19 +488,19 @@ export default function Connection() {
                 </div>
 
                 {editingId === item.id ? (
-                  <section className="card grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end" role="dialog" aria-label={`Renomear conexão ${item.label}`}>
+                  <section className="channels-ai-section channels-ai-form-grid" role="dialog" aria-label={`Renomear conexão ${item.label}`}>
                     <label className="field"><span className="label">Novo rótulo</span><input className="input" maxLength={60} value={editLabel} autoFocus onChange={(event) => setEditLabel(event.target.value)} /></label>
                     <div className="flex flex-wrap gap-2 md:justify-end"><button type="button" className="btn" disabled={busy} onClick={() => { setEditingId(null); setActionError(""); }}>Cancelar</button><button type="button" className="btn primary" disabled={busy || !editLabel.trim()} onClick={() => void saveRename(item)}>{busy ? "Salvando…" : "Salvar rótulo"}</button></div>
                   </section>
                 ) : null}
 
-                <div className="grid gap-6 lg:grid-cols-[auto_1fr]">
-                  <section className="card grid min-h-[430px] w-full place-items-center p-7 lg:w-[358px]">
+                <div className="channels-ai-connection-layout">
+                  <section className="channels-ai-section channels-ai-qr">
                     {pending && item.qr_code ? (
                       <div className="text-center">
-                        <div className="rounded-[10px] bg-white p-4"><QRCodeSVG value={item.qr_code} title={`QR Code de ${item.label}`} size={268} fgColor="#0b0e0d" bgColor="#ffffff" /></div>
+                        <div className="channels-ai-qr-code"><QRCodeSVG value={item.qr_code} title={`QR Code de ${item.label}`} size={268} fgColor="#0b0e0d" bgColor="#ffffff" /></div>
                         <p className="mt-5 flex items-center justify-center gap-2 text-[var(--body)]"><i className="dot warn" />Aguardando leitura</p>
-                        <p className="mono mt-1 text-[10px] text-[var(--faint)]">QR renovado automaticamente</p>
+                        <p className="mono mt-1 type-caption text-[var(--faint)]">QR renovado automaticamente</p>
                       </div>
                     ) : pending ? (
                       <div className="text-center" aria-busy="true" role="status">
@@ -518,7 +520,7 @@ export default function Connection() {
                         <Warning size={48} className="mx-auto text-[var(--warn)]" aria-hidden="true" />
                         <h3 className="mt-4 text-lg font-semibold">Sessão desconectada</h3>
                         <p className="sub">{canManageConnection ? "Use “Reconectar” para gerar um novo QR Code." : "Solicite a uma pessoa com permissão de gerenciamento que gere um novo QR Code."}</p>
-                        {item.disconnected_reason ? <p className="mono mt-3 text-[10px] text-[var(--faint)]">Motivo: {item.disconnected_reason}</p> : null}
+                        {item.disconnected_reason ? <p className="mono mt-3 type-caption text-[var(--faint)]">Motivo: {item.disconnected_reason}</p> : null}
                       </div>
                     )}
                   </section>
@@ -527,7 +529,7 @@ export default function Connection() {
                       <div className="cardtitle">Como conectar</div>
                       <ol className="grid gap-5">
                         {["Abra o WhatsApp no celular e acesse Aparelhos conectados.", "Toque em Conectar um aparelho.", "Aponte a câmera para o QR Code ao lado."].map((text, index) => (
-                          <li className="flex gap-3 text-[var(--body)]" key={text}><b className="grid size-[22px] shrink-0 place-items-center rounded-full bg-[var(--active)] text-xs text-[var(--accent-soft)]">{index + 1}</b><span>{text}</span></li>
+                          <li className="flex gap-3 text-[var(--body)]" key={text}><b className="channels-ai-step">{index + 1}</b><span>{text}</span></li>
                         ))}
                       </ol>
                       <p className="sub mt-5 border-t border-[var(--border)] pt-4">O celular continua funcionando normalmente. O atendente pode responder por ele quando a IA estiver pausada.</p>
@@ -547,6 +549,6 @@ export default function Connection() {
           })}
         </div>
       ) : null}
-    </Shell>
+    </div></Shell>
   );
 }

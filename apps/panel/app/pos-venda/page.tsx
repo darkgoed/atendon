@@ -20,6 +20,7 @@ import { ModalDialog } from "@/components/modal-dialog";
 import { PostSalesChecklist } from "@/components/post-sales-checklist";
 import { PostSalesSummaryStrip } from "@/components/post-sales-summary";
 import { Shell } from "@/components/shell";
+import { Input, Select, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import {
   buildPostSaleQuery,
@@ -190,7 +191,7 @@ export default function PostSalesPage() {
   return (
     <Shell fitViewport>
       <div className="post-sales-page">
-        <header className="pagehead post-sales-head" style={{ "--eyebrow": '"PAINEL · PÓS-VENDA"' } as React.CSSProperties}>
+        <header className="pagehead post-sales-head">
           <div>
             <h1>Carteira de pós-venda</h1>
             <p>Acompanhe próximos passos e registre cada oferta sem criar outro funil.</p>
@@ -214,34 +215,34 @@ export default function PostSalesPage() {
               <label className="post-sales-search">
                 <MagnifyingGlass size={16} aria-hidden="true" />
                 <span className="sr-only">Buscar cliente</span>
-                <input className="input" value={filters.q} onChange={(event) => changeFilter("q", event.target.value)} placeholder="Nome, telefone ou e-mail" />
+                <Input value={filters.q} onChange={(event) => changeFilter("q", event.target.value)} placeholder="Nome, telefone ou e-mail" />
                 {filters.q ? <button type="button" onClick={() => changeFilter("q", "")} aria-label="Limpar busca"><X size={14} aria-hidden="true" /></button> : null}
               </label>
               <div className="post-sales-filters" aria-label="Filtros da carteira">
                 <Funnel size={15} aria-hidden="true" />
-                <select value={filters.progress} onChange={(event) => changeFilter("progress", event.target.value as PostSaleFilters["progress"])} aria-label="Filtrar por progresso">
+                <Select value={filters.progress} onChange={(event) => changeFilter("progress", event.target.value as PostSaleFilters["progress"])} aria-label="Filtrar por progresso">
                   <option value="">Todo progresso</option>
                   <option value="not_started">Não iniciados</option>
                   <option value="in_progress">Em andamento</option>
                   <option value="complete">Completos</option>
-                </select>
-                <select value={filters.responsible_member_id} onChange={(event) => changeFilter("responsible_member_id", event.target.value)} aria-label="Filtrar por responsável">
+                </Select>
+                <Select value={filters.responsible_member_id} onChange={(event) => changeFilter("responsible_member_id", event.target.value)} aria-label="Filtrar por responsável">
                   <option value="">Todos responsáveis</option>
                   <option value="unassigned">Sem responsável</option>
                   {options?.members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
-                </select>
-                <select value={filters.next_action} onChange={(event) => changeFilter("next_action", event.target.value as PostSaleFilters["next_action"])} aria-label="Filtrar por próxima ação">
+                </Select>
+                <Select value={filters.next_action} onChange={(event) => changeFilter("next_action", event.target.value as PostSaleFilters["next_action"])} aria-label="Filtrar por próxima ação">
                   <option value="">Todas as ações</option>
                   <option value="overdue">Atrasadas</option>
                   <option value="today">Para hoje</option>
                   <option value="upcoming">Próximas</option>
                   <option value="none">Sem ação</option>
-                </select>
-                <select value={filters.archived} onChange={(event) => changeFilter("archived", event.target.value as PostSaleFilters["archived"])} aria-label="Filtrar por arquivamento">
+                </Select>
+                <Select value={filters.archived} onChange={(event) => changeFilter("archived", event.target.value as PostSaleFilters["archived"])} aria-label="Filtrar por arquivamento">
                   <option value="active">Ativos</option>
                   <option value="archived">Arquivados</option>
                   <option value="all">Todos</option>
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -444,13 +445,13 @@ function ClientEditor({
       </button>
       {open ? (
         <form className="post-sales-client-editor__form" onSubmit={submit} aria-busy={saving}>
-          <label className="field"><span className="label">Nome</span><input className="input" name="name" defaultValue={client.name} required disabled={saving} /></label>
-          <label className="field"><span className="label">Telefone</span><input className="input mono" name="phone_e164" defaultValue={client.phone_e164} required disabled={saving} /></label>
-          <label className="field"><span className="label">E-mail</span><input className="input" name="email" type="email" defaultValue={client.email ?? ""} disabled={saving} /></label>
-          <label className="field"><span className="label">Responsável</span><select className="input" name="responsible_member_id" defaultValue={client.responsible_member_id ?? ""} disabled={saving}><option value="">Sem responsável</option>{members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
-          <label className="field"><span className="label">Próxima ação</span><input className="input" name="next_action" defaultValue={client.next_action ?? ""} placeholder="Ex.: confirmar implantação" disabled={saving} /></label>
-          <label className="field"><span className="label">Data da ação</span><input className="input" name="next_action_at" type="datetime-local" defaultValue={client.next_action_at ? localMinute(client.next_action_at, timezone) : ""} disabled={saving} /></label>
-          <label className="field post-sales-client-editor__notes"><span className="label">Observação</span><textarea className="input" name="notes" rows={4} defaultValue={client.notes ?? ""} disabled={saving} /></label>
+          <label className="field"><span className="label">Nome</span><Input name="name" defaultValue={client.name} required disabled={saving} /></label>
+          <label className="field"><span className="label">Telefone</span><Input name="phone_e164" defaultValue={client.phone_e164} required disabled={saving} /></label>
+          <label className="field"><span className="label">E-mail</span><Input name="email" type="email" defaultValue={client.email ?? ""} disabled={saving} /></label>
+          <label className="field"><span className="label">Responsável</span><Select className="input" name="responsible_member_id" defaultValue={client.responsible_member_id ?? ""} disabled={saving}><option value="">Sem responsável</option>{members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</Select></label>
+          <label className="field"><span className="label">Próxima ação</span><Input name="next_action" defaultValue={client.next_action ?? ""} placeholder="Ex.: confirmar implantação" disabled={saving} /></label>
+          <label className="field"><span className="label">Data da ação</span><Input name="next_action_at" type="datetime-local" defaultValue={client.next_action_at ? localMinute(client.next_action_at, timezone) : ""} disabled={saving} /></label>
+          <label className="field post-sales-client-editor__notes"><span className="label">Observação</span><Textarea name="notes" rows={4} defaultValue={client.notes ?? ""} disabled={saving} /></label>
           {inlineError ? <p className="error post-sales-client-editor__error" role="alert">{inlineError}</p> : null}
           <div className="post-sales-client-editor__actions"><button className="btn" type="button" onClick={() => setOpen(false)} disabled={saving}>Cancelar</button><button className="btn primary" type="submit" disabled={saving}>{saving ? "Salvando…" : "Salvar alterações"}</button></div>
         </form>
@@ -529,13 +530,13 @@ function CreateClientDialog({
       </div>
       <p id="post-sales-create-description">Nome e telefone são obrigatórios. Se houver um lead com o mesmo telefone, o vínculo será feito sem alterá-lo.</p>
       <form className="post-sales-create-form" onSubmit={submit} aria-busy={saving}>
-        <label className="field"><span className="label">Nome</span><input className="input" name="name" required data-autofocus disabled={saving} /></label>
-        <label className="field"><span className="label">Telefone</span><input className="input mono" name="phone_e164" inputMode="tel" placeholder="+5511999999999" required disabled={saving} /></label>
-        <label className="field"><span className="label">E-mail</span><input className="input" name="email" type="email" disabled={saving} /></label>
-        <label className="field"><span className="label">Responsável</span><select className="input" name="responsible_member_id" defaultValue="" disabled={saving}><option value="">Sem responsável</option>{members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
-        <label className="field"><span className="label">Próxima ação</span><input className="input" name="next_action" placeholder="Opcional" disabled={saving} /></label>
-        <label className="field"><span className="label">Data da ação</span><input className="input" name="next_action_at" type="datetime-local" disabled={saving} /></label>
-        <label className="field post-sales-create-form__notes"><span className="label">Observação</span><textarea className="input" name="notes" rows={3} disabled={saving} /></label>
+        <label className="field"><span className="label">Nome</span><Input name="name" required data-autofocus disabled={saving} /></label>
+        <label className="field"><span className="label">Telefone</span><Input name="phone_e164" inputMode="tel" placeholder="+5511999999999" required disabled={saving} /></label>
+        <label className="field"><span className="label">E-mail</span><Input name="email" type="email" disabled={saving} /></label>
+        <label className="field"><span className="label">Responsável</span><Select className="input" name="responsible_member_id" defaultValue="" disabled={saving}><option value="">Sem responsável</option>{members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</Select></label>
+        <label className="field"><span className="label">Próxima ação</span><Input name="next_action" placeholder="Opcional" disabled={saving} /></label>
+        <label className="field"><span className="label">Data da ação</span><Input name="next_action_at" type="datetime-local" disabled={saving} /></label>
+        <label className="field post-sales-create-form__notes"><span className="label">Observação</span><Textarea name="notes" rows={3} disabled={saving} /></label>
         {error ? <p className="error post-sales-create-form__error" role="alert">{error}</p> : null}
         {existingId ? <button className="btn post-sales-create-form__existing" type="button" onClick={() => onExisting(existingId)}>Abrir cadastro existente</button> : null}
         <div className="post-sales-create-form__actions"><button className="btn" type="button" onClick={onClose} disabled={saving}>Cancelar</button><button className="btn primary" type="submit" disabled={saving}>{saving ? "Adicionando…" : "Adicionar cliente"}</button></div>

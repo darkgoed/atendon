@@ -441,7 +441,7 @@ export default function LeadDetail() {
             <div className="flex min-w-0 flex-1 items-center gap-4">
               <ContactAvatar name={data.lead.nome ?? data.lead.telefone} src={data.lead.avatar_url} className="h-10 w-10 text-sm" />
               {editingIdentity ? (
-                <form className="grid min-w-0 flex-1 gap-2 sm:max-w-xl sm:grid-cols-[minmax(0,1fr)_minmax(180px,.8fr)_auto]" onSubmit={saveIdentity}>
+                <form className="crm-detail-form" onSubmit={saveIdentity}>
                   <label className="field">
                     <span className="sr-only">Nome do contato</span>
                     <input className="input" value={identityName} onChange={(event) => setIdentityName(event.target.value)} maxLength={200} required aria-label="Nome do contato" />
@@ -460,7 +460,7 @@ export default function LeadDetail() {
                   <div className="min-w-0">
                     <h1 className="truncate">{data.lead.nome ?? "Lead sem nome"}</h1>
                     <p className="mono truncate">{data.lead.telefone} · {statusLabel(data.lead.status)}</p>
-                    {pendingResults ? <span className="mt-2 inline-flex rounded border border-[var(--warn-border)] px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--warn)]">{pendingResults} resultado(s) pendente(s)</span> : null}
+                    {pendingResults ? <span className="crm-notice mt-2">{pendingResults} resultado(s) pendente(s)</span> : null}
                   </div>
                   {canUpdateStatus ? <button type="button" className="mt-0.5 shrink-0 text-[var(--muted)] transition-colors hover:text-[var(--text)]" onClick={beginIdentityEdit} aria-label="Editar nome e telefone"><PencilSimple size={17} aria-hidden="true" /></button> : null}
                 </div>
@@ -508,7 +508,7 @@ export default function LeadDetail() {
                         <textarea className="input min-h-24 resize-y" value={note} onChange={(event) => setNote(event.target.value)} maxLength={4000} required placeholder="Registre contexto útil para o próximo atendimento" />
                       </label>
                       <div className="mt-3 flex items-center justify-between gap-3">
-                        <span className="mono text-[10px] text-[var(--faint)]">{note.length}/4000</span>
+                        <span className="crm-caption">{note.length}/4000</span>
                         <button className="btn primary" disabled={addingNote || !note.trim()}>{addingNote ? "Adicionando…" : "Adicionar nota"}</button>
                       </div>
                     </form>
@@ -520,7 +520,7 @@ export default function LeadDetail() {
                       {followUpData.notas.map((item) => (
                         <article key={item.id} className="rounded border border-[var(--border)] p-4">
                           <p className="whitespace-pre-wrap text-sm text-[var(--body)]">{item.nota}</p>
-                          <footer className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[10px] text-[var(--faint)]">
+                          <footer className="crm-detail-note__footer">
                             <span>{item.autor_email}</span>
                             <time className="mono">{new Date(item.criado_em).toLocaleString("pt-BR", { timeZone: followUpData.follow_up.timezone })}</time>
                           </footer>
@@ -568,7 +568,7 @@ export default function LeadDetail() {
                             : "Nenhuma data definida"}
                         />
                       </dl>
-                      <p className="mono mb-4 text-[10px] text-[var(--faint)]">Fuso: {followUpData.follow_up.timezone}</p>
+                      <p className="crm-detail-timezone">Fuso: {followUpData.follow_up.timezone}</p>
                       {canManageFollowUp ? (
                         <form className="grid gap-3 border-t border-[var(--border)] pt-4" onSubmit={saveFollowUp}>
                           <label className="field">
@@ -643,11 +643,11 @@ export default function LeadDetail() {
                 <section className="card">
                   <div className="cardtitle">Agendamentos</div>
                   {data.agendamentos.map((item) => (
-                    <div key={item.id} className="mb-2 rounded border border-[var(--border)] p-3 text-xs">
+                    <div key={item.id} className="crm-appointment">
                       <strong>{new Date(item.start).toLocaleString("pt-BR", { timeZone: data.timezone })}</strong>
-                      <span className="block text-[var(--muted)]">{formatLeadStatusLabel(item.status)}</span>
-                      {item.result_pending_at ? <span className="mt-1 block font-semibold text-[var(--warn)]">Resultado pendente</span> : null}
-                      <span className="block text-[var(--faint)]">
+                      <span>{formatLeadStatusLabel(item.status)}</span>
+                      {item.result_pending_at ? <span className="crm-appointment__pending">Resultado pendente</span> : null}
+                      <span>
                         {item.responsavel?.email
                           ? `${item.responsavel.email} · ${item.responsavel.availability_status === "available" ? "disponível" : item.responsavel.availability_status === "unavailable" ? "indisponível" : "fora do pool"}`
                           : "Sem atendente"}

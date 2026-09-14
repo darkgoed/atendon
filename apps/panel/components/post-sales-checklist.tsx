@@ -2,6 +2,7 @@
 
 import { Archive, CheckCircle, FloppyDisk, ListChecks } from "@phosphor-icons/react";
 import React, { useEffect, useState, type FormEvent } from "react";
+import { Button, Select, Textarea } from "@/components/ui";
 import {
   checklistResultOptions,
   type PostSaleChecklistEntry,
@@ -111,18 +112,17 @@ function ChecklistEntryEditor({
       </div>
       <label className="field post-sales-checklist__result">
         <span className="sr-only">Resultado de {entry.description}</span>
-        <select className="input" value={result} onChange={(event) => setResult(event.target.value as PostSaleChecklistResult)} disabled={saving}>
+        <Select value={result} onChange={(event) => setResult(event.target.value as PostSaleChecklistResult)} disabled={saving}>
           {checklistResultOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
+        </Select>
       </label>
       <label className="field post-sales-checklist__note">
         <span className="sr-only">Nota de {entry.description}</span>
-        <textarea className="input" rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Nota opcional" disabled={saving} />
+        <Textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Nota opcional" disabled={saving} />
       </label>
-      <button className="btn post-sales-checklist__save" type="submit" disabled={saving || !dirty}>
-        <FloppyDisk size={15} aria-hidden="true" />
+      <Button className="post-sales-checklist__save" type="submit" disabled={saving || !dirty} icon={<FloppyDisk size={15} aria-hidden="true" />}>
         {saving ? "Salvando…" : "Salvar"}
-      </button>
+      </Button>
       {error ? <p className="post-sales-checklist__error error" role="alert">{error}</p> : null}
     </form>
   );

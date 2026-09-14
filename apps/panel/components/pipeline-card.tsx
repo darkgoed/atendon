@@ -93,53 +93,53 @@ export function PipelineCard({
       <div className="flex min-w-0 items-start gap-2">
         {canSelect ? <input type="checkbox" checked={selected} onChange={onToggleSelected} aria-label={`Selecionar ${lead.nome ?? lead.telefone}`} disabled={pending} /> : null}
         <div className="min-w-0 flex-1">
-          <strong className="block truncate text-[12.5px] font-semibold leading-[1.35]">{lead.nome ?? "Sem nome"}</strong>
-          <span className="mt-0.5 block truncate text-[11px] text-[var(--text-6)]" title={lead.interesse ?? undefined}>Interesse: {lead.interesse ?? "Não informado"}</span>
+          <strong className="pipeline-card__name">{lead.nome ?? "Sem nome"}</strong>
+          <span className="pipeline-card__interest" title={lead.interesse ?? undefined}>Interesse: {lead.interesse ?? "Não informado"}</span>
         </div>
         <span className="pipeline-card__owner" title={`Responsável: ${shortIdentity(currentResponsible)}`} aria-label={`Responsável: ${shortIdentity(currentResponsible)}`}>{ownerInitials(currentResponsible)}</span>
 
       </div>
 
       {(badgeVisible("resultPending") && resultPending) || (badgeVisible("recovery") && lead.recovery_required) || (badgeVisible("overdueFollowUp") && overdue) ? (
-        <div className="mt-2 flex flex-wrap gap-1" aria-label="Alertas operacionais">
-          {badgeVisible("resultPending") && resultPending ? <span className="rounded border border-[var(--warn-border)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--warn)]">Resultado pendente</span> : null}
-          {badgeVisible("recovery") && lead.recovery_required ? <span className="rounded border border-[var(--warn-border)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--warn)]">Recuperar no-show</span> : null}
-          {badgeVisible("overdueFollowUp") && overdue ? <span className="rounded border border-[var(--warn-border)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--warn)]">Follow-up atrasado</span> : null}
+        <div className="pipeline-card__alerts" aria-label="Alertas operacionais">
+          {badgeVisible("resultPending") && resultPending ? <span className="pipeline-alert">Resultado pendente</span> : null}
+          {badgeVisible("recovery") && lead.recovery_required ? <span className="pipeline-alert">Recuperar no-show</span> : null}
+          {badgeVisible("overdueFollowUp") && overdue ? <span className="pipeline-alert">Follow-up atrasado</span> : null}
         </div>
       ) : null}
 
       {visible("origin") && (lead.origem || lead.campanha) ? (
-        <p className="mt-2 truncate text-[10px] text-[var(--muted)]" title={[lead.origem, lead.campanha].filter(Boolean).join(" · ")}>
+        <p className="pipeline-card__origin" title={[lead.origem, lead.campanha].filter(Boolean).join(" · ")}>
           {[lead.origem, lead.campanha].filter(Boolean).join(" · ")}
         </p>
       ) : null}
 
-      {lead.situacao ? <span className="mt-2 inline-flex w-fit rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-5)]">Situação: {pipelineStatusLabel(lead.situacao)}</span> : null}
+      {lead.situacao ? <span className="pipeline-card__situation">Situação: {pipelineStatusLabel(lead.situacao)}</span> : null}
 
       {visible("qualification") && lead.qualificacao ? <div className="mt-2"><span className="pipeline-card__score" data-score={score} aria-label={`${lead.qualificacao.estrelas} de 5 na qualificação`}>{score}</span></div> : null}
 
       {visible("nextMeeting") && lead.latest_appointment ? (
-        <div className="mt-2 flex items-start gap-1.5 text-[10px] text-[var(--body)]">
+        <div className="pipeline-card__meeting">
           <CalendarBlank className="mt-px shrink-0 text-[var(--faint)]" size={13} aria-hidden="true" />
-          <span className="min-w-0"><span className="block truncate">{formatDateTime(lead.latest_appointment.start, timezone)}</span><span className="block text-[9px] text-[var(--faint)]">{lead.latest_appointment.status.replaceAll("_", " ")}</span></span>
+          <span className="min-w-0"><span className="block truncate">{formatDateTime(lead.latest_appointment.start, timezone)}</span><span className="pipeline-card__meeting-status">{lead.latest_appointment.status.replaceAll("_", " ")}</span></span>
         </div>
       ) : null}
 
       {visible("nextAction") && lead.proxima_acao ? (
         <div className="pipeline-card__next" data-status={actionStatus}>
           <span className="pipeline-card__action-dot" aria-hidden="true" />
-          <strong className="min-w-0 flex-1 truncate text-[10.5px] font-medium">{lead.proxima_acao}</strong>
-          {lead.proxima_acao_em ? <time className="mono shrink-0 text-[10px] font-medium">{formatDateTime(lead.proxima_acao_em, timezone)}</time> : null}
+          <strong className="pipeline-card__action truncate">{lead.proxima_acao}</strong>
+          {lead.proxima_acao_em ? <time className="mono shrink-0">{formatDateTime(lead.proxima_acao_em, timezone)}</time> : null}
         </div>
       ) : null}
 
 
-      <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--border)] pt-2">
-        <span className="flex shrink-0 items-center gap-1">
-          {canMove ? <button type="button" className="min-h-8 rounded px-2 text-[10px] font-medium text-[var(--accent-soft)] hover:bg-[var(--active)] active:scale-[.96]" onClick={onMove} disabled={pending}>Mover</button> : null}
-          <Link className="flex min-h-8 items-center gap-1 rounded px-2 text-[10px] text-[var(--accent-soft)] hover:bg-[var(--active)] active:scale-[.96]" href={`/leads/${lead.id}`}>Detalhes <ArrowRight size={11} aria-hidden="true" /></Link>
+      <div className="pipeline-card__footer">
+        <span className="pipeline-card__footer-actions">
+          {canMove ? <button type="button" className="crm-inline-action" onClick={onMove} disabled={pending}>Mover</button> : null}
+          <Link className="pipeline-card__link" href={`/leads/${lead.id}`}>Detalhes <ArrowRight size={11} aria-hidden="true" /></Link>
         </span>
-        {visible("stalled") ? <time className="mono ml-auto inline-flex items-center gap-1 text-[9px] text-[var(--text-8)]" dateTime={lead.atualizado_em}><Clock size={10} aria-hidden="true" />{formatPipelineAge(lead.atualizado_em)}</time> : <span />}
+        {visible("stalled") ? <time className="pipeline-card__age" dateTime={lead.atualizado_em}><Clock size={10} aria-hidden="true" />{formatPipelineAge(lead.atualizado_em)}</time> : <span />}
       </div>
     </article>
   );

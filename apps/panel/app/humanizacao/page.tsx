@@ -4,6 +4,8 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { usePermission } from "@/lib/use-permission";
+import { Button, PageHeader } from "@/components/ui";
+import styles from "@/components/settings-panels.module.css";
 
 type Json = { [key: string]: number | string[] | Json };
 
@@ -123,12 +125,7 @@ export default function HumanizacaoPage() {
 
   return (
     <Shell>
-      <header className="pagehead">
-        <div>
-          <h1>Humanização</h1>
-          <p>Timing, presença, agrupamento, reações e limites configurados por tenant.</p>
-        </div>
-      </header>
+      <PageHeader title="Humanização" description="Timing, presença, agrupamento, reações e limites configurados por tenant." />
 
       {error ? (
         <section className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-4" role="alert">
@@ -151,12 +148,12 @@ export default function HumanizacaoPage() {
               ))}
             </div>
           </fieldset>
-          <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
+          <div className={styles.saveBar}>
             {!canManage ? <span className="text-sm text-[var(--muted)]">Acesso somente leitura.</span> : null}
             {saved ? <span className="text-sm text-[var(--accent-soft)]" role="status">Configuração salva.</span> : null}
-            <button type="submit" className="btn primary" disabled={saving || !canManage}>
+            <Button type="submit" tone="primary" disabled={saving || !canManage}>
               {saving ? "Salvando…" : "Salvar humanização"}
-            </button>
+            </Button>
           </div>
         </form>
       ) : null}

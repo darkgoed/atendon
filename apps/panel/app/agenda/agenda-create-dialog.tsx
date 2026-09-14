@@ -1,6 +1,7 @@
 import { Plus, UsersThree, X } from "@phosphor-icons/react";
 import { useRef } from "react";
 import { ModalDialog } from "@/components/modal-dialog";
+import { Button, Select } from "@/components/ui";
 import { formatBrazilianPhone, isValidBrazilianPhone } from "@/lib/phone";
 import { AgendaLeadCombobox } from "./agenda-lead-combobox";
 import type { AgendaActions } from "./use-agenda-actions";
@@ -20,7 +21,7 @@ export function AgendaCreateDialog({ actions, timezone }: { actions: AgendaActio
     <ModalDialog className="agenda-create-dialog" labelledBy="agenda-create-title" describedBy="agenda-create-description" onClose={closeCreate}>
       <div className="flex items-start justify-between gap-4">
         <div><span className="label">Novo agendamento</span><h2 id="agenda-create-title" className="mt-1">Agendar reunião</h2></div>
-        <button type="button" className="btn p-2" aria-label="Fechar" disabled={creating} onClick={closeCreate}><X size={16} aria-hidden="true" /></button>
+        <Button className="p-2" aria-label="Fechar" disabled={creating} onClick={closeCreate}><X size={16} aria-hidden="true" /></Button>
       </div>
       <p id="agenda-create-description" className="text-sm text-[var(--muted)]">Escolha um lead existente ou cadastre um novo contato. Defina o início; a reunião terá 60 minutos.</p>
       {actionError ? <p className="error" role="alert">{actionError}</p> : null}
@@ -55,10 +56,10 @@ export function AgendaCreateDialog({ actions, timezone }: { actions: AgendaActio
           ) : createAssigneesData?.can_select_assignee ? (
             <label className="field">
               <span className="sr-only">Closer responsável pela reunião</span>
-              <select className="input" value={createAssignedMemberId} disabled={creating} onChange={(event) => { setCreateAssignedMemberId(event.target.value); setActionError(""); }} aria-label="Closer responsável pela reunião">
+              <Select value={createAssignedMemberId} disabled={creating} onChange={(event) => { setCreateAssignedMemberId(event.target.value); setActionError(""); }} aria-label="Closer responsável pela reunião">
                 {noCreateSelectableAssignee ? <option value="">Sem closer disponível</option> : null}
                 {createAssigneesData.assignees.map((assignee) => <option key={assignee.member_id} value={assignee.member_id} disabled={!assignee.selectable}>{assignee.name?.trim() || assignee.email}{assignee.suggested ? " · sugerido" : ""}{!assignee.selectable ? assignee.conflicts.length ? " · conflito no horário" : " · indisponível" : ""}</option>)}
-              </select>
+              </Select>
               {createAssigneesData.assignees.length === 0 ? <small className="sub">Nenhum closer está configurado no pool de atendimento.</small> : null}
             </label>
           ) : <p className="text-sm text-[var(--body)]">O responsável será definido automaticamente pelo rodízio.</p>}

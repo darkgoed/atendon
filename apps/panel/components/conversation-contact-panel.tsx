@@ -12,6 +12,7 @@ import {
 } from "@phosphor-icons/react";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ContactAvatar } from "./contact-avatar";
+import { Button, Input } from "@/components/ui";
 
 export type ContactPanelMessage = {
   id: string;
@@ -161,21 +162,21 @@ export function ConversationContactPanel({
   return (
     <aside ref={panelRef} className="conversation-contact-panel flex min-h-0 min-w-0 flex-col border-l border-[var(--border)] bg-[var(--panel)]" aria-label="Dados do contato" tabIndex={-1}>
       <header className="conversation-contact-panel__header flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-3">
-        <h2 className="text-[13.5px] font-bold text-[var(--text)]">Dados do lead</h2>
-        <button type="button" autoFocus data-autofocus className="conversation-contact-panel__icon" onClick={onClose} aria-label="Fechar dados do contato" title="Fechar">
+        <h2 className="text-sm font-bold text-[var(--text)]">Dados do lead</h2>
+        <Button type="button" autoFocus data-autofocus className="conversation-contact-panel__icon" onClick={onClose} aria-label="Fechar dados do contato" title="Fechar">
           <X size={18} aria-hidden="true" />
-        </button>
+        </Button>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <section className="conversation-contact-panel__identity border-b border-[var(--border-2)] px-4 py-4">
           <div className="flex min-w-0 items-center gap-3">
-            <ContactAvatar name={title} src={conversation.avatar_url} className="h-[38px] w-[38px] shrink-0 text-[13px]" />
+            <ContactAvatar name={title} src={conversation.avatar_url} className="h-10 w-10 shrink-0 text-sm" />
             <div className="flex min-w-0 flex-1 items-center gap-2">
             {editing ? (
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <label className="sr-only" htmlFor="contact-name-edit">Nome do contato</label>
-                <input
+                <Input
                   id="contact-name-edit"
                   className="input min-w-0 py-1.5 text-center text-sm"
                   value={draftName}
@@ -184,13 +185,13 @@ export function ConversationContactPanel({
                   disabled={savingName}
                   autoFocus
                 />
-                <button type="button" className="btn primary shrink-0 px-2.5 py-1.5 text-xs" onClick={() => void saveName()} disabled={savingName}>{savingName ? "Salvando…" : "Salvar"}</button>
+                <Button type="button" className="btn primary shrink-0 px-2.5 py-1.5 text-xs" onClick={() => void saveName()} disabled={savingName}>{savingName ? "Salvando…" : "Salvar"}</Button>
               </div>
             ) : (
               <>
-                <strong className="truncate text-[13.5px] font-bold text-[var(--text)]">{title}</strong>
+                <strong className="truncate text-sm font-bold text-[var(--text)]">{title}</strong>
                 {canEdit ? (
-                  <button
+                  <Button
                     type="button"
                     className="conversation-contact-panel__icon"
                     onClick={() => { setDraftName(conversation.contact_name ?? ""); setEditing(true); }}
@@ -198,26 +199,26 @@ export function ConversationContactPanel({
                     title="Editar contato"
                   >
                     <PencilSimple size={16} aria-hidden="true" />
-                  </button>
+                  </Button>
                 ) : null}
               </>
             )}
             </div>
           </div>
           {saveError ? <p className="mt-2 text-left text-xs text-[var(--warn)]" role="alert">{saveError}</p> : null}
-          <p className="mono mt-2 truncate text-[11px] text-[var(--text-6)]" dir="ltr">{conversation.contact_phone}</p>
+          <p className="mono mt-2 truncate text-xs text-[var(--text-6)]" dir="ltr">{conversation.contact_phone}</p>
         </section>
 
         <section className="border-b border-[var(--border-2)] px-4 py-3.5" aria-labelledby="contact-panel-content-title">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h3 id="contact-panel-content-title" className="conversation-contact-panel__section-title">Mídia, links e docs</h3>
-            <span className="mono text-[10px] text-[var(--faint-text)]">{media.length + links.length + docs.length}</span>
+            <span className="mono text-xs text-[var(--faint-text)]">{media.length + links.length + docs.length}</span>
           </div>
-          <div className="grid grid-cols-3 gap-1 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--panel-secondary)] p-1" role="tablist" aria-label="Conteúdo da conversa">
+          <div className="grid grid-cols-3 gap-1 rounded-md border border-[var(--border)] bg-[var(--panel-secondary)] p-1" role="tablist" aria-label="Conteúdo da conversa">
             {([[
               "media", "Mídia", ImageSquare
             ], ["links", "Links", LinkSimple], ["docs", "Docs", FileText]] as const).map(([key, label, Icon]) => (
-              <button
+              <Button
                 type="button"
                 key={key}
                 className={`conversation-contact-panel__tab ${tab === key ? "is-active" : ""}`}
@@ -231,20 +232,20 @@ export function ConversationContactPanel({
               >
                 <Icon size={14} aria-hidden="true" />
                 <span>{label}</span>
-              </button>
+              </Button>
             ))}
           </div>
 
           {assetsLoading ? (
             <div className="mt-3 grid grid-cols-3 gap-1.5" aria-label="Carregando conteúdo compartilhado" aria-busy="true">
-              {Array.from({ length: 6 }).map((_, index) => <span key={index} className="skeleton aspect-square rounded-[var(--radius)]" />)}
+              {Array.from({ length: 6 }).map((_, index) => <span key={index} className="skeleton aspect-square rounded-md" />)}
             </div>
           ) : null}
 
           {assetsError ? (
-            <div className="mt-3 flex items-center justify-between gap-2 border border-[var(--warn-border)] bg-[var(--warn-bg)] p-2 text-[10px] text-[var(--warn)]" role="alert">
+            <div className="mt-3 flex items-center justify-between gap-2 border border-[var(--warn-border)] bg-[var(--warn-bg)] p-2 text-xs text-[var(--warn)]" role="alert">
               <span>{assetsError}</span>
-              {onRetryAssets ? <button type="button" className="btn shrink-0 text-[10px]" onClick={onRetryAssets}>Tentar novamente</button> : null}
+              {onRetryAssets ? <Button type="button" className="btn shrink-0 text-xs" onClick={onRetryAssets}>Tentar novamente</Button> : null}
             </div>
           ) : null}
 
@@ -284,7 +285,7 @@ export function ConversationContactPanel({
                     <FileText size={18} aria-hidden="true" />
                     <span className="min-w-0 flex-1">
                       <strong className="block truncate text-xs text-[var(--text)]">{message.media_file_name ?? "Documento"}</strong>
-                      <span className="mono mt-0.5 block truncate text-[10px] text-[var(--faint-text)]">{message.media_mime_type ?? "arquivo"}{message.media_size_bytes ? ` · ${formatBytes(message.media_size_bytes)}` : ""}</span>
+                      <span className="mono mt-0.5 block truncate text-xs text-[var(--faint-text)]">{message.media_mime_type ?? "arquivo"}{message.media_size_bytes ? ` · ${formatBytes(message.media_size_bytes)}` : ""}</span>
                     </span>
                     <ArrowDown size={15} aria-hidden="true" />
                   </a>
@@ -293,18 +294,18 @@ export function ConversationContactPanel({
             ) : <p id="contact-panel-docs" className="conversation-contact-panel__empty" role="tabpanel" aria-labelledby="contact-panel-docs-tab">Nenhum documento compartilhado.</p>
           ) : null}
           {!assetsLoading && assetsHasMore && onLoadMoreAssets ? (
-            <button type="button" className="btn mt-3 w-full text-xs" onClick={onLoadMoreAssets} disabled={assetsLoadingMore}>
+            <Button type="button" className="btn mt-3 w-full text-xs" onClick={onLoadMoreAssets} disabled={assetsLoadingMore}>
               {assetsLoadingMore ? "Carregando mais…" : "Carregar mais conteúdo"}
-            </button>
+            </Button>
           ) : null}
         </section>
 
         {canEdit ? (
           <section className="px-4 py-4">
-            <button type="button" className="conversation-contact-panel__clear" onClick={onClearConversation}>
+            <Button type="button" className="conversation-contact-panel__clear" onClick={onClearConversation}>
               <Trash size={17} aria-hidden="true" />
               <span>Limpar conversa</span>
-            </button>
+            </Button>
           </section>
         ) : null}
       </div>

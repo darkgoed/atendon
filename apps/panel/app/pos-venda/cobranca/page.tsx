@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { Empty } from "@/components/page-state";
 import { Shell } from "@/components/shell";
+import { Input, Select, TableScroll } from "@/components/ui";
 import { api } from "@/lib/api";
 import {
   buildPostSaleDebtsQuery,
@@ -48,19 +49,19 @@ export default function PostSaleDebtsPage() {
 
   return (
     <Shell>
-      <header className="pagehead" style={{ "--eyebrow": '"PAINEL · PÓS-VENDA"' } as React.CSSProperties}>
+      <header className="pagehead post-sales-pagehead">
         <div>
-          <Link className="btn" href="/pos-venda" style={{ marginBottom: "0.75rem" }}><ArrowLeft size={16} aria-hidden="true" /> Voltar</Link>
+          <Link className="btn post-sales-back-link" href="/pos-venda"><ArrowLeft size={16} aria-hidden="true" /> Voltar</Link>
           <h1>Cobranças de crediário</h1>
           <p>Carteira importada de crediário por loja, com status e valores em aberto.</p>
         </div>
-        <span className="mono text-xs text-[var(--muted)]" role="status" aria-live="polite">
+        <span className="mono post-sales-result-count" role="status" aria-live="polite">
           {isLoading ? "carregando…" : `${debts.length} resultado(s)`}
         </span>
       </header>
 
       {data?.summary ? (
-        <section className="card mb-4 grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+        <section className="card post-sales-billing-summary grid gap-3 sm:grid-cols-2 md:grid-cols-4">
           <SummaryTile label="Total de registros" value={String(data.summary.total)} />
           <SummaryTile label="Pagos" value={String(data.summary.paid)} />
           <SummaryTile label="Em aberto" value={formatPostSaleDebtAmount(data.summary.amount_open_total)} />
@@ -68,60 +69,60 @@ export default function PostSaleDebtsPage() {
         </section>
       ) : null}
 
-      <section className="card mb-4 grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+      <section className="card post-sales-billing-filters grid gap-3 sm:grid-cols-2 md:grid-cols-3">
         <label className="field">
           <span className="label">Busca</span>
-          <span className="search-field"><MagnifyingGlass aria-hidden="true" /><input className="input" value={filters.q} onChange={(event) => change("q", event.target.value)} placeholder="Nome ou telefone" /></span>
+          <span className="search-field"><MagnifyingGlass aria-hidden="true" /><Input value={filters.q} onChange={(event) => change("q", event.target.value)} placeholder="Nome ou telefone" /></span>
         </label>
         <label className="field">
           <span className="label">Loja</span>
-          <select className="input" value={filters.store} onChange={(event) => change("store", event.target.value)}>
+          <Select value={filters.store} onChange={(event) => change("store", event.target.value)}>
             <option value="">Todas</option>
             {options?.stores.map((store) => <option key={store} value={store}>{store}</option>)}
-          </select>
+          </Select>
         </label>
         <label className="field">
           <span className="label">Status</span>
-          <select className="input" value={filters.status} onChange={(event) => change("status", event.target.value)}>
+          <Select value={filters.status} onChange={(event) => change("status", event.target.value)}>
             <option value="">Todos</option>
             {options?.statuses.map((status) => <option key={status} value={status}>{status}</option>)}
-          </select>
+          </Select>
         </label>
       </section>
 
-      {error ? <p className="error mb-4" role="alert">{error.message}</p> : null}
+      {error ? <p className="error post-sales-billing-error" role="alert">{error.message}</p> : null}
 
       <section className="card responsive-table-wrap p-0">
         {isLoading ? (
-          <div className="grid gap-2 p-4" role="status" aria-label="Carregando cobranças">
-            {[1, 2, 3, 4].map((item) => <div key={item} className="skeleton h-12" aria-hidden="true" />)}
+          <div className="post-sales-billing-skeleton" role="status" aria-label="Carregando cobranças">
+            {[1, 2, 3, 4].map((item) => <div key={item} className="skeleton" aria-hidden="true" />)}
           </div>
         ) : debts.length === 0 ? <Empty>Nenhuma cobrança corresponde aos filtros.</Empty> : (
-          <table className="responsive-table w-full min-w-[1200px] border-collapse text-left">
+          <TableScroll className="post-sales-billing-table-wrap"><table className="responsive-table post-sales-billing-table">
             <thead>
-              <tr className="border-b border-[var(--border)] text-[11px] text-[var(--muted)]">
+              <tr>
                 {["Loja", "Cliente", "Telefone", "Em aberto", "Recuperado", "Status", "Motivo", "Promessa", "Dias sem contato", "Alerta"].map((label) => (
-                  <th key={label} className="whitespace-nowrap px-3 py-2 font-medium">{label}</th>
+                  <th key={label}>{label}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {debts.map((debt) => (
-                <tr key={debt.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--active)]">
-                  <td data-label="Loja" className="whitespace-nowrap px-3 py-2 text-xs">{debt.store}</td>
-                  <td data-label="Cliente" className="whitespace-nowrap px-3 py-2"><strong className="block max-w-44 truncate text-sm">{debt.customer_name}</strong></td>
-                  <td data-label="Telefone" className="mono whitespace-nowrap px-3 py-2 text-xs">{formatPostSaleDebtPhone(debt.phone_e164)}</td>
-                  <td data-label="Em aberto" className="mono whitespace-nowrap px-3 py-2 text-xs">{formatPostSaleDebtAmount(debt.amount_open)}</td>
-                  <td data-label="Recuperado" className="mono whitespace-nowrap px-3 py-2 text-xs">{formatPostSaleDebtAmount(debt.amount_recovered)}</td>
-                  <td data-label="Status" className="whitespace-nowrap px-3 py-2 text-[11px]"><span className={statusClass(debt.status)}>{debt.status ?? "—"}</span></td>
-                  <td data-label="Motivo" className="whitespace-nowrap px-3 py-2 text-[11px] text-[var(--body)]">{debt.reason ?? "—"}</td>
-                  <td data-label="Promessa" className="mono whitespace-nowrap px-3 py-2 text-xs">{formatPostSaleDebtDate(debt.promise_date)}</td>
-                  <td data-label="Dias sem contato" className="mono whitespace-nowrap px-3 py-2 text-xs">{debt.days_without_contact ?? "—"}</td>
-                  <td data-label="Alerta" className="whitespace-nowrap px-3 py-2 text-[11px] text-[var(--warn)]">{debt.alert ?? "—"}</td>
+                <tr key={debt.id}>
+                  <td data-label="Loja">{debt.store}</td>
+                  <td data-label="Cliente"><strong>{debt.customer_name}</strong></td>
+                  <td data-label="Telefone" className="mono">{formatPostSaleDebtPhone(debt.phone_e164)}</td>
+                  <td data-label="Em aberto" className="mono">{formatPostSaleDebtAmount(debt.amount_open)}</td>
+                  <td data-label="Recuperado" className="mono">{formatPostSaleDebtAmount(debt.amount_recovered)}</td>
+                  <td data-label="Status"><span className={statusClass(debt.status)}>{debt.status ?? "—"}</span></td>
+                  <td data-label="Motivo">{debt.reason ?? "—"}</td>
+                  <td data-label="Promessa" className="mono">{formatPostSaleDebtDate(debt.promise_date)}</td>
+                  <td data-label="Dias sem contato" className="mono">{debt.days_without_contact ?? "—"}</td>
+                  <td data-label="Alerta" className="post-sales-debt-alert">{debt.alert ?? "—"}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></TableScroll>
         )}
       </section>
     </Shell>
@@ -132,7 +133,7 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <span className="label">{label}</span>
-      <strong className="mono block text-lg">{value}</strong>
+      <strong className="mono post-sales-summary-value">{value}</strong>
     </div>
   );
 }

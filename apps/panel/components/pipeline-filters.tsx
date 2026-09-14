@@ -1,6 +1,7 @@
 "use client";
 
 import { Funnel, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { Input, Select } from "@/components/ui";
 import {
   EMPTY_PIPELINE_FILTERS,
   type PipelineFilterKey,
@@ -57,22 +58,22 @@ export function PipelineFilters({
         <label className="search-field pipeline-filters__search">
           <span className="sr-only">Buscar lead</span>
           <MagnifyingGlass aria-hidden="true" />
-          <input className="input" type="search" value={filters.busca} onChange={(event) => update("busca", event.target.value)} placeholder="Buscar leads" />
+          <Input className="input" type="search" value={filters.busca} onChange={(event) => update("busca", event.target.value)} placeholder="Buscar leads" />
         </label>
 
         <details className="pipeline-filters__details group">
           <summary className="pipeline-filters__trigger">
             <Funnel size={14} aria-hidden="true" />
             Filtros{hasWorkspaceScope ? " de gestão" : ""}
-            {activeFilters ? <span className="mono rounded bg-[var(--active)] px-1.5 py-0.5 text-[10px] text-[var(--accent-soft)]">{activeFilters}</span> : null}
+            {activeFilters ? <span className="pipeline-filter-count">{activeFilters}</span> : null}
           </summary>
           <div className="pipeline-filters__panel grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
             <SelectFilter label="Etapa" value={filters.pipeline_stage_id} onChange={(value) => update("pipeline_stage_id", value)} options={[["", "Todas"], ...stages.map((stage) => [stage.id, stage.name] as const)]} />
             <SelectFilter label="Ação necessária" value={filters.action_bucket} onChange={(value) => update("action_bucket", value)} options={actionBuckets} />
             <SelectFilter label="Reunião" value={filters.appointment_status} onChange={(value) => update("appointment_status", value)} options={appointmentStatuses} />
             <SelectFilter label="Resultado comercial" value={filters.commercial_outcome} onChange={(value) => update("commercial_outcome", value)} options={commercialOutcomes} />
-            <label className="field"><span className="label">Origem</span><input className="input" value={filters.origem} onChange={(event) => update("origem", event.target.value)} placeholder="Ex.: Instagram" /></label>
-            <label className="field"><span className="label">Campanha</span><input className="input" value={filters.campanha} onChange={(event) => update("campanha", event.target.value)} placeholder="Nome da campanha" /></label>
+            <label className="field"><span className="label">Origem</span><Input className="input" value={filters.origem} onChange={(event) => update("origem", event.target.value)} placeholder="Ex.: Instagram" /></label>
+            <label className="field"><span className="label">Campanha</span><Input className="input" value={filters.campanha} onChange={(event) => update("campanha", event.target.value)} placeholder="Nome da campanha" /></label>
             {hasWorkspaceScope ? <>
               <label className="field"><span className="label">Período inicial</span><input className="input" type="date" value={filters.period_start} max={filters.period_end || undefined} onChange={(event) => update("period_start", event.target.value)} /></label>
               <label className="field"><span className="label">Período final</span><input className="input" type="date" value={filters.period_end} min={filters.period_start || undefined} onChange={(event) => update("period_end", event.target.value)} /></label>
@@ -93,7 +94,7 @@ export function PipelineFilters({
 }
 
 function SelectFilter({ label, value, options, onChange }: { label: string; value: string; options: readonly (readonly [string, string])[]; onChange: (value: string) => void }) {
-  return <label className="field"><span className="label">{label}</span><select className="input" value={value} onChange={(event) => onChange(event.target.value)}>{options.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>;
+  return <label className="field"><span className="label">{label}</span><Select value={value} onChange={(event) => onChange(event.target.value)}>{options.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</Select></label>;
 }
 
 function MemberFilter({ label, value, members, onChange }: { label: string; value: string; members: PipelineMember[]; onChange: (value: string) => void }) {

@@ -8,6 +8,7 @@ import { LoadingCards } from "@/components/page-state";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { filterAuditLogs, type AuditLogEntry } from "@/lib/audit-ui";
+import { AdminMetricGrid, AdminPage, AdminPageHeader, AdminSection } from "@/components/admin";
 
 const fetcher = <T,>(url: string) => api<T>(url);
 
@@ -19,38 +20,32 @@ export default function WorkspaceAuditPage() {
 
   return (
     <Shell>
-      <header className="pagehead">
-        <div>
-          <h1>Auditoria do workspace</h1>
-          <p>Leitura operacional das ações sensíveis executadas no tenant atual.</p>
-        </div>
+      <AdminPage>
+      <AdminPageHeader title="Auditoria do workspace" description="Leitura operacional das ações sensíveis executadas no tenant atual." actions={
         <label className="search-field admin-search">
           <MagnifyingGlass aria-hidden="true" />
           <span className="sr-only">Filtrar eventos do workspace</span>
           <input className="input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filtrar ação, ator ou recurso" />
         </label>
-      </header>
+      } />
 
       {error ? <p className="error mb-4" role="alert">{error.message}</p> : null}
       {!data && !error ? <LoadingCards label="Carregando auditoria do workspace" /> : null}
       {data ? (
         <>
-          <section className="grid4">
+          <AdminMetricGrid>
             <Metric label="Eventos" value={logs.length} detail="até 200 registros" />
             <Metric label="ROOT assistido" value={logs.filter((log) => log.actor_scope === "root").length} detail="ações com escopo elevado" />
             <Metric label="Operadores" value={new Set(logs.map((log) => log.actor_email).filter(Boolean)).size} detail="atores únicos" />
             <Metric label="Filtrados" value={filtered.length} detail="pela busca atual" />
-          </section>
+          </AdminMetricGrid>
 
-          <section className="card admin-card">
-            <div className="cardtitle">
-              <span>Eventos recentes</span>
-              <span className="sub">ordem decrescente</span>
-            </div>
+          <AdminSection className="card admin-card" title="Eventos recentes" description="ordem decrescente">
             <AuditLogTable logs={filtered} />
-          </section>
+          </AdminSection>
         </>
       ) : null}
+      </AdminPage>
     </Shell>
   );
 }

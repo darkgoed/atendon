@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, Input, Select } from "@/components/ui";
 import {
   ArrowLeft,
   ArrowRight,
@@ -271,12 +272,12 @@ export function ConversationScheduler({
         {assigneesLoading ? <div className="skeleton h-20" aria-label="Carregando closers" /> : assigneeError ? (
           <div className="flex items-center justify-between gap-3 text-sm text-[var(--warn)]" role="alert">
             <span>{errorMessage(assigneeError, "Não foi possível carregar os closers.")}</span>
-            <button type="button" className="btn warn" onClick={() => void retryAssignees()}>Tentar novamente</button>
+            <Button type="button" className="btn warn" onClick={() => void retryAssignees()}>Tentar novamente</Button>
           </div>
         ) : (
           <>
             {context?.can_select_assignee ? (
-              <select
+              <Select
                 className="input w-full"
                 value={assignedMemberId}
                 disabled={creating || reassigning}
@@ -298,7 +299,7 @@ export function ConversationScheduler({
                     </option>
                   );
                 })}
-              </select>
+              </Select>
             ) : (
               <p className="text-sm text-[var(--body)]">
                 {context?.agendamento_ativo?.assigned_name || context?.agendamento_ativo?.assigned_email || "Definido automaticamente ao confirmar"}
@@ -343,12 +344,12 @@ export function ConversationScheduler({
           <span className="label">Agenda da conversa</span>
           <h2 id="conversation-scheduler-title" className="mt-1 truncate">Agendar contato</h2>
           <p id="conversation-scheduler-description" className="mt-1 text-sm text-[var(--muted)]">
-            {contactName ?? contactPhone} <span className="mono text-[11px] text-[var(--faint)]">· {contactPhone}</span>
+            {contactName ?? contactPhone} <span className="mono text-xs text-[var(--faint)]">· {contactPhone}</span>
           </p>
         </div>
-        <button type="button" className="btn shrink-0 p-2" aria-label="Fechar agenda" disabled={creating} onClick={onClose}>
+        <Button type="button" className="btn shrink-0 p-2" aria-label="Fechar agenda" disabled={creating} onClick={onClose}>
           <X size={16} aria-hidden="true" />
-        </button>
+        </Button>
       </header>
 
       {loading ? (
@@ -369,9 +370,9 @@ export function ConversationScheduler({
               <p className="mt-1 text-sm text-[var(--warn-muted)]">{errorMessage(loadError, "Tente novamente.")}</p>
             </div>
           </div>
-          <button type="button" className="btn warn justify-self-start" onClick={() => void Promise.all([retryContext(), retryUnits()])}>
+          <Button type="button" className="btn warn justify-self-start" onClick={() => void Promise.all([retryContext(), retryUnits()])}>
             Tentar novamente
-          </button>
+          </Button>
         </section>
       ) : created ? (
         <section className="grid gap-5 py-2" role="status" aria-live="polite">
@@ -387,7 +388,7 @@ export function ConversationScheduler({
           </div>
           <div className="flex flex-wrap justify-end gap-2">
             <Link className="btn" href="/agenda">Abrir agenda completa</Link>
-            <button type="button" className="btn primary" onClick={onClose}>Concluir</button>
+            <Button type="button" className="btn primary" onClick={onClose}>Concluir</Button>
           </div>
         </section>
       ) : !context?.lead ? (
@@ -419,9 +420,9 @@ export function ConversationScheduler({
           <div className="flex flex-wrap justify-end gap-2">
             <Link className="btn" href="/agenda">Ver agenda</Link>
             {context.can_select_assignee ? (
-              <button type="button" className="btn primary" disabled={reassigning || assigneesLoading || (!assignedMemberId && !noSelectableAssignee)} onClick={() => void reassignAppointment()}>
+              <Button type="button" className="btn primary" disabled={reassigning || assigneesLoading || (!assignedMemberId && !noSelectableAssignee)} onClick={() => void reassignAppointment()}>
                 {reassigning ? "Salvando…" : "Salvar responsável"}
-              </button>
+              </Button>
             ) : null}
           </div>
         </section>
@@ -436,7 +437,7 @@ export function ConversationScheduler({
               <span className="label">Unidade</span>
               <span className="relative">
                 <MapPin className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" size={16} aria-hidden="true" />
-                <select
+                <Select
                   data-autofocus
                   className="input w-full pl-9"
                   value={unitId}
@@ -448,12 +449,12 @@ export function ConversationScheduler({
                   required
                 >
                   {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.nome}</option>)}
-                </select>
+                </Select>
               </span>
             </label>
             <label className="field">
               <span className="label">Data</span>
-              <input
+              <Input
                 className="input"
                 type="date"
                 min={today}
@@ -485,12 +486,12 @@ export function ConversationScheduler({
                 </strong>
               </div>
               <div className="flex gap-2">
-                <button type="button" className="btn p-2" disabled={date <= today || creating} onClick={() => moveDate(-1)} aria-label="Dia anterior">
+                <Button type="button" className="btn p-2" disabled={date <= today || creating} onClick={() => moveDate(-1)} aria-label="Dia anterior">
                   <ArrowLeft size={16} aria-hidden="true" />
-                </button>
-                <button type="button" className="btn p-2" disabled={creating} onClick={() => moveDate(1)} aria-label="Próximo dia">
+                </Button>
+                <Button type="button" className="btn p-2" disabled={creating} onClick={() => moveDate(1)} aria-label="Próximo dia">
                   <ArrowRight size={16} aria-hidden="true" />
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -501,20 +502,20 @@ export function ConversationScheduler({
             ) : availabilityError ? (
               <div className="flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-4 text-sm text-[var(--warn)]" role="alert">
                 <span>{errorMessage(availabilityError, "Não foi possível carregar os horários.")}</span>
-                <button type="button" className="btn warn" onClick={() => void retryAvailability()}>Tentar novamente</button>
+                <Button type="button" className="btn warn" onClick={() => void retryAvailability()}>Tentar novamente</Button>
               </div>
             ) : slots.length === 0 ? (
               <div className="grid justify-items-start gap-2 border-y border-[var(--border)] py-5 text-[var(--muted)]" role="status">
                 <strong className="text-sm text-[var(--body)]">Nenhum horário livre nesta data</strong>
                 <p className="text-sm">Avance para o próximo dia ou escolha outra unidade.</p>
-                <button type="button" className="btn mt-1" onClick={() => moveDate(1)}>Ver o próximo dia</button>
+                <Button type="button" className="btn mt-1" onClick={() => moveDate(1)}>Ver o próximo dia</Button>
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
                 {slots.map((slot) => {
                   const selected = slot.start === selectedStart;
                   return (
-                    <button
+                    <Button
                       type="button"
                       key={slot.start}
                       aria-pressed={selected}
@@ -532,7 +533,7 @@ export function ConversationScheduler({
                     >
                       <Clock size={14} aria-hidden="true" />
                       {formatConversationSlot(slot.start, timezone)}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -548,18 +549,18 @@ export function ConversationScheduler({
                   {selectedUnit ? ` · ${selectedUnit.nome}` : ""}
                 </p>
               </div>
-              <span className="mono text-[10px] text-[var(--faint)]">{timezone}</span>
+              <span className="mono text-xs text-[var(--faint)]">{timezone}</span>
             </div>
           ) : null}
 
           {submitError ? <p className="error" role="alert">{submitError}</p> : null}
 
           <div className="flex flex-wrap justify-end gap-2">
-            <button type="button" className="btn" disabled={creating} onClick={onClose}>Cancelar</button>
-            <button type="submit" className="btn primary" disabled={!selectedStart || creating || availabilityLoading || Boolean(availabilityError) || assigneesLoading || (context.can_select_assignee && !assignedMemberId && !noSelectableAssignee)}>
+            <Button type="button" className="btn" disabled={creating} onClick={onClose}>Cancelar</Button>
+            <Button type="submit" className="btn primary" disabled={!selectedStart || creating || availabilityLoading || Boolean(availabilityError) || assigneesLoading || (context.can_select_assignee && !assignedMemberId && !noSelectableAssignee)}>
               <CalendarDots size={16} aria-hidden="true" />
               {creating ? "Agendando…" : "Confirmar agendamento"}
-            </button>
+            </Button>
           </div>
         </form>
       )}

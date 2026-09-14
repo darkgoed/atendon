@@ -2,6 +2,7 @@
 
 import { Pause, Play, Stop, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import styles from "../tripz-ai/tripz-ai.module.css";
 import {
   AUDIO_WAVEFORM_BAR_COUNT,
   formatAudioDuration,
@@ -22,7 +23,7 @@ function WaveformBars({
   barClassName?: string;
 }) {
   return (
-    <div className={`flex h-full items-center gap-[2px] ${className}`} aria-hidden="true">
+    <div className={`${styles.voiceWave} ${className}`} aria-hidden="true">
       {amplitudes.map((amplitude, index) => (
         <span
           // The position is stable and the decoded sample has no natural identifier.
@@ -231,7 +232,7 @@ export function VoiceMessagePlayer({ src, label = "mensagem de áudio" }: { src:
 
   return (
     <div className="min-w-0 flex-1">
-      <div className="flex min-w-0 items-center gap-2.5 rounded-[10px] border border-[var(--border)] bg-[var(--panel)] px-2.5 py-2 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--text)_5%,transparent)]">
+      <div className={styles.voicePlayer}>
         <audio
           ref={audioRef}
           src={src}
@@ -265,7 +266,7 @@ export function VoiceMessagePlayer({ src, label = "mensagem de áudio" }: { src:
           {playing ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}
         </button>
         <div className="min-w-0 flex-1">
-          <div className="relative h-8 overflow-hidden rounded-sm focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--accent)]">
+          <div className={styles.voiceTrack}>
             <WaveformBars amplitudes={amplitudes} className={`text-[var(--faint)] ${loadingWaveform ? "animate-pulse" : ""}`} />
             <div ref={progressRef} className="pointer-events-none absolute inset-0 overflow-hidden text-[var(--accent-soft)]">
               <WaveformBars amplitudes={amplitudes} className="w-full" barClassName="opacity-0" />

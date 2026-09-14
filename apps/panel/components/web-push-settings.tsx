@@ -4,6 +4,8 @@ import { BellRinging, DeviceMobile, Prohibit } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
+import { Button } from "@/components/ui";
+import styles from "@/components/settings-panels.module.css";
 
 type PushPreferences = {
   web_push_enabled: boolean;
@@ -152,20 +154,20 @@ export function WebPushSettings() {
           <p className="sub mt-1 max-w-2xl text-xs">Funciona com o painel fechado. A tela bloqueada mostra somente o tipo e a urgência; nome, telefone e conteúdo da mensagem nunca fazem parte do payload.</p>
         </div>
         {subscription ? (
-          <button type="button" className="btn" disabled={busy} onClick={() => void disable()}><Prohibit aria-hidden="true" /> Desativar neste dispositivo</button>
+          <Button disabled={busy} onClick={() => void disable()}><Prohibit aria-hidden="true" /> Desativar neste dispositivo</Button>
         ) : (
-          <button type="button" className="btn primary" disabled={busy || !supported || !data?.enabled} onClick={() => void enable()}><DeviceMobile aria-hidden="true" /> Ativar neste dispositivo</button>
+          <Button tone="primary" disabled={busy || !supported || !data?.enabled} onClick={() => void enable()}><DeviceMobile aria-hidden="true" /> Ativar neste dispositivo</Button>
         )}
       </div>
       {error ? <p className="error mt-3" role="alert">{error.message}</p> : null}
       {!supported ? <p className="mt-3 text-sm text-[var(--warn)]">Este navegador não oferece Web Push.</p> : null}
       {supported && data && !data.configured ? <p className="mt-3 text-sm text-[var(--warn)]">VAPID ainda não foi configurado pelo administrador.</p> : null}
       {message ? <p className="mt-3 text-sm text-[var(--muted)]" role="status">{message}</p> : null}
-      <p className="mono mt-3 text-[10px] text-[var(--faint)]">{data?.subscription_count ?? 0} dispositivo(s) inscrito(s) neste workspace</p>
+      <p className="mono mt-3 type-caption text-[var(--faint)]">{data?.subscription_count ?? 0} dispositivo(s) inscrito(s) neste workspace</p>
       {data ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {preferenceOptions.map((option) => (
-            <label key={option.key} className="flex gap-3 border border-[var(--border)] p-3">
+            <label key={option.key} className={styles.choice}>
               <input
                 type="checkbox"
                 checked={data.preferences[option.key]}

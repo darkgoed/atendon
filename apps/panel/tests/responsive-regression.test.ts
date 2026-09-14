@@ -4,6 +4,8 @@ import path from "node:path";
 
 const panel = path.resolve(process.cwd());
 const read = (p: string) => fs.readFileSync(path.join(panel, p), "utf8");
+const styleFiles = ["tokens.css", "base.css", "components.css", "shell.css", "domains/feedback.css", "domains/agenda.css", "domains/conversations.css", "domains/pipeline.css", "domains/auth.css", "domains/post-sales.css", "domains/agenda-calendar.css", "domains/leads.css"];
+const readStyles = () => styleFiles.map((file) => read(`styles/${file}`)).join("\n");
 
 describe("responsive UI regressions", () => {
   it("keeps progressive billing grids", () => {
@@ -12,7 +14,7 @@ describe("responsive UI regressions", () => {
     expect(source).toContain("sm:grid-cols-2 md:grid-cols-3");
   });
   it("contains post-sales summary overflow in a wrapper", () => {
-    const css = read("app/globals.css");
+    const css = readStyles();
     const component = read("components/post-sales-summary.tsx");
     expect(css).toContain(".post-sales-summary-wrap");
     expect(css).toMatch(/\.post-sales-summary-wrap\{[^}]*overflow-x:auto/);

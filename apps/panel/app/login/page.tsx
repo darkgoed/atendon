@@ -3,6 +3,7 @@
 import { ArrowLeft, Eye, EyeSlash } from "@phosphor-icons/react";
 import { type FormEvent, useState } from "react";
 import { BrandMark } from "@/components/brand-mark";
+import { Button, Field, Input } from "@/components/ui";
 import { api } from "@/lib/api";
 
 export default function Login() {
@@ -65,10 +66,8 @@ export default function Login() {
           <p>Use as credenciais fornecidas pela equipe AtendON.</p>
         </header>
 
-        <div className="field">
-          <label htmlFor="email">E-mail</label>
-          <input
-            className="input"
+        <Field label="E-mail" htmlFor="email">
+          <Input
             id="email"
             name="email"
             type="email"
@@ -77,13 +76,12 @@ export default function Login() {
             required
             autoFocus
           />
-        </div>
+        </Field>
 
-        <div className="field">
-          <label htmlFor="password">Senha</label>
+        <Field label="Senha" htmlFor="password">
           <div className="relative">
-            <input
-              className="input pr-12"
+            <Input
+              className="input--with-action"
               id="password"
               name="password"
               type={showPassword ? "text" : "password"}
@@ -103,14 +101,14 @@ export default function Login() {
                 : <Eye size={18} aria-hidden="true" />}
             </button>
           </div>
-        </div>
+        </Field>
 
         {error ? <p className="error" role="alert">{error}</p> : null}
 
-        <button type="submit" className="btn primary w-full py-3" disabled={loading}>
+        <Button type="submit" tone="primary" className="button-wide" disabled={loading}>
           {loading ? "Entrando…" : "Entrar"}
-        </button>
-        <p className="text-center text-xs text-[var(--faint)]">Acesso restrito · sem cadastro público</p>
+        </Button>
+        <p className="login-note">Acesso restrito · sem cadastro público</p>
       </form>
     </main>
   );

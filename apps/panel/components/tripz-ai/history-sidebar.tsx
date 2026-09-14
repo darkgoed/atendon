@@ -7,13 +7,14 @@ import {
   tripzConversationStatusLabel,
   type TripzConversation
 } from "../../lib/tripz-ai";
+import styles from "./tripz-ai.module.css";
 
 function StatusMark({ status }: { status: TripzConversation["status"] }) {
   const ready = status === "ready_for_review" || status === "ready_for_pdf";
   const generated = status === "pdf_generated";
   return (
     <span
-      className={`h-1.5 w-1.5 shrink-0 rounded-full ${generated ? "bg-[var(--ok)]" : ready ? "bg-[var(--accent)]" : "bg-[var(--faint)]"}`}
+      className={`h-1.5 w-1.5 shrink-0 rounded-full ${generated ? styles.statusGenerated : ready ? styles.statusReady : styles.statusPending}`}
       aria-hidden="true"
     />
   );
@@ -29,6 +30,7 @@ export function TripzHistorySidebar({
   hasMore,
   mobileOpen,
   onCloseMobile,
+  mobileTriggerRef,
   onCreate,
   onSelect,
   onDelete,
@@ -44,6 +46,7 @@ export function TripzHistorySidebar({
   hasMore: boolean;
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  mobileTriggerRef?: React.RefObject<HTMLElement | null>;
   onCreate: () => void;
   onSelect: (id: string) => void;
   onDelete: (conversation: TripzConversation) => void;
@@ -61,7 +64,7 @@ export function TripzHistorySidebar({
     const sidebar = sidebarRef.current;
     if (!sidebar) return;
     const media = window.matchMedia("(max-width: 1023px)");
-    let deactivate: (() => void) | undefined;
+    let deactivate: ((restoreFocus?: boolean) => void) | undefined;
     const activate = () => {
       if (!media.matches || deactivate) return;
       const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -101,7 +104,7 @@ export function TripzHistorySidebar({
         }
       };
       document.addEventListener("keydown", handleKeyDown);
-      deactivate = () => {
+      deactivate = (restoreFocus = true) => {
         document.removeEventListener("keydown", handleKeyDown);
         document.body.style.overflow = previousOverflow;
         siblings.forEach(({ element, inert, ariaHidden }) => {
@@ -109,11 +112,15 @@ export function TripzHistorySidebar({
           if (ariaHidden === null) element.removeAttribute("aria-hidden");
           else element.setAttribute("aria-hidden", ariaHidden);
         });
-        if (previousFocus?.isConnected) previousFocus.focus();
+        if (restoreFocus) {
+          const trigger = mobileTriggerRef?.current;
+          if (trigger?.isConnected && media.matches) trigger.focus();
+          else if (previousFocus?.isConnected) previousFocus.focus();
+        }
       };
     };
     const sync = () => {
-      deactivate?.();
+      deactivate?.(false);
       deactivate = undefined;
       activate();
     };
@@ -123,7 +130,7 @@ export function TripzHistorySidebar({
       media.removeEventListener("change", sync);
       deactivate?.();
     };
-  }, [mobileOpen]);
+  }, [mobileOpen, mobileTriggerRef]);
 
   const submitRename = async () => {
     const title = draftTitle.trim();
@@ -141,7 +148,7 @@ export function TripzHistorySidebar({
   return (
     <aside
       ref={sidebarRef}
-      className={`${mobileOpen ? "absolute inset-0 flex" : "hidden"} z-[2] min-h-0 w-full flex-col border-r border-[var(--border)] bg-[var(--side)] lg:static lg:flex lg:w-auto`}
+      className={`${styles.sidebar} ${mobileOpen ? styles.sidebarOpen : styles.sidebarClosed}`}
       role={mobileOpen ? "dialog" : undefined}
       aria-modal={mobileOpen ? "true" : undefined}
       aria-labelledby="tripz-history-title"

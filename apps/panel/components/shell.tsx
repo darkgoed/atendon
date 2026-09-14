@@ -11,6 +11,7 @@ import { MessageNotifications } from "@/components/message-notifications";
 import { NotificationCenter } from "@/components/notification-center";
 import { VersionBanner } from "@/components/version-banner";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { Button } from "@/components/ui";
 import { ApiError, api, type VersionInfo } from "@/lib/api";
 import { useCapabilities } from "@/lib/capabilities";
 import { useEntitlements } from "@/lib/entitlements";
@@ -380,22 +381,23 @@ export function Shell({
         ) : null}
         <div className="sidebar-footer">
           {currentAttendant ? (
-            <button
+            <Button
               type="button"
-              className={`mb-2 flex w-full items-center justify-between rounded-[8px] border px-3 py-2 text-xs font-medium transition active:scale-[.99] ${currentAttendant.availability_status === "available" ? "border-[var(--ok-border)] bg-[var(--ok-bg)] text-[var(--ok)]" : "border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn)]"}`}
+              tone={currentAttendant.availability_status === "available" ? "quiet" : "danger"}
+              className={`availability-control ${currentAttendant.availability_status === "available" ? "is-available" : "is-unavailable"}`}
               disabled={changingAvailability}
               aria-pressed={currentAttendant.availability_status === "available"}
               onClick={() => void toggleAvailability()}
             >
-              <span className="inline-flex items-center gap-2">
+              <span className="availability-control__label">
                 {currentAttendant.availability_status === "available" ? <CheckCircle size={16} weight="fill" aria-hidden="true" /> : <Prohibit size={16} weight="fill" aria-hidden="true" />}
                 {currentAttendant.availability_status === "available" ? "Disponível" : "Indisponível"}
               </span>
-              <span className="text-[10px] opacity-75">{changingAvailability ? "Salvando…" : "Alterar"}</span>
-            </button>
+              <span className="availability-control__action">{changingAvailability ? "Salvando…" : "Alterar"}</span>
+            </Button>
           ) : null}
           {availabilityError || attendantsError ? (
-            <p className="mb-2 text-[10px] text-[var(--warn)]" role="alert">{availabilityError || "Status indisponível"}</p>
+            <p className="sidebar-status-error" role="alert">{availabilityError || "Status indisponível"}</p>
           ) : null}
           <div className="account-menu">
             <div className={`account-card${matchesPath(path, "/perfil") ? " active" : ""}`}>
@@ -446,11 +448,11 @@ export function Shell({
       </header>
       <main className={`content${flush ? " content--flush" : ""}`}>
         {capabilities.error && session.activeWorkspace ? (
-          <section className={`${flush ? "m-3" : "mb-4"} flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-3 text-sm text-[var(--warn)]`} role="alert">
+          <section className={`shell-capability-alert${flush ? " shell-capability-alert--flush" : ""}`} role="alert">
             <span>Não foi possível carregar os módulos desta empresa. Os módulos comerciais ficam indisponíveis; Conversas permanece acessível.</span>
-            <button type="button" className="btn warn active:scale-[.98]" onClick={() => void capabilities.retry()}>
+            <Button type="button" tone="danger" onClick={() => void capabilities.retry()}>
               <ArrowClockwise size={15} aria-hidden="true" />Tentar novamente
-            </button>
+            </Button>
           </section>
         ) : null}
         {canRenderCurrentPage ? children : null}

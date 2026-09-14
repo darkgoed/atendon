@@ -1,6 +1,7 @@
 import { WhatsappLogo } from "@phosphor-icons/react";
 import { whatsappReconnectSupportHref } from "../lib/whatsapp-support";
 
+
 export function WhatsAppDisconnectedHelp() {
   return (
     <a

@@ -112,8 +112,8 @@ export function PipelineTransitionDialog({
 
   return (
     <ModalDialog
-      overlayClassName="fixed inset-0 z-30 grid place-items-end bg-[color-mix(in_srgb,var(--app)_68%,transparent)] sm:place-items-center"
-      dialogClassName="max-h-[90dvh] w-full overflow-y-auto rounded-t-2xl border border-[var(--border)] bg-[var(--dialog)] p-4 shadow-[0_-18px_50px_color-mix(in_srgb,var(--app)_45%,transparent)] sm:w-[min(520px,calc(100vw-32px))] sm:rounded-xl sm:p-5"
+      overlayClassName="pipeline-dialog-overlay"
+      dialogClassName="pipeline-dialog"
       labelledBy="pipeline-transition-title"
       describedBy="pipeline-transition-description"
       onClose={pending ? () => undefined : onClose}
@@ -154,7 +154,7 @@ export function PipelineTransitionDialog({
           <label className="field">
             <span className="label">Data e hora</span>
             <input className="input" type="datetime-local" value={nextActionAt} onChange={(event) => setNextActionAt(event.target.value)} disabled={pending} required />
-            <span className="text-[10px] text-[var(--muted)]">Horário do workspace: {timezone}</span>
+            <span className="pipeline-dialog__hint">Horário do workspace: {timezone}</span>
           </label>
         </> : null}
 
@@ -165,7 +165,7 @@ export function PipelineTransitionDialog({
               <option value="">Selecione um motivo</option>
               {reasons.map((reason) => <option key={reason.id} value={reason.chave}>{reason.rotulo}</option>)}
             </select>
-            {reasonsError ? <span className="text-[10px] text-[var(--urgent)]">{reasonsError}</span> : null}
+            {reasonsError ? <span className="pipeline-note--error">{reasonsError}</span> : null}
           </label>
           <label className="field">
             <span className="label">Observação{noteRequired ? "" : " (opcional)"}</span>
@@ -178,7 +178,7 @@ export function PipelineTransitionDialog({
               required={noteRequired}
               placeholder="Detalhe o que o cliente disse"
             />
-            <span className="text-[10px] text-[var(--muted)]">
+            <span className="pipeline-note">
               {noteRequired ? "Obrigatório para este motivo." : "Contexto extra para o closer."}
             </span>
           </label>

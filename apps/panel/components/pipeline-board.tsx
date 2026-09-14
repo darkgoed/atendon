@@ -241,7 +241,7 @@ export function PipelineColumn({
   const tone = stageTone(stage);
   return (
     <section
-      className={`pipeline-column ${dropActive ? "border-[var(--border-hover)]" : "border-[var(--border)]"} ${dimmed ? "opacity-45" : "opacity-100"}`}
+      className={`pipeline-column ${dropActive ? "pipeline-column--active" : ""} ${dimmed ? "pipeline-column--dimmed" : ""}`}
       style={{ width: pipelineColumnWidth(preferences.columnWidth) }}
       aria-label={`${stage.name}, ${leads.length} lead(s)`}
       data-drop-state={dropActive ? "active" : droppable ? "available" : dragging ? "unavailable" : "idle"}
@@ -253,8 +253,8 @@ export function PipelineColumn({
       <header className="pipeline-column__header">
         <div className="flex min-w-0 items-center gap-2">
           <span className="pipeline-column__dot" style={{ backgroundColor: tone }} aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate text-[12px] font-bold">{stage.name}</span>
-          <span className="mono shrink-0 text-[10.5px] text-[var(--text-7)]">{leads.length}{stage.capacity_target ? `/${stage.capacity_target}` : ""}</span>
+          <span className="pipeline-column__stage-name">{stage.name}</span>
+          <span className="pipeline-column__count">{leads.length}{stage.capacity_target ? `/${stage.capacity_target}` : ""}</span>
           <span className="pipeline-column__menu" aria-hidden="true"><DotsThree size={15} weight="bold" /></span>
         </div>
         <div className="pipeline-column__summary">
@@ -262,10 +262,10 @@ export function PipelineColumn({
           <span aria-hidden="true">·</span>
           <span>{formatAverageStageAge(leads)}</span>
         </div>
-        {capacity != null ? <div className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--border)]" role="progressbar" aria-label={`Capacidade de ${stage.name}`} aria-valuenow={leads.length} aria-valuemax={stage.capacity_target ?? undefined}><span className="block h-full rounded-full" style={{ width: `${capacity}%`, backgroundColor: tone }} /></div> : null}
+        {capacity != null ? <div className="pipeline-column__capacity" role="progressbar" aria-label={`Capacidade de ${stage.name}`} aria-valuenow={leads.length} aria-valuemax={stage.capacity_target ?? undefined}><span style={{ width: `${capacity}%`, backgroundColor: tone }} /></div> : null}
       </header>
       <div className={`pipeline-column__body flex-1 flex-col overflow-y-auto ${preferences.density === "compact" ? "gap-1.5 p-2" : "gap-2 p-2"}`}>
-        {dropActive ? <p className="rounded border border-dashed border-[var(--strong)] bg-[var(--panel)] px-2 py-3 text-center text-[10px] font-medium text-[var(--accent-soft)]">Solte para mover para {stage.name}</p> : null}
+        {dropActive ? <p className="pipeline-column__drop-hint">Solte para mover para {stage.name}</p> : null}
         {loading ? [1, 2, 3].map((item) => <div key={item} className={`skeleton ${preferences.density === "compact" ? "h-24" : "h-36"}`} aria-hidden="true" />) : leads.map((lead) => (
           <PipelineCard
             key={lead.id}
@@ -282,7 +282,7 @@ export function PipelineColumn({
             onDragEnd={onDragEnd}
           />
         ))}
-        {!loading && leads.length === 0 && !dropActive ? <p className="py-5 text-center text-[10px] text-[var(--faint)]">Nenhum lead nesta etapa</p> : null}
+        {!loading && leads.length === 0 && !dropActive ? <p className="pipeline-column__empty">Nenhum lead nesta etapa</p> : null}
         {!loading ? <span className="pipeline-column__add" aria-hidden="true">+ Adicionar lead</span> : null}
       </div>
     </section>
@@ -290,5 +290,5 @@ export function PipelineColumn({
 }
 
 function PipelineColumnSkeleton({ width }: { width: number }) {
-  return <div className="flex h-full shrink-0 flex-col overflow-hidden rounded-lg border border-[var(--border)]" style={{ width }} role="status" aria-label="Carregando coluna"><div className="skeleton m-3 h-5" /><div className="grid gap-2 p-2"><div className="skeleton h-24" /><div className="skeleton h-28" /><div className="skeleton h-24" /></div></div>;
+  return <div className="pipeline-column-skeleton" style={{ width }} role="status" aria-label="Carregando coluna"><div className="skeleton m-3 h-5" /><div className="grid gap-2 p-2"><div className="skeleton h-24" /><div className="skeleton h-28" /><div className="skeleton h-24" /></div></div>;
 }

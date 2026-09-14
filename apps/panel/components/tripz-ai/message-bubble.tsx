@@ -4,6 +4,7 @@ import { Robot, User } from "@phosphor-icons/react";
 import React from "react";
 import { formatTripzTimestamp, type TripzMessage } from "../../lib/tripz-ai";
 import { TripzAttachmentCard } from "./attachment-card";
+import styles from "./tripz-ai.module.css";
 
 export function TripzMessageBubble({
   conversationId,
@@ -15,7 +16,7 @@ export function TripzMessageBubble({
   const fromUser = message.role === "user";
   return (
     <article
-      className={`grid animate-[fadeUp_.3s_var(--ease)_both] gap-2 ${fromUser ? "ml-auto max-w-[min(44rem,92%)] justify-items-end" : "mr-auto w-full max-w-[48rem] justify-items-start"}`}
+      className={`${styles.message} ${fromUser ? styles.messageUser : styles.messageAi}`}
       aria-label={fromUser ? "Mensagem enviada por você" : "Resposta da Tripz IA"}
     >
       <header className={`flex items-center gap-2 px-1 text-[10px] font-medium ${fromUser ? "flex-row-reverse text-[var(--faint-text)]" : "text-[var(--accent-soft)]"}`}>
@@ -29,7 +30,7 @@ export function TripzMessageBubble({
       </header>
 
       {message.content ? (
-        <div className={`${fromUser ? "border border-[var(--strong)] bg-[var(--panel-raised)]" : "border-l-2 border-[var(--accent)] bg-transparent"} px-4 py-3`}>
+        <div className={`${fromUser ? styles.messageBodyUser : styles.messageBody} px-4 py-3`}>
           <p className="m-0 whitespace-pre-wrap text-[13px] leading-6 text-[var(--body)]">{message.content}</p>
         </div>
       ) : null}

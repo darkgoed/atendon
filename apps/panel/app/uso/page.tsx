@@ -5,6 +5,8 @@ import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { usePermission } from "@/lib/use-permission";
 import { QRCodeSVG } from "qrcode.react";
+import { AdminPage, AdminPageHeader } from "@/components/admin";
+
 
 type Dashboard = { planName?: string|null; includedLimit: number|null; includedUsage: number; rolloverGranted: number; rolloverUsage: number; bonusGranted: number; bonusUsage: number; totalAvailable: number|null; totalUsed: number; usedPercentBps?: number; periodEnd?: string; daysUntilRenewal?: number; creditLimitCents?: number|null; creditUsedCents?: number; [key:string]: unknown };
 type Credit = { setting?: { enabled?: boolean; limit_type?: "FIXED"|"UNLIMITED"; monthly_spending_limit_cents?: number|null }; allowed?: { suggested?: number; min?: number; max?: number; allowCustom?: boolean; allowUnlimited?: boolean } };
@@ -19,10 +21,10 @@ export default function UsoPage() {
   const [loading,setLoading] = useState(true); const [error,setError] = useState("");
   async function load() { setLoading(true); setError(""); try { const [d,h,c] = await Promise.all([api<{dashboard:Dashboard|null}>("/billing/usage-dashboard"), api<{history:Invoice[]}>("/billing/history?limit=20"), api<Credit>("/billing/usage-credit")]); setDashboard(d.dashboard); setHistory(h.history ?? []); setCredit(c); } catch(e) { setError(err(e)); } finally { setLoading(false); } }
   useEffect(() => { void load(); }, []);
-  return <Shell><header className="pagehead"><div><h1>Uso</h1><p>Consumo de créditos de IA do tenant e histórico de cobrança.</p></div></header>
+  return <Shell><AdminPage><AdminPageHeader title="Uso" description="Consumo de créditos de IA do tenant e histórico de cobrança." />
     {error && <div role="alert" className="mb-4 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-4 flex justify-between gap-3"><span>{error}</span><button className="btn warn" onClick={() => void load()}>Tentar novamente</button></div>}
     {loading ? <div role="status" aria-busy="true"><span className="sr-only">Carregando uso</span><div className="skeleton h-72" /></div> : dashboard === null ? <div className="card"><h2>Nenhum período de uso disponível</h2><p className="sub">Ainda não há dados de consumo para este tenant.</p></div> : dashboard ? <><Usage dashboard={dashboard}/><CreditForm data={credit} canManage={canManage}/><History history={history} onReload={load}/></> : null}
-  </Shell>;
+  </AdminPage></Shell>;
 }
 function Usage({dashboard:d}:{dashboard:Dashboard}) { const unlimited=d.totalAvailable==null; const pct=unlimited?0:Math.min(100, Math.max(0,(d.usedPercentBps??0)/100)); const reached=!unlimited && (d.totalUsed >= (d.totalAvailable ?? 0)); return <><section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Resumo de uso">
  {[["Incluído",d.includedLimit==null?"Ilimitado":n(d.includedLimit),"Créditos de IA"],["Acumulado",n(d.rolloverGranted),"Franquia acumulada"],["Bônus",n(d.bonusGranted),"Créditos de IA"],["Total usado",n(d.totalUsed),"Interações acumuladas"]].map(([a,b,c])=><div className="card" key={a}><div className="cardtitle">{a}</div><strong className="text-2xl">{b}</strong><p className="sub">{c}</p></div>)}

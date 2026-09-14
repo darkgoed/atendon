@@ -4,6 +4,7 @@ import { type FormEvent, useState } from "react";
 import { Eye, EyeSlash, Key } from "@phosphor-icons/react";
 import { BrandMark } from "@/components/brand-mark";
 import { api } from "@/lib/api";
+import { Button, Field, Input } from "@/components/ui";
 
 export default function RequiredPasswordChangePage() {
   const [saving, setSaving] = useState(false);
@@ -50,11 +51,10 @@ export default function RequiredPasswordChangePage() {
         </header>
 
         <form className="admin-form" aria-busy={saving} onSubmit={submit}>
-          <label className="field">
-            <span className="label">Nova senha</span>
+          <Field label="Nova senha" hint="Use ao menos 12 caracteres e não repita a senha temporária.">
             <div className="relative">
-              <input
-                className="input pr-12"
+              <Input
+                className="input--with-action"
                 name="newPassword"
                 type={showPassword ? "text" : "password"}
                 autoComplete="new-password"
@@ -76,12 +76,9 @@ export default function RequiredPasswordChangePage() {
                   : <Eye size={18} aria-hidden="true" />}
               </button>
             </div>
-            <small>Use ao menos 12 caracteres e não repita a senha temporária.</small>
-          </label>
-          <label className="field">
-            <span className="label">Confirmar nova senha</span>
-            <input
-              className="input"
+          </Field>
+          <Field label="Confirmar nova senha">
+            <Input
               name="passwordConfirmation"
               type={showPassword ? "text" : "password"}
               autoComplete="new-password"
@@ -90,13 +87,12 @@ export default function RequiredPasswordChangePage() {
               disabled={saving}
               required
             />
-          </label>
+          </Field>
 
           {error ? <p className="error" role="alert">{error}</p> : null}
-          <button type="submit" className="btn primary w-full py-3" disabled={saving}>
-            <Key size={18} aria-hidden="true" />
+          <Button type="submit" tone="primary" className="button-wide" icon={<Key size={18} aria-hidden="true" />} disabled={saving}>
             {saving ? "Salvando…" : "Criar senha e continuar"}
-          </button>
+          </Button>
         </form>
       </section>
     </main>

@@ -1,5 +1,6 @@
 import { Empty } from "@/components/page-state";
 import type { CommercialDashboardSeries } from "@/lib/commercial-dashboard";
+import styles from "./metrics-dashboard.module.css";
 
 export function Sparkline({ values, tone = "var(--accent)", className = "mt-4 h-9 w-full" }: { values: number[]; tone?: string; className?: string }) {
   if (values.length < 2 || !values.some((value) => value > 0)) return null;
@@ -34,7 +35,7 @@ export function RateRing({ value, tone }: { value: number; tone: string }) {
         strokeWidth="5"
         strokeDasharray={`${(clamped / 100) * circumference} ${circumference}`}
         transform="rotate(-90 32 32)"
-        style={{ transition: "stroke-dasharray .6s cubic-bezier(.22,1,.36,1)" }}
+        className={styles.ringProgress}
       />
       <text x="32" y="36" textAnchor="middle" fill="var(--text)" fontSize="13" fontWeight="600" fontFamily="var(--font-mono)">
         {Math.round(clamped)}%
@@ -62,7 +63,7 @@ export function TrendChart({ data }: { data: CommercialDashboardSeries }) {
 
   return (
     <div className="overflow-x-auto" tabIndex={0} aria-label="Gráfico de evolução de calls">
-      <svg className="min-w-[620px]" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Evolução de reuniões marcadas, realizadas e não comparecidas">
+      <svg className={styles.chartSvg} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Evolução de reuniões marcadas, realizadas e não comparecidas">
         {[0, 0.5, 1].map((ratio) => {
           const tickY = top + graphHeight * ratio;
           const value = Math.round(maximum * (1 - ratio));

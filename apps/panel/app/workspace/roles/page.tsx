@@ -7,6 +7,8 @@ import { Empty } from "@/components/page-state";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { canAccessWithSession, type PanelSession } from "@/lib/session";
+import { AdminButton, AdminPage, AdminPageHeader } from "@/components/admin";
+
 
 type Role = {
   id: string;
@@ -144,17 +146,11 @@ export default function WorkspaceRolesPage() {
   }
 
   return (
-    <Shell>
-      <header className="pagehead">
-        <div>
-          <h1>Funções e permissões</h1>
-          <p>Matriz por módulo, com funções protegidas para preservar o OWNER do workspace.</p>
-        </div>
-        <button type="button" className="btn primary" disabled={!canCreate} onClick={() => selectRole()}>
+    <Shell><AdminPage>
+      <AdminPageHeader title="Funções e permissões" description="Matriz por módulo, com funções protegidas para preservar o OWNER do workspace." actions={<AdminButton tone="primary" disabled={!canCreate} onClick={() => selectRole()}>
           <Plus size={16} aria-hidden="true" />
           Nova função
-        </button>
-      </header>
+        </AdminButton>} />
 
       {error ? <p className="error mb-4" role="alert">{error.message}</p> : null}
       {message ? <p className="error mb-4" role="alert">{message}</p> : null}
@@ -274,6 +270,6 @@ export default function WorkspaceRolesPage() {
           </div>
         </form>
       </section>
-    </Shell>
+    </AdminPage></Shell>
   );
 }

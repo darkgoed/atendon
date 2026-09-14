@@ -5,6 +5,9 @@ import { Key, X } from "@phosphor-icons/react";
 import { ModalDialog } from "@/components/modal-dialog";
 import { api } from "@/lib/api";
 import type { PanelSession } from "@/lib/session";
+import { AdminButton, AdminField } from "@/components/admin";
+
+
 
 export type WorkspaceMember = {
   id: string;
@@ -109,9 +112,9 @@ export function MemberProfileDialog({
       </p>
 
       <form className="admin-form mt-1" aria-busy={saving} onSubmit={submit}>
-        <label className="field">
-          <span className="label">Nome</span>
+        <AdminField label="Nome" htmlFor="member-name">
           <input
+            id="member-name"
             className="input"
             name="name"
             type="text"
@@ -120,11 +123,10 @@ export function MemberProfileDialog({
             data-autofocus
             disabled={saving}
           />
-        </label>
-        <label className="field">
-          <span className="label">E-mail</span>
-          <input className="input" name="email" type="email" defaultValue={member.email} disabled={saving} required />
-        </label>
+        </AdminField>
+        <AdminField label="E-mail" htmlFor="member-email">
+          <input id="member-email" className="input" name="email" type="email" defaultValue={member.email} disabled={saving} required />
+        </AdminField>
 
         <div className="border-t border-[var(--border)] pt-4">
           <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--heading)]">
@@ -189,10 +191,10 @@ export function MemberProfileDialog({
           <p className="warning text-xs" role="status">Este membro já possui uma troca de senha pendente.</p>
         ) : null}
         <div className="flex flex-wrap justify-end gap-2">
-          <button type="button" className="btn" disabled={saving} onClick={onClose}>Cancelar</button>
-          <button type="submit" className="btn primary" disabled={saving}>
+          <AdminButton type="button" disabled={saving} onClick={onClose}>Cancelar</AdminButton>
+          <AdminButton type="submit" tone="primary" disabled={saving}>
             {saving ? "Salvando…" : "Salvar perfil"}
-          </button>
+          </AdminButton>
         </div>
       </form>
     </ModalDialog>

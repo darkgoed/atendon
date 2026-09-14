@@ -13,6 +13,8 @@ import {
   MemberProfileDialog,
   type WorkspaceMember
 } from "./member-profile-dialog";
+import { AdminField, AdminPage, AdminPageHeader, AdminTableScroll } from "@/components/admin";
+
 
 type Role = {
   id: string;
@@ -169,13 +171,8 @@ export default function WorkspaceMembersPage() {
   const dataError = membersError || rolesError || invitationsError;
 
   return (
-    <Shell>
-      <header className="pagehead">
-        <div>
-          <h1>Membros</h1>
-          <p>Acesso do workspace, convites pendentes e transferência controlada de propriedade.</p>
-        </div>
-      </header>
+    <Shell><AdminPage>
+      <AdminPageHeader title="Membros" description="Acesso do workspace, convites pendentes e transferência controlada de propriedade." />
 
       {error ? <p className="error mb-4" role="alert">{error}</p> : null}
       {dataError ? (
@@ -221,7 +218,7 @@ export default function WorkspaceMembersPage() {
               {members.length === 0 ? (
                 <Empty>Nenhum membro neste workspace.</Empty>
               ) : (
-                <div className="admin-table-wrap responsive-table-wrap">
+                <AdminTableScroll className="admin-table-wrap responsive-table-wrap">
                   <table className="admin-table responsive-table">
                     <thead>
                       <tr>
@@ -248,6 +245,7 @@ export default function WorkspaceMembersPage() {
                               {canUpdateMembers && !member.is_owner_role ? (
                                 <select
                                   className="input"
+                                  aria-label={`Função de ${member.name || member.email}`}
                                   value={member.role_id}
                                   disabled={locked}
                                   onChange={(event) => void updateMember(member.id, { roleId: event.target.value })}
@@ -262,6 +260,7 @@ export default function WorkspaceMembersPage() {
                               {canUpdateMembers && !member.is_owner_role ? (
                                 <select
                                   className="input"
+                                  aria-label={`Status de ${member.name || member.email}`}
                                   value={member.status}
                                   disabled={locked}
                                   onChange={(event) => void updateMember(member.id, { status: event.target.value as "active" | "suspended" })}
@@ -301,7 +300,7 @@ export default function WorkspaceMembersPage() {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </AdminTableScroll>
               )}
             </div>
 
@@ -315,16 +314,14 @@ export default function WorkspaceMembersPage() {
                   <Empty>Esta sessão não pode emitir convites.</Empty>
                 ) : (
                   <div className="admin-form">
-                    <label className="field">
-                      <span className="label">E-mail</span>
-                      <input className="input" name="email" type="email" placeholder="pessoa@empresa.com" disabled={submittingInvite} required />
-                    </label>
-                    <label className="field">
-                      <span className="label">Função</span>
-                      <select className="input" name="roleId" required defaultValue={inviteRoles[0]?.id ?? ""} disabled={submittingInvite}>
+                    <AdminField label="E-mail" htmlFor="invite-email">
+                      <input id="invite-email" className="input" name="email" type="email" placeholder="pessoa@empresa.com" disabled={submittingInvite} required />
+                    </AdminField>
+                    <AdminField label="Função" htmlFor="invite-role">
+                      <select id="invite-role" className="input" name="roleId" required defaultValue={inviteRoles[0]?.id ?? ""} disabled={submittingInvite}>
                         {inviteRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
                       </select>
-                    </label>
+                    </AdminField>
                     <button type="submit" className="btn primary" disabled={submittingInvite || inviteRoles.length === 0}>
                       {submittingInvite ? "Enviando…" : "Enviar convite"}
                     </button>
@@ -361,7 +358,7 @@ export default function WorkspaceMembersPage() {
             {invitations.length === 0 ? (
               <Empty>Nenhum convite emitido ainda.</Empty>
             ) : (
-              <div className="admin-table-wrap responsive-table-wrap">
+              <AdminTableScroll className="admin-table-wrap responsive-table-wrap">
                 <table className="admin-table responsive-table">
                   <thead>
                     <tr>
@@ -399,8 +396,8 @@ export default function WorkspaceMembersPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            )}
+                </AdminTableScroll>
+                )}
           </section>
         </>
       )}
@@ -411,6 +408,6 @@ export default function WorkspaceMembersPage() {
           onSaved={async () => { await mutateMembers(); }}
         />
       ) : null}
-    </Shell>
+    </AdminPage></Shell>
   );
 }

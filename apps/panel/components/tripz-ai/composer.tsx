@@ -26,6 +26,8 @@ import {
   type TripzSendResult
 } from "../../lib/tripz-ai";
 
+import styles from "./tripz-ai.module.css";
+
 type ComposerFileStatus = "ready" | "uploading" | "uploaded" | "error";
 
 type ComposerFile = {
@@ -256,7 +258,7 @@ export function TripzComposer({
 
   return (
     <div
-      className={`relative shrink-0 border-t bg-[var(--app)] px-3 pb-3 pt-2 transition-[border-color,background,transform] sm:px-5 sm:pb-4 ${dragging ? "border-[var(--accent)] bg-[var(--accent-bg)]" : "border-[var(--border)]"}`}
+      className={`${styles.composer} ${dragging ? styles.composerDragging : ""}`}
       onDragEnter={(event) => { event.preventDefault(); if (!unavailable) setDragging(true); }}
       onDragOver={(event) => event.preventDefault()}
       onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}

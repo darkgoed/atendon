@@ -95,7 +95,7 @@ export function VersionBanner({
                   <div key={item.version} className="rounded-lg bg-[var(--active)] p-3 text-xs">
                     <div className="flex items-center justify-between font-mono font-medium text-[var(--body)] mb-1">
                       <span>v{item.version}</span>
-                      <span className="text-[10px] text-[var(--faint)]">{item.date}</span>
+                      <span className="type-caption text-[var(--faint)]">{item.date}</span>
                     </div>
                     <ul className="list-disc list-inside space-y-0.5 text-[var(--muted)]">
                       {item.changes.map((change, cIdx) => (
