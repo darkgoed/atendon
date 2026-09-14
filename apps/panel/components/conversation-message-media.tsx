@@ -56,17 +56,17 @@ export function ConversationMessageMedia({ conversationId, message }: { conversa
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={src} alt={message.content || fileName} loading="lazy" className="media-preview-frame w-auto max-w-full rounded-md object-contain" />
         </a>
-        {message.content && message.content !== fileName ? <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed ">{message.content}</p> : null}
+        {message.content && message.content !== fileName ? <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--text)]">{message.content}</p> : null}
       </div>
     );
   }
 
   return (
-    <a href={src} className="media-preview-download-min-width flex items-center gap-3 rounded-md border  px-3 py-2.5 transition hover:" download>
-      <FileArrowDown size={24} className="shrink-0 " />
+    <a href={src} className="media-preview-download-min-width flex items-center gap-3 rounded-md border border-[var(--border)] px-3 py-2.5 transition hover:border-[var(--strong)]" download>
+      <FileArrowDown size={24} className="shrink-0 text-[var(--accent-soft)]" />
       <span className="min-w-0 flex-1">
-        <strong className="block truncate text-xs ">{fileName}</strong>
-        <span className="mono mt-1 block text-xs uppercase tracking-wide ">{message.media_mime_type || "arquivo"}{message.media_size_bytes ? ` · ${formatBytes(message.media_size_bytes)}` : ""}</span>
+        <strong className="block truncate text-xs text-[var(--text)]">{fileName}</strong>
+        <span className="mono mt-1 block text-xs uppercase tracking-wide text-[var(--faint)]">{message.media_mime_type || "arquivo"}{message.media_size_bytes ? ` · ${formatBytes(message.media_size_bytes)}` : ""}</span>
       </span>
     </a>
   );

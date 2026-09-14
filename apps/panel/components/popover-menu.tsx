@@ -112,7 +112,7 @@ export function PopoverMenu({
             <div
               ref={panelRef}
               className={panelClassName}
-              style={{ position: "fixed", top: placement.top, left: placement.left, right: placement.right, zIndex: "var(--z-popover)" }}
+              style={{ position: "fixed", top: placement.top, left: placement.left, right: placement.right, zIndex: 55 }}
             >
               {children(close)}
             </div>,

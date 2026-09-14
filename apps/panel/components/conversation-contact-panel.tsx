@@ -160,16 +160,16 @@ export function ConversationContactPanel({
   }
 
   return (
-    <aside ref={panelRef} className="conversation-contact-panel flex min-h-0 min-w-0 flex-col border-l  " aria-label="Dados do contato" tabIndex={-1}>
-      <header className="conversation-contact-panel__header flex shrink-0 items-center justify-between border-b  px-4 py-3">
-        <h2 className="text-sm font-bold ">Dados do lead</h2>
+    <aside ref={panelRef} className="conversation-contact-panel flex min-h-0 min-w-0 flex-col border-l border-[var(--border)] bg-[var(--panel)]" aria-label="Dados do contato" tabIndex={-1}>
+      <header className="conversation-contact-panel__header flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-3">
+        <h2 className="text-sm font-bold text-[var(--text)]">Dados do lead</h2>
         <Button type="button" autoFocus data-autofocus className="conversation-contact-panel__icon" onClick={onClose} aria-label="Fechar dados do contato" title="Fechar">
           <X size={18} aria-hidden="true" />
         </Button>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <section className="conversation-contact-panel__identity border-b  px-4 py-4">
+        <section className="conversation-contact-panel__identity border-b border-[var(--border-2)] px-4 py-4">
           <div className="flex min-w-0 items-center gap-3">
             <ContactAvatar name={title} src={conversation.avatar_url} className="h-10 w-10 shrink-0 text-sm" />
             <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -189,7 +189,7 @@ export function ConversationContactPanel({
               </div>
             ) : (
               <>
-                <strong className="truncate text-sm font-bold ">{title}</strong>
+                <strong className="truncate text-sm font-bold text-[var(--text)]">{title}</strong>
                 {canEdit ? (
                   <Button
                     type="button"
@@ -205,16 +205,16 @@ export function ConversationContactPanel({
             )}
             </div>
           </div>
-          {saveError ? <p className="mt-2 text-left text-xs " role="alert">{saveError}</p> : null}
-          <p className="mono mt-2 truncate text-xs " dir="ltr">{conversation.contact_phone}</p>
+          {saveError ? <p className="mt-2 text-left text-xs text-[var(--warn)]" role="alert">{saveError}</p> : null}
+          <p className="mono mt-2 truncate text-xs text-[var(--text-6)]" dir="ltr">{conversation.contact_phone}</p>
         </section>
 
-        <section className="border-b  px-4 py-3.5" aria-labelledby="contact-panel-content-title">
+        <section className="border-b border-[var(--border-2)] px-4 py-3.5" aria-labelledby="contact-panel-content-title">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h3 id="contact-panel-content-title" className="conversation-contact-panel__section-title">Mídia, links e docs</h3>
-            <span className="mono text-xs ">{media.length + links.length + docs.length}</span>
+            <span className="mono text-xs text-[var(--faint-text)]">{media.length + links.length + docs.length}</span>
           </div>
-          <div className="grid grid-cols-3 gap-1 rounded-md border   p-1" role="tablist" aria-label="Conteúdo da conversa">
+          <div className="grid grid-cols-3 gap-1 rounded-md border border-[var(--border)] bg-[var(--panel-secondary)] p-1" role="tablist" aria-label="Conteúdo da conversa">
             {([[
               "media", "Mídia", ImageSquare
             ], ["links", "Links", LinkSimple], ["docs", "Docs", FileText]] as const).map(([key, label, Icon]) => (
@@ -243,7 +243,7 @@ export function ConversationContactPanel({
           ) : null}
 
           {assetsError ? (
-            <div className="mt-3 flex items-center justify-between gap-2 border   p-2 text-xs " role="alert">
+            <div className="mt-3 flex items-center justify-between gap-2 border border-[var(--warn-border)] bg-[var(--warn-bg)] p-2 text-xs text-[var(--warn)]" role="alert">
               <span>{assetsError}</span>
               {onRetryAssets ? <Button type="button" className="btn shrink-0 text-xs" onClick={onRetryAssets}>Tentar novamente</Button> : null}
             </div>
@@ -284,8 +284,8 @@ export function ConversationContactPanel({
                   <a key={message.id} href={mediaUrl(conversation.id, message.id)} target="_blank" rel="noreferrer" className="conversation-contact-panel__resource">
                     <FileText size={18} aria-hidden="true" />
                     <span className="min-w-0 flex-1">
-                      <strong className="block truncate text-xs ">{message.media_file_name ?? "Documento"}</strong>
-                      <span className="mono mt-0.5 block truncate text-xs ">{message.media_mime_type ?? "arquivo"}{message.media_size_bytes ? ` · ${formatBytes(message.media_size_bytes)}` : ""}</span>
+                      <strong className="block truncate text-xs text-[var(--text)]">{message.media_file_name ?? "Documento"}</strong>
+                      <span className="mono mt-0.5 block truncate text-xs text-[var(--faint-text)]">{message.media_mime_type ?? "arquivo"}{message.media_size_bytes ? ` · ${formatBytes(message.media_size_bytes)}` : ""}</span>
                     </span>
                     <ArrowDown size={15} aria-hidden="true" />
                   </a>

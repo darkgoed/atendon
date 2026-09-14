@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;680&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 @import "../styles/tokens.css";
 @import "../styles/base.css";
@@ -12,6 +12,3 @@
 @import "../styles/domains/post-sales.css";
 @import "../styles/domains/agenda-calendar.css";
 @import "../styles/domains/leads.css";
-@import "../styles/domains/settings.css";
-@import "../styles/domains/overview.css";
-@import "../styles/domains/tripz-ai.css";

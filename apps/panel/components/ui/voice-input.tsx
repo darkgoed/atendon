@@ -106,7 +106,7 @@ export function VoiceInput({
   onStop: () => void;
 }) {
   return (
-    <div className="mb-3 flex min-w-0 items-center gap-2.5 rounded-[10px] border border-[var(--warning-border)] bg-[var(--warning-subtle)] px-2.5 py-2 text-[var(--warning)]">
+    <div className="mb-3 flex min-w-0 items-center gap-2.5 rounded-[10px] border border-[var(--warn-border)] bg-[var(--warn-bg)] px-2.5 py-2 text-[var(--warn)]">
       <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-current" aria-hidden="true" />
       <strong className="sr-only" role="status">Gravando áudio</strong>
       <LiveAudioWaveform stream={stream} />
@@ -116,7 +116,7 @@ export function VoiceInput({
       <button type="button" onClick={onCancel} className="btn h-9 w-9 shrink-0 p-0 active:scale-[.98]" aria-label="Cancelar gravação">
         <X size={16} />
       </button>
-      <button type="button" onClick={onStop} className="btn h-9 w-9 shrink-0 p-0 active:scale-[.98]" aria-label="Concluir gravação">
+      <button type="button" onClick={onStop} className="btn warn h-9 w-9 shrink-0 p-0 active:scale-[.98]" aria-label="Concluir gravação">
         <Stop size={16} weight="fill" />
       </button>
     </div>
@@ -267,8 +267,8 @@ export function VoiceMessagePlayer({ src, label = "mensagem de áudio" }: { src:
         </button>
         <div className="min-w-0 flex-1">
           <div className={styles.voiceTrack}>
-            <WaveformBars amplitudes={amplitudes} className={`text-[var(--text-muted)] ${loadingWaveform ? "animate-pulse" : ""}`} />
-            <div ref={progressRef} className="pointer-events-none absolute inset-0 overflow-hidden text-[var(--primary)]">
+            <WaveformBars amplitudes={amplitudes} className={`text-[var(--faint)] ${loadingWaveform ? "animate-pulse" : ""}`} />
+            <div ref={progressRef} className="pointer-events-none absolute inset-0 overflow-hidden text-[var(--accent-soft)]">
               <WaveformBars amplitudes={amplitudes} className="w-full" barClassName="opacity-0" />
             </div>
             <input
@@ -287,7 +287,7 @@ export function VoiceMessagePlayer({ src, label = "mensagem de áudio" }: { src:
               aria-label={`Posição de reprodução de ${label}`}
             />
           </div>
-          <div className="mono mt-1 flex justify-between text-[9px] tabular-nums text-[var(--text-muted)]" aria-hidden="true">
+          <div className="mono mt-1 flex justify-between text-[9px] tabular-nums text-[var(--faint)]" aria-hidden="true">
             <span ref={currentTimeRef}>00:00</span>
             <span>{duration > 0 ? formatAudioDuration(duration) : "--:--"}</span>
           </div>

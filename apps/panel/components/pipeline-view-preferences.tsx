@@ -39,7 +39,7 @@ export function PipelineViewPreferences({
     <PopoverMenu
       icon={<SlidersHorizontal size={15} aria-hidden="true" />}
       label="Exibição"
-      buttonClassName="btn is-pressable"
+      buttonClassName="btn active:scale-[.98]"
       panelClassName="pipeline-popover grid gap-4"
     >
       {() => <>
@@ -54,7 +54,7 @@ export function PipelineViewPreferences({
               <button
                 key={density}
                 type="button"
-                className={`min-h-9 rounded border px-3 text-xs transition-token is-pressable ${value.density === density ? "border-primary surface-active type-primary" : "border-semantic type-secondary"}`}
+                className={`min-h-9 rounded border px-3 text-xs transition-colors active:scale-[.98] ${value.density === density ? "border-[var(--accent)] bg-[var(--active)] text-[var(--accent-soft)]" : "border-[var(--border)] text-[var(--body)]"}`}
                 aria-pressed={value.density === density}
                 onClick={() => onChange({ ...value, density })}
               >
@@ -101,7 +101,7 @@ export function PipelineViewPreferences({
             <option value={320}>Ampla · 320 px</option>
           </select>
         </label>
-        <button type="button" className="btn justify-center is-pressable" onClick={() => onChange({ ...DEFAULT_PIPELINE_PREFERENCES, visibleFields: [...DEFAULT_PIPELINE_PREFERENCES.visibleFields], auxiliaryBadges: [...DEFAULT_PIPELINE_PREFERENCES.auxiliaryBadges] })}>
+        <button type="button" className="btn justify-center active:scale-[.98]" onClick={() => onChange({ ...DEFAULT_PIPELINE_PREFERENCES, visibleFields: [...DEFAULT_PIPELINE_PREFERENCES.visibleFields], auxiliaryBadges: [...DEFAULT_PIPELINE_PREFERENCES.auxiliaryBadges] })}>
           <ArrowCounterClockwise size={15} aria-hidden="true" />
           Restaurar padrão
         </button>

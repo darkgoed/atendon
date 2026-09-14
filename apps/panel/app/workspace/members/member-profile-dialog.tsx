@@ -129,7 +129,7 @@ export function MemberProfileDialog({
         </AdminField>
 
         <div className="border-t border-[var(--border)] pt-4">
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--text)]">
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--heading)]">
             <Key size={17} className="accent" aria-hidden="true" />
             Redefinir senha
           </div>
@@ -165,7 +165,7 @@ export function MemberProfileDialog({
               />
             </label>
           </div>
-          <label className="mt-4 flex items-start gap-3 border border-[var(--border)] p-3 text-sm text-[var(--text-secondary)]">
+          <label className="mt-4 flex items-start gap-3 border border-[var(--border)] p-3 text-sm text-[var(--body)]">
             <input
               type="checkbox"
               checked={mustChangePassword}
@@ -173,7 +173,7 @@ export function MemberProfileDialog({
               onChange={(event) => setMustChangePassword(event.target.checked)}
             />
             <span>
-              <strong className="block text-[var(--text)]">Alterar senha no próximo login</strong>
+              <strong className="block text-[var(--heading)]">Alterar senha no próximo login</strong>
               <small className="sub mt-1 block">
                 O membro entra com esta senha temporária e precisa criar outra antes de acessar o painel.
               </small>

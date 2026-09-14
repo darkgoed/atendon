@@ -125,7 +125,7 @@ export function MeetRoom({ endpoint, publicAccess = false }: { endpoint: string;
           },
           interfaceConfigOverwrite: {
             APP_NAME: "AtendON Meet",
-            DEFAULT_BACKGROUND: getComputedStyle(document.documentElement).getPropertyValue("--bg").trim(),
+            DEFAULT_BACKGROUND: "#0E1315",
             DISABLE_JOIN_LEAVE_NOTIFICATIONS: false,
             JITSI_WATERMARK_LINK: "",
             MOBILE_APP_PROMO: false,
@@ -203,7 +203,7 @@ export function MeetRoom({ endpoint, publicAccess = false }: { endpoint: string;
               <h1 className="m-0 text-2xl tracking-tight">{phase === "error" ? "Não foi possível entrar na sala" : "A chamada foi finalizada"}</h1>
               <p>{phase === "error" ? error : "Você já pode fechar esta página ou entrar novamente."}</p>
               <div className="flex flex-wrap gap-2">
-                <button type="button" className="btn btn-primary active:scale-[.98]" onClick={retry}><ArrowClockwise size={16} aria-hidden="true" />{phase === "error" ? "Tentar novamente" : "Entrar novamente"}</button>
+                <button type="button" className="btn primary active:scale-[.98]" onClick={retry}><ArrowClockwise size={16} aria-hidden="true" />{phase === "error" ? "Tentar novamente" : "Entrar novamente"}</button>
                 {!publicAccess ? <Link href="/agenda" className="btn active:translate-y-px">Voltar à agenda</Link> : null}
               </div>
             </div>

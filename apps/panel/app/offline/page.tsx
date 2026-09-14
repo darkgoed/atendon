@@ -9,7 +9,7 @@ export default function OfflinePage() {
         <span className="label">ATENDON · OFFLINE</span>
         <h1 id="offline-title" className="mt-3 text-2xl font-semibold">Sem conexão no momento</h1>
         <p className="sub mt-3">Os dados do painel não são armazenados para uso offline. Reconecte-se para validar sua sessão e carregar informações atualizadas.</p>
-        <Link className="btn btn-primary" href="/">Tentar novamente</Link>
+        <Link className="btn primary mt-6 inline-flex" href="/">Tentar novamente</Link>
       </section>
     </main>
   );

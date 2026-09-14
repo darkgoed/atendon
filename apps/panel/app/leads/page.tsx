@@ -153,14 +153,14 @@ export default function LeadsPage() {
     </section> : null}
     {error ? <p className="error mb-4" role="alert">{error}</p> : null}
     {feedback ? <p className="accent mb-4" role="status" aria-live="polite">{feedback}</p> : null}
-    {accessNotice ? <p className="mb-4 rounded border border-primary p-3 text-sm type-primary" role="status">{accessNotice}</p> : null}
+    {accessNotice ? <p className="mb-4 rounded border border-[var(--border-ai)] p-3 text-sm text-[var(--accent-soft)]" role="status">{accessNotice}</p> : null}
     {swrError ? <p className="error mb-4" role="alert">{swrError.message}</p> : null}
     <section className="leads-table-surface responsive-table-wrap overflow-y-auto">
       {loading ? <div className="grid gap-2 p-4" role="status" aria-label="Carregando leads">{[1, 2, 3, 4].map((item) => <div key={item} className="skeleton h-12" aria-hidden="true" />)}</div>
         : leads.length === 0 ? <Empty>Nenhum lead corresponde aos filtros.</Empty>
           : <table className={`responsive-table leads-table crm-lead-table whitespace-nowrap ${canReadFollowUp ? "crm-lead-table--follow-up" : "crm-lead-table--basic"}`}>
             <thead><tr>{["Lead", "Etapa", "Contexto", ...(canReadFollowUp ? ["Acompanhamento"] : []), "Atualizado", "Ações"].map((label) => <th key={label}>{label}</th>)}</tr></thead>
-            <tbody>{leads.map((lead) => <tr key={lead.id} className="leads-table__row">
+            <tbody>{leads.map((lead) => <tr key={lead.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--active)]">
               <td data-label="Lead">
                 <div className="leads-table__identity">
                   {organizationEnabled === true ? <input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => setSelectedIds((current) => { const next = new Set(current); if (next.has(lead.id)) next.delete(lead.id); else if (next.size < 200) next.add(lead.id); return next; })} aria-label={`Selecionar ${lead.nome ?? lead.telefone}`} /> : null}

@@ -128,9 +128,9 @@ export default function HumanizacaoPage() {
       <PageHeader title="Humanização" description="Timing, presença, agrupamento, reações e limites configurados por tenant." />
 
       {error ? (
-        <section className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-4" role="alert">
+        <section className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-4" role="alert">
           <p className="error">{error}</p>
-          {!value ? <button type="button" className="btn" onClick={() => void loadHumanizer()}>Tentar novamente</button> : null}
+          {!value ? <button type="button" className="btn warn" onClick={() => void loadHumanizer()}>Tentar novamente</button> : null}
         </section>
       ) : null}
 
@@ -149,8 +149,8 @@ export default function HumanizacaoPage() {
             </div>
           </fieldset>
           <div className={styles.saveBar}>
-            {!canManage ? <span className="text-sm text-[var(--text-secondary)]">Acesso somente leitura.</span> : null}
-            {saved ? <span className="text-sm text-[var(--primary)]" role="status">Configuração salva.</span> : null}
+            {!canManage ? <span className="text-sm text-[var(--muted)]">Acesso somente leitura.</span> : null}
+            {saved ? <span className="text-sm text-[var(--accent-soft)]" role="status">Configuração salva.</span> : null}
             <Button type="submit" tone="primary" disabled={saving || !canManage}>
               {saving ? "Salvando…" : "Salvar humanização"}
             </Button>

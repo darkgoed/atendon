@@ -37,9 +37,9 @@ function listLength(source: Record<string, unknown>, ...keys: string[]): number 
 
 function SummaryField({ label, value }: { label: string; value?: string }) {
   return (
-    <div className="grid gap-1 border-t tripz-border-border py-3 first:border-t-0 first:pt-0">
-      <dt className="font-mono text-[9px] uppercase tracking-[.12em] tripz-text-text_muted">{label}</dt>
-      <dd className={`m-0 text-xs leading-5 ${value ? "tripz-text-text_secondary" : "tripz-text-text_muted"}`}>{value || "Ainda não informado"}</dd>
+    <div className="grid gap-1 border-t border-[var(--border)] py-3 first:border-t-0 first:pt-0">
+      <dt className="font-mono text-[9px] uppercase tracking-[.12em] text-[var(--faint-text)]">{label}</dt>
+      <dd className={`m-0 text-xs leading-5 ${value ? "text-[var(--body)]" : "text-[var(--faint-text)]"}`}>{value || "Ainda não informado"}</dd>
     </div>
   );
 }
@@ -95,26 +95,26 @@ export function TripzProposalReview({
       describedBy="tripz-review-description"
       onClose={onClose}
     >
-      <header className="flex items-start justify-between gap-4 border-b tripz-border-border px-5 py-4 sm:px-6">
+      <header className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 py-4 sm:px-6">
         <div className="min-w-0">
-          <span className="font-mono text-[9px] uppercase tracking-[.17em] tripz-text-primary">Revisão da proposta</span>
+          <span className="font-mono text-[9px] uppercase tracking-[.17em] text-[var(--accent)]">Revisão da proposta</span>
           <h2 id="tripz-review-title" className="mt-1 truncate !text-lg">{proposal?.title || proposal?.destination || "Proposta em construção"}</h2>
-          <p id="tripz-review-description" className="m-0 mt-1 text-[11px] tripz-text-text_secondary">Confira os dados estruturados e gere uma prévia antes do PDF.</p>
+          <p id="tripz-review-description" className="m-0 mt-1 text-[11px] text-[var(--muted)]">Confira os dados estruturados e gere uma prévia antes do PDF.</p>
         </div>
-        <button type="button" className="grid h-9 w-9 shrink-0 place-items-center tripz-bg-transparent tripz-text-text_secondary transition-[background,transform] hover:tripz-bg-surface_active hover:tripz-text-text active:scale-[.96]" onClick={onClose} aria-label="Fechar revisão">
+        <button type="button" className="grid h-9 w-9 shrink-0 place-items-center bg-transparent text-[var(--muted)] transition-[background,transform] hover:bg-[var(--active)] hover:text-[var(--text)] active:scale-[.96]" onClick={onClose} aria-label="Fechar revisão">
           <X size={17} aria-hidden="true" />
         </button>
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-[19rem_minmax(0,1fr)] md:overflow-hidden">
-        <section className="min-h-0 border-b tripz-border-border tripz-bg-surface_elevated p-5 md:overflow-y-auto md:border-b-0 md:border-r sm:p-6" aria-label="Resumo estruturado">
+        <section className="min-h-0 border-b border-[var(--border)] bg-[var(--panel-secondary)] p-5 md:overflow-y-auto md:border-b-0 md:border-r sm:p-6" aria-label="Resumo estruturado">
           {proposal ? (
             <>
-              <div className="mb-5 flex items-center gap-2 border-b tripz-border-border pb-4">
-                <CheckCircle size={16} weight="duotone" className="tripz-text-primary" aria-hidden="true" />
+              <div className="mb-5 flex items-center gap-2 border-b border-[var(--border)] pb-4">
+                <CheckCircle size={16} weight="duotone" className="text-[var(--accent)]" aria-hidden="true" />
                 <div>
-                  <strong className="block text-xs tripz-text-text">{tripzConversationStatusLabel(proposal.status)}</strong>
-                  <span className="font-mono text-[9px] tripz-text-text_muted">Revisão {proposal.revision}</span>
+                  <strong className="block text-xs text-[var(--text)]">{tripzConversationStatusLabel(proposal.status)}</strong>
+                  <span className="font-mono text-[9px] text-[var(--faint-text)]">Revisão {proposal.revision}</span>
                 </div>
               </div>
               <dl className="m-0">
@@ -129,17 +129,17 @@ export function TripzProposalReview({
               </dl>
 
               {proposal.inconsistencies.length > 0 ? (
-                <div className="mt-5 border-l-2 tripz-border-warning pl-3">
-                  <strong className="flex items-center gap-2 text-[11px] tripz-text-warning"><WarningCircle size={14} weight="fill" aria-hidden="true" />Pontos a confirmar</strong>
-                  <ul className="mb-0 mt-2 grid gap-1.5 pl-4 text-[10px] leading-4 tripz-text-warning">
+                <div className="mt-5 border-l-2 border-[var(--warn)] pl-3">
+                  <strong className="flex items-center gap-2 text-[11px] text-[var(--warn)]"><WarningCircle size={14} weight="fill" aria-hidden="true" />Pontos a confirmar</strong>
+                  <ul className="mb-0 mt-2 grid gap-1.5 pl-4 text-[10px] leading-4 text-[var(--warn-muted)]">
                     {proposal.inconsistencies.map((issue) => <li key={issue}>{issue}</li>)}
                   </ul>
                 </div>
               ) : null}
               {proposal.missingInformation.length > 0 ? (
-                <div className="mt-5 border-t tripz-border-border pt-4">
-                  <strong className="text-[10px] uppercase tracking-wide tripz-text-text_secondary">Ainda falta</strong>
-                  <ul className="mb-0 mt-2 grid gap-1.5 pl-4 text-[10px] leading-4 tripz-text-text_muted">
+                <div className="mt-5 border-t border-[var(--border)] pt-4">
+                  <strong className="text-[10px] uppercase tracking-wide text-[var(--body)]">Ainda falta</strong>
+                  <ul className="mb-0 mt-2 grid gap-1.5 pl-4 text-[10px] leading-4 text-[var(--faint-text)]">
                     {proposal.missingInformation.map((item) => <li key={item}>{item}</li>)}
                   </ul>
                 </div>
@@ -150,14 +150,14 @@ export function TripzProposalReview({
               <span className="skeleton mb-3 block h-4 w-2/3" aria-hidden="true" />
               <span className="skeleton mb-2 block h-10 w-full" aria-hidden="true" />
               <span className="skeleton block h-24 w-full" aria-hidden="true" />
-              <p className="mt-4 text-xs tripz-text-text_secondary">O resumo aparecerá quando a proposta for estruturada.</p>
+              <p className="mt-4 text-xs text-[var(--muted)]">O resumo aparecerá quando a proposta for estruturada.</p>
             </div>
           )}
         </section>
 
-        <section className="grid min-h-[28rem] grid-rows-[auto_minmax(0,1fr)] tripz-bg-bg md:min-h-0" aria-label="Prévia do documento" aria-busy={processing}>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b tripz-border-border px-4 py-3 sm:px-5">
-            <div className="flex items-center gap-2 text-[11px] tripz-text-text_secondary">
+        <section className="grid min-h-[28rem] grid-rows-[auto_minmax(0,1fr)] bg-[var(--app)] md:min-h-0" aria-label="Prévia do documento" aria-busy={processing}>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-3 sm:px-5">
+            <div className="flex items-center gap-2 text-[11px] text-[var(--muted)]">
               <Eye size={15} aria-hidden="true" />
               <span>{processing ? "Aguarde a análise atual" : preview?.status === "ready" ? "Prévia fiel ao PDF" : preview?.status === "processing" || preview?.status === "queued" ? "Preparando prévia" : "Prévia ainda não gerada"}</span>
             </div>
@@ -168,7 +168,7 @@ export function TripzProposalReview({
               </button>
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn primary"
                 disabled={!proposal || processing || generatingPdf || !preview?.html || preview.proposalRevision !== proposal.revision}
                 title={!preview?.html || preview.proposalRevision !== proposal?.revision ? "Gere e revise a prévia desta versão primeiro" : undefined}
                 onClick={onGeneratePdf}
@@ -186,18 +186,18 @@ export function TripzProposalReview({
           <div className="relative min-h-0 overflow-auto p-4 sm:p-6">
             {preview?.html ? (
               <iframe
-                className="mx-auto block min-h-[42rem] w-full max-w-[52rem] border tripz-border-border_strong tripz-bg-surface"
+                className="mx-auto block min-h-[42rem] w-full max-w-[52rem] border border-[var(--strong)] bg-white"
                 title="Prévia segura da proposta Tripz"
                 sandbox=""
                 referrerPolicy="no-referrer"
                 srcDoc={preview.html}
               />
             ) : (
-              <div className="grid h-full min-h-[24rem] place-items-center border border-dashed tripz-border-border tripz-bg-surface_elevated px-6 text-center">
+              <div className="grid h-full min-h-[24rem] place-items-center border border-dashed border-[var(--border)] bg-[var(--panel-secondary)] px-6 text-center">
                 <div className="max-w-xs">
-                  <ArrowSquareOut size={30} weight="duotone" className="mx-auto tripz-text-text_muted" aria-hidden="true" />
-                  <h3 className="mb-0 mt-4 text-sm tripz-text-text">Visualize antes de finalizar</h3>
-                  <p className="mb-0 mt-2 text-xs leading-5 tripz-text-text_secondary">A prévia usa o mesmo conteúdo do PDF e abre isolada, sem executar scripts.</p>
+                  <ArrowSquareOut size={30} weight="duotone" className="mx-auto text-[var(--faint-text)]" aria-hidden="true" />
+                  <h3 className="mb-0 mt-4 text-sm text-[var(--text)]">Visualize antes de finalizar</h3>
+                  <p className="mb-0 mt-2 text-xs leading-5 text-[var(--muted)]">A prévia usa o mesmo conteúdo do PDF e abre isolada, sem executar scripts.</p>
                 </div>
               </div>
             )}
@@ -205,8 +205,8 @@ export function TripzProposalReview({
         </section>
       </div>
 
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t tripz-border-border px-5 py-3 sm:px-6">
-        <p className={`m-0 text-[10px] ${actionError ? "tripz-text-warning" : "tripz-text-text_muted"}`} role={actionError ? "alert" : undefined}>
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] px-5 py-3 sm:px-6">
+        <p className={`m-0 text-[10px] ${actionError ? "text-[var(--warn)]" : "text-[var(--faint-text)]"}`} role={actionError ? "alert" : undefined}>
           {actionError || "Correções continuam sendo feitas por mensagem, mantendo o histórico da revisão."}
         </p>
         <button type="button" className="btn" onClick={onRequestCorrection}>

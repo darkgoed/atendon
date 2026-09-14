@@ -257,9 +257,9 @@ export function ConversationScheduler({
   function AssigneePicker() {
     if (!assigneeInterval) return null;
     return (
-      <section className="border-y agenda-border-default py-5" aria-labelledby="appointment-assignee-title">
+      <section className="border-y border-[var(--border)] py-5" aria-labelledby="appointment-assignee-title">
         <div className="mb-3 flex items-start gap-3">
-          <UsersThree className="mt-0.5 agenda-tone-primary" size={19} aria-hidden="true" />
+          <UsersThree className="mt-0.5 text-[var(--accent-soft)]" size={19} aria-hidden="true" />
           <div>
             <strong id="appointment-assignee-title" className="block text-sm">Closer responsável</strong>
             <p className="sub mt-1 text-xs">
@@ -270,9 +270,9 @@ export function ConversationScheduler({
           </div>
         </div>
         {assigneesLoading ? <div className="skeleton h-20" aria-label="Carregando closers" /> : assigneeError ? (
-          <div className="flex items-center justify-between gap-3 text-sm agenda-tone-warning" role="alert">
+          <div className="flex items-center justify-between gap-3 text-sm text-[var(--warn)]" role="alert">
             <span>{errorMessage(assigneeError, "Não foi possível carregar os closers.")}</span>
-            <Button type="button" className="btn" onClick={() => void retryAssignees()}>Tentar novamente</Button>
+            <Button type="button" className="btn warn" onClick={() => void retryAssignees()}>Tentar novamente</Button>
           </div>
         ) : (
           <>
@@ -301,18 +301,18 @@ export function ConversationScheduler({
                 })}
               </Select>
             ) : (
-              <p className="text-sm agenda-tone-secondary">
+              <p className="text-sm text-[var(--body)]">
                 {context?.agendamento_ativo?.assigned_name || context?.agendamento_ativo?.assigned_email || "Definido automaticamente ao confirmar"}
               </p>
             )}
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {(assigneeData?.assignees ?? []).map((assignee) => (
-                <div key={assignee.member_id} className={`border px-3 py-2 text-xs ${assignee.selectable ? "agenda-border-default" : "agenda-border-warning"}`}>
+                <div key={assignee.member_id} className={`border px-3 py-2 text-xs ${assignee.selectable ? "border-[var(--border)]" : "border-[var(--warn-border)]"}`}>
                   <div className="flex items-center justify-between gap-2">
                     <strong className="truncate">{assignee.name?.trim() || assignee.email}</strong>
-                    <span className={assignee.online ? "agenda-tone-success" : "agenda-tone-muted"}>{assignee.online ? "online" : "offline"}</span>
+                    <span className={assignee.online ? "text-[var(--ok)]" : "text-[var(--faint)]"}>{assignee.online ? "online" : "offline"}</span>
                   </div>
-                  <p className="mt-1 agenda-tone-secondary">
+                  <p className="mt-1 text-[var(--muted)]">
                     {assignee.availability_status === "available" ? "Disponível" : "Indisponível"} · {assignee.future_meetings_count} futura(s)
                     {assignee.conflicts.length ? ` · ${assignee.conflicts.length} conflito(s)` : " · sem conflito"}
                   </p>
@@ -343,8 +343,8 @@ export function ConversationScheduler({
         <div className="min-w-0">
           <span className="label">Agenda da conversa</span>
           <h2 id="conversation-scheduler-title" className="mt-1 truncate">Agendar contato</h2>
-          <p id="conversation-scheduler-description" className="mt-1 text-sm agenda-tone-secondary">
-            {contactName ?? contactPhone} <span className="mono text-xs agenda-tone-muted">· {contactPhone}</span>
+          <p id="conversation-scheduler-description" className="mt-1 text-sm text-[var(--muted)]">
+            {contactName ?? contactPhone} <span className="mono text-xs text-[var(--faint)]">· {contactPhone}</span>
           </p>
         </div>
         <Button type="button" className="btn shrink-0 p-2" aria-label="Fechar agenda" disabled={creating} onClick={onClose}>
@@ -362,21 +362,21 @@ export function ConversationScheduler({
           <div className="skeleton h-28" aria-hidden="true" />
         </div>
       ) : loadError ? (
-        <section className="grid gap-4 border-y agenda-border-warning agenda-bg-warning px-4 py-5 agenda-tone-warning" role="alert">
+        <section className="grid gap-4 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-5 text-[var(--warn)]" role="alert">
           <div className="flex items-start gap-3">
             <WarningCircle className="mt-0.5 shrink-0" size={20} aria-hidden="true" />
             <div>
               <strong className="block text-sm">Não foi possível abrir a agenda</strong>
-              <p className="mt-1 text-sm agenda-tone-warning">{errorMessage(loadError, "Tente novamente.")}</p>
+              <p className="mt-1 text-sm text-[var(--warn-muted)]">{errorMessage(loadError, "Tente novamente.")}</p>
             </div>
           </div>
-          <Button type="button" className="btn justify-self-start" onClick={() => void Promise.all([retryContext(), retryUnits()])}>
+          <Button type="button" className="btn warn justify-self-start" onClick={() => void Promise.all([retryContext(), retryUnits()])}>
             Tentar novamente
           </Button>
         </section>
       ) : created ? (
         <section className="grid gap-5 py-2" role="status" aria-live="polite">
-          <div className="flex items-start gap-3 border-y agenda-border-success agenda-bg-success px-4 py-5 agenda-tone-success">
+          <div className="flex items-start gap-3 border-y border-[var(--ok-border)] bg-[var(--ok-bg)] px-4 py-5 text-[var(--ok)]">
             <CheckCircle className="mt-0.5 shrink-0" size={23} weight="fill" aria-hidden="true" />
             <div>
               <strong className="block text-sm">Contato agendado</strong>
@@ -392,21 +392,21 @@ export function ConversationScheduler({
           </div>
         </section>
       ) : !context?.lead ? (
-        <section className="grid gap-4 border-y agenda-border-warning agenda-bg-warning px-4 py-5" role="status">
+        <section className="grid gap-4 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-5" role="status">
           <div className="flex items-start gap-3">
-            <WarningCircle className="mt-0.5 shrink-0 agenda-tone-warning" size={20} aria-hidden="true" />
+            <WarningCircle className="mt-0.5 shrink-0 text-[var(--warn)]" size={20} aria-hidden="true" />
             <div>
-              <strong className="block text-sm agenda-tone-warning">Contato ainda não está disponível para agendamento</strong>
-              <p className="mt-1 text-sm leading-relaxed agenda-tone-warning">
+              <strong className="block text-sm text-[var(--warn)]">Contato ainda não está disponível para agendamento</strong>
+              <p className="mt-1 text-sm leading-relaxed text-[var(--warn-muted)]">
                 Conclua o cadastro do lead com categoria e unidade. Depois, volte a esta conversa para escolher o horário.
               </p>
             </div>
           </div>
-          <Link className="btn justify-self-start" href="/leads">Abrir leads</Link>
+          <Link className="btn warn justify-self-start" href="/leads">Abrir leads</Link>
         </section>
       ) : context.agendamento_ativo ? (
         <section className="grid gap-5 py-2">
-          <div className="flex items-start gap-3 border-y agenda-border-primary agenda-bg-primary px-4 py-5 agenda-tone-primary">
+          <div className="flex items-start gap-3 border-y border-[var(--border-ai)] bg-[var(--accent-bg)] px-4 py-5 text-[var(--accent-soft)]">
             <CalendarDots className="mt-0.5 shrink-0" size={22} aria-hidden="true" />
             <div>
               <strong className="block text-sm">Este contato já possui agendamento ativo</strong>
@@ -416,7 +416,7 @@ export function ConversationScheduler({
             </div>
           </div>
           <AssigneePicker />
-          {submitError ? <p className="agenda-alert agenda-alert--error" role="alert">{submitError}</p> : null}
+          {submitError ? <p className="error" role="alert">{submitError}</p> : null}
           <div className="flex flex-wrap justify-end gap-2">
             <Link className="btn" href="/agenda">Ver agenda</Link>
             {context.can_select_assignee ? (
@@ -427,16 +427,16 @@ export function ConversationScheduler({
           </div>
         </section>
       ) : units.length === 0 ? (
-        <section className="border-y agenda-border-warning agenda-bg-warning px-4 py-5 text-sm agenda-tone-warning" role="status">
+        <section className="border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-5 text-sm text-[var(--warn)]" role="status">
           Cadastre ao menos uma unidade antes de criar um agendamento.
         </section>
       ) : (
         <form className="grid gap-5" onSubmit={createAppointment}>
-          <div className="grid gap-4 border-y agenda-border-default py-5 sm:grid-cols-2">
+          <div className="grid gap-4 border-y border-[var(--border)] py-5 sm:grid-cols-2">
             <label className="field">
               <span className="label">Unidade</span>
               <span className="relative">
-                <MapPin className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 agenda-tone-muted" size={16} aria-hidden="true" />
+                <MapPin className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" size={16} aria-hidden="true" />
                 <Select
                   data-autofocus
                   className="input w-full pl-9"
@@ -500,13 +500,13 @@ export function ConversationScheduler({
                 {Array.from({ length: 8 }).map((_, index) => <div key={index} className="skeleton h-11" aria-hidden="true" />)}
               </div>
             ) : availabilityError ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-y agenda-border-warning agenda-bg-warning px-4 py-4 text-sm agenda-tone-warning" role="alert">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-4 text-sm text-[var(--warn)]" role="alert">
                 <span>{errorMessage(availabilityError, "Não foi possível carregar os horários.")}</span>
-                <Button type="button" className="btn" onClick={() => void retryAvailability()}>Tentar novamente</Button>
+                <Button type="button" className="btn warn" onClick={() => void retryAvailability()}>Tentar novamente</Button>
               </div>
             ) : slots.length === 0 ? (
-              <div className="grid justify-items-start gap-2 border-y agenda-border-default py-5 agenda-tone-secondary" role="status">
-                <strong className="text-sm agenda-tone-secondary">Nenhum horário livre nesta data</strong>
+              <div className="grid justify-items-start gap-2 border-y border-[var(--border)] py-5 text-[var(--muted)]" role="status">
+                <strong className="text-sm text-[var(--body)]">Nenhum horário livre nesta data</strong>
                 <p className="text-sm">Avance para o próximo dia ou escolha outra unidade.</p>
                 <Button type="button" className="btn mt-1" onClick={() => moveDate(1)}>Ver o próximo dia</Button>
               </div>
@@ -522,8 +522,8 @@ export function ConversationScheduler({
                       className={[
                         "flex min-h-11 items-center justify-center gap-1.5 border px-3 py-2 text-sm font-semibold transition active:translate-y-px",
                         selected
-                          ? "agenda-border-primary agenda-bg-primary agenda-tone-primary"
-                          : "agenda-border-default agenda-tone-secondary hover:agenda-border-strong"
+                          ? "border-[var(--border-ai)] bg-[var(--accent-bg)] text-[var(--accent-soft)]"
+                          : "border-[var(--border)] text-[var(--body)] hover:border-[var(--strong)]"
                       ].join(" ")}
                       disabled={creating}
                       onClick={() => {
@@ -541,19 +541,19 @@ export function ConversationScheduler({
           </section>
 
           {selectedSlot ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t agenda-border-default pt-4 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-4 text-sm">
               <div>
                 <span className="label">Confirmação</span>
-                <p className="mt-1 agenda-tone-secondary">
+                <p className="mt-1 text-[var(--body)]">
                   {formatConversationSlot(selectedSlot.start, timezone, { includeDate: true })}
                   {selectedUnit ? ` · ${selectedUnit.nome}` : ""}
                 </p>
               </div>
-              <span className="mono text-xs agenda-tone-muted">{timezone}</span>
+              <span className="mono text-xs text-[var(--faint)]">{timezone}</span>
             </div>
           ) : null}
 
-          {submitError ? <p className="agenda-alert agenda-alert--error" role="alert">{submitError}</p> : null}
+          {submitError ? <p className="error" role="alert">{submitError}</p> : null}
 
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" className="btn" disabled={creating} onClick={onClose}>Cancelar</Button>

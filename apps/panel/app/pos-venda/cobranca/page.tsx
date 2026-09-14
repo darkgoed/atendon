@@ -61,7 +61,7 @@ export default function PostSaleDebtsPage() {
       </header>
 
       {data?.summary ? (
-        <section className="post-sales-billing-summary">
+        <section className="card post-sales-billing-summary grid gap-3 sm:grid-cols-2 md:grid-cols-4">
           <SummaryTile label="Total de registros" value={String(data.summary.total)} />
           <SummaryTile label="Pagos" value={String(data.summary.paid)} />
           <SummaryTile label="Em aberto" value={formatPostSaleDebtAmount(data.summary.amount_open_total)} />
@@ -69,7 +69,7 @@ export default function PostSaleDebtsPage() {
         </section>
       ) : null}
 
-      <section className="post-sales-billing-filters toolbar">
+      <section className="card post-sales-billing-filters grid gap-3 sm:grid-cols-2 md:grid-cols-3">
         <label className="field">
           <span className="label">Busca</span>
           <span className="search-field"><MagnifyingGlass aria-hidden="true" /><Input value={filters.q} onChange={(event) => change("q", event.target.value)} placeholder="Nome ou telefone" /></span>
@@ -92,13 +92,13 @@ export default function PostSaleDebtsPage() {
 
       {error ? <p className="error post-sales-billing-error" role="alert">{error.message}</p> : null}
 
-      <section className="post-sales-billing-table-panel">
+      <section className="card responsive-table-wrap p-0">
         {isLoading ? (
           <div className="post-sales-billing-skeleton" role="status" aria-label="Carregando cobranças">
             {[1, 2, 3, 4].map((item) => <div key={item} className="skeleton" aria-hidden="true" />)}
           </div>
         ) : debts.length === 0 ? <Empty>Nenhuma cobrança corresponde aos filtros.</Empty> : (
-          <TableScroll className="table-wrap post-sales-billing-table-wrap"><table className="responsive-table post-sales-billing-table">
+          <TableScroll className="post-sales-billing-table-wrap"><table className="responsive-table post-sales-billing-table">
             <thead>
               <tr>
                 {["Loja", "Cliente", "Telefone", "Em aberto", "Recuperado", "Status", "Motivo", "Promessa", "Dias sem contato", "Alerta"].map((label) => (

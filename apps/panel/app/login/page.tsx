@@ -105,7 +105,7 @@ export default function Login() {
 
         {error ? <p className="error" role="alert">{error}</p> : null}
 
-        <Button type="submit" tone="primary" className="button-wide" loading={loading}>
+        <Button type="submit" tone="primary" className="button-wide" disabled={loading}>
           {loading ? "Entrando…" : "Entrar"}
         </Button>
         <p className="login-note">Acesso restrito · sem cadastro público</p>

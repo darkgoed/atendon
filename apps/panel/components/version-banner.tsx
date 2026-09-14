@@ -39,15 +39,15 @@ export function VersionBanner({
       <div className="flex flex-col gap-4 p-6">
         <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
           <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--primary-subtle)] text-[var(--primary)]">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--accent-dim)] text-[var(--accent)]">
               <Sparkle size={20} weight="fill" />
             </span>
             <div>
               <h2 id="version-banner-title" className="text-lg font-semibold text-[var(--text)]">
                 O que há de novo
               </h2>
-              <p id="version-banner-desc" className="text-xs text-[var(--text-secondary)]">
-                {hasKnownVersion ? <>Novidades da versão <strong className="mono text-[var(--primary)]">v{currentVersion}</strong></> : "Novidades da versão implantada"}
+              <p id="version-banner-desc" className="text-xs text-[var(--muted)]">
+                {hasKnownVersion ? <>Novidades da versão <strong className="mono text-[var(--accent)]">v{currentVersion}</strong></> : "Novidades da versão implantada"}
                 {currentChangelog?.date ? ` (${currentChangelog.date})` : ""}
               </p>
             </div>
@@ -55,7 +55,7 @@ export function VersionBanner({
           <button
             type="button"
             onClick={handleClose}
-            className="rounded-md p-1 text-[var(--text-secondary)] hover:bg-[var(--surface-active)] hover:text-[var(--text)] transition"
+            className="rounded-md p-1 text-[var(--muted)] hover:bg-[var(--active)] hover:text-[var(--text)] transition"
             aria-label="Fechar novidades"
           >
             <X size={18} />
@@ -65,39 +65,39 @@ export function VersionBanner({
         <div className="max-h-72 overflow-y-auto space-y-4 pr-1" tabIndex={0}>
           {currentChangelog && currentChangelog.changes.length > 0 ? (
             <div className="space-y-2">
-              <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+              <span className="text-xs font-medium uppercase tracking-wider text-[var(--faint)]">
                 Mudanças nesta versão
               </span>
               <ul className="space-y-2">
                 {currentChangelog.changes.map((change, index) => (
-                  <li key={index} className="flex items-start gap-2.5 text-sm text-[var(--text-secondary)]">
-                    <CheckCircle size={16} weight="fill" className="mt-0.5 shrink-0 text-[var(--success)]" />
+                  <li key={index} className="flex items-start gap-2.5 text-sm text-[var(--body)]">
+                    <CheckCircle size={16} weight="fill" className="mt-0.5 shrink-0 text-[var(--ok)]" />
                     <span>{change}</span>
                   </li>
                 ))}
               </ul>
             </div>
           ) : (
-            <p className="text-sm text-[var(--text-secondary)]">
+            <p className="text-sm text-[var(--muted)]">
               {hasKnownVersion ? <>O sistema foi atualizado para a versão <span className="mono">v{currentVersion}</span> com melhorias gerais de desempenho e segurança.</> : "A versão implantada está sendo identificada. Consulte novamente em instantes."}
             </p>
           )}
 
           {versionInfo.changelog.length > 1 && (
             <div className="pt-3 border-t border-[var(--border)] space-y-3">
-              <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+              <span className="text-xs font-medium uppercase tracking-wider text-[var(--faint)]">
                 Histórico recente
               </span>
               {versionInfo.changelog
                 .filter((item) => item.version !== currentVersion)
                 .slice(0, 3)
                 .map((item) => (
-                  <div key={item.version} className="rounded-lg bg-[var(--surface-active)] p-3 text-xs">
-                    <div className="flex items-center justify-between font-mono font-medium text-[var(--text-secondary)] mb-1">
+                  <div key={item.version} className="rounded-lg bg-[var(--active)] p-3 text-xs">
+                    <div className="flex items-center justify-between font-mono font-medium text-[var(--body)] mb-1">
                       <span>v{item.version}</span>
-                      <span className="type-caption text-[var(--text-muted)]">{item.date}</span>
+                      <span className="type-caption text-[var(--faint)]">{item.date}</span>
                     </div>
-                    <ul className="list-disc list-inside space-y-0.5 text-[var(--text-secondary)]">
+                    <ul className="list-disc list-inside space-y-0.5 text-[var(--muted)]">
                       {item.changes.map((change, cIdx) => (
                         <li key={cIdx}>{change}</li>
                       ))}

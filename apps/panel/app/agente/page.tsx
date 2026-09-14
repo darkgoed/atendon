@@ -203,7 +203,7 @@ export default function Agent() {
               </select>
             </label>
           ) : null}
-          <span className={`mono rounded-full border px-3 py-2 type-caption font-semibold uppercase tracking-[.12em] ${form?.isActive ? "border-[var(--primary-border)] text-[var(--primary)]" : "border-[var(--warning-border)] text-[var(--warning)]"}`}>
+          <span className={`mono rounded-full border px-3 py-2 type-caption font-semibold uppercase tracking-[.12em] ${form?.isActive ? "border-[var(--border-ai)] text-[var(--accent-soft)]" : "border-[var(--warn-border)] text-[var(--warn)]"}`}>
             {form?.isActive ? "IA ligada" : "IA desligada"}
           </span>
           <button type="button" className={`btn active:scale-[.98] ${form?.isActive ? "warn" : "primary"}`} disabled={!canManage || !form || changingStatus || targetNeedsOverride} onClick={toggleAgent}>
@@ -224,7 +224,7 @@ export default function Agent() {
           {scope === "connection" && canManage ? (
             <>
               {" "}
-              <button type="button" className="btn ml-2" disabled={removingOverride} onClick={() => void removeOverride()}>
+              <button type="button" className="btn warn ml-2" disabled={removingOverride} onClick={() => void removeOverride()}>
                 {removingOverride ? "Removendo…" : "Voltar ao prompt compartilhado"}
               </button>
             </>
@@ -244,8 +244,8 @@ export default function Agent() {
             <section className="agent-main">
               <div className="flex channels-ai-agent-editor flex-col">
                 <div className="cardtitle channels-ai-section-title">
-                  <span><label htmlFor="agent-system-prompt">Instruções do agente</label> <small className="mono ml-2 type-caption text-[var(--text-muted)]">system_prompt</small></span>
-                  <span className="mono type-caption text-[var(--text-muted)]">{form.systemPrompt.length} caracteres</span>
+                  <span><label htmlFor="agent-system-prompt">Instruções do agente</label> <small className="mono ml-2 type-caption text-[var(--faint)]">system_prompt</small></span>
+                  <span className="mono type-caption text-[var(--faint)]">{form.systemPrompt.length} caracteres</span>
                 </div>
                 <textarea id="agent-system-prompt" className="input channels-ai-prompt flex-1 resize-none leading-relaxed" value={form.systemPrompt} onChange={(event) => change({ systemPrompt: event.target.value })} />
                 <p className="sub mt-3">Proteções contra injeção de prompt, fuga de contexto e exposição de dados continuam ativas automaticamente. O comportamento do atendimento vem do que você escrever aqui.</p>
@@ -275,7 +275,7 @@ export default function Agent() {
                 <Field label="Modelo"><input className="input mono text-xs" value={form.aiModel} onChange={(event) => change({ aiModel: event.target.value })} /></Field>
                 <Field label="Chave da API"><input className="input mono text-xs" type="password" autoComplete="new-password" placeholder={form.hasOpenRouterApiKey ? "Chave configurada · digite para substituir" : "sk-or-v1-..."} value={form.openRouterApiKey} onChange={(event) => change({ openRouterApiKey: event.target.value, clearOpenRouterApiKey: false })} /></Field>
                 {form.hasOpenRouterApiKey ? (
-                  <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                  <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
                     <input type="checkbox" checked={form.clearOpenRouterApiKey} onChange={(event) => change({ clearOpenRouterApiKey: event.target.checked, openRouterApiKey: "" })} />
                     Remover chave configurada
                   </label>

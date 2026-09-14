@@ -140,8 +140,8 @@ function SlotCell({ slot, timezone, isToday, availabilityFailed, items, dragging
           >
             <button type="button" className="agenda-appointment__contact" onClick={(event) => { event.stopPropagation(); onOpen(item); }} aria-label={`Abrir detalhes de ${item.lead_nome ?? item.lead_telefone}`}>{item.lead_nome ?? item.lead_telefone}</button>
             <span className="agenda-appointment__time">{new Date(item.start).toLocaleTimeString("pt-BR", { timeZone: timezone, hour: "2-digit", minute: "2-digit" })} — {new Date(item.end).toLocaleTimeString("pt-BR", { timeZone: timezone, hour: "2-digit", minute: "2-digit" })}</span>
-            <span className={`agenda-appointment__status ${isAppointmentResultPending(item, now) ? "text-[var(--warning)]" : ""}`}>{isAppointmentResultPending(item, now) ? "Resultado pendente" : APPOINTMENT_STATUS_LABELS[item.status]}</span>
-            <span className="truncate type-caption text-[var(--text-muted)]">{item.responsavel?.email ?? "Sem responsável"}</span>
+            <span className={`agenda-appointment__status ${isAppointmentResultPending(item, now) ? "text-[var(--warn)]" : ""}`}>{isAppointmentResultPending(item, now) ? "Resultado pendente" : APPOINTMENT_STATUS_LABELS[item.status]}</span>
+            <span className="truncate type-caption text-[var(--faint)]">{item.responsavel?.email ?? "Sem responsável"}</span>
           </article>
         ))}
       </div>

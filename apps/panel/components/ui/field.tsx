@@ -51,7 +51,7 @@ export function Field({ label, hint, error, htmlFor, children, className = "", .
   return <div {...props} className={`field${error ? " field--error" : ""}${className ? ` ${className}` : ""}`}>
     {label && <label htmlFor={controlId}>{label}</label>}
     {control}
-    {error ? <small id={errorId} className="field__error" role="alert">{error}</small> : hint ? <small id={hintId} className="field__hint sub">{hint}</small> : null}
+    {error ? <small id={errorId} className="field__error" role="alert">{error}</small> : hint ? <small id={hintId} className="sub">{hint}</small> : null}
   </div>;
 }
 

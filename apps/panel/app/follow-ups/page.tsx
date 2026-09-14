@@ -11,7 +11,7 @@ export default function FollowUpsPage() {
     <Shell><div className={`${styles.channelsAiPage} channels-ai-page`}>
       <header className="pagehead">
         <div>
-          <div className="mono mb-3 flex items-center gap-2 type-overline"><Clock size={18} aria-hidden="true" />Automação da IA</div>
+          <div className="mono mb-3 flex items-center gap-2 type-caption uppercase tracking-[.16em] text-[var(--accent-soft)]"><Clock size={18} />Automação da IA</div>
           <h1>Follow-ups</h1>
           <p>Configure a cadência e a biblioteca de mídias usadas nas mensagens automáticas.</p>
         </div>

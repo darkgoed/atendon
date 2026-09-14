@@ -160,10 +160,10 @@ export function WebPushSettings() {
         )}
       </div>
       {error ? <p className="error mt-3" role="alert">{error.message}</p> : null}
-      {!supported ? <p className="mt-3 text-sm text-[var(--warning)]">Este navegador não oferece Web Push.</p> : null}
-      {supported && data && !data.configured ? <p className="mt-3 text-sm text-[var(--warning)]">VAPID ainda não foi configurado pelo administrador.</p> : null}
-      {message ? <p className="mt-3 text-sm text-[var(--text-secondary)]" role="status">{message}</p> : null}
-      <p className="mono mt-3 type-caption text-[var(--text-muted)]">{data?.subscription_count ?? 0} dispositivo(s) inscrito(s) neste workspace</p>
+      {!supported ? <p className="mt-3 text-sm text-[var(--warn)]">Este navegador não oferece Web Push.</p> : null}
+      {supported && data && !data.configured ? <p className="mt-3 text-sm text-[var(--warn)]">VAPID ainda não foi configurado pelo administrador.</p> : null}
+      {message ? <p className="mt-3 text-sm text-[var(--muted)]" role="status">{message}</p> : null}
+      <p className="mono mt-3 type-caption text-[var(--faint)]">{data?.subscription_count ?? 0} dispositivo(s) inscrito(s) neste workspace</p>
       {data ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {preferenceOptions.map((option) => (

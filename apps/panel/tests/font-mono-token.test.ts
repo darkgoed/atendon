@@ -9,8 +9,7 @@ const css = [
 
 describe('font mono token', () => {
   it('uses the replacement token and removes the legacy mono family from CSS', () => {
-    expect(css).toMatch(/--font-mono:\s*ui-monospace/);
-    expect(css).toContain("monospace");
+    expect(css).toContain('--font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace');
     expect(css).not.toContain(['IBM', 'Plex', 'Mono'].join(' '));
   });
 

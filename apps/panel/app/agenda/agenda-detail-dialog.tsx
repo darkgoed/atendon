@@ -26,7 +26,7 @@ export function AgendaDetailDialog({ actions, timezone, now }: { actions: Agenda
         <div className="min-w-0">
           <span className="label">Detalhes da reunião</span>
           <h2 id="agenda-detail-title" className="mt-1 truncate">{selectedAppointment.lead_nome ?? selectedAppointment.lead_telefone}</h2>
-          <p id="agenda-detail-description" className="mono mt-1 text-sm text-[var(--text-secondary)]">{formatSlot({ start: selectedAppointment.start, end: selectedAppointment.end, vagas: 1, capacidade: 1 }, timezone)}</p>
+          <p id="agenda-detail-description" className="mono mt-1 text-sm text-[var(--muted)]">{formatSlot({ start: selectedAppointment.start, end: selectedAppointment.end, vagas: 1, capacidade: 1 }, timezone)}</p>
         </div>
         <button type="button" className="btn shrink-0 p-2 active:scale-[.98]" aria-label="Fechar detalhes" disabled={busy} onClick={closeAppointment}><X size={16} aria-hidden="true" /></button>
       </header>
@@ -38,7 +38,7 @@ export function AgendaDetailDialog({ actions, timezone, now }: { actions: Agenda
       </dl>
 
       <div className="agenda-detail-summary">
-        <div><span className="label">Status</span><strong>{isAppointmentResultPending(selectedAppointment, now) ? "Resultado pendente" : APPOINTMENT_STATUS_LABELS[selectedAppointment.status]}</strong>{isAppointmentResultPending(selectedAppointment, now) ? <small className="mt-1 block text-[var(--warning)]">O horário terminou sem um desfecho registrado.</small> : null}</div>
+        <div><span className="label">Status</span><strong>{isAppointmentResultPending(selectedAppointment, now) ? "Resultado pendente" : APPOINTMENT_STATUS_LABELS[selectedAppointment.status]}</strong>{isAppointmentResultPending(selectedAppointment, now) ? <small className="mt-1 block text-[var(--warn)]">O horário terminou sem um desfecho registrado.</small> : null}</div>
         <div>
           <span className="label">Closer / responsável</span>
           {detailAssigneesData?.can_select_assignee && isActiveAppointment(selectedAppointment.status) ? (
@@ -50,7 +50,7 @@ export function AgendaDetailDialog({ actions, timezone, now }: { actions: Agenda
               <button type="button" className="btn primary" disabled={savingAssignee || detailAssigneesLoading || !detailAssignedMemberId || detailAssignedMemberId === (selectedAppointment.responsavel?.member_id ?? "")} onClick={() => void saveAppointmentAssignee()}>{savingAssignee ? "Salvando…" : "Salvar responsável"}</button>
             </div>
           ) : <strong>{selectedAppointment.responsavel?.email ?? "Sem responsável"}</strong>}
-          {detailAssigneesError ? <small className="mt-1 block text-[var(--warning)]">Não foi possível carregar os responsáveis.</small> : null}
+          {detailAssigneesError ? <small className="mt-1 block text-[var(--warn)]">Não foi possível carregar os responsáveis.</small> : null}
         </div>
       </div>
 
@@ -82,9 +82,9 @@ export function AgendaDetailDialog({ actions, timezone, now }: { actions: Agenda
 
       {actionError && !finalAction ? <p className="error" role="alert">{actionError}</p> : null}
       {confirmDeleteLead ? (
-        <section className="grid gap-4 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-5" aria-labelledby="agenda-delete-lead-title">
-          <div><span className="label">Confirmar exclusão</span><strong id="agenda-delete-lead-title" className="mt-1 block text-sm">Excluir agendamento</strong><p className="mt-1 text-sm text-[var(--warning)]">Esta ação remove apenas o agendamento da agenda. O lead, conversas e todo o histórico serão mantidos. Não pode ser desfeita.</p></div>
-          <div className="flex flex-wrap justify-end gap-2"><button type="button" className="btn" disabled={deletingLead} onClick={() => setConfirmDeleteLead(false)}>Voltar</button><button type="button" className="btn active:scale-[.98]" disabled={deletingLead} onClick={() => void deleteLeadAction()}>{deletingLead ? "Excluindo…" : "Excluir agendamento"}</button></div>
+        <section className="grid gap-4 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-5" aria-labelledby="agenda-delete-lead-title">
+          <div><span className="label">Confirmar exclusão</span><strong id="agenda-delete-lead-title" className="mt-1 block text-sm">Excluir agendamento</strong><p className="mt-1 text-sm text-[var(--warn-muted)]">Esta ação remove apenas o agendamento da agenda. O lead, conversas e todo o histórico serão mantidos. Não pode ser desfeita.</p></div>
+          <div className="flex flex-wrap justify-end gap-2"><button type="button" className="btn" disabled={deletingLead} onClick={() => setConfirmDeleteLead(false)}>Voltar</button><button type="button" className="btn warn active:scale-[.98]" disabled={deletingLead} onClick={() => void deleteLeadAction()}>{deletingLead ? "Excluindo…" : "Excluir agendamento"}</button></div>
         </section>
       ) : finalAction?.appointment.id === selectedAppointment.id ? (
         finalAction.action === "complete" ? <AppointmentOutcomeForm key={`${selectedAppointment.id}-outcome`} timezone={timezone} submitting={Boolean(pendingActionId)} serverError={actionError} onBack={() => { setFinalAction(null); setActionError(""); }} onClearError={() => setActionError("")} onSubmit={runFinalAction} />
@@ -104,10 +104,10 @@ export function AgendaDetailDialog({ actions, timezone, now }: { actions: Agenda
 function NoShowConfirmation({ actions }: { actions: AgendaActions }) {
   const { actionError, pendingActionId, setFinalAction, setActionError, runFinalAction } = actions;
   return (
-    <section className="grid gap-4 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-5" aria-labelledby="agenda-final-action-title">
-      <div><span className="label">Confirmar ação</span><strong id="agenda-final-action-title" className="mt-1 block text-sm">Registrar não comparecimento</strong><p className="mt-1 text-sm text-[var(--warning)]">Ao confirmar, uma ação de recuperação será criada para retomar este contato.</p></div>
+    <section className="grid gap-4 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-5" aria-labelledby="agenda-final-action-title">
+      <div><span className="label">Confirmar ação</span><strong id="agenda-final-action-title" className="mt-1 block text-sm">Registrar não comparecimento</strong><p className="mt-1 text-sm text-[var(--warn-muted)]">Ao confirmar, uma ação de recuperação será criada para retomar este contato.</p></div>
       {actionError ? <p className="error" role="alert">{actionError}</p> : null}
-      <div className="flex flex-wrap justify-end gap-2"><button type="button" className="btn" disabled={Boolean(pendingActionId)} onClick={() => { setFinalAction(null); setActionError(""); }}>Voltar</button><button type="button" className="btn active:scale-[.98]" disabled={Boolean(pendingActionId)} onClick={() => void runFinalAction()}>{pendingActionId ? "Salvando…" : "Marcar não comparecimento"}</button></div>
+      <div className="flex flex-wrap justify-end gap-2"><button type="button" className="btn" disabled={Boolean(pendingActionId)} onClick={() => { setFinalAction(null); setActionError(""); }}>Voltar</button><button type="button" className="btn warn active:scale-[.98]" disabled={Boolean(pendingActionId)} onClick={() => void runFinalAction()}>{pendingActionId ? "Salvando…" : "Marcar não comparecimento"}</button></div>
     </section>
   );
 }
@@ -126,11 +126,11 @@ function AppointmentDetails({ actions, timezone }: { actions: AgendaActions; tim
         ) : null}
         {(isActiveAppointment(selectedAppointment.status) || selectedAppointment.status === "concluido" || selectedAppointment.status === "no_show") && permissions.canReschedule ? <button type="button" className="btn active:scale-[.98]" onClick={() => beginReschedule(selectedAppointment)}><CalendarDots size={15} aria-hidden="true" /> Reagendar</button> : null}
         {isActiveAppointment(selectedAppointment.status) && permissions.canComplete ? <button type="button" className="btn primary active:scale-[.98]" onClick={() => beginFinalAction(selectedAppointment, "complete")}><Check size={15} aria-hidden="true" /> Concluir</button> : null}
-        {isActiveAppointment(selectedAppointment.status) && permissions.canNoShow ? <button type="button" className="btn active:scale-[.98]" onClick={() => beginFinalAction(selectedAppointment, "no_show")}><UserMinus size={15} aria-hidden="true" /> Não compareceu</button> : null}
-        {selectedAppointment.status === "concluido" && permissions.canNoShow ? <button type="button" className="btn active:scale-[.98]" onClick={() => beginFinalAction(selectedAppointment, "no_show")}><UserMinus size={15} aria-hidden="true" /> Corrigir para não compareceu</button> : null}
+        {isActiveAppointment(selectedAppointment.status) && permissions.canNoShow ? <button type="button" className="btn warn active:scale-[.98]" onClick={() => beginFinalAction(selectedAppointment, "no_show")}><UserMinus size={15} aria-hidden="true" /> Não compareceu</button> : null}
+        {selectedAppointment.status === "concluido" && permissions.canNoShow ? <button type="button" className="btn warn active:scale-[.98]" onClick={() => beginFinalAction(selectedAppointment, "no_show")}><UserMinus size={15} aria-hidden="true" /> Corrigir para não compareceu</button> : null}
         {selectedAppointment.status === "no_show" && permissions.canComplete ? <button type="button" className="btn primary active:scale-[.98]" onClick={() => beginFinalAction(selectedAppointment, "complete")}><Check size={15} aria-hidden="true" /> Corrigir para compareceu</button> : null}
-        {isActiveAppointment(selectedAppointment.status) && permissions.canCancel ? <button type="button" className="btn active:scale-[.98]" onClick={() => beginFinalAction(selectedAppointment, "cancel")}><X size={15} aria-hidden="true" /> Cancelar</button> : null}
-        {permissions.canDeleteLead ? <button type="button" className="btn active:scale-[.98]" aria-label={`Excluir agendamento de ${selectedAppointment.lead_nome ?? selectedAppointment.lead_telefone}`} title="Excluir agendamento" onClick={() => setConfirmDeleteLead(true)}><Trash size={15} aria-hidden="true" /> Excluir agendamento</button> : null}
+        {isActiveAppointment(selectedAppointment.status) && permissions.canCancel ? <button type="button" className="btn warn active:scale-[.98]" onClick={() => beginFinalAction(selectedAppointment, "cancel")}><X size={15} aria-hidden="true" /> Cancelar</button> : null}
+        {permissions.canDeleteLead ? <button type="button" className="btn warn active:scale-[.98]" aria-label={`Excluir agendamento de ${selectedAppointment.lead_nome ?? selectedAppointment.lead_telefone}`} title="Excluir agendamento" onClick={() => setConfirmDeleteLead(true)}><Trash size={15} aria-hidden="true" /> Excluir agendamento</button> : null}
       </div>
       <label className="field border-t border-[var(--border)] pt-5"><span className="label">Observação</span><textarea className="input min-h-28 resize-y" value={appointmentObservation} maxLength={4000} readOnly={!permissions.canManageNotes} onChange={(event) => setAppointmentObservation(event.target.value)} placeholder="Registre contexto importante para quem fará a reunião." /><small className="sub flex justify-between gap-3"><span>{permissions.canManageNotes ? "Visível para a equipe com acesso à agenda." : "Você possui acesso somente para leitura."}</span><span className="mono">{appointmentObservation.length}/4000</span></small></label>
       {permissions.canManageNotes ? <div className="flex justify-end"><button type="button" className="btn primary active:scale-[.98]" disabled={savingObservation || appointmentObservation === (selectedAppointment.observacao ?? "")} onClick={() => void saveObservation()}>{savingObservation ? "Salvando…" : "Salvar observação"}</button></div> : null}
@@ -151,9 +151,9 @@ function AppointmentRecordings({ appointmentId, timezone }: { appointmentId: str
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <span className="label">Mídia da reunião</span>
-          <h3 id={`appointment-recordings-${appointmentId}`} className="mt-1 text-sm font-semibold text-[var(--text)]">Gravações</h3>
+          <h3 id={`appointment-recordings-${appointmentId}`} className="mt-1 text-sm font-semibold text-[var(--heading)]">Gravações</h3>
         </div>
-        {!isLoading && !error ? <span className="mono type-caption text-[var(--text-muted)]">{recordings.length} arquivo(s)</span> : null}
+        {!isLoading && !error ? <span className="mono type-caption text-[var(--faint)]">{recordings.length} arquivo(s)</span> : null}
       </div>
 
       {isLoading ? (
@@ -162,14 +162,14 @@ function AppointmentRecordings({ appointmentId, timezone }: { appointmentId: str
           <div className="skeleton h-16" />
         </div>
       ) : error ? (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-3 py-4" role="alert">
-          <p className="m-0 text-xs text-[var(--warning)]">{error instanceof Error ? error.message : "Não foi possível carregar as gravações."}</p>
-          <button type="button" className="btn px-2 py-1 text-xs active:translate-y-px inline-flex items-center gap-1.5" onClick={() => void mutate()}><ArrowClockwise size={14} aria-hidden="true" />Tentar novamente</button>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-3 py-4" role="alert">
+          <p className="m-0 text-xs text-[var(--warn-muted)]">{error instanceof Error ? error.message : "Não foi possível carregar as gravações."}</p>
+          <button type="button" className="btn warn px-2 py-1 text-xs active:translate-y-px inline-flex items-center gap-1.5" onClick={() => void mutate()}><ArrowClockwise size={14} aria-hidden="true" />Tentar novamente</button>
         </div>
       ) : recordings.length === 0 ? (
-        <div className="mt-4 grid grid-cols-[34px_minmax(0,1fr)] gap-3 border-y border-dashed border-[var(--border)] py-4 text-[var(--text-muted)]">
+        <div className="mt-4 grid grid-cols-[34px_minmax(0,1fr)] gap-3 border-y border-dashed border-[var(--border)] py-4 text-[var(--faint-text)]">
           <FileVideo size={24} aria-hidden="true" />
-          <div><strong className="block text-xs text-[var(--text-secondary)]">Nenhuma gravação disponível</strong><p className="sub m-0 mt-1 text-xs">Depois que uma gravação for encerrada e processada, ela aparecerá aqui.</p></div>
+          <div><strong className="block text-xs text-[var(--body)]">Nenhuma gravação disponível</strong><p className="sub m-0 mt-1 text-xs">Depois que uma gravação for encerrada e processada, ela aparecerá aqui.</p></div>
         </div>
       ) : (
         <div className="mt-4 grid gap-4">
@@ -181,12 +181,12 @@ function AppointmentRecordings({ appointmentId, timezone }: { appointmentId: str
               <article key={recording.id} className="grid gap-3 border-t border-[var(--border)] pt-4 first:border-t-0 first:pt-0">
                 <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
                   <div className="grid min-w-0 grid-cols-[30px_minmax(0,1fr)] items-center gap-3">
-                    <span className="grid size-8 place-items-center rounded-full border border-[var(--border)] text-[var(--primary)]"><FileVideo size={16} aria-hidden="true" /></span>
-                    <div className="min-w-0"><strong className="block truncate text-xs">{recording.file_name || `Gravação ${index + 1}`}</strong><span className="mono mt-1 block type-caption text-[var(--text-muted)]">{formatRecordingDate(recordedAt, timezone)} · {formatRecordingSize(recording.size_bytes)}</span></div>
+                    <span className="grid size-8 place-items-center rounded-full border border-[var(--border)] text-[var(--accent-soft)]"><FileVideo size={16} aria-hidden="true" /></span>
+                    <div className="min-w-0"><strong className="block truncate text-xs">{recording.file_name || `Gravação ${index + 1}`}</strong><span className="mono mt-1 block type-caption text-[var(--faint-text)]">{formatRecordingDate(recordedAt, timezone)} · {formatRecordingSize(recording.size_bytes)}</span></div>
                   </div>
-                  {playable ? <a className="btn px-2 py-1 text-xs active:translate-y-px" href={fileUrl} download={recording.file_name || undefined}><DownloadSimple size={14} aria-hidden="true" />Baixar</a> : <span className="mono type-caption uppercase text-[var(--warning)]">{recording.status}</span>}
+                  {playable ? <a className="btn px-2 py-1 text-xs active:translate-y-px" href={fileUrl} download={recording.file_name || undefined}><DownloadSimple size={14} aria-hidden="true" />Baixar</a> : <span className="mono type-caption uppercase text-[var(--warn)]">{recording.status}</span>}
                 </div>
-                {playable ? <video className="block max-h-64 w-full border border-[var(--border)] bg-[var(--surface-elevated)]" controls preload="metadata" crossOrigin="use-credentials" src={fileUrl}>Seu navegador não consegue reproduzir esta gravação.</video> : <p className="sub m-0 text-xs">A gravação ainda está sendo processada.</p>}
+                {playable ? <video className="block max-h-64 w-full border border-[var(--border)] bg-[var(--surface-3)]" controls preload="metadata" crossOrigin="use-credentials" src={fileUrl}>Seu navegador não consegue reproduzir esta gravação.</video> : <p className="sub m-0 text-xs">A gravação ainda está sendo processada.</p>}
               </article>
             );
           })}

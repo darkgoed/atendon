@@ -89,7 +89,7 @@ function EmptyWidget({ message }: { message: string }) {
 }
 
 type SparkKey = "scheduled" | "completed" | "no_show";
-const legend: Array<[string, string]> = [["Agendadas", "var(--primary)"], ["Realizadas", "var(--success)"], ["No-show", "var(--warning)"]];
+const legend: Array<[string, string]> = [["Agendadas", "var(--accent)"], ["Realizadas", "var(--ok)"], ["No-show", "var(--warn)"]];
 
 function KpiTile({ label, value, hint, tone, icon: TileIcon, spark, series }: {
   label: string; value: string; hint: string; tone: string; icon: Icon; spark?: SparkKey; series: CommercialDashboardSeries;
@@ -105,7 +105,7 @@ function KpiTile({ label, value, hint, tone, icon: TileIcon, spark, series }: {
         <div className="flex flex-wrap items-end gap-x-2 gap-y-1">
           <span className={`mono ${styles.widgetMetricValue}`} style={{ color: tone }}>{value}</span>
           {delta !== null ? (
-            <span className={`mono inline-flex items-center gap-0.5 type-caption font-semibold ${delta >= 0 ? "" : ""}`} title="Segunda metade do período comparada à primeira">
+            <span className={`mono inline-flex items-center gap-0.5 type-caption font-semibold ${delta >= 0 ? "text-[var(--ok)]" : "text-[var(--warn)]"}`} title="Segunda metade do período comparada à primeira">
               {delta >= 0 ? <TrendUp size={12} weight="bold" aria-hidden="true" /> : <TrendDown size={12} weight="bold" aria-hidden="true" />}
               {percent(Math.abs(delta))}
             </span>
@@ -169,14 +169,14 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
     const result = (data.result ?? {}) as Record<string, unknown>;
     const series = (Array.isArray(data.series) ? data.series : []) as CommercialDashboardSeries;
     const kpis: Array<{ label: string; value: string; hint: string; tone: string; icon: Icon; spark?: SparkKey }> = [
-      { label: "Novos contatos", value: metric(result.new_contacts), hint: "contatos únicos no período", tone: "var(--primary)", icon: UsersThree },
+      { label: "Novos contatos", value: metric(result.new_contacts), hint: "contatos únicos no período", tone: "var(--accent)", icon: UsersThree },
       ...(appointmentsEnabled ? [
-        { label: "Agendamentos", value: metric(result.appointments), hint: "reuniões marcadas", tone: "var(--primary)", icon: CalendarCheck, spark: "scheduled" as SparkKey },
-        { label: "Calls realizadas", value: metric(result.calls), hint: "o lead compareceu", tone: "var(--success)", icon: PhoneCall, spark: "completed" as SparkKey },
-        { label: "No-show", value: metric(result.no_show), hint: "o lead não compareceu", tone: "var(--warning)", icon: UserMinus, spark: "no_show" as SparkKey }
+        { label: "Agendamentos", value: metric(result.appointments), hint: "reuniões marcadas", tone: "var(--accent)", icon: CalendarCheck, spark: "scheduled" as SparkKey },
+        { label: "Calls realizadas", value: metric(result.calls), hint: "o lead compareceu", tone: "var(--ok)", icon: PhoneCall, spark: "completed" as SparkKey },
+        { label: "No-show", value: metric(result.no_show), hint: "o lead não compareceu", tone: "var(--warn)", icon: UserMinus, spark: "no_show" as SparkKey }
       ] : []),
-      { label: "Vendas", value: metric(result.sales), hint: "fechamentos registrados", tone: "var(--success)", icon: Handshake },
-      { label: "Valor vendido", value: money(result.sold_value), hint: `ticket médio ${money(result.average_ticket)}`, tone: "var(--success)", icon: CurrencyCircleDollar }
+      { label: "Vendas", value: metric(result.sales), hint: "fechamentos registrados", tone: "var(--ok)", icon: Handshake },
+      { label: "Valor vendido", value: money(result.sold_value), hint: `ticket médio ${money(result.average_ticket)}`, tone: "var(--ok)", icon: CurrencyCircleDollar }
     ];
     return (
       <div className={styles.widgetContent}>
@@ -204,10 +204,10 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
     const result = (data.result ?? {}) as Record<string, unknown>;
     const due = Number(result.due_meetings ?? 0);
     const stages: Array<{ label: string; value: number; color: string; step: string | null; rate: unknown }> = [
-      { label: "Novos contatos", value: Number(result.new_contacts ?? 0), color: "var(--primary)", step: null, rate: null },
-      { label: "Agendamentos", value: Number(result.appointments ?? 0), color: "var(--primary)", step: "Lead → Agendamento", rate: funnel.lead_to_appointment },
-      { label: "Calls realizadas", value: Number(result.calls ?? 0), color: "var(--success)", step: "Agendamento → Comparecimento", rate: funnel.appointment_to_attendance },
-      { label: "Vendas", value: Number(result.sales ?? 0), color: "var(--success)", step: "Call → Venda", rate: funnel.call_to_sale }
+      { label: "Novos contatos", value: Number(result.new_contacts ?? 0), color: "var(--accent)", step: null, rate: null },
+      { label: "Agendamentos", value: Number(result.appointments ?? 0), color: "var(--accent)", step: "Lead → Agendamento", rate: funnel.lead_to_appointment },
+      { label: "Calls realizadas", value: Number(result.calls ?? 0), color: "var(--ok)", step: "Agendamento → Comparecimento", rate: funnel.appointment_to_attendance },
+      { label: "Vendas", value: Number(result.sales ?? 0), color: "var(--ok)", step: "Call → Venda", rate: funnel.call_to_sale }
     ];
     const top = Math.max(...stages.map((stage) => stage.value), 1);
     return (
@@ -216,10 +216,10 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
           {stages.map((stage) => (
             <div key={stage.label}>
               {stage.step ? (
-                <div className="flex flex-wrap items-center justify-center gap-x-2 py-2 type-caption ">
+                <div className="flex flex-wrap items-center justify-center gap-x-2 py-2 type-caption text-[var(--faint-text)]">
                   <CaretDown size={12} aria-hidden="true" />
                   <span>{stage.step}</span>
-                  <strong className="mono ">{percent(stage.rate)}</strong>
+                  <strong className="mono text-[var(--heading)]">{percent(stage.rate)}</strong>
                 </div>
               ) : null}
               <div
@@ -237,17 +237,17 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
           ))}
         </div>
         <dl className="grid grid-cols-1 gap-3 self-start sm:grid-cols-2 xl:grid-cols-1">
-          <div className="flex items-center gap-3 rounded-xl border  p-3">
-            <RateRing value={Number(funnel.lead_to_sale ?? 0)} tone="var(--primary)" />
+          <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] p-3">
+            <RateRing value={Number(funnel.lead_to_sale ?? 0)} tone="var(--accent)" />
             <div className="min-w-0">
-              <dt className="type-caption uppercase tracking-[.1em] ">Lead → Venda</dt>
+              <dt className="type-caption uppercase tracking-[.1em] text-[var(--faint-text)]">Lead → Venda</dt>
               <dd className="mt-1 type-caption leading-snug sub">conversão ponta a ponta do período</dd>
             </div>
           </div>
-          <div className="flex items-center gap-3 rounded-xl border  p-3">
-            <RateRing value={Number(funnel.no_show_rate ?? 0)} tone="var(--warning)" />
+          <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] p-3">
+            <RateRing value={Number(funnel.no_show_rate ?? 0)} tone="var(--warn)" />
             <div className="min-w-0">
-              <dt className="type-caption uppercase tracking-[.1em] ">Taxa de no-show</dt>
+              <dt className="type-caption uppercase tracking-[.1em] text-[var(--faint-text)]">Taxa de no-show</dt>
               <dd className="mt-1 type-caption leading-snug sub">sobre {metric(due)} reunião(ões) já vencida(s)</dd>
             </div>
           </div>
@@ -269,9 +269,9 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
     return (
       <dl className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         {entries.map(([label, value]) => (
-          <div key={label} className="rounded-xl  px-3 py-2.5">
-            <dt className="type-caption leading-snug ">{label}</dt>
-            <dd className="mono mt-1.5 text-lg font-semibold tabular-nums ">{value}</dd>
+          <div key={label} className="rounded-xl bg-[var(--panel-raised)] px-3 py-2.5">
+            <dt className="type-caption leading-snug text-[var(--faint-text)]">{label}</dt>
+            <dd className="mono mt-1.5 text-lg font-semibold tabular-nums text-[var(--body)]">{value}</dd>
           </div>
         ))}
       </dl>
@@ -280,14 +280,14 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
   if (widgetKey === "handoffs") {
     const items = Array.isArray(data.items) ? data.items as Array<Record<string, unknown>> : [];
     if (!items.length) return <EmptyWidget message="Nenhum handoff aguardando agora." />;
-    return <div className="space-y-3"><p className="font-mono text-2xl font-semibold ">{metric(data.total)}</p>{items.slice(0, 4).map((item) => <div key={String(item.id)} className="flex items-center justify-between gap-3 border-t  pt-3 text-sm"><span className="truncate">{String(item.contact_name ?? item.contact_phone ?? "Contato")}</span><span className="mono sub">{metric(item.waiting_minutes)} min</span></div>)}</div>;
+    return <div className="space-y-3"><p className="font-mono text-2xl font-semibold text-[var(--warn)]">{metric(data.total)}</p>{items.slice(0, 4).map((item) => <div key={String(item.id)} className="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-3 text-sm"><span className="truncate">{String(item.contact_name ?? item.contact_phone ?? "Contato")}</span><span className="mono sub">{metric(item.waiting_minutes)} min</span></div>)}</div>;
   }
   if (widgetKey === "today_agenda") {
     const items = Array.isArray(data.items) ? data.items as Array<Record<string, unknown>> : [];
     const period = (data.period ?? {}) as Record<string, unknown>;
     const timezone = typeof period.timezone === "string" ? period.timezone : undefined;
     if (!items.length) return <EmptyWidget message="Nenhum compromisso para hoje." />;
-    return <div className="divide-y divide-[var(--border)]">{items.slice(0, 6).map((item) => <div key={String(item.id)} className="grid grid-cols-[5rem_1fr] gap-3 py-3 text-sm"><time className="mono ">{new Date(String(item.start_at)).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", ...(timezone ? { timeZone: timezone } : {}) })}</time><span className="truncate">{String(item.lead_name ?? item.lead_phone ?? "Contato")}</span></div>)}</div>;
+    return <div className="divide-y divide-[var(--border)]">{items.slice(0, 6).map((item) => <div key={String(item.id)} className="grid grid-cols-[5rem_1fr] gap-3 py-3 text-sm"><time className="mono text-[var(--accent)]">{new Date(String(item.start_at)).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", ...(timezone ? { timeZone: timezone } : {}) })}</time><span className="truncate">{String(item.lead_name ?? item.lead_phone ?? "Contato")}</span></div>)}</div>;
   }
   if (widgetKey === "team_load") {
     const members = Array.isArray(data.members) ? data.members as Array<Record<string, unknown>> : [];
@@ -297,7 +297,7 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
     return (
       <div className="overflow-x-auto" tabIndex={0} aria-label="Performance por closer">
         <table className="w-full metrics-table-minwidth text-left text-sm">
-          <thead className="border-b  type-caption uppercase tracking-[.08em] ">
+          <thead className="border-b border-[var(--border)] type-caption uppercase tracking-[.08em] text-[var(--faint)]">
             <tr>
               <th className="pb-2 font-medium">Closer</th>
               <th className="pb-2 text-right font-medium">Calls</th>
@@ -312,16 +312,16 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
               <tr key={String(member.member_id)}>
                 <td className="py-3">
                   <strong className="block max-w-56 truncate font-medium">{closerName(member)}</strong>
-                  <span className="type-caption ">{member.availability_status === "available" ? "Disponível" : "Indisponível"}</span>
+                  <span className="type-caption text-[var(--faint)]">{member.availability_status === "available" ? "Disponível" : "Indisponível"}</span>
                 </td>
-                <td className="mono py-3 text-right tabular-nums ">{metric(member.completed)}</td>
-                <td className="mono py-3 text-right tabular-nums ">{metric(member.no_show)}</td>
+                <td className="mono py-3 text-right tabular-nums text-[var(--ok)]">{metric(member.completed)}</td>
+                <td className="mono py-3 text-right tabular-nums text-[var(--warn)]">{metric(member.no_show)}</td>
                 <td className="mono py-3 text-right tabular-nums">{metric(member.sales)}</td>
                 <td className="mono py-3 text-right tabular-nums">{percent(member.closing_rate)}</td>
                 <td className="py-3 text-right">
                   <span className="mono block font-semibold tabular-nums">{money(member.sold_value)}</span>
-                  <span className="mt-1.5 ml-auto block h-1 w-24 overflow-hidden rounded-full ">
-                    <span className="block h-full rounded-full  transition-[width] duration-500" style={{ width: `${(Number(member.sold_value ?? 0) / topSold) * 100}%` }} />
+                  <span className="mt-1.5 ml-auto block h-1 w-24 overflow-hidden rounded-full bg-[var(--panel-raised)]">
+                    <span className="block h-full rounded-full bg-[var(--ok)] transition-[width] duration-500" style={{ width: `${(Number(member.sold_value ?? 0) / topSold) * 100}%` }} />
                   </span>
                 </td>
               </tr>
@@ -335,7 +335,7 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
     const stages = Array.isArray(data.stages) ? data.stages as Array<Record<string, unknown>> : [];
     if (!stages.length) return <EmptyWidget message="Nenhum lead no Pipeline." />;
     const total = stages.reduce((sum, stage) => sum + Number(stage.count ?? 0), 0);
-    return <div className="space-y-3">{stages.map((stage) => { const count = Number(stage.count ?? 0); const capacity = typeof stage.capacity_target === "number" ? stage.capacity_target : null; return <div key={String(stage.id ?? stage.status)}><div className="mb-1 flex justify-between gap-4 text-sm"><span>{String(stage.name ?? stage.status)}</span><span className="mono">{count}{capacity ? ` / ${capacity}` : ""}</span></div><div className="h-1.5 overflow-hidden rounded-full "><div className="h-full origin-left transition-transform duration-300" style={{ backgroundColor: String(stage.color ?? "var(--primary)"), transform: `scaleX(${capacity ? Math.min(count / capacity, 1) : total ? count / total : 0})` }} /></div></div>; })}</div>;
+    return <div className="space-y-3">{stages.map((stage) => { const count = Number(stage.count ?? 0); const capacity = typeof stage.capacity_target === "number" ? stage.capacity_target : null; return <div key={String(stage.id ?? stage.status)}><div className="mb-1 flex justify-between gap-4 text-sm"><span>{String(stage.name ?? stage.status)}</span><span className="mono">{count}{capacity ? ` / ${capacity}` : ""}</span></div><div className="h-1.5 overflow-hidden rounded-full bg-[var(--panel-raised)]"><div className="h-full origin-left transition-transform duration-300" style={{ backgroundColor: String(stage.color ?? "var(--accent)"), transform: `scaleX(${capacity ? Math.min(count / capacity, 1) : total ? count / total : 0})` }} /></div></div>; })}</div>;
   }
   const alerts = Array.isArray(data.items) ? data.items as Array<Record<string, unknown>> : [];
   if (!alerts.length) return <EmptyWidget message="Nenhum alerta recente." />;
@@ -464,7 +464,7 @@ export function DashboardWidgets() {
             {([["essencial", "Essencial"], ["comercial", "Comercial"], ["gestao_completa", "Gestão completa"]] as const).map(([key, label]) => <button key={key} className="btn secondary active:scale-[0.98]" disabled={saving} onClick={() => void applyPreset(key)}>{label}</button>)}
             <button className="btn secondary active:scale-[0.98]" disabled={saving} onClick={() => setEditing(true)}>Personalizado</button>
           </div>
-          <div className="divide-y divide-[var(--border)]">{groupedDraft.map(([group, items]) => <section key={group} aria-labelledby={`dashboard-group-${group}`}><h3 id={`dashboard-group-${group}`} className="pt-4 text-xs font-semibold uppercase tracking-[.1em] ">{groupTitle(group)}</h3>{items.map((item) => { const definition = definitions.get(item.key); if (!definition) return null; return <div key={item.key} className="grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center"><label className="flex min-w-0 items-start gap-3"><input type="checkbox" checked={item.visible} onChange={(event) => patchItem(item.key, { visible: event.target.checked })} className="mt-1" /><span><strong className="block text-sm">{definition.label}</strong><span className="block text-xs sub">{definition.description}</span></span></label><label className="flex items-center gap-2 text-sm"><span>Tamanho</span><select className="input w-auto" value={item.size} onChange={(event) => patchItem(item.key, { size: event.target.value as WidgetSize })}>{definition.sizes.map((size) => <option key={size} value={size}>{sizeLabels[size]}</option>)}</select></label><div className="flex gap-1"><button className="btn secondary min-h-11 min-w-11 px-2" disabled={item.order === 0} aria-label={`Mover ${definition.label} para cima`} title="Mover para cima" onClick={() => move(item.key, -1)}><CaretUp size={17} /></button><button className="btn secondary min-h-11 min-w-11 px-2" disabled={item.order === availableDraft.length - 1} aria-label={`Mover ${definition.label} para baixo`} title="Mover para baixo" onClick={() => move(item.key, 1)}><CaretDown size={17} /></button></div></div>; })}</section>)}</div>
+          <div className="divide-y divide-[var(--border)]">{groupedDraft.map(([group, items]) => <section key={group} aria-labelledby={`dashboard-group-${group}`}><h3 id={`dashboard-group-${group}`} className="pt-4 text-xs font-semibold uppercase tracking-[.1em] text-[var(--faint-text)]">{groupTitle(group)}</h3>{items.map((item) => { const definition = definitions.get(item.key); if (!definition) return null; return <div key={item.key} className="grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center"><label className="flex min-w-0 items-start gap-3"><input type="checkbox" checked={item.visible} onChange={(event) => patchItem(item.key, { visible: event.target.checked })} className="mt-1" /><span><strong className="block text-sm">{definition.label}</strong><span className="block text-xs sub">{definition.description}</span></span></label><label className="flex items-center gap-2 text-sm"><span>Tamanho</span><select className="input w-auto" value={item.size} onChange={(event) => patchItem(item.key, { size: event.target.value as WidgetSize })}>{definition.sizes.map((size) => <option key={size} value={size}>{sizeLabels[size]}</option>)}</select></label><div className="flex gap-1"><button className="btn secondary min-h-11 min-w-11 px-2" disabled={item.order === 0} aria-label={`Mover ${definition.label} para cima`} title="Mover para cima" onClick={() => move(item.key, -1)}><CaretUp size={17} /></button><button className="btn secondary min-h-11 min-w-11 px-2" disabled={item.order === availableDraft.length - 1} aria-label={`Mover ${definition.label} para baixo`} title="Mover para baixo" onClick={() => move(item.key, 1)}><CaretDown size={17} /></button></div></div>; })}</section>)}</div>
         </section> : null}
 
         {catalogError || layoutError ? <div className="card" role="alert"><p className="error">Não foi possível carregar a configuração do dashboard.</p></div> : !catalog || !layout ? <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><div className="card metric-empty-minheight"><WidgetSkeleton /></div><div className="card metric-empty-minheight"><WidgetSkeleton /></div><div className="card metric-empty-minheight"><WidgetSkeleton /></div><div className="card metric-empty-minheight"><WidgetSkeleton /></div></div> : !visible.length ? <div className="card"><EmptyWidget message="Nenhum widget está visível. Abra Personalizar para escolher o que acompanhar." /></div> : <section className={`${styles.widgets} grid grid-cols-12 gap-4`} aria-label="Widgets do dashboard">{visible.map((item) => { const definition = definitions.get(item.key); return definition ? <WidgetCard key={item.key} item={item} definition={definition} periodQuery={periodQuery} /> : null; })}</section>}

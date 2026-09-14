@@ -202,7 +202,7 @@ export function ConversationComposer({
   }
 
   return (
-    <form ref={formRef} onSubmit={send} className="conversation-composer shrink-0 border-t   p-3 sm:p-4" aria-busy={sending}>
+    <form ref={formRef} onSubmit={send} className="conversation-composer shrink-0 border-t border-[var(--border)] bg-transparent p-3 sm:p-4" aria-busy={sending}>
       <div className="conversation-composer__tabs" role="tablist" aria-label="Tipo de mensagem">
         <span className="is-active" role="tab" aria-selected="true">Responder</span>
         <span role="tab" aria-selected="false" aria-disabled="true">Nota interna</span>
@@ -222,7 +222,7 @@ export function ConversationComposer({
         </div>
       ) : null}
       {attachment ? (
-        <div className="mb-3 flex items-center gap-3 rounded-md border  px-3 py-2.5">
+        <div className="mb-3 flex items-center gap-3 rounded-md border border-[var(--border)] px-3 py-2.5">
           {attachment.mediaType === "image" && previewUrl ? (
             <>
               {/* Blob previews are local, short-lived URLs and cannot be handled by the Next image optimizer. */}
@@ -233,12 +233,12 @@ export function ConversationComposer({
           {attachment.mediaType === "audio" && previewUrl ? (
             <VoiceMessagePlayer src={previewUrl} label={audioDisplayName(attachment.file.name)} />
           ) : null}
-          {attachment.mediaType === "document" ? <File size={24} className="shrink-0 " /> : null}
+          {attachment.mediaType === "document" ? <File size={24} className="shrink-0 text-[var(--accent-soft)]" /> : null}
           <div className={attachment.mediaType === "audio" ? "w-28 min-w-0 shrink-0" : "min-w-0 flex-1"}>
-            <strong className="block truncate text-xs ">
+            <strong className="block truncate text-xs text-[var(--text)]">
               {attachment.mediaType === "audio" ? audioDisplayName(attachment.file.name) : attachment.file.name}
             </strong>
-            <span className="mono mt-1 block text-xs uppercase tracking-wide ">{attachment.mediaType} · {formatBytes(attachment.file.size)}</span>
+            <span className="mono mt-1 block text-xs uppercase tracking-wide text-[var(--faint)]">{attachment.mediaType} · {formatBytes(attachment.file.size)}</span>
           </div>
           <Button type="button" onClick={() => setAttachment(null)} className="btn p-2 active:scale-95" aria-label="Remover anexo" disabled={sending}>
             <X size={16} />

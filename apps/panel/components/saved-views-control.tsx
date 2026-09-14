@@ -83,7 +83,7 @@ export function SavedViewsControl({
   if (organizationEnabled !== true) return null;
   return (
     <PopoverMenu
-      buttonClassName="btn is-pressable"
+      buttonClassName="btn active:scale-[.98]"
       icon={<BookmarkSimple size={15} aria-hidden="true" />}
       label="Visões"
       panelClassName="pipeline-popover pipeline-popover--saved grid gap-3"
@@ -97,22 +97,22 @@ export function SavedViewsControl({
           <div className="grid max-h-52 gap-1 overflow-y-auto">
             {isLoading ? <div className="grid gap-1.5" role="status" aria-label="Carregando visões">{[1, 2].map((item) => <span key={item} className="skeleton h-9" />)}</div> : null}
             {error ? <p className="error" role="alert">{error.message}</p> : null}
-            {!isLoading && !error && !data?.saved_views.length ? <p className="py-2 text-xs type-secondary">Nenhuma visão salva.</p> : null}
+            {!isLoading && !error && !data?.saved_views.length ? <p className="py-2 text-xs text-[var(--muted)]">Nenhuma visão salva.</p> : null}
             {data?.saved_views.map((view) => (
-              <div key={view.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded border border-semantic p-1">
-                <button type="button" className="min-w-0 rounded px-2 py-1.5 text-left is-pressable" onClick={() => { onApply(view.filters); close(); }}>
+              <div key={view.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded border border-[var(--border)] p-1">
+                <button type="button" className="min-w-0 rounded px-2 py-1.5 text-left active:scale-[.98]" onClick={() => { onApply(view.filters); close(); }}>
                   <span className="block truncate text-xs font-medium">{view.name}</span>
                   <span className="crm-caption">{view.shared ? "Compartilhada" : "Pessoal"}</span>
                 </button>
                 {canPublish || view.owner_user_id === session?.user.id ? (
-                  <button type="button" className="saved-view-delete grid size-8 place-items-center rounded type-muted is-pressable" onClick={() => void remove(view)} aria-label={`Excluir visão ${view.name}`} disabled={pending}>
+                  <button type="button" className="grid size-8 place-items-center rounded text-[var(--faint)] hover:bg-[var(--active)] hover:text-[var(--warn)] active:scale-[.94]" onClick={() => void remove(view)} aria-label={`Excluir visão ${view.name}`} disabled={pending}>
                     <Trash size={14} aria-hidden="true" />
                   </button>
                 ) : <span className="size-8" aria-hidden="true" />}
               </div>
             ))}
           </div>
-          <div className="grid gap-2 border-t border-semantic pt-3">
+          <div className="grid gap-2 border-t border-[var(--border)] pt-3">
             <label className="field">
               <span className="label">Nome da visão</span>
               <Input className="input" value={name} onChange={(event) => setName(event.target.value)} maxLength={100} placeholder="Ex.: Leads quentes desta semana" />

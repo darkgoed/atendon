@@ -86,9 +86,9 @@ describe("ConversationNextAction", () => {
     expect(screen.queryByText("Pendência")).not.toBeInTheDocument();
 
     act(() => vi.advanceTimersByTime(1_000));
-    expect(screen.getByText("Pendência")).toHaveClass("conversation-next-action__flag");
-    expect(screen.getByText("Retomar contato")).toHaveClass("is-overdue");
-    expect(screen.getByRole("region")).toHaveClass("is-overdue");
+    expect(screen.getByText("Pendência")).toHaveClass("text-[var(--warn)]");
+    expect(screen.getByText("Retomar contato")).toHaveClass("text-[var(--warn)]");
+    expect(screen.getByRole("region")).toHaveClass("border-[var(--warn-border)]");
 
     unmount();
     expect(clearIntervalSpy).toHaveBeenCalled();

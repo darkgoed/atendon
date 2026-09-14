@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRinging, ChartBar, CheckCircle, ChatCircleDots, ClockCountdown, Cpu, FloppyDisk, GlobeHemisphereWest, GoogleLogo, Link as LinkIcon, LinkBreak, PencilSimple, Plus, ShieldCheck, Sticker, Trash, UserCircle, UsersThree, VideoCamera, WarningCircle, Watch } from "@phosphor-icons/react";
+import { BellRinging, ChartBar, CheckCircle, ChatCircleDots, ClockCountdown, Cpu, FloppyDisk, GlobeHemisphereWest, GoogleLogo, Link as LinkIcon, LinkBreak, PencilSimple, Plus, ShieldCheck, Sticker, Trash, UsersThree, VideoCamera, WarningCircle, Watch } from "@phosphor-icons/react";
 import Link from "next/link";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
@@ -29,7 +29,6 @@ import type { PanelNotificationPreferencesResponse } from "@/lib/message-notific
 import { WebPushSettings } from "@/components/web-push-settings";
 import { ConversationQueueManager } from "@/components/conversation-queue-manager";
 import { Button, Field as UiField, Input } from "@/components/ui";
-import { SETTINGS_COLOR_DEFAULTS } from "@/components/settings-colors";
 import styles from "@/components/settings-panels.module.css";
 
 type CatalogResource = "categorias" | "parceiros" | "unidades";
@@ -80,8 +79,6 @@ const COMMON_TIMEZONES = [
   "Europe/Lisbon"
 ];
 
-type SettingsNavEntry = { resource?: Resource; href?: string; label: string; Icon?: typeof LinkIcon };
-
 type SettingsDestination = {
   href: string;
   label: string;
@@ -92,7 +89,6 @@ type SettingsDestination = {
 };
 
 const settingsDestinations: readonly SettingsDestination[] = [
-  { href: "/perfil", label: "Perfil", description: "Dados de acesso e sessão", Icon: UserCircle },
   { href: "/alertas", label: "Alertas", description: "Central operacional exclusiva do ROOT", Icon: BellRinging, rootWorkspaceOnly: true },
   { href: "/conexao", label: "Conexão", description: "Sessão e estado do WhatsApp", Icon: LinkIcon, permission: "connection.read" },
   { href: "/workspace/members", label: "Membros", description: "Equipe e convites do workspace", Icon: UsersThree, permission: "members.read" },
@@ -141,7 +137,7 @@ export default function ConfigPage() {
   const visibleSettingsDestinations = session
     ? settingsDestinations.filter((destination) => destination.rootWorkspaceOnly
       ? canAccessRootWorkspace(session)
-      : Boolean(!destination.permission || canAccessWithSession(session, [destination.permission])))
+      : Boolean(destination.permission && canAccessWithSession(session, [destination.permission])))
     : [];
   const canManage = resource === "workspace" ? canUpdateWorkspace
        : resource === "attendants" ? canManageAttendants
@@ -152,8 +148,6 @@ export default function ConfigPage() {
     : resource === "agenda-notifications" ? canManageAgendaNotifications
     : resource === "categorias" ? canManageCategories
       : resource === "parceiros" ? canManagePartners : canManageUnits;
-  const resourceEntry = (value: Resource) => ({ resource: value, label: resourceLabels[value] });
-  const destinationEntry = (value: SettingsDestination) => ({ href: value.href, label: value.label, Icon: value.Icon });
   const visibleTabs = useMemo<Resource[]>(() => [
     ...(canUpdateWorkspace ? ["workspace" as const] : []),
     ...(leadsEnabled && canReadCategories ? ["categorias" as const] : []),
@@ -229,16 +223,6 @@ export default function ConfigPage() {
     }
   }
 
-  const settingsGroups: Array<[string, SettingsNavEntry[]]> = [
-    ["Conta", visibleSettingsDestinations.filter((item) => item.href === "/perfil").map(destinationEntry)],
-    ["Empresa", visibleTabs.filter((item) => item === "workspace" || ["categorias", "parceiros", "unidades"].includes(item)).map(resourceEntry)],
-    ["Equipe", [...visibleSettingsDestinations.filter((item) => ["/workspace/members", "/workspace/roles", "/workspace/audit"].includes(item.href)).map(destinationEntry), ...visibleTabs.filter((item) => item === "attendants").map(resourceEntry)]],
-    ["IA", visibleSettingsDestinations.filter((item) => ["/agente", "/humanizacao", "/follow-ups"].includes(item.href)).map(destinationEntry)],
-    ["Integrações", [...visibleSettingsDestinations.filter((item) => item.href === "/conexao").map(destinationEntry), ...visibleTabs.filter((item) => ["atendon-meet", "google-meet"].includes(item)).map(resourceEntry)]],
-    ["Agenda", visibleTabs.filter((item) => item === "agenda-notifications").map(resourceEntry)],
-    ["Preferências", visibleTabs.filter((item) => item === "panel-notifications").map(resourceEntry)]
-  ];
-
   return (
     <Shell>
       <header className="pagehead">
@@ -254,23 +238,43 @@ export default function ConfigPage() {
         ) : null}
       </header>
 
-      <div className="settings-layout">
-        <aside className="settings-nav" aria-label="Navegação de configurações">
-          <select className="input settings-nav__select" value={resource} onChange={(event) => setResource(event.target.value as Resource)} aria-label="Seção de configurações">
-            {visibleTabs.map((tab) => <option key={tab} value={tab}>{resourceLabels[tab]}</option>)}
-          </select>
-          <div className="settings-nav__groups">
-            {settingsGroups.map(([label, entries]) => entries.length ? (
-              <div className="settings-nav__group" key={label}>
-                <span className="settings-nav__label">{label}</span>
-                {entries.map((entry) => entry.resource !== undefined ? (
-                  <button key={entry.resource} type="button" className="settings-nav__item" aria-pressed={resource === entry.resource} onClick={() => setResource(entry.resource as Resource)}>{resourceLabels[entry.resource]}</button>
-                ) : <Link key={entry.href} href={entry.href ?? "#"} className="settings-nav__item">{entry.Icon ? <entry.Icon size={16} aria-hidden="true" /> : null}{entry.label}</Link>)}
-              </div>
-            ) : null)}
+      {visibleSettingsDestinations.length > 0 ? (
+        <section className={styles.destinations} aria-labelledby="settings-destinations-title">
+          <div className={styles.destinationHeader}>
+            <div>
+              <span className="label">Administração</span>
+              <h2 id="settings-destinations-title" className="mt-1 text-base">Áreas de configuração</h2>
+            </div>
+            <span className="mono type-caption text-[var(--faint)]">{visibleSettingsDestinations.length} área(s)</span>
           </div>
-        </aside>
-        <main className="settings-content">
+          <nav className={styles.destinationGrid} aria-label="Áreas de configuração">
+            {visibleSettingsDestinations.map(({ href, label, description, Icon }) => (
+              <Link key={href} href={href} className={styles.settingsDestination}>
+                <Icon size={19} aria-hidden="true" />
+                <span>
+                  <strong>{label}</strong>
+                  <small>{description}</small>
+                </span>
+              </Link>
+            ))}
+          </nav>
+        </section>
+      ) : null}
+
+      {visibleTabs.length > 0 ? <nav className={styles.tabs} aria-label="Configurações operacionais">
+        {visibleTabs.map((tab) => (
+          <button
+            type="button"
+            aria-pressed={resource === tab}
+            key={tab}
+            onClick={() => setResource(tab)}
+            className={`${styles.tab} ${resource === tab ? styles.tabActive : ""}`}
+          >
+            {resourceLabels[tab]}
+          </button>
+        ))}
+      </nav> : null}
+
       {resource === "workspace" ? (
         <WorkspaceSettingsPanel />
       ) : resource === "attendants" ? (
@@ -302,7 +306,7 @@ export default function ConfigPage() {
           ) : (
             <table className={`responsive-table ${styles.catalogTable}`}>
               <thead>
-                <tr className="border-b border-[var(--border)] text-xs text-[var(--text-secondary)]">
+                <tr className="border-b border-[var(--border)] text-xs text-[var(--muted)]">
                   <th className="px-4 py-3">ID</th>
                   <th className="px-4 py-3">Nome</th>
                   <th className="px-4 py-3">Configuração</th>
@@ -314,14 +318,14 @@ export default function ConfigPage() {
                   <tr key={item.id} className="border-b border-[var(--border)] last:border-0">
                     <td data-label="ID" className="mono px-4 py-3 text-xs">{item.id}</td>
                     <td data-label="Nome" className="px-4 py-3"><strong>{item.nome}</strong></td>
-                    <td data-label="Configuração" className="px-4 py-3 text-xs text-[var(--text-secondary)]"><Summary resource={resource as CatalogResource} item={item} /></td>
+                    <td data-label="Configuração" className="px-4 py-3 text-xs text-[var(--muted)]"><Summary resource={resource as CatalogResource} item={item} /></td>
                     {canManage ? (
                       <td data-label="Ações" className="px-4 py-3">
                         <div className="flex justify-end gap-2">
                           <button type="button" className="btn p-2" aria-label={`Editar ${item.nome}`} onClick={() => setEditing(item)}>
                             <PencilSimple aria-hidden="true" />
                           </button>
-                          <button type="button" className="btn p-2" aria-label={`Excluir ${item.nome}`} disabled={!item.id} onClick={() => { if (item.id) void remove(item.id); }}>
+                          <button type="button" className="btn warn p-2" aria-label={`Excluir ${item.nome}`} disabled={!item.id} onClick={() => { if (item.id) void remove(item.id); }}>
                             <Trash aria-hidden="true" />
                           </button>
                         </div>
@@ -352,8 +356,6 @@ export default function ConfigPage() {
         ) : null}
         </div>
       </>}
-        </main>
-      </div>
     </Shell>
   );
 }
@@ -416,18 +418,18 @@ function WorkspaceSettingsPanel() {
   return (
     <form className="max-w-2xl border-t border-[var(--border)] pt-6" onSubmit={submit}>
       <div className="grid gap-5 sm:grid-cols-[40px_minmax(0,1fr)]">
-        <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--primary)]">
+        <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--accent-soft)]">
           <GlobeHemisphereWest size={19} aria-hidden="true" />
         </span>
         <div className="grid gap-5">
           <div>
-            <h2 className="m-0 text-base font-semibold text-[var(--text)]">Fuso horário</h2>
+            <h2 className="m-0 text-base font-semibold text-[var(--heading)]">Fuso horário</h2>
             <p className="sub mt-1">Define como os horários aparecem na agenda e nas automações deste workspace.</p>
           </div>
           {error || saveError ? (
             <p className="error" role="alert">{saveError || (error instanceof Error ? error.message : "Não foi possível carregar o fuso horário.")}</p>
           ) : null}
-          {saved ? <p className="text-sm text-[var(--primary)]" role="status">Fuso horário salvo.</p> : null}
+          {saved ? <p className="text-sm text-[var(--accent-soft)]" role="status">Fuso horário salvo.</p> : null}
           <label className="field">
             <span className="label">Fuso IANA</span>
             <input
@@ -444,7 +446,7 @@ function WorkspaceSettingsPanel() {
             <small className="sub">Exemplo: America/Sao_Paulo.</small>
           </label>
           <div>
-            <h2 className="m-0 text-base font-semibold text-[var(--text)]">Horário de atendimento</h2>
+            <h2 className="m-0 text-base font-semibold text-[var(--heading)]">Horário de atendimento</h2>
             <p className="sub mt-1">
               Fora desse intervalo a IA não visualiza, não responde e a conexão fica offline no WhatsApp.
               O atendimento retoma automaticamente no início do horário, sem responder tudo de uma vez.
@@ -551,12 +553,12 @@ function SignatureSettingsPanel({ canManage }: { canManage: boolean }) {
   return (
     <form className="max-w-2xl border-t border-[var(--border)] pt-6" onSubmit={submit}>
       <div className="grid gap-5 sm:grid-cols-[40px_minmax(0,1fr)]">
-        <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--primary)]">
+        <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--accent-soft)]">
           <ChatCircleDots size={19} aria-hidden="true" />
         </span>
         <div className="grid gap-5">
           <div>
-            <h2 className="m-0 text-base font-semibold text-[var(--text)]">Assinatura do atendente</h2>
+            <h2 className="m-0 text-base font-semibold text-[var(--heading)]">Assinatura do atendente</h2>
             <p className="sub mt-1">
               Identifica quem enviou a mensagem para o cliente no WhatsApp. Aplica-se somente a mensagens enviadas por
               atendentes humanos — mensagens da IA nunca recebem assinatura.
@@ -565,7 +567,7 @@ function SignatureSettingsPanel({ canManage }: { canManage: boolean }) {
           {error || saveError ? (
             <p className="error" role="alert">{saveError || (error instanceof Error ? error.message : "Não foi possível carregar a configuração.")}</p>
           ) : null}
-          {saved ? <p className="text-sm text-[var(--primary)]" role="status">Assinatura salva.</p> : null}
+          {saved ? <p className="text-sm text-[var(--accent-soft)]" role="status">Assinatura salva.</p> : null}
           <label className="field flex-row items-center gap-2">
             <input
               type="checkbox"
@@ -666,7 +668,7 @@ function PanelNotificationSettingsPanel() {
   return (
     <div className="grid max-w-3xl gap-6 border-t border-[var(--border)] pt-6">
       <div>
-        <h2 className="m-0 text-base font-semibold text-[var(--text)]">Notificações do painel</h2>
+        <h2 className="m-0 text-base font-semibold text-[var(--heading)]">Notificações do painel</h2>
         <p className="sub mt-1">Controla somente novas mensagens recebidas de contatos. Alertas críticos, operacionais e de reuniões não são alterados. Os avisos de agendamento enviados ao grupo de WhatsApp ficam na seção separada “Notificações de agendamento”.</p>
       </div>
       {error || saveError ? <p className="error" role="alert">{saveError || (error instanceof Error ? error.message : "Falha ao carregar preferências.")}</p> : null}
@@ -692,12 +694,12 @@ function PanelNotificationSettingsPanel() {
           <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
             {data.muted_conversations.map((conversation) => (
               <div key={conversation.id} className="flex items-center justify-between gap-4 py-3">
-                <div className="min-w-0"><strong className="block truncate text-sm">{conversation.contact_name?.trim() || conversation.contact_phone}</strong><span className="mono type-caption text-[var(--text-muted)]">{conversation.contact_phone}</span></div>
+                <div className="min-w-0"><strong className="block truncate text-sm">{conversation.contact_name?.trim() || conversation.contact_phone}</strong><span className="mono type-caption text-[var(--faint)]">{conversation.contact_phone}</span></div>
                 <button type="button" className="btn" onClick={() => void unmute(conversation.id)}>Reativar avisos</button>
               </div>
             ))}
           </div>
-        ) : <p className="mt-4 text-sm text-[var(--text-secondary)]">Nenhuma conversa silenciada.</p>}
+        ) : <p className="mt-4 text-sm text-[var(--muted)]">Nenhuma conversa silenciada.</p>}
       </section>
       <WebPushSettings />
     </div>
@@ -761,12 +763,12 @@ function AgendaNotificationSettingsPanel({ canManage }: { canManage: boolean }) 
   return (
     <form className="max-w-2xl border-t border-[var(--border)] pt-6" onSubmit={submit}>
       <div className="grid gap-5 sm:grid-cols-[40px_minmax(0,1fr)]">
-        <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--primary)]">
+        <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--accent-soft)]">
           <UsersThree size={19} aria-hidden="true" />
         </span>
         <div className="grid gap-5">
           <div>
-            <h2 className="m-0 text-base font-semibold text-[var(--text)]">Notificações de agendamento</h2>
+            <h2 className="m-0 text-base font-semibold text-[var(--heading)]">Notificações de agendamento</h2>
             <p className="sub mt-1">
               Envia um aviso para um grupo de WhatsApp sempre que um novo agendamento for confirmado. Exclusivo para
               agendamentos — nenhum outro alerta do sistema usa este grupo.
@@ -775,7 +777,7 @@ function AgendaNotificationSettingsPanel({ canManage }: { canManage: boolean }) 
           {error || saveError ? (
             <p className="error" role="alert">{saveError || (error instanceof Error ? error.message : "Não foi possível carregar a configuração.")}</p>
           ) : null}
-          {saved ? <p className="text-sm text-[var(--primary)]" role="status">Configuração salva.</p> : null}
+          {saved ? <p className="text-sm text-[var(--accent-soft)]" role="status">Configuração salva.</p> : null}
           <label className="field flex-row items-center gap-2">
             <input
               type="checkbox"
@@ -809,7 +811,7 @@ function AgendaNotificationSettingsPanel({ canManage }: { canManage: boolean }) 
                 {canManage ? (
                   <button
                     type="button"
-                    className="ml-2 text-[var(--primary)] underline-offset-2 hover:underline"
+                    className="ml-2 text-[var(--accent-soft)] underline-offset-2 hover:underline"
                     onClick={() => { setGroupJid(""); setGroupName(""); setSaved(false); }}
                   >
                     Remover
@@ -962,17 +964,17 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
   return (
     <form className="border-y border-[var(--border)] py-6" onSubmit={savePool}>
       <header className="mb-5">
-        <div className="flex items-center gap-2 text-base font-semibold text-[var(--text)]"><UsersThree size={20} aria-hidden="true" /> Equipe de atendimento e distribuição</div>
+        <div className="flex items-center gap-2 text-base font-semibold text-[var(--heading)]"><UsersThree size={20} aria-hidden="true" /> Equipe de atendimento e distribuição</div>
         <p className="sub mt-2 max-w-[76ch] text-sm">
           Os membros selecionados recebem novos contatos em rodízio estrito, na ordem de entrada no pool. O status Disponível/Indisponível é apenas informativo e não altera a distribuição.
         </p>
       </header>
       {loadError || error ? <p className="error mb-4" role="alert">{error || (loadError instanceof Error ? loadError.message : "Falha ao carregar a equipe")}</p> : null}
-      {feedback ? <p className="mb-4 text-sm text-[var(--primary)]" role="status">{feedback}</p> : null}
+      {feedback ? <p className="mb-4 text-sm text-[var(--accent-soft)]" role="status">{feedback}</p> : null}
       {data?.attendants.length ? (
         <div className="responsive-table-wrap">
           <table className="responsive-table settings-table-minwidth w-full text-left text-xs">
-            <thead className="border-b border-[var(--border)] type-caption uppercase tracking-[.08em] text-[var(--text-muted)]">
+            <thead className="border-b border-[var(--border)] type-caption uppercase tracking-[.08em] text-[var(--faint)]">
               <tr>
                 <th className="pb-3 font-medium">No pool</th>
                 <th className="pb-3 font-medium">Atendente</th>
@@ -986,7 +988,7 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
               {data.attendants.map((member) => {
                 const selected = selectedIds.includes(member.member_id);
                 const available = member.availability_status === "available";
-                const persistedColor = member.cor_agenda ?? SETTINGS_COLOR_DEFAULTS.calendar;
+                const persistedColor = member.cor_agenda ?? "#2563EB";
                 const colorDraft = colorDrafts[member.member_id] ?? persistedColor;
                 const controls = attendantControlState({
                   canManage,
@@ -1002,7 +1004,7 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
                     </td>
                     <td data-label="Atendente" className="py-3">
                       <strong className="block text-sm">{member.email}{member.is_current ? " · você" : ""}</strong>
-                      <span className="mono type-caption uppercase tracking-[.08em] text-[var(--text-muted)]">{member.funcao}</span>
+                      <span className="mono type-caption uppercase tracking-[.08em] text-[var(--faint)]">{member.funcao}</span>
                     </td>
                     <td data-label="Cor na agenda" className="py-3">
                       {selected ? (
@@ -1018,7 +1020,7 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
                               [member.member_id]: event.target.value
                             }))}
                           />
-                          <span className="mono type-caption text-[var(--text-muted)]">{colorDraft}</span>
+                          <span className="mono type-caption text-[var(--faint)]">{colorDraft}</span>
                           <button
                             type="button"
                             className="btn px-2 py-1 type-caption"
@@ -1032,21 +1034,21 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
                             Salvar cor
                           </button>
                         </label>
-                      ) : <span className="text-[var(--text-muted)]">—</span>}
+                      ) : <span className="text-[var(--faint)]">—</span>}
                     </td>
                     <td data-label="Disponibilidade" className="py-3">
                       {selected && member.availability_status ? (
-                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 type-caption font-medium ${available ? "border-[var(--success-border)] bg-[var(--success-subtle)] text-[var(--success)]" : "border-[var(--warning-border)] bg-[var(--warning-subtle)] text-[var(--warning)]"}`}>
-                          <i className={`size-1.5 rounded-full ${available ? "bg-[var(--success)]" : "bg-[var(--warning)]"}`} aria-hidden="true" />
+                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 type-caption font-medium ${available ? "border-[var(--ok-border)] bg-[var(--ok-bg)] text-[var(--ok)]" : "border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn)]"}`}>
+                          <i className={`size-1.5 rounded-full ${available ? "bg-[var(--ok)]" : "bg-[var(--warn)]"}`} aria-hidden="true" />
                           {availabilityLabel(member.availability_status)}
                         </span>
-                      ) : <span className="text-[var(--text-muted)]">Fora do pool</span>}
+                      ) : <span className="text-[var(--faint)]">Fora do pool</span>}
                     </td>
                     <td data-label="Carga ativa" className="mono py-3 text-right font-semibold">{member.active_appointments}</td>
                     <td data-label="Controle" className="py-3">
                       <div className="flex justify-end gap-2">
                         <button type="button" className="btn px-2 py-1 type-caption" disabled={!controls.canSetAvailable} onClick={() => void setAvailability(member, "available")}>Disponível</button>
-                        <button type="button" className="btn px-2 py-1 type-caption" disabled={!controls.canSetUnavailable} onClick={() => void setAvailability(member, "unavailable")}>Indisponível</button>
+                        <button type="button" className="btn warn px-2 py-1 type-caption" disabled={!controls.canSetUnavailable} onClick={() => void setAvailability(member, "unavailable")}>Indisponível</button>
                       </div>
                     </td>
                   </tr>
@@ -1126,30 +1128,30 @@ function AtendonMeetSettingsPanel({ canManage }: { canManage: boolean }) {
   return (
     <form className="max-w-3xl border-y border-[var(--border)] py-6" onSubmit={submit}>
       <div className="grid gap-6 sm:grid-cols-[44px_minmax(0,1fr)]">
-        <span className="grid size-11 place-items-center rounded-full border border-[var(--primary-border)] bg-[var(--primary-subtle)] text-[var(--primary)]">
+        <span className="grid size-11 place-items-center rounded-full border border-[var(--border-ai)] bg-[var(--accent-bg)] text-[var(--accent-soft)]">
           <VideoCamera size={21} aria-hidden="true" />
         </span>
         <div className="min-w-0">
           <div className="flex flex-wrap items-start justify-between gap-5 border-b border-[var(--border)] pb-5">
             <div>
-              <h2 className="m-0 text-base font-semibold text-[var(--text)]">Sala própria do AtendON</h2>
+              <h2 className="m-0 text-base font-semibold text-[var(--heading)]">Sala própria do AtendON</h2>
               <p className="sub mt-2 max-w-[65ch] text-sm">Cria uma sala protegida assim que o agendamento é confirmado. Participantes entram pelo link recebido e a equipe acessa pelo painel.</p>
             </div>
-            <label className="flex items-center gap-3 text-sm font-medium text-[var(--text-secondary)]">
+            <label className="flex items-center gap-3 text-sm font-medium text-[var(--body)]">
               <input type="checkbox" checked={enabled} disabled={!available || !canManage || saving} onChange={(event) => { setEnabled(event.target.checked); setSaved(false); }} />
               {enabled ? "Ativo" : "Inativo"}
             </label>
           </div>
 
           {error ? <p className="error mt-5" role="alert">{error}</p> : null}
-          {!available ? <p className="mt-5 text-sm text-[var(--warning)]" role="status">A infraestrutura ainda está em validação. O Google Meet continua sendo usado nas novas reuniões.</p> : null}
-          {saved ? <p className="mt-5 flex items-center gap-2 text-sm text-[var(--primary)]" role="status"><CheckCircle size={17} weight="fill" aria-hidden="true" /> Configuração salva.</p> : null}
+          {!available ? <p className="mt-5 text-sm text-[var(--warn-muted)]" role="status">A infraestrutura ainda está em validação. O Google Meet continua sendo usado nas novas reuniões.</p> : null}
+          {saved ? <p className="mt-5 flex items-center gap-2 text-sm text-[var(--accent-soft)]" role="status"><CheckCircle size={17} weight="fill" aria-hidden="true" /> Configuração salva.</p> : null}
 
           <dl className="mt-6 grid gap-5 sm:grid-cols-2">
-            <div className="border-l border-[var(--border)] pl-4"><dt className="label">Criação</dt><dd className="mt-2 text-sm text-[var(--text-secondary)]">Ao confirmar o agendamento</dd></div>
-            <div className="border-l border-[var(--border)] pl-4"><dt className="label">Acesso</dt><dd className="mt-2 text-sm text-[var(--text-secondary)]">Token temporário por sala</dd></div>
-            <div className="border-l border-[var(--border)] pl-4"><dt className="label">Recursos</dt><dd className="mt-2 text-sm text-[var(--text-secondary)]">Vídeo, áudio, chat e compartilhamento de tela</dd></div>
-            <div className="border-l border-[var(--border)] pl-4"><dt className="label">Gravações</dt><dd className="mt-2 text-sm text-[var(--text-secondary)]">Disponíveis nos detalhes do agendamento</dd></div>
+            <div className="border-l border-[var(--border)] pl-4"><dt className="label">Criação</dt><dd className="mt-2 text-sm text-[var(--body)]">Ao confirmar o agendamento</dd></div>
+            <div className="border-l border-[var(--border)] pl-4"><dt className="label">Acesso</dt><dd className="mt-2 text-sm text-[var(--body)]">Token temporário por sala</dd></div>
+            <div className="border-l border-[var(--border)] pl-4"><dt className="label">Recursos</dt><dd className="mt-2 text-sm text-[var(--body)]">Vídeo, áudio, chat e compartilhamento de tela</dd></div>
+            <div className="border-l border-[var(--border)] pl-4"><dt className="label">Gravações</dt><dd className="mt-2 text-sm text-[var(--body)]">Disponíveis nos detalhes do agendamento</dd></div>
           </dl>
 
           <div className="mt-7 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] pt-5">
@@ -1288,28 +1290,28 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
       <section className="border-y border-[var(--border)] py-6">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-5 border-b border-[var(--border)] pb-5">
           <div>
-            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text)]"><VideoCamera size={19} aria-hidden="true" /> Sala automática</div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--heading)]"><VideoCamera size={19} aria-hidden="true" /> Sala automática</div>
             <p className="sub mt-2 max-w-[68ch]">Cria uma sala pela API do Google Meet assim que o agendamento é confirmado. O fluxo não cria nem consulta eventos no Google Calendar.</p>
           </div>
-          <label className="flex items-center gap-3 text-sm font-medium text-[var(--text-secondary)]">
+          <label className="flex items-center gap-3 text-sm font-medium text-[var(--body)]">
             <input type="checkbox" checked={enabled} disabled={!canManage} onChange={(event) => { setEnabled(event.target.checked); setSaved(false); }} />
             {enabled ? "Ativo" : "Inativo"}
           </label>
         </div>
 
         {error ? <p className="error mb-5" role="alert">{error}</p> : null}
-        {saved ? <p className="mb-5 flex items-center gap-2 text-sm text-[var(--primary)]" role="status"><CheckCircle size={17} weight="fill" aria-hidden="true" /> Configuração salva.</p> : null}
+        {saved ? <p className="mb-5 flex items-center gap-2 text-sm text-[var(--accent-soft)]" role="status"><CheckCircle size={17} weight="fill" aria-hidden="true" /> Configuração salva.</p> : null}
 
         <fieldset className="mb-7 border-b border-[var(--border)] pb-7">
           <legend className="label flex items-center gap-2"><GoogleLogo size={17} weight="bold" aria-hidden="true" /> Conta Google</legend>
           <p className="sub mt-2 max-w-[68ch] text-xs">Entre com a conta que será dona das salas. O acesso renovável é criptografado no servidor; sua senha nunca passa pelo AtendON.</p>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-y border-[var(--border)] py-4">
             <div className="min-w-0">
-              <strong className="block truncate text-sm text-[var(--text)]">{oauthConnected ? data?.settings.oauth_email : "Nenhuma conta conectada"}</strong>
+              <strong className="block truncate text-sm text-[var(--heading)]">{oauthConnected ? data?.settings.oauth_email : "Nenhuma conta conectada"}</strong>
               <span className="sub mt-1 block text-xs">{oauthConnected ? "Esta conta organiza os novos links do Meet." : "Use uma conta Google com acesso ao Meet."}</span>
             </div>
             {oauthConnected ? (
-              <button type="button" className="btn active:scale-[0.98]" disabled={!canManage || disconnecting} onClick={() => void disconnectGoogle()}>
+              <button type="button" className="btn warn active:scale-[0.98]" disabled={!canManage || disconnecting} onClick={() => void disconnectGoogle()}>
                 <LinkBreak size={17} aria-hidden="true" /> {disconnecting ? "Desconectando…" : "Desconectar"}
               </button>
             ) : (
@@ -1333,7 +1335,7 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
         </div>
 
         <div className="mt-7 border-t border-[var(--border)] pt-5">
-          <div className="flex items-center gap-2 text-sm font-medium text-[var(--text)]"><UsersThree size={17} aria-hidden="true" /> Pool compartilhado</div>
+          <div className="flex items-center gap-2 text-sm font-medium text-[var(--heading)]"><UsersThree size={17} aria-hidden="true" /> Pool compartilhado</div>
           <p className="sub mt-2 max-w-[68ch] text-xs">
             A integração usa os {data?.settings.closer_member_ids.length ?? 0} atendente(s) definidos na seção “Equipe de atendimento”. OAuth e criação da sala permanecem independentes da distribuição.
           </p>
@@ -1351,21 +1353,21 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
       </section>
 
       <aside className="border-t border-[var(--border)] pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-1" aria-label="Estado da integração com Google Meet">
-        <h2 className="text-sm font-semibold text-[var(--text)]">Pré-requisitos da integração</h2>
+        <h2 className="text-sm font-semibold text-[var(--heading)]">Pré-requisitos da integração</h2>
         <div className="mt-5 grid gap-5">
           <div className="grid grid-cols-[32px_1fr] gap-3">
-            <span className={`grid h-8 w-8 place-items-center rounded-full border ${oauthConnected ? "border-[var(--primary-border)] text-[var(--primary)]" : "border-[var(--warning-border)] text-[var(--warning)]"}`}>
+            <span className={`grid h-8 w-8 place-items-center rounded-full border ${oauthConnected ? "border-[var(--border-ai)] text-[var(--accent-soft)]" : "border-[var(--warn-border)] text-[var(--warn)]"}`}>
               {oauthConnected ? <CheckCircle size={17} weight="fill" aria-hidden="true" /> : <WarningCircle size={17} weight="fill" aria-hidden="true" />}
             </span>
-            <div><strong className="block text-sm text-[var(--text)]">Login OAuth</strong><p className="sub mt-1 text-xs leading-relaxed">{oauthConnected ? `Conta ${data?.settings.oauth_email ?? "Google"} pronta para criar salas.` : "Conecte a conta Google que organizará as reuniões."}</p></div>
+            <div><strong className="block text-sm text-[var(--heading)]">Login OAuth</strong><p className="sub mt-1 text-xs leading-relaxed">{oauthConnected ? `Conta ${data?.settings.oauth_email ?? "Google"} pronta para criar salas.` : "Conecte a conta Google que organizará as reuniões."}</p></div>
           </div>
           <div className="grid grid-cols-[32px_1fr] gap-3">
-            <span className="grid h-8 w-8 place-items-center rounded-full border border-[var(--border)] text-[var(--primary)]"><VideoCamera size={16} aria-hidden="true" /></span>
-            <div><strong className="block text-sm text-[var(--text)]">API Meet, sem Calendar</strong><p className="sub mt-1 text-xs leading-relaxed">A sala nasce em <span className="mono">meet.googleapis.com/v2/spaces</span> e fica vinculada ao agendamento interno.</p></div>
+            <span className="grid h-8 w-8 place-items-center rounded-full border border-[var(--border)] text-[var(--accent-soft)]"><VideoCamera size={16} aria-hidden="true" /></span>
+            <div><strong className="block text-sm text-[var(--heading)]">API Meet, sem Calendar</strong><p className="sub mt-1 text-xs leading-relaxed">A sala nasce em <span className="mono">meet.googleapis.com/v2/spaces</span> e fica vinculada ao agendamento interno.</p></div>
           </div>
           <div className="grid grid-cols-[32px_1fr] gap-3">
-            <span className="grid h-8 w-8 place-items-center rounded-full border border-[var(--border)] text-[var(--primary)]"><UsersThree size={16} aria-hidden="true" /></span>
-            <div><strong className="block text-sm text-[var(--text)]">Pool compartilhado</strong><p className="sub mt-1 text-xs leading-relaxed">A sala usa o responsável escolhido pela distribuição configurada na equipe de atendimento.</p></div>
+            <span className="grid h-8 w-8 place-items-center rounded-full border border-[var(--border)] text-[var(--accent-soft)]"><UsersThree size={16} aria-hidden="true" /></span>
+            <div><strong className="block text-sm text-[var(--heading)]">Pool compartilhado</strong><p className="sub mt-1 text-xs leading-relaxed">A sala usa o responsável escolhido pela distribuição configurada na equipe de atendimento.</p></div>
           </div>
         </div>
       </aside>
@@ -1423,5 +1425,5 @@ function Editor({ resource, item, onCancel, onSaved, onError }: { resource: Cata
 }
 
 function Toggle({ name, label, checked, disabled=false }: { name: string; label: string; checked: boolean; disabled?:boolean }) {
-  return <label className="flex items-center gap-3 text-sm text-[var(--text-secondary)]"><input type="checkbox" name={name} defaultChecked={checked} disabled={disabled}/>{label}</label>;
+  return <label className="flex items-center gap-3 text-sm text-[var(--body)]"><input type="checkbox" name={name} defaultChecked={checked} disabled={disabled}/>{label}</label>;
 }

@@ -72,7 +72,7 @@ export function AgendaTimeBlockDialog({ open, anchor, timezone, onClose, onSaved
         <div>
           <span className="eyebrow">INDISPONIBILIDADE PESSOAL</span>
           <h2 id="agenda-time-block-title" className="mt-2 text-lg font-semibold">Bloquear horário</h2>
-          <p id="agenda-time-block-description" className="mt-1 text-xs text-[var(--text-secondary)]">A IA e o agendamento automático tratarão o período como ocupado somente para você.</p>
+          <p id="agenda-time-block-description" className="mt-1 text-xs text-[var(--muted)]">A IA e o agendamento automático tratarão o período como ocupado somente para você.</p>
         </div>
         <button type="button" className="btn" onClick={onClose} disabled={saving} aria-label="Fechar"><X aria-hidden="true" /></button>
       </div>

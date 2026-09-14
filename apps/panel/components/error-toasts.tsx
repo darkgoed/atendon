@@ -180,7 +180,7 @@ export function ErrorToasts() {
             <p>{toast.message}</p>
             {toast.kind === "error" && isWhatsAppDisconnectedError(toast.message) ? <WhatsAppDisconnectedHelp /> : null}
             {toast.kind === "operational" ? (
-              <Link className="mt-2 inline-block text-xs font-medium text-[var(--warning)] underline underline-offset-4" href="/alertas">
+              <Link className="mt-2 inline-block text-xs font-medium text-[var(--warn)] underline underline-offset-4" href="/alertas">
                 Revisar na central
               </Link>
             ) : null}

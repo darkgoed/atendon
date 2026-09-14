@@ -15,8 +15,6 @@ playwright-report/
 test-results/
 strix_runs/
 apps/panel/ui-responsive-audit.json
-apps/panel/ds-audit.json
-apps/panel/ds-theme-parity.json
 .deploy-state/
 data/jitsi/
 data/meet-recordings/

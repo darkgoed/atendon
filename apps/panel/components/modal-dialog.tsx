@@ -14,8 +14,8 @@ const FOCUSABLE_SELECTOR = [
 export function ModalDialog({
   children,
   className = "",
-  overlayClassName = "overlay-backdrop",
-  dialogClassName = "popover popover--dialog",
+  overlayClassName = "action-overlay",
+  dialogClassName = "action-dialog",
   labelledBy,
   describedBy,
   onClose

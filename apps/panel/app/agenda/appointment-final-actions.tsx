@@ -119,7 +119,7 @@ export function AppointmentOutcomeForm({ timezone, submitting, serverError, onBa
       <fieldset className="grid gap-2" disabled={submitting}>
         <legend className="sr-only">Resultado da reunião</legend>
         {OUTCOME_OPTIONS.map((option) => (
-          <label key={option.value} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${draft.outcome === option.value ? "border-[var(--primary)] bg-[var(--primary-subtle)]" : "border-[var(--border)]"}`}>
+          <label key={option.value} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${draft.outcome === option.value ? "border-[var(--accent)] bg-[var(--accent-bg)]" : "border-[var(--border)]"}`}>
             <input data-autofocus={option.value === "fechado" ? true : undefined} type="radio" name="appointment-outcome" value={option.value} checked={draft.outcome === option.value} onChange={() => { setDraft({ ...emptyOutcome, outcome: option.value }); clearError(); }} />
             <span><strong className="block text-sm">{option.label}</strong><small className="sub">{option.detail}</small></span>
           </label>
@@ -169,20 +169,20 @@ export function AppointmentCancellationForm({ timezone, submitting, serverError,
   }
 
   return (
-    <form className="agenda-final-action-form grid gap-5 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-5" aria-labelledby="agenda-final-action-title" onSubmit={submit}>
+    <form className="agenda-final-action-form grid gap-5 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-5" aria-labelledby="agenda-final-action-title" onSubmit={submit}>
       <div>
         <span className="label">Cancelar agendamento</span>
         <strong id="agenda-final-action-title" className="mt-1 block text-sm">O contato deve ser recuperado?</strong>
-        <p className="mt-1 text-sm text-[var(--warning)]">Cancelar libera este horário. Escolha uma retomada futura ou registre a perda.</p>
+        <p className="mt-1 text-sm text-[var(--warn-muted)]">Cancelar libera este horário. Escolha uma retomada futura ou registre a perda.</p>
       </div>
       <fieldset className="grid gap-2 sm:grid-cols-2" disabled={submitting}>
         <legend className="sr-only">Destino do cancelamento</legend>
-        <label className={`cursor-pointer rounded-lg border p-3 ${draft.disposition === "recover" ? "border-[var(--primary)] bg-[var(--primary-subtle)]" : "border-[var(--warning-border)]"}`}>
+        <label className={`cursor-pointer rounded-lg border p-3 ${draft.disposition === "recover" ? "border-[var(--accent)] bg-[var(--accent-bg)]" : "border-[var(--warn-border)]"}`}>
           <input data-autofocus type="radio" name="cancellation-disposition" checked={draft.disposition === "recover"} onChange={() => { setDraft({ ...emptyCancellation, disposition: "recover" }); clearError(); }} />
           <strong className="ml-2 text-sm">Recuperar depois</strong>
           <small className="sub mt-1 block">Cria uma próxima ação para o responsável.</small>
         </label>
-        <label className={`cursor-pointer rounded-lg border p-3 ${draft.disposition === "lost" ? "border-[var(--primary)] bg-[var(--primary-subtle)]" : "border-[var(--warning-border)]"}`}>
+        <label className={`cursor-pointer rounded-lg border p-3 ${draft.disposition === "lost" ? "border-[var(--accent)] bg-[var(--accent-bg)]" : "border-[var(--warn-border)]"}`}>
           <input type="radio" name="cancellation-disposition" checked={draft.disposition === "lost"} onChange={() => { setDraft({ ...emptyCancellation, disposition: "lost" }); clearError(); }} />
           <strong className="ml-2 text-sm">Encerrar como perda</strong>
           <small className="sub mt-1 block">Registra por que a oportunidade terminou.</small>

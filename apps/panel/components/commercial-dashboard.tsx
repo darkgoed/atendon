@@ -225,11 +225,11 @@ export function CommercialDashboard({
 
       {selectedPeriod === "custom" ? (
         <div className={styles.customDates}>
-          <label className="grid gap-2 text-xs font-medium ">
+          <label className="grid gap-2 text-xs font-medium text-[var(--muted)]">
             Data inicial
             <Input type="date" value={customStart} onChange={(event) => onCustomStartChange(event.target.value)} />
           </label>
-          <label className="grid gap-2 text-xs font-medium ">
+          <label className="grid gap-2 text-xs font-medium text-[var(--muted)]">
             Data final
             <Input type="date" min={customStart} value={customEnd} onChange={(event) => onCustomEndChange(event.target.value)} />
           </label>
@@ -244,7 +244,7 @@ export function CommercialDashboard({
               <div className="flex items-end gap-2.5">
                 <div className="metric mt-3">{data.metrics.created}</div>
                 {delta !== null ? (
-                  <span className={`mono mb-1 inline-flex items-center gap-1 text-xs font-semibold ${delta >= 0 ? "" : ""}`} title="Segunda metade do período comparada à primeira">
+                  <span className={`mono mb-1 inline-flex items-center gap-1 text-xs font-semibold ${delta >= 0 ? "text-[var(--ok)]" : "text-[var(--warn)]"}`} title="Segunda metade do período comparada à primeira">
                     {delta >= 0 ? <TrendUp size={13} weight="bold" aria-hidden="true" /> : <TrendDown size={13} weight="bold" aria-hidden="true" />}
                     {formatPercent(Math.abs(delta))}
                   </span>
@@ -252,7 +252,7 @@ export function CommercialDashboard({
               </div>
               <p className="sub">novos agendamentos no período</p>
             </div>
-            <PhoneCall className="" size={22} aria-hidden="true" />
+            <PhoneCall className="text-[var(--accent)]" size={22} aria-hidden="true" />
           </div>
           <Sparkline values={data.series.map((item) => item.scheduled)} />
         </Card>
@@ -261,14 +261,14 @@ export function CommercialDashboard({
           <div className="cardtitle"><span>Calls no período</span><CalendarBlank size={19} aria-hidden="true" /></div>
           <dl className={styles.metricStrip}>
             {[
-              ["Marcadas", data.metrics.scheduled, ""],
-              ["Compareceram", data.metrics.completed, ""],
-              ["Resultado pendente", data.metrics.result_pending, ""],
-              ["Não comp.", data.metrics.no_show, ""],
-              ["Canceladas", data.metrics.cancelled, ""]
+              ["Marcadas", data.metrics.scheduled, "text-[var(--accent)]"],
+              ["Compareceram", data.metrics.completed, "text-[var(--ok)]"],
+              ["Resultado pendente", data.metrics.result_pending, "text-[var(--warn)]"],
+              ["Não comp.", data.metrics.no_show, "text-[var(--danger)]"],
+              ["Canceladas", data.metrics.cancelled, "text-[var(--muted)]"]
             ].map(([label, value, tone]) => (
               <div key={String(label)} className="px-3 py-2 first:pl-0 last:pr-0">
-                <dt className="type-caption ">{label}</dt>
+                <dt className="type-caption text-[var(--faint)]">{label}</dt>
                 <dd className={`mono mt-1 text-xl font-semibold ${tone}`}>{value}</dd>
               </div>
             ))}
@@ -288,7 +288,7 @@ export function CommercialDashboard({
               ["1º atendimento", data.sdr_metrics.average_first_response_minutes == null ? "—" : `${data.sdr_metrics.average_first_response_minutes} min`],
               ["Follow-ups atrasados", data.sdr_metrics.overdue_follow_ups],
               ["No-shows recuperados", data.sdr_metrics.recovered_no_shows]
-            ].map(([label, value]) => <div key={String(label)} className="rounded border  p-2"><dt className="type-caption ">{label}</dt><dd className="mono mt-1 text-lg font-semibold">{value}</dd></div>)}
+            ].map(([label, value]) => <div key={String(label)} className="rounded border border-[var(--border)] p-2"><dt className="type-caption text-[var(--faint)]">{label}</dt><dd className="mono mt-1 text-lg font-semibold">{value}</dd></div>)}
           </dl>
         </Card>
 
@@ -311,7 +311,7 @@ export function CommercialDashboard({
               ["Ticket médio", formatMoney(data.commercial_metrics.average_ticket)],
               ["Reagendadas", data.commercial_metrics.rescheduled],
               ["Follow-ups atrasados", data.commercial_metrics.overdue_follow_ups]
-            ].map(([label, value]) => <div key={String(label)} className="rounded border  p-2"><dt className="type-caption ">{label}</dt><dd className="mono mt-1 text-lg font-semibold">{value}</dd></div>)}
+            ].map(([label, value]) => <div key={String(label)} className="rounded border border-[var(--border)] p-2"><dt className="type-caption text-[var(--faint)]">{label}</dt><dd className="mono mt-1 text-lg font-semibold">{value}</dd></div>)}
           </dl>
         </Card>
 
@@ -319,12 +319,12 @@ export function CommercialDashboard({
           <div className="cardtitle"><span>Taxas</span><ChartLineUp size={19} aria-hidden="true" /></div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-1">
             <div className="flex items-center gap-3">
-              <RateRing value={data.metrics.attendance_rate} tone="var(--success)" />
+              <RateRing value={data.metrics.attendance_rate} tone="var(--ok)" />
               <dl><dt className="sub text-xs">Comparecimento</dt><dd className="mono mt-1 text-2xl font-semibold">{formatPercent(data.metrics.attendance_rate)}</dd></dl>
             </div>
             <div className="flex items-center gap-3">
-              <RateRing value={data.metrics.no_show_rate} tone="var(--warning)" />
-              <dl><dt className="sub text-xs">Não comparecimento</dt><dd className="mono mt-1 text-2xl font-semibold ">{formatPercent(data.metrics.no_show_rate)}</dd></dl>
+              <RateRing value={data.metrics.no_show_rate} tone="var(--warn)" />
+              <dl><dt className="sub text-xs">Não comparecimento</dt><dd className="mono mt-1 text-2xl font-semibold text-[var(--warn)]">{formatPercent(data.metrics.no_show_rate)}</dd></dl>
             </div>
           </div>
         </Card>
@@ -341,7 +341,7 @@ export function CommercialDashboard({
                 const status = statusLabel(appointment.status, overdue);
                 return (
                   <div key={appointment.id} className="grid gap-3 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
-                    <time className="mono rounded-sm  px-2 py-1 text-xs font-semibold ">
+                    <time className="mono rounded-sm bg-[var(--active)] px-2 py-1 text-xs font-semibold text-[var(--accent)]">
                       {new Intl.DateTimeFormat("pt-BR", { timeZone: data.period.timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(appointment.start_at))}
                     </time>
                     <div className="min-w-0">
@@ -364,10 +364,10 @@ export function CommercialDashboard({
         <Card>
           <div className="cardtitle">
             <span className="inline-flex items-center gap-2"><ChartLineUp size={19} aria-hidden="true" /> Evolução de calls</span>
-            <div className="flex flex-wrap gap-3 type-caption ">
-              <span className="inline-flex items-center gap-1"><i className="size-2 rounded-full " /> Marcadas</span>
-              <span className="inline-flex items-center gap-1"><i className="size-2 rounded-full " /> Compareceram</span>
-              <span className="inline-flex items-center gap-1"><i className="size-2 rounded-full " /> Não comp.</span>
+            <div className="flex flex-wrap gap-3 type-caption text-[var(--faint)]">
+              <span className="inline-flex items-center gap-1"><i className="size-2 rounded-full bg-[var(--accent)]" /> Marcadas</span>
+              <span className="inline-flex items-center gap-1"><i className="size-2 rounded-full bg-[var(--ok)]" /> Compareceram</span>
+              <span className="inline-flex items-center gap-1"><i className="size-2 rounded-full bg-[var(--warn)]" /> Não comp.</span>
             </div>
           </div>
           <TrendChart data={data.series} />
@@ -377,12 +377,12 @@ export function CommercialDashboard({
           <Card>
             <div className="cardtitle">
               <span className="inline-flex items-center gap-2"><UsersThree size={19} aria-hidden="true" /> Distribuição do time</span>
-              {data.team[0] ? <span className="sub text-xs">Próxima da fila: <strong className="">{data.team[0].email}</strong></span> : null}
+              {data.team[0] ? <span className="sub text-xs">Próxima da fila: <strong className="text-[var(--heading)]">{data.team[0].email}</strong></span> : null}
             </div>
             {data.team.length ? (
               <TableScroll tabIndex={0} aria-label="Distribuição detalhada do time">
               <table className={styles.widgetTable}>
-                  <thead className="border-b  type-caption uppercase tracking-[.08em] ">
+                  <thead className="border-b border-[var(--border)] type-caption uppercase tracking-[.08em] text-[var(--faint)]">
                     <tr><th className="pb-2 font-medium">Atendente</th><th className="pb-2 text-right font-medium">Ativas</th><th className="pb-2 text-right font-medium">Período</th><th className="pb-2 text-right font-medium">Compareceu</th><th className="pb-2 text-right font-medium">Não comp.</th></tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border)]">
@@ -390,10 +390,10 @@ export function CommercialDashboard({
                       <tr key={member.member_id}>
                         <td className="py-3">
                           <div className="flex items-center gap-2">
-                            <span className="grid size-8 shrink-0 place-items-center rounded-full border   type-caption font-semibold">{initials(member.email)}</span>
+                            <span className="grid size-8 shrink-0 place-items-center rounded-full border border-[var(--border)] bg-[var(--active)] type-caption font-semibold">{initials(member.email)}</span>
                             <span className="min-w-0">
                               <strong className="block max-w-64 truncate font-medium">{member.email}</strong>
-                              <span className="type-caption ">
+                              <span className="type-caption text-[var(--faint)]">
                                 {member.is_next ? "Próxima da fila · " : member.is_current ? "Você · " : ""}
                                 {member.availability_status === "available" ? "Disponível" : "Indisponível"} (informativo)
                               </span>
@@ -402,8 +402,8 @@ export function CommercialDashboard({
                         </td>
                         <td className="mono py-3 text-right font-semibold">{member.active}</td>
                         <td className="mono py-3 text-right">{member.period}</td>
-                        <td className="mono py-3 text-right ">{member.completed}</td>
-                        <td className="mono py-3 text-right ">{member.no_show}</td>
+                        <td className="mono py-3 text-right text-[var(--ok)]">{member.completed}</td>
+                        <td className="mono py-3 text-right text-[var(--warn)]">{member.no_show}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -419,23 +419,23 @@ export function CommercialDashboard({
           <div className="cardtitle"><span className="inline-flex items-center gap-2"><Target size={19} aria-hidden="true" /> Funil do período</span></div>
           <div className="grid gap-4">
             {[
-              { label: "Marcadas", value: data.metrics.scheduled, color: "", Icon: PhoneCall },
-              { label: "Compareceram", value: data.metrics.completed, color: "", Icon: CheckCircle },
-              { label: "Não compareceram", value: data.metrics.no_show, color: "", Icon: WarningCircle },
-              { label: "Próximas", value: data.metrics.upcoming, color: "", Icon: ClockCountdown }
+              { label: "Marcadas", value: data.metrics.scheduled, color: "bg-[var(--accent)]", Icon: PhoneCall },
+              { label: "Compareceram", value: data.metrics.completed, color: "bg-[var(--ok)]", Icon: CheckCircle },
+              { label: "Não compareceram", value: data.metrics.no_show, color: "bg-[var(--warn)]", Icon: WarningCircle },
+              { label: "Próximas", value: data.metrics.upcoming, color: "bg-[var(--muted)]", Icon: ClockCountdown }
             ].map(({ label, value, color, Icon }) => (
               <div key={label}>
                 <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
-                  <span className="inline-flex items-center gap-2 "><Icon size={15} aria-hidden="true" />{label}</span>
-                  <strong className="mono ">{value}</strong>
+                  <span className="inline-flex items-center gap-2 text-[var(--muted)]"><Icon size={15} aria-hidden="true" />{label}</span>
+                  <strong className="mono text-[var(--heading)]">{value}</strong>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full ">
+                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--active)]">
                   <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.max(value ? 4 : 0, (value / maxFunnel) * 100)}%` }} />
                 </div>
               </div>
             ))}
           </div>
-          <div className="mt-5 border-t  pt-4">
+          <div className="mt-5 border-t border-[var(--border)] pt-4">
             <span className="label">QUALIDADE MÉDIA DOS LEADS</span>
             <div className="mt-2 flex items-end gap-2">
               <strong className="mono text-2xl">{data.metrics.average_quality ?? "—"}</strong>

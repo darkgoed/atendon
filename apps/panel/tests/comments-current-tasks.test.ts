@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { beforeAll, describe, expect, it } from "vitest";
 
 let agendaActions = "";
-const styleFiles = ["tokens.css", "base.css", "components.css", "shell.css", "domains/feedback.css", "domains/agenda.css", "domains/conversations.css", "domains/pipeline.css", "domains/auth.css", "domains/post-sales.css", "domains/agenda-calendar.css", "domains/leads.css", "domains/settings.css", "domains/overview.css", "domains/tripz-ai.css"];
+const styleFiles = ["tokens.css", "base.css", "components.css", "shell.css", "domains/feedback.css", "domains/agenda.css", "domains/conversations.css", "domains/pipeline.css", "domains/auth.css", "domains/post-sales.css", "domains/agenda-calendar.css", "domains/leads.css"];
 const readStyleSource = () => Promise.all(styleFiles.map((file) => readFile(new URL(`../styles/${file}`, import.meta.url), "utf8"))).then((sources) => sources.join("\n"));
 
 let agendaDetail = "";
@@ -40,10 +40,9 @@ describe("current comments.md tasks", () => {
     expect(conversations).toContain("conversation-list__item group");
     // A lista usa --surface (branco no tema claro) em vez de um override #fff:
     // o handoff B2B removeu a textura pontilhada, então não há mais background-image a anular.
-    expect(globalStyles).toMatch(/\.conversation-list__items \{[^}]*padding:\s*0/);
-    expect(globalStyles).toMatch(/\.conversation-list__items \{[^}]*background:\s*var\(--surface\)/);
+    expect(globalStyles).toContain(".conversation-list__items { padding:0!important; background:var(--surface); }");
     expect(globalStyles).toMatch(/\.conversation-list__item \{[^}]*background:var\(--surface\)/);
-    expect(globalStyles).toMatch(/:root\[data-theme="light"\][\s\S]*--surface:\s*#FFFFFF/);
+    expect(globalStyles).toMatch(/:root\[data-theme="light"\][\s\S]*--surface:#FFFFFF/);
     expect(globalStyles).not.toMatch(/\.conversation-list__items \{[^}]*background-image/);
   });
 

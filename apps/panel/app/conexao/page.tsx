@@ -59,21 +59,12 @@ export default function Connection() {
   const [confirmingRecovery, setConfirmingRecovery] = useState(false);
   const [recoveringMessages, setRecoveringMessages] = useState(false);
   const [recoveryError, setRecoveryError] = useState("");
-  const [qrColors, setQrColors] = useState({ foreground: "", background: "" });
   const retryPollingRef = useRef<() => void>(() => undefined);
   const resetPollingRef = useRef<() => void>(() => undefined);
   const pollingPausedRef = useRef(false);
   const reconnectTriggerRef = useRef<HTMLButtonElement>(null);
   const actionTriggerRef = useRef<HTMLButtonElement>(null);
   const connection = connections[0] ?? null;
-
-  useEffect(() => {
-    const styles = getComputedStyle(document.documentElement);
-    setQrColors({
-      foreground: styles.getPropertyValue("--text-inverse").trim(),
-      background: styles.getPropertyValue("--surface").trim()
-    });
-  }, []);
 
   function applyConnections(response: ConnectionsResponse) {
     setConnections(response.connections);
@@ -324,7 +315,7 @@ export default function Connection() {
         <div><h1>Conexão</h1><p>Vincule o WhatsApp usado pelo agente.</p></div>
         <div className="flex flex-wrap items-center gap-3">
           {loaded && connections.length ? (
-            <span className="mono rounded-md border border-[var(--primary-border)] px-3 py-2 type-caption text-[var(--primary)]">
+            <span className="mono rounded-md border border-[var(--border-ai)] px-3 py-2 type-caption text-[var(--accent-soft)]">
               {connectedCount} de {connections.length} conectado{connections.length === 1 ? "" : "s"}
             </span>
           ) : null}
@@ -339,7 +330,7 @@ export default function Connection() {
               <Plus size={16} aria-hidden="true" />
               Adicionar número
             </Button>
-          ) : <span className="text-sm text-[var(--text-secondary)]" role="status">Acesso somente leitura. O gerenciamento das conexões está indisponível.</span>}
+          ) : <span className="text-sm text-[var(--muted)]" role="status">Acesso somente leitura. O gerenciamento das conexões está indisponível.</span>}
         </div>
       </header>
 
@@ -366,10 +357,10 @@ export default function Connection() {
           aria-describedby="connection-reconnect-description"
         >
           <div className="flex items-start gap-3">
-            <Warning className="mt-0.5 shrink-0 text-[var(--warning)]" size={20} aria-hidden="true" />
+            <Warning className="mt-0.5 shrink-0 text-[var(--warn)]" size={20} aria-hidden="true" />
             <div>
               <strong id="connection-reconnect-title" className="block text-sm text-[var(--text)]">Confirmar reconexão de “{reconnectTarget.label}”?</strong>
-              <p id="connection-reconnect-description" className="mt-1 channels-ai-reading-width text-sm leading-relaxed text-[var(--warning)]">
+              <p id="connection-reconnect-description" className="mt-1 channels-ai-reading-width text-sm leading-relaxed text-[var(--warn-muted)]">
                 A sessão atual poderá ser interrompida e um novo QR Code será gerado. O atendimento automático pode ficar indisponível até a leitura do novo código.
               </p>
               {actionError ? <p className="error mt-3" role="alert">{actionError}</p> : null}
@@ -377,7 +368,7 @@ export default function Connection() {
           </div>
           <div className="flex flex-wrap gap-2 md:justify-end">
             <button type="button" className="btn" autoFocus disabled={reconnecting} onClick={closeReconnectConfirmation}>Manter sessão atual</button>
-            <button type="button" className="btn" disabled={reconnecting} onClick={() => void reconnect()}>
+            <button type="button" className="btn warn" disabled={reconnecting} onClick={() => void reconnect()}>
               <ArrowsClockwise size={16} className={reconnecting ? "animate-spin" : ""} aria-hidden="true" />
               {reconnecting ? "Reconectando…" : "Confirmar reconexão"}
             </button>
@@ -388,12 +379,12 @@ export default function Connection() {
       {confirmedAction ? (
         <section className="channels-ai-alert mb-5" role="alertdialog" aria-labelledby="connection-action-title" aria-describedby="connection-action-description">
           <div className="flex items-start gap-3">
-            <Warning className="mt-0.5 shrink-0 text-[var(--warning)]" size={20} aria-hidden="true" />
+            <Warning className="mt-0.5 shrink-0 text-[var(--warn)]" size={20} aria-hidden="true" />
             <div>
               <strong id="connection-action-title" className="block text-sm text-[var(--text)]">
                 {confirmedAction.kind === "promote" ? `Tornar “${confirmedAction.connection.label}” principal?` : `Remover “${confirmedAction.connection.label}”?`}
               </strong>
-              <p id="connection-action-description" className="mt-1 channels-ai-reading-width text-sm leading-relaxed text-[var(--warning)]">
+              <p id="connection-action-description" className="mt-1 channels-ai-reading-width text-sm leading-relaxed text-[var(--warn-muted)]">
                 {confirmedAction.kind === "promote"
                   ? "Os fluxos sem número escolhido passarão a usar esta conexão."
                   : "A conexão será arquivada, mas o histórico das conversas continuará disponível."}
@@ -403,7 +394,7 @@ export default function Connection() {
           </div>
           <div className="flex flex-wrap gap-2 md:justify-end">
             <button type="button" className="btn" autoFocus disabled={Boolean(actingConnectionId)} onClick={closeConfirmedAction}>Cancelar</button>
-            <button type="button" className="btn" disabled={Boolean(actingConnectionId)} onClick={() => void runConfirmedAction()}>
+            <button type="button" className="btn warn" disabled={Boolean(actingConnectionId)} onClick={() => void runConfirmedAction()}>
               {actingConnectionId ? "Salvando…" : confirmedAction.kind === "promote" ? "Tornar principal" : "Remover conexão"}
             </button>
           </div>
@@ -428,19 +419,19 @@ export default function Connection() {
       ) : null}
 
       {degraded ? (
-        <section className="mb-5 flex flex-wrap items-center justify-between gap-4 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-4" role="status" aria-live="polite">
+        <section className="mb-5 flex flex-wrap items-center justify-between gap-4 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-4" role="status" aria-live="polite">
           <div className="flex channels-ai-min-zero items-start gap-3">
-            <Warning className="mt-0.5 shrink-0 text-[var(--warning)]" size={19} aria-hidden="true" />
+            <Warning className="mt-0.5 shrink-0 text-[var(--warn)]" size={19} aria-hidden="true" />
             <div>
-              <strong className="block text-sm text-[var(--warning)]">Atualização temporariamente indisponível</strong>
-              <p className="mt-1 text-sm leading-relaxed text-[var(--warning)]">
+              <strong className="block text-sm text-[var(--warn)]">Atualização temporariamente indisponível</strong>
+              <p className="mt-1 text-sm leading-relaxed text-[var(--warn-muted)]">
                 Exibindo o último estado válido{lastUpdatedAt ? `, atualizado às ${lastUpdatedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : ""}.
                 {retryDelayMs ? ` Nova tentativa automática em aproximadamente ${retryDelaySeconds}s.` : ""}
               </p>
-              <p className="mono mt-1 type-caption text-[var(--warning)]">{pollingError}</p>
+              <p className="mono mt-1 type-caption text-[var(--warn-muted)]">{pollingError}</p>
             </div>
           </div>
-          <button type="button" className="btn" disabled={pollingRetrying || reconnecting} onClick={() => retryPollingRef.current()}>
+          <button type="button" className="btn warn" disabled={pollingRetrying || reconnecting} onClick={() => retryPollingRef.current()}>
             <ArrowsClockwise size={16} className={pollingRetrying ? "animate-spin" : ""} aria-hidden="true" />
             {pollingRetrying ? "Atualizando…" : "Tentar agora"}
           </button>
@@ -455,16 +446,16 @@ export default function Connection() {
       ) : null}
 
       {!loaded && pollingError ? (
-        <section className="grid justify-items-start gap-3 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-5 text-[var(--warning)]" role="alert">
+        <section className="grid justify-items-start gap-3 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-5 text-[var(--warn)]" role="alert">
           <div className="flex items-start gap-3">
             <Warning className="mt-0.5 shrink-0" size={20} aria-hidden="true" />
             <div>
               <strong className="block text-sm">Não foi possível carregar as conexões</strong>
-              <p className="mt-1 text-sm text-[var(--warning)]">{pollingError}</p>
+              <p className="mt-1 text-sm text-[var(--warn-muted)]">{pollingError}</p>
               {retryDelayMs ? <p className="sub">Nova tentativa automática em aproximadamente {retryDelaySeconds}s.</p> : null}
             </div>
           </div>
-          <button type="button" className="btn" disabled={pollingRetrying} onClick={() => retryPollingRef.current()}>
+          <button type="button" className="btn warn" disabled={pollingRetrying} onClick={() => retryPollingRef.current()}>
             <ArrowsClockwise size={16} className={pollingRetrying ? "animate-spin" : ""} aria-hidden="true" />
             {pollingRetrying ? "Tentando novamente…" : "Tentar novamente"}
           </button>
@@ -483,15 +474,15 @@ export default function Connection() {
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-3">
                   <div className="flex channels-ai-min-zero flex-wrap items-center gap-2">
                     <h2 className="truncate text-lg font-semibold text-[var(--text)]">{item.label}</h2>
-                    {item.is_primary ? <span className="mono rounded border border-[var(--primary-border)] bg-[var(--primary-subtle)] px-2 py-0.5 type-caption text-[var(--primary)]">Principal</span> : null}
-                    <span className={`mono rounded-md border px-2 py-1 type-caption ${item.status === "connected" ? "border-[var(--primary-border)] text-[var(--primary)]" : "border-[var(--warning-border)] bg-[var(--warning-subtle)] text-[var(--warning)]"}`}>status: {item.status}</span>
+                    {item.is_primary ? <span className="mono rounded border border-[var(--border-ai)] bg-[var(--accent-bg)] px-2 py-0.5 type-caption text-[var(--accent-soft)]">Principal</span> : null}
+                    <span className={`mono rounded-md border px-2 py-1 type-caption ${item.status === "connected" ? "border-[var(--border-ai)] text-[var(--accent-soft)]" : "border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn)]"}`}>status: {item.status}</span>
                   </div>
                   {canManageConnection ? (
                     <div className="flex flex-wrap gap-2">
                       <button type="button" className="btn" disabled={busy} onClick={() => { setEditingId(item.id); setEditLabel(item.label); setActionError(""); setNotice(""); }}><PencilSimple size={15} aria-hidden="true" />Renomear</button>
                       {!item.is_primary ? <button type="button" className="btn" disabled={busy} onClick={(event) => requestConfirmedAction({ kind: "promote", connection: item }, event.currentTarget)}><Star size={15} aria-hidden="true" />Tornar principal</button> : null}
                       <button type="button" className="btn" disabled={busy} aria-expanded={confirmingReconnect && reconnectTarget?.id === item.id} aria-controls="connection-reconnect-confirmation" onClick={(event) => openReconnect(item, event.currentTarget)}><ArrowsClockwise size={15} aria-hidden="true" />Reconectar</button>
-                      <button type="button" className="btn" disabled={busy} onClick={(event) => requestConfirmedAction({ kind: "archive", connection: item }, event.currentTarget)}><Trash size={15} aria-hidden="true" />Remover</button>
+                      <button type="button" className="btn warn" disabled={busy} onClick={(event) => requestConfirmedAction({ kind: "archive", connection: item }, event.currentTarget)}><Trash size={15} aria-hidden="true" />Remover</button>
                     </div>
                   ) : null}
                 </div>
@@ -507,29 +498,29 @@ export default function Connection() {
                   <section className="channels-ai-section channels-ai-qr">
                     {pending && item.qr_code ? (
                       <div className="text-center">
-                        <div className="channels-ai-qr-code"><QRCodeSVG value={item.qr_code} title={`QR Code de ${item.label}`} size={268} fgColor={qrColors.foreground || "currentColor"} bgColor={qrColors.background || "transparent"} /></div>
-                        <p className="mt-5 flex items-center justify-center gap-2 text-[var(--text-secondary)]"><i className="dot warn" />Aguardando leitura</p>
-                        <p className="mono mt-1 type-caption text-[var(--text-muted)]">QR renovado automaticamente</p>
+                        <div className="channels-ai-qr-code"><QRCodeSVG value={item.qr_code} title={`QR Code de ${item.label}`} size={268} fgColor="#0b0e0d" bgColor="#ffffff" /></div>
+                        <p className="mt-5 flex items-center justify-center gap-2 text-[var(--body)]"><i className="dot warn" />Aguardando leitura</p>
+                        <p className="mono mt-1 type-caption text-[var(--faint)]">QR renovado automaticamente</p>
                       </div>
                     ) : pending ? (
                       <div className="text-center" aria-busy="true" role="status">
-                        <ArrowsClockwise size={42} className="mx-auto animate-spin text-[var(--primary)]" aria-hidden="true" />
+                        <ArrowsClockwise size={42} className="mx-auto animate-spin text-[var(--accent)]" aria-hidden="true" />
                         <h3 className="mt-4 text-lg font-semibold">Gerando novo QR Code</h3>
                         <p className="sub">Aguarde a atualização automática da sessão.</p>
                       </div>
                     ) : item.status === "connected" ? (
                       <div className="text-center">
-                        <CheckCircle size={52} className="mx-auto text-[var(--primary)]" aria-hidden="true" />
+                        <CheckCircle size={52} className="mx-auto text-[var(--accent)]" aria-hidden="true" />
                         <h3 className="mt-4 text-lg font-semibold">WhatsApp conectado</h3>
-                        <p className="mono mt-2 text-xs text-[var(--text-secondary)]">{item.phone_number}</p>
+                        <p className="mono mt-2 text-xs text-[var(--muted)]">{item.phone_number}</p>
                         <p className="sub">Conectado desde {item.last_connected_at ? new Date(item.last_connected_at).toLocaleString("pt-BR") : "data indisponível"}</p>
                       </div>
                     ) : (
                       <div className="text-center">
-                        <Warning size={48} className="mx-auto text-[var(--warning)]" aria-hidden="true" />
+                        <Warning size={48} className="mx-auto text-[var(--warn)]" aria-hidden="true" />
                         <h3 className="mt-4 text-lg font-semibold">Sessão desconectada</h3>
                         <p className="sub">{canManageConnection ? "Use “Reconectar” para gerar um novo QR Code." : "Solicite a uma pessoa com permissão de gerenciamento que gere um novo QR Code."}</p>
-                        {item.disconnected_reason ? <p className="mono mt-3 type-caption text-[var(--text-muted)]">Motivo: {item.disconnected_reason}</p> : null}
+                        {item.disconnected_reason ? <p className="mono mt-3 type-caption text-[var(--faint)]">Motivo: {item.disconnected_reason}</p> : null}
                       </div>
                     )}
                   </section>
@@ -538,7 +529,7 @@ export default function Connection() {
                       <div className="cardtitle">Como conectar</div>
                       <ol className="grid gap-5">
                         {["Abra o WhatsApp no celular e acesse Aparelhos conectados.", "Toque em Conectar um aparelho.", "Aponte a câmera para o QR Code ao lado."].map((text, index) => (
-                          <li className="flex gap-3 text-[var(--text-secondary)]" key={text}><b className="channels-ai-step">{index + 1}</b><span>{text}</span></li>
+                          <li className="flex gap-3 text-[var(--body)]" key={text}><b className="channels-ai-step">{index + 1}</b><span>{text}</span></li>
                         ))}
                       </ol>
                       <p className="sub mt-5 border-t border-[var(--border)] pt-4">O celular continua funcionando normalmente. O atendente pode responder por ele quando a IA estiver pausada.</p>
@@ -550,7 +541,7 @@ export default function Connection() {
                         <div><dt className="label">Criada em</dt><dd className="mt-1">{new Date(item.created_at).toLocaleString("pt-BR")}</dd></div>
                       </dl>
                     </section>
-                    <section className="card warn flex gap-3 text-sm text-[var(--warning)]"><Warning size={20} className="shrink-0 text-[var(--warning)]" aria-hidden="true" /><p>Conexão não-oficial: evite disparos em massa e mantenha um padrão de conversa humano.</p></section>
+                    <section className="card warn flex gap-3 text-sm text-[var(--warn-muted)]"><Warning size={20} className="shrink-0 text-[var(--warn)]" aria-hidden="true" /><p>Conexão não-oficial: evite disparos em massa e mantenha um padrão de conversa humano.</p></section>
                   </aside>
                 </div>
               </article>
