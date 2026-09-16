@@ -328,28 +328,27 @@ describe("MetaInstagramProvider HTTP contract", () => {
     expect(exchange.calls).toHaveLength(1);
   });
 
-  it("preserves the account identity mismatch check", async () => {
+  it("uses the /me professional account id even when the token returns an app-scoped user id", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-16T00:00:00.000Z"));
     const exchange = sequenceFetch([
-      Response.json({
-        data: [{
-          access_token: "short-token",
-          user_id: "account-1",
-          permissions: "instagram_business_basic,instagram_business_manage_messages"
-        }]
-      }),
+      new Response(
+        '{"access_token":"short-token","user_id":28053816264300131,"permissions":"instagram_business_basic,instagram_business_manage_messages"}'
+      ),
       Response.json({ access_token: "long-token", expires_in: 5_184_000 }),
-      Response.json({ user_id: "account-2", username: "business" })
+      new Response('{"user_id":"17841448307996024","username":"business"}')
     ]);
     const provider = new MetaInstagramProvider({
       appId: "app-id",
       appSecret: "app-secret",
+      graphVersion: "v26.0",
       fetchImpl: exchange.fetchImpl
     });
 
     await expect(provider.exchangeOAuthCode({
       code: "one-time-code",
       redirectUri: "https://app.example/callback"
-    })).rejects.toThrow("Meta account identity mismatch");
+    })).resolves.toMatchObject({ accountId: "17841448307996024" });
     expect(exchange.calls).toHaveLength(3);
   });
 

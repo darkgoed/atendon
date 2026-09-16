@@ -305,10 +305,13 @@ export class MetaInstagramProvider implements InstagramProvider {
       access_token: longAccessToken
     }).toString();
     const identity = await this.requestJsonPreservingUserIds(identityUrl.toString());
-    const accountId = requiredString(identity.user_id, "user_id");
-    if (accountId !== shortUserId) {
-      throw new Error(`Meta account identity mismatch (${shortUserId} != ${accountId})`);
-    }
+    // Na API de Instagram Login a troca de token devolve o ID app-scoped do
+    // usuário e /me devolve o ID da conta profissional (o mesmo usado no
+    // entry.id dos webhooks). São namespaces diferentes: a identidade canônica
+    // para rotear mensagens é a do /me com o token de longa duração.
+    const accountId = typeof identity.user_id === "string" && identity.user_id.length > 0
+      ? identity.user_id
+      : shortUserId;
 
     return {
       accountId,
