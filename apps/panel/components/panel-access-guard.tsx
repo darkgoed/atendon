@@ -18,7 +18,7 @@ import {
 import { BrandMark } from "./brand-mark";
 import { Shell } from "./shell";
 
-const publicPaths = ["/login", "/privacidade", "/convite", "/invitations", "/reuniao", "/offline", "/403"] as const;
+const publicPaths = ["/login", "/privacidade", "/termos", "/convite", "/invitations", "/reuniao", "/offline", "/403"] as const;
 const capabilityExemptPaths = ["/conversas", "/perfil", "/alterar-senha", "/root"] as const;
 const startsAt = (path: string, base: string) => path === base || path.startsWith(`${base}/`);
 const createTenantCache = () => new Map();
