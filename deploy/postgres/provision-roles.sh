@@ -218,6 +218,15 @@ SELECT format(
 )
 \gexec
 
+-- Signed media is the only RLS-bypassing application function exposed to the
+-- configurable runtime role. The HTTP route validates the HMAC before calling it.
+SELECT format(
+  'GRANT EXECUTE ON FUNCTION public.get_signed_instagram_public_media(uuid) TO %I',
+  :'runtime_role'
+)
+WHERE to_regprocedure('public.get_signed_instagram_public_media(uuid)') IS NOT NULL
+\gexec
+
 SELECT format(
   'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I',
   :'owner_role',

@@ -427,7 +427,7 @@ export default function LeadDetail() {
   return (
     <Shell>
       <div className="lead-detail-page">
-      <Link href="/leads" className="lead-detail-page__back inline-flex items-center gap-2 text-xs text-[var(--muted)]">
+      <Link href="/leads" className="lead-detail-page__back inline-flex items-center gap-2 text-xs text-[var(--text-secondary)]">
         <ArrowLeft aria-hidden="true" />
         Voltar aos leads
       </Link>
@@ -462,7 +462,7 @@ export default function LeadDetail() {
                     <p className="mono truncate">{data.lead.telefone} · {statusLabel(data.lead.status)}</p>
                     {pendingResults ? <span className="crm-notice mt-2">{pendingResults} resultado(s) pendente(s)</span> : null}
                   </div>
-                  {canUpdateStatus ? <button type="button" className="mt-0.5 shrink-0 text-[var(--muted)] transition-colors hover:text-[var(--text)]" onClick={beginIdentityEdit} aria-label="Editar nome e telefone"><PencilSimple size={17} aria-hidden="true" /></button> : null}
+                  {canUpdateStatus ? <button type="button" className="mt-0.5 shrink-0 text-[var(--text-secondary)] transition-colors hover:text-[var(--text)]" onClick={beginIdentityEdit} aria-label="Editar nome e telefone"><PencilSimple size={17} aria-hidden="true" /></button> : null}
                 </div>
               )}
             </div>
@@ -477,7 +477,7 @@ export default function LeadDetail() {
             <div className="lead-detail-main">
               {data.qualificacao ? (
                 <section className="card" aria-labelledby="qualification-title">
-                  <div className="flex flex-wrap items-center justify-between gap-3"><div id="qualification-title" className="cardtitle">Qualificação contextual</div><strong className="flex items-center gap-1.5 text-lg text-[var(--accent-soft)]"><Star size={18} weight="fill" aria-hidden="true" />{data.qualificacao.estrelas} de 5</strong></div>
+                  <div className="flex flex-wrap items-center justify-between gap-3"><div id="qualification-title" className="cardtitle">Qualificação contextual</div><strong className="flex items-center gap-1.5 text-lg text-[var(--primary-text)]"><Star size={18} weight="fill" aria-hidden="true" />{data.qualificacao.estrelas} de 5</strong></div>
                   <dl className="mb-4 grid gap-3 text-sm md:grid-cols-2">
                     <Item label="Situação" value={data.qualificacao.requer_decisao_humana ? "Requer decisão humana" : "Oportunidade qualificada"} />
                     <Item label="Avaliado em" value={data.qualificacao.avaliado_em ? new Date(data.qualificacao.avaliado_em).toLocaleString("pt-BR", { timeZone: data.timezone }) : undefined} />
@@ -489,7 +489,7 @@ export default function LeadDetail() {
                       {commercialPreparationAnswers(data.qualificacao.respostas).map((item) => <Item key={item.key} label={item.label} value={item.value} />)}
                     </dl>
                   ) : null}
-                  <div className="rounded border border-[var(--border)] p-4"><strong className="mb-2 block text-xs">Resumo</strong><p className="whitespace-pre-wrap text-sm text-[var(--body)]">{data.qualificacao.resumo ?? "—"}</p></div>
+                  <div className="rounded border border-[var(--border)] p-4"><strong className="mb-2 block text-xs">Resumo</strong><p className="whitespace-pre-wrap text-sm text-[var(--text-secondary)]">{data.qualificacao.resumo ?? "—"}</p></div>
                 </section>
               ) : (
                 <section className="card" aria-labelledby="qualification-title">
@@ -519,7 +519,7 @@ export default function LeadDetail() {
                     <div className="grid gap-3">
                       {followUpData.notas.map((item) => (
                         <article key={item.id} className="rounded border border-[var(--border)] p-4">
-                          <p className="whitespace-pre-wrap text-sm text-[var(--body)]">{item.nota}</p>
+                          <p className="whitespace-pre-wrap text-sm text-[var(--text-secondary)]">{item.nota}</p>
                           <footer className="crm-detail-note__footer">
                             <span>{item.autor_email}</span>
                             <time className="mono">{new Date(item.criado_em).toLocaleString("pt-BR", { timeZone: followUpData.follow_up.timezone })}</time>
@@ -666,5 +666,5 @@ export default function LeadDetail() {
 }
 
 function Item({ label, value }: { label: string; value?: string }) {
-  return <div><dt className="label">{label}</dt><dd className="mt-1 text-[var(--body)]">{value ?? "—"}</dd></div>;
+  return <div><dt className="label">{label}</dt><dd className="mt-1 text-[var(--text-secondary)]">{value ?? "—"}</dd></div>;
 }

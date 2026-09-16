@@ -1,0 +1,190 @@
+/* ============================================================================
+   Domínio: uso e cobrança
+   ----------------------------------------------------------------------------
+   Um gráfico de barras empilhadas por período + tabela de dados + saldo de
+   crédito. O gráfico é a única superfície do produto com "decoração" — e mesmo
+   ela é funcional: gridlines tracejadas de 1px, barras em cores categóricas,
+   tooltip em popover. Nenhum gradiente, nenhuma sombra.
+   Movido de domains/auth.css, onde não tinha nada a ver com autenticação.
+   ========================================================================= */
+
+.usage-chart-scroll, .usage-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding-bottom: var(--space-1);
+}
+
+.usage-chart {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(56px, 1fr));
+  align-items: end;
+  height: 280px;
+  padding: var(--space-12) var(--space-3) var(--space-7);
+  border-block: 1px solid var(--border-subtle);
+}
+.usage-chart--week { min-width: 620px; }
+.usage-chart--month { min-width: 920px; }
+
+.usage-gridlines {
+  position: absolute;
+  inset: var(--space-12) var(--space-3) var(--space-7);
+  display: grid;
+  grid-template-rows: repeat(4, 1fr);
+  pointer-events: none;
+}
+.usage-gridlines i { border-top: 1px dashed var(--border-subtle); }
+
+.usage-day {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  align-items: center;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.usage-bar {
+  display: flex;
+  width: min(68%, 64px);
+  min-height: 0;
+  flex-direction: column-reverse;
+  overflow: hidden;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+.usage-bar > i { display: block; min-height: 2px; }
+.usage-day:hover .usage-bar, .usage-day:focus-visible .usage-bar, .usage-day.is-active .usage-bar { opacity: .82; }
+.usage-day > time {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  white-space: nowrap;
+}
+
+/* Tooltip do gráfico: mesma linguagem do primitive `.popover`. */
+.usage-tooltip {
+  position: absolute;
+  z-index: var(--z-popover);
+  top: calc(-1 * var(--space-16));
+  left: 50%;
+  display: none;
+  width: 240px;
+  max-height: 140px;
+  overflow-y: auto;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-popover);
+  transform: translateX(-50%);
+}
+.usage-day:hover .usage-tooltip, .usage-day:focus-visible .usage-tooltip, .usage-day.is-active .usage-tooltip { display: grid; gap: var(--space-1); }
+.usage-day:first-of-type .usage-tooltip { left: 0; transform: none; }
+.usage-day:last-of-type .usage-tooltip { left: auto; right: 0; transform: none; }
+.usage-tooltip strong { color: var(--text); font-size: var(--text-meta); font-weight: var(--weight-semibold); }
+.usage-tooltip span {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+}
+.usage-tooltip span > i, .usage-legend i { width: 8px; height: 8px; border-radius: var(--radius-xs); }
+.usage-tooltip b { color: var(--text); font-family: var(--font-mono); font-size: var(--text-micro); font-weight: var(--weight-medium); }
+.usage-tooltip small { color: var(--text-muted); font-size: var(--text-micro); }
+.usage-tooltip .usage-total {
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.usage-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.usage-legend button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height-sm);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  transition: var(--transition-control);
+}
+.usage-legend button:hover { color: var(--text); }
+/* Série desligada: cor de texto desabilitada + tachado — nunca `opacity`, que
+   compõe contra a superfície e quebra o contraste. */
+.usage-legend button.muted { color: var(--text-disabled); text-decoration: line-through; }
+
+.usage-data-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+}
+.usage-data-table th, .usage-data-table td {
+  height: auto;
+  padding: var(--space-2) 0 var(--space-2) var(--space-7);
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 0;
+  background: transparent;
+  font-weight: var(--weight-regular);
+  letter-spacing: normal;
+  text-align: right;
+  text-transform: none;
+}
+.usage-data-table th:first-child, .usage-data-table td:first-child { padding-left: 0; text-align: left; }
+.usage-data-table thead th {
+  border-top: 0;
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-overline);
+  text-transform: uppercase;
+}
+.usage-data-table tbody th { color: var(--text-secondary); }
+
+/* ================================================== SALDO DE CRÉDITO == */
+
+.credit-balance {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.credit-balance__details { display: flex; flex-wrap: wrap; gap: var(--space-4); min-width: 0; }
+.credit-balance__details div { display: grid; gap: var(--space-1); min-width: 0; }
+.credit-balance__details div + div { padding-left: var(--space-4); border-left: 1px solid var(--border-subtle); }
+
+@media (max-width: 980px) {
+  .credit-balance { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .credit-balance__details { grid-column: 2 / -1; grid-row: 2; }
+}
+
+@media (max-width: 640px) {
+  .credit-balance { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .credit-balance__details { grid-column: 1 / -1; }
+  .credit-balance__details div + div { padding-left: 0; border-left: 0; }
+  .credit-balance__refresh { grid-column: 1 / -1; width: 100%; }
+}

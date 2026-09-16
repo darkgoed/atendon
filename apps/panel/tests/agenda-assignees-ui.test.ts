@@ -6,10 +6,10 @@ import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { AgendaCalendar } from "../app/agenda/agenda-calendar";
+import { readStyleSources } from "./style-sources";
 
 let agendaActionsSource = "";
-const styleFiles = ["tokens.css", "base.css", "components.css", "shell.css", "domains/feedback.css", "domains/agenda.css", "domains/conversations.css", "domains/pipeline.css", "domains/auth.css", "domains/post-sales.css", "domains/agenda-calendar.css", "domains/leads.css"];
-const readStyleSource = () => Promise.all(styleFiles.map((file) => readFile(resolve(process.cwd(), "styles", file), "utf8"))).then((sources) => sources.join("\n"));
+const readStyleSource = async () => readStyleSources();
 
 let agendaAssigneesSource = "";
 let globalsSource = "";

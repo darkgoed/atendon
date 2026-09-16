@@ -97,7 +97,7 @@ export function SavedViewsControl({
           <div className="grid max-h-52 gap-1 overflow-y-auto">
             {isLoading ? <div className="grid gap-1.5" role="status" aria-label="Carregando visões">{[1, 2].map((item) => <span key={item} className="skeleton h-9" />)}</div> : null}
             {error ? <p className="error" role="alert">{error.message}</p> : null}
-            {!isLoading && !error && !data?.saved_views.length ? <p className="py-2 text-xs text-[var(--muted)]">Nenhuma visão salva.</p> : null}
+            {!isLoading && !error && !data?.saved_views.length ? <p className="py-2 text-xs text-[var(--text-secondary)]">Nenhuma visão salva.</p> : null}
             {data?.saved_views.map((view) => (
               <div key={view.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded border border-[var(--border)] p-1">
                 <button type="button" className="min-w-0 rounded px-2 py-1.5 text-left active:scale-[.98]" onClick={() => { onApply(view.filters); close(); }}>
@@ -105,7 +105,7 @@ export function SavedViewsControl({
                   <span className="crm-caption">{view.shared ? "Compartilhada" : "Pessoal"}</span>
                 </button>
                 {canPublish || view.owner_user_id === session?.user.id ? (
-                  <button type="button" className="grid size-8 place-items-center rounded text-[var(--faint)] hover:bg-[var(--active)] hover:text-[var(--warn)] active:scale-[.94]" onClick={() => void remove(view)} aria-label={`Excluir visão ${view.name}`} disabled={pending}>
+                  <button type="button" className="grid size-8 place-items-center rounded text-[var(--text-muted)] hover:bg-[var(--surface-active)] hover:text-[var(--warning-text)] active:scale-[.94]" onClick={() => void remove(view)} aria-label={`Excluir visão ${view.name}`} disabled={pending}>
                     <Trash size={14} aria-hidden="true" />
                   </button>
                 ) : <span className="size-8" aria-hidden="true" />}

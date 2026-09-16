@@ -50,7 +50,7 @@ export function ConversationReferral({ attribution }: { attribution: Attribution
 
   return (
     <section
-      className="conversation-referral mb-4 overflow-hidden rounded-lg border border-[var(--primary-tint-border)] bg-[var(--primary-tint-bg)]"
+      className="conversation-referral mb-4 overflow-hidden rounded-lg border border-[var(--primary-border)] bg-[var(--primary-subtle)]"
       aria-label={`Origem da conversa: ${platform}`}
     >
       <div className="conversation-referral__body">
@@ -58,7 +58,7 @@ export function ConversationReferral({ attribution }: { attribution: Attribution
         <div className="min-w-0 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[var(--primary-tint-border)] text-[var(--primary-text)]">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[var(--primary-border)] text-[var(--primary-text)]">
                 <PlatformIcon size={19} weight="duotone" aria-hidden="true" />
               </span>
               <div className="min-w-0">
@@ -66,12 +66,12 @@ export function ConversationReferral({ attribution }: { attribution: Attribution
                   <Megaphone size={13} weight="bold" aria-hidden="true" />
                   {sourceType === "ad" ? `Anúncio do ${platform}` : `Origem ${platform}`}
                 </span>
-                <p className="mt-1 text-xs text-[var(--muted)]">Este contato iniciou a conversa por uma campanha da Meta.</p>
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">Este contato iniciou a conversa por uma campanha da Meta.</p>
               </div>
             </div>
             {sourceUrl ? (
               <a
-                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-4)] transition hover:border-[var(--border-hover)] hover:text-[var(--text)] active:scale-95"
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--text)] active:scale-95"
                 href={sourceUrl}
                 target="_blank"
                 rel="noreferrer"
@@ -96,9 +96,9 @@ export function ConversationReferral({ attribution }: { attribution: Attribution
             ) : null}
             <div className="min-w-0">
               {headline ? <strong className="block text-sm leading-snug text-[var(--text)]">{headline}</strong> : null}
-              {body && body !== headline ? <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-[var(--body)]">{body}</p> : null}
+              {body && body !== headline ? <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-[var(--text-secondary)]">{body}</p> : null}
               {sourceId ? (
-                <p className="mono mt-3 truncate text-xs text-[var(--faint)]" title={sourceId}>
+                <p className="mono mt-3 truncate text-xs text-[var(--text-muted)]" title={sourceId}>
                   ID do anúncio · {sourceId}
                 </p>
               ) : null}
@@ -109,7 +109,7 @@ export function ConversationReferral({ attribution }: { attribution: Attribution
             <dl className="mt-4 grid gap-x-6 gap-y-3 border-t border-[var(--border)] pt-4 sm:grid-cols-2">
               {fields.map(([label, answer]) => (
                 <div key={label} className="min-w-0">
-                  <dt className="text-xs font-medium uppercase tracking-wide text-[var(--faint)]">{label}</dt>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">{label}</dt>
                   <dd className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-[var(--text)]">{answer}</dd>
                 </div>
               ))}

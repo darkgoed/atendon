@@ -79,6 +79,11 @@ import { enforceRequestEntitlement } from "./billing/entitlement-gate.js";
 import { processBillingWebhook } from "./billing/webhook-service.js";
 import { assertHomologatedProvider } from "./billing/providers/homologation.js";
 import { registerConversationQueueRoutes } from "./modules/conversations/queues.js";
+import { createInstagramRuntime, registerInstagramRoutes } from "./modules/instagram/index.js";
+import { instagramDeauthorizationPlugin } from "./modules/instagram/deauthorization.js";
+import type { InstagramProvider } from "./modules/instagram/types.js";
+import { ChannelGatewayRouter, ChannelOperationUnsupportedError } from "./modules/messages/channel-gateway.js";
+import { channelCapabilities } from "./modules/messages/channel-capabilities.js";
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
@@ -137,7 +142,7 @@ const agentStatusSchema = z.object({ isActive: z.boolean(), sessionId: z.string(
 const messageSchema = z.union([
   z.object({ text: z.string().trim().min(1).max(4_000), replyToMessageId: z.string().uuid().optional() }),
   z.object({
-    mediaType: z.enum(["audio", "image", "document"]),
+    mediaType: z.enum(["audio", "image", "video", "document"]),
     mimeType: z.string().trim().min(1).max(200),
     fileName: z.string().trim().min(1).max(240),
     dataBase64: z.string().min(1).max(45_000_000),
@@ -341,7 +346,11 @@ async function auditLog(input: AuditLogInput) {
   await insertAuditLog(db, input);
 }
 
-export function buildApp(options: { billingOAuth?: import("./modules/billing/routes.js").BillingOAuthDependencies } = {}) {
+export function buildApp(options: {
+  billingOAuth?: import("./modules/billing/routes.js").BillingOAuthDependencies;
+  instagramProvider?: InstagramProvider;
+  instagramRuntimeConfig?: import("./config.js").AppConfig;
+} = {}) {
   // Production traffic reaches Fastify through the loopback Nginx proxy. Trust
   // forwarded addresses only from that boundary so rate limits and audit logs
   // identify the real client without accepting spoofed headers from the network.
@@ -356,6 +365,13 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
   });
   const realtime = new RealtimeCoordinator(db, config.REDIS_URL, app.log);
   const whatsapp = new WhatsAppSessionManager(db, config, app.log);
+  const instagramConfig = options.instagramRuntimeConfig ?? config;
+  const instagram = createInstagramRuntime({
+    database: db,
+    runtimeConfig: instagramConfig,
+    ...(options.instagramProvider ? { provider: options.instagramProvider } : {})
+  });
+  const messageGateway = new ChannelGatewayRouter(db, whatsapp, instagram, instagramConfig);
   const tripzRepository = new TripzAiRepository(db);
   const tripzDocuments = new TripzDocumentService(tripzRepository);
   const distributedRateLimit = config.NODE_ENV === "production"
@@ -384,7 +400,12 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
   });
 
   app.addHook("onRequest", async (request, reply) => {
-    if (["GET", "HEAD", "OPTIONS"].includes(request.method) || request.url.startsWith("/webhooks/evolution") || request.url.startsWith("/webhooks/billing")) return;
+    const callbackPath = request.url.split("?", 1)[0];
+    const signedCallback = callbackPath === "/webhooks/evolution"
+      || callbackPath === "/webhooks/instagram"
+      || callbackPath === "/instagram/deauthorize"
+      || /^\/webhooks\/billing\/[^/]+$/.test(callbackPath);
+    if (["GET", "HEAD", "OPTIONS"].includes(request.method) || signedCallback) return;
     const origin = request.headers.origin;
     const fetchSite = request.headers["sec-fetch-site"];
     if ((origin && origin !== config.PANEL_ORIGIN) || fetchSite === "cross-site") {
@@ -1519,9 +1540,17 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
       unread === "true" ? "AND EXISTS (SELECT 1 FROM messages unread_message WHERE unread_message.conversation_id=c.id AND unread_message.sender='contact' AND unread_message.created_at > COALESCE(c.last_read_at,'-infinity'))" : unread === "false" ? "AND NOT EXISTS (SELECT 1 FROM messages read_message WHERE read_message.conversation_id=c.id AND read_message.sender='contact' AND read_message.created_at > COALESCE(c.last_read_at,'-infinity'))" : "",
       pending_action === "true" ? "AND lead.next_action_at IS NOT NULL AND lead.next_action_at <= now()+interval '15 minutes'" : pending_action === "false" ? "AND (lead.next_action_at IS NULL OR lead.next_action_at > now()+interval '15 minutes')" : ""
     ].join(" ");
-    const search = "AND ($2::text = '' OR strpos(lower(COALESCE(c.contact_name,'')),lower($2)) > 0 OR strpos(c.contact_phone,$2) > 0)";
+    const search = `AND ($2::text = ''
+      OR strpos(lower(COALESCE(c.contact_name,'')),lower($2)) > 0
+      OR strpos(COALESCE(c.contact_phone,''),$2) > 0
+      OR strpos(lower(COALESCE(c.instagram_username,'')),lower(replace($2,'@',''))) > 0
+      OR strpos(COALESCE(c.instagram_contact_id,''),$2) > 0)`;
     const values = [session.tenantId, q ?? "", session.userId, queue_id ?? null, session_id ?? null];
     const result = await db.query(`SELECT c.id, c.session_id, c.lead_id, c.contact_phone, c.contact_name,
+      c.instagram_contact_id,c.instagram_username,c.messaging_window_expires_at,
+      CASE WHEN c.instagram_contact_id IS NOT NULL
+        THEN COALESCE('@' || NULLIF(c.instagram_username,''),c.instagram_contact_id)
+        ELSE c.contact_phone END contact_identifier,
       c.contact_avatar_url avatar_url, c.ai_active, c.handoff_reason,
       c.status, c.last_message_at, c.contact_jid, c.assigned_user_id, c.claimed_at, c.resolved_at,
       c.contact_presence, c.contact_presence_updated_at, c.contact_last_seen_at, c.signature_enabled,
@@ -1545,6 +1574,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
               WHEN last_msg.media_type='audio' THEN 'Mensagem de áudio'
               WHEN last_msg.media_is_sticker THEN 'Figurinha'
               WHEN last_msg.media_type='image' THEN 'Imagem'
+              WHEN last_msg.media_type='video' THEN 'Vídeo'
               WHEN last_msg.media_type='document' THEN COALESCE(last_msg.media_file_name,'Documento')
               ELSE last_msg.content END last_message,
       last_msg.sender last_message_sender,
@@ -1673,6 +1703,33 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     return hasWorkspaceScope
       ? { human: row.human, ai: row.ai, scheduled: row.scheduled, resolved: row.resolved }
       : { mine: row.mine };
+  });
+  app.get("/conversations/:id/channel-capabilities", async (request, reply) => {
+    const session = await requirePermission(request, "conversations.read");
+    const { id } = idParams.parse(request.params);
+    const scope = await resolveCaseScope(db, session);
+    const result = await db.query<{
+      channel: "whatsapp" | "instagram";
+      connection_status: string;
+      connection_archived_at: Date | string | null;
+      reconnect_required: boolean;
+      token_expires_at: Date | string | null;
+      instagram_contact_id: string | null;
+      messaging_window_expires_at: Date | string | null;
+    }>(
+      `SELECT connection.channel,connection.status connection_status,
+              connection.archived_at connection_archived_at,connection.reconnect_required,
+              connection.token_expires_at,conversation.instagram_contact_id,
+              conversation.messaging_window_expires_at
+       FROM conversations conversation
+       JOIN whatsapp_sessions connection
+         ON connection.id=conversation.session_id AND connection.tenant_id=conversation.tenant_id
+       WHERE conversation.id=$1 AND conversation.tenant_id=$2
+         AND (${conversationScopeCondition(scope, "conversation", "$3")})`,
+      [id, session.tenantId, scope.userId]
+    );
+    if (!result.rows[0]) return reply.status(404).send({ error: "Conversa não encontrada" });
+    return channelCapabilities(result.rows[0]);
   });
   app.patch("/conversations/:id/read", async (request, reply) => {
     const session = await requirePermission(request, "conversations.read");
@@ -1857,6 +1914,10 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     const { id } = idParams.parse(request.params);
     const scope = await resolveCaseScope(db, session);
     const conversation = await db.query(`SELECT c.id, c.session_id, c.lead_id, c.contact_phone, c.contact_name, c.contact_jid,
+      c.instagram_contact_id,c.instagram_username,c.messaging_window_expires_at,
+      CASE WHEN c.instagram_contact_id IS NOT NULL
+        THEN COALESCE('@' || NULLIF(c.instagram_username,''),c.instagram_contact_id)
+        ELSE c.contact_phone END contact_identifier,
       c.contact_avatar_url avatar_url,
       c.ai_active, c.handoff_reason, c.status, c.assigned_user_id, c.claimed_at, c.resolved_at,
       c.facebook_attribution,
@@ -1910,7 +1971,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
       id: string;
       sender: "contact" | "agent" | "human";
       content: string;
-      media_type: "audio" | "image" | "document" | null;
+      media_type: "audio" | "image" | "video" | "document" | null;
       media_mime_type: string | null;
       media_file_name: string | null;
       media_size_bytes: number | null;
@@ -1967,6 +2028,10 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     const session = await requirePermission(request, "conversations.read"); const { id } = idParams.parse(request.params);
     const scope = await resolveCaseScope(db, session);
     const conversation = await db.query(`SELECT c.id, c.session_id, c.lead_id, c.contact_phone, c.contact_name, c.contact_jid,
+      c.instagram_contact_id,c.instagram_username,c.messaging_window_expires_at,
+      CASE WHEN c.instagram_contact_id IS NOT NULL
+        THEN COALESCE('@' || NULLIF(c.instagram_username,''),c.instagram_contact_id)
+        ELSE c.contact_phone END contact_identifier,
       c.contact_avatar_url avatar_url,
       c.ai_active, c.handoff_reason, c.status, c.assigned_user_id, c.claimed_at, c.resolved_at,
       c.facebook_attribution,
@@ -2016,7 +2081,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     const result = await db.query<{
       session_id: string;
       external_message_id: string | null;
-      media_type: "audio" | "image" | "document" | null;
+      media_type: "audio" | "image" | "video" | "document" | null;
       media_mime_type: string | null;
       media_file_name: string | null;
     }>(
@@ -2029,9 +2094,9 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     );
     const media = result.rows[0];
     if (!media?.external_message_id || !media.media_type) return reply.status(404).send({ error: "Mídia não encontrada" });
-    const downloaded = await whatsapp.downloadMedia(media.session_id, media.external_message_id);
+    const downloaded = await messageGateway.downloadMedia!(media.session_id, media.external_message_id);
     const mimeType = safeMediaResponseMime(media.media_type, downloaded.mimeType || media.media_mime_type || "application/octet-stream");
-    const rawFileName = downloaded.fileName || media.media_file_name || `${params.messageId}.${media.media_type === "image" ? "jpg" : media.media_type === "audio" ? "ogg" : "bin"}`;
+    const rawFileName = downloaded.fileName || media.media_file_name || `${params.messageId}.${media.media_type === "image" ? "jpg" : media.media_type === "audio" ? "ogg" : media.media_type === "video" ? "mp4" : "bin"}`;
     const fileName = rawFileName.replace(/[\\/\r\n\u0000-\u001f\u007f]/g, "_").slice(0, 180);
     const disposition = media.media_type === "document" || mimeType === "application/octet-stream" ? "attachment" : "inline";
     return reply
@@ -2103,7 +2168,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
         sender: "contact" | "agent" | "human";
         content: string;
         external_message_id: string | null;
-        media_type: "audio" | "image" | "document" | null;
+        media_type: "audio" | "image" | "video" | "document" | null;
         media_mime_type: string | null;
         media_file_name: string | null;
         media_size_bytes: number | null;
@@ -2481,9 +2546,9 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     const session = await requirePermission(request, "conversations.reply"); const { id } = idParams.parse(request.params); const body = messageSchema.parse(request.body);
     const scope = await resolveCaseScope(db, session);
     const idempotencyKey = parseIdempotencyKey(request.headers["idempotency-key"]);
-    const result = await db.query<{ session_id: string; contact_phone: string; contact_jid: string | null; channel: "whatsapp" | "instagram"; ai_active: boolean; status: string }>(
+    const result = await db.query<{ session_id: string; contact_phone: string | null; contact_jid: string | null; instagram_contact_id: string | null; channel: "whatsapp" | "instagram"; ai_active: boolean; status: string }>(
       `SELECT conversation.session_id,conversation.contact_phone,conversation.contact_jid,
-              ws.channel,conversation.ai_active,conversation.status
+              conversation.instagram_contact_id,ws.channel,conversation.ai_active,conversation.status
        FROM conversations conversation
        LEFT JOIN whatsapp_sessions ws ON ws.id=conversation.session_id AND ws.tenant_id=conversation.tenant_id
        WHERE conversation.id=$1 AND conversation.tenant_id=$2
@@ -2492,9 +2557,12 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     );
     if (!result.rows[0]) return reply.status(404).send({ error: "Conversa não encontrada" });
     const row = result.rows[0];
-    if (row.channel === "instagram") return reply.status(409).send({ error: "Esta conversa pertence ao canal Instagram e não pode ser enviada pelo WhatsApp" });
     if (row.status !== "open") return reply.status(409).send({ error: "Reabra a conversa antes de responder" });
     if (row.ai_active) return reply.status(409).send({ error: "Pause a IA desta conversa antes de responder manualmente" });
+    const destination = row.channel === "instagram"
+      ? row.instagram_contact_id ? `ig:${row.instagram_contact_id}` : null
+      : row.contact_jid ?? row.contact_phone;
+    if (!destination) return reply.status(409).send({ error: "A conversa não possui um destinatário válido" });
     const repository = new MessageRepository(db);
     const mediaBody = "mediaType" in body ? body : undefined;
     const textBody = "text" in body ? body : undefined;
@@ -2505,6 +2573,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     const text = media ? mediaBody?.caption?.trim() || media.fileName : textBody!.text;
     let quoted: { key: { id: string; remoteJid: string; fromMe: boolean }; text: string } | undefined;
     if (body.replyToMessageId) {
+      if (row.channel === "instagram") throw new ChannelOperationUnsupportedError("responder citando");
       const quotedRow = await db.query<{ sender: "contact" | "agent" | "human"; content: string; external_message_id: string | null }>(
         "SELECT sender, content, external_message_id FROM messages WHERE id=$1 AND conversation_id=$2",
         [body.replyToMessageId, id]
@@ -2532,7 +2601,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
       tenantId: session.tenantId,
       conversationId: id,
       sessionId: row.session_id,
-      contactPhone: row.contact_phone,
+      contactPhone: destination,
       contactJid: row.contact_jid ?? undefined,
       text,
       ...(!media ? { sendText: outboundText ?? text } : {}),
@@ -2547,7 +2616,7 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
         contentFingerprint: media.contentFingerprint
       } : {})
     }, () => media
-      ? whatsapp.sendMedia(row.session_id, row.contact_jid ?? row.contact_phone, {
+      ? messageGateway.sendMedia!(row.session_id, destination, {
         mediaType: media.mediaType,
         mimeType: media.mimeType,
         fileName: media.fileName,
@@ -2555,9 +2624,9 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
         ...(outboundCaption ? { caption: outboundCaption } : {})
       })
       // ponytail: media replies don't carry WA quoting yet, sendMedia has no quoted param
-      : whatsapp.sendText(
+      : messageGateway.sendText(
         row.session_id,
-        row.contact_jid ?? row.contact_phone,
+        destination,
         outboundText!,
         quoted
       ));
@@ -2592,12 +2661,11 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     const { emoji } = messageReactionSchema.parse(request.body);
     const message = await loadOwnConversationMessage(session, id, messageId);
     if (!message) return reply.status(404).send({ error: "Mensagem não encontrada" });
-    const channelError = whatsappChannelError(message.channel);
-    if (channelError) return reply.status(409).send({ error: channelError });
+    if (message.channel === "instagram") throw new ChannelOperationUnsupportedError("reagir");
     if (!message.external_message_id || !message.contact_jid) {
       return reply.status(409).send({ error: "Mensagem ainda não confirmada pelo WhatsApp" });
     }
-    await whatsapp.sendReactionStrict(message.session_id, message.contact_jid, {
+    await messageGateway.sendReactionStrict!(message.session_id, message.contact_jid, {
       id: message.external_message_id, remoteJid: message.contact_jid, fromMe: message.sender !== "contact"
     }, emoji ?? "");
     const updated = await db.query<{ reaction_emoji: string | null }>(
@@ -2613,15 +2681,14 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     const { text } = messageEditSchema.parse(request.body);
     const message = await loadOwnConversationMessage(session, id, messageId);
     if (!message) return reply.status(404).send({ error: "Mensagem não encontrada" });
-    const channelError = whatsappChannelError(message.channel);
-    if (channelError) return reply.status(409).send({ error: channelError });
+    if (message.channel === "instagram") throw new ChannelOperationUnsupportedError("editar mensagem");
     if (message.sender !== "human") return reply.status(409).send({ error: "Só é possível editar mensagens enviadas por você" });
     if (message.media_type) return reply.status(409).send({ error: "Não é possível editar mensagens de mídia" });
     if (message.deleted_at) return reply.status(409).send({ error: "Mensagem apagada não pode ser editada" });
     if (!message.external_message_id || !message.contact_jid) {
       return reply.status(409).send({ error: "Mensagem ainda não confirmada pelo WhatsApp" });
     }
-    await whatsapp.updateText(message.session_id, message.contact_jid, message.external_message_id, text);
+    await messageGateway.updateText!(message.session_id, message.contact_jid, message.external_message_id, text);
     const updated = await db.query<{ content: string; edited_at: Date }>(
       "UPDATE messages SET content=$1,edited_at=now() WHERE id=$2 RETURNING content,edited_at",
       [text, messageId]
@@ -2642,13 +2709,12 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
     if (!message) return reply.status(404).send({ error: "Mensagem não encontrada" });
     if (message.deleted_at) return { ok: true };
     if (forEveryone) {
-      const channelError = whatsappChannelError(message.channel);
-      if (channelError) return reply.status(409).send({ error: channelError });
+      if (message.channel === "instagram") throw new ChannelOperationUnsupportedError("apagar mensagem para todos");
       if (message.sender !== "human") return reply.status(409).send({ error: "Só é possível apagar para todos suas próprias mensagens" });
       if (!message.external_message_id || !message.contact_jid) {
         return reply.status(409).send({ error: "Mensagem ainda não confirmada pelo WhatsApp" });
       }
-      await whatsapp.deleteMessageForEveryone(message.session_id, message.contact_jid, {
+      await messageGateway.deleteMessageForEveryone!(message.session_id, message.contact_jid, {
         id: message.external_message_id, remoteJid: message.contact_jid, fromMe: true
       });
       await db.query("UPDATE messages SET deleted_at=now(),deleted_for_everyone_at=now() WHERE id=$1", [messageId]);
@@ -2668,6 +2734,31 @@ export function buildApp(options: { billingOAuth?: import("./modules/billing/rou
   void app.register(registerSaasRoutes);
   void app.register(registerBillingRoutes, options.billingOAuth ?? {});
   void app.register(registerOperationsRoutes);
+  void app.register(registerInstagramRoutes, {
+    service: instagram.service,
+    oauth: instagram.oauth,
+    configured: Boolean(
+      instagramConfig.INSTAGRAM_APP_ID
+      && instagramConfig.INSTAGRAM_APP_SECRET
+      && instagramConfig.INSTAGRAM_WEBHOOK_VERIFY_TOKEN
+      && instagramConfig.INSTAGRAM_REDIRECT_URI
+    ),
+    appId: instagramConfig.INSTAGRAM_APP_ID,
+    appSecret: instagramConfig.INSTAGRAM_APP_SECRET,
+    redirectUri: instagramConfig.INSTAGRAM_REDIRECT_URI,
+    verifyToken: instagramConfig.INSTAGRAM_WEBHOOK_VERIFY_TOKEN,
+    panelPublicUrl: instagramConfig.PANEL_PUBLIC_URL,
+    graphVersion: instagramConfig.INSTAGRAM_GRAPH_VERSION,
+    maxConnections: instagramConfig.INSTAGRAM_MAX_CONNECTIONS,
+    mediaSigningSecret: instagramConfig.DATA_ENCRYPTION_KEY
+  });
+  if (instagramConfig.INSTAGRAM_APP_SECRET) {
+    void app.register(instagramDeauthorizationPlugin, {
+      appSecret: instagramConfig.INSTAGRAM_APP_SECRET,
+      database: db,
+      repository: instagram.repository
+    });
+  }
   void app.register(registerWhatsAppConnectionRoutes, { whatsapp });
   void app.register(registerDashboardWidgetRoutes);
   void app.register(registerOrganizationRoutes);

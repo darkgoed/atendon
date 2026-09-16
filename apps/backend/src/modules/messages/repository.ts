@@ -23,6 +23,14 @@ import { assignConversationToNamedAttendant, ensureCaseAssignment } from "../ass
 import { extractPrefilledFields } from "./prefilled-context-policy.js";
 
 function canonicalMessageAddress<T extends InboundMessage | HumanMessage>(message: T): T {
+  if (message.channel === "instagram") {
+    const instagramContactId = message.instagramContactId?.trim();
+    if (!instagramContactId || message.contactPhone !== `ig:${instagramContactId}`) {
+      throw new Error("Instagram message requires a scoped ig: address and contact identity");
+    }
+    if (message.contactJid) throw new Error("Instagram message cannot carry a WhatsApp JID");
+    return { ...message, instagramContactId };
+  }
   const trustedProviderDigits = /^\d{8,15}$/.test(message.contactPhone)
     && Boolean(message.contactJid?.includes("@"));
   const contactPhone = trustedProviderDigits ? message.contactPhone : normalizePhoneE164(message.contactPhone);
@@ -62,13 +70,15 @@ export interface ConversationContext {
   maxTokens: number;
   reasoningEffort?: ReasoningEffort;
   openRouterApiKey?: string;
-  mediaFallback: Record<MediaType, string>;
+  mediaFallback: Record<Exclude<MediaType, "video">, string> & Partial<Record<"video", string>>;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   humanizer?: HumanizerConfig;
   enabledToolNames: string[];
   stateToolGatingEnabled?: boolean;
   facebookAttribution: Record<string, unknown>;
   contactName?: string;
+  channel?: "whatsapp" | "instagram";
+  contactIdentifier?: string;
   timeZone: string;
   leadStatus?: string;
   commercialAutomationOverride?: boolean;
@@ -375,6 +385,202 @@ export class MessageRepository {
     await new StickerRepository(this.db).recordSend(input);
   }
 
+  private async recordInstagramInboundAndLoadContext(
+    message: InboundMessage & { channel: "instagram"; instagramContactId: string },
+    input: { shouldClaim: boolean; tripzAiEnabled: boolean }
+  ): Promise<ConversationContext | null> {
+    const attribution = normalizedFacebookAttribution(message.referral, message.text);
+    const transaction = await withTenantTransaction(this.db, message.tenantId, async (client) => {
+      const conversation = await client.query<{
+        id: string; ai_active: boolean; contact_name: string | null; facebook_attribution: Record<string, unknown>;
+        lead_id: string | null; status: string;
+      }>(
+        `UPDATE conversations c SET
+           instagram_username=COALESCE($4,c.instagram_username),
+           contact_name=COALESCE($5,c.contact_name),
+           facebook_attribution=CASE WHEN $6::jsonb<>'{}'::jsonb THEN $6::jsonb ELSE c.facebook_attribution END,
+           contact_presence='available',contact_presence_updated_at=now(),contact_last_seen_at=now(),
+           status='open',resolved_at=NULL,last_message_at=now(),
+           queue_id=CASE WHEN c.status='closed' THEN
+             (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)
+             ELSE COALESCE(c.queue_id,
+               (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)) END
+         WHERE c.tenant_id=$1 AND c.session_id=$2 AND c.instagram_contact_id=$3
+           AND c.contact_phone IS NULL
+         RETURNING c.id,c.ai_active,c.contact_name,c.facebook_attribution,c.lead_id,c.status`,
+        [message.tenantId, message.sessionId, message.instagramContactId,
+          message.instagramUsername ?? null, message.contactName ?? null, attribution]
+      );
+      const current = conversation.rows[0];
+      if (!current) throw new Error("Instagram conversation does not belong to tenant and connection");
+      if (current.lead_id) {
+        await client.query(
+          `UPDATE scheduling_leads SET
+             instagram_username=COALESCE($3,instagram_username),name=COALESCE($4,name),updated_at=now()
+           WHERE id=$1 AND tenant_id=$2 AND instagram_session_id=$5 AND instagram_contact_id=$6 AND phone IS NULL`,
+          [current.lead_id, message.tenantId, message.instagramUsername ?? null,
+            message.contactName ?? null, message.sessionId, message.instagramContactId]
+        );
+      }
+      const inserted = await client.query<{ id: string }>(
+        `INSERT INTO messages(
+           conversation_id,sender,content,media_type,external_message_id,provider_message_key,
+           processing_started_at,media_mime_type,media_file_name,media_size_bytes,media_is_sticker
+         ) VALUES($1,'contact',$2,$3,$4,$5,CASE WHEN $6 THEN now() ELSE NULL END,$7,$8,$9,$10)
+         ON CONFLICT(provider_message_key) DO NOTHING RETURNING id`,
+        [current.id, message.text, message.mediaType ?? null, message.externalId, this.messageKey(message),
+          input.shouldClaim, message.mediaMimeType ?? null, message.mediaFileName ?? null,
+          message.mediaSizeBytes ?? null, message.mediaIsSticker ?? false]
+      );
+      let messageId = inserted.rows[0]?.id;
+      let acquired = Boolean(messageId);
+      if (!messageId) {
+        const existing = await client.query<{ id: string; processed_at: Date | null }>(
+          `UPDATE messages SET processing_started_at=now()
+           WHERE provider_message_key=$1 AND $2::boolean AND processed_at IS NULL
+             AND (processing_started_at IS NULL OR processing_started_at<now()-interval '10 minutes')
+           RETURNING id,processed_at`,
+          [this.messageKey(message), input.shouldClaim]
+        );
+        messageId = existing.rows[0]?.id;
+        acquired = Boolean(messageId);
+        if (!messageId && !input.shouldClaim) {
+          messageId = (await client.query<{ id: string }>(
+            "SELECT id FROM messages WHERE provider_message_key=$1",
+            [this.messageKey(message)]
+          )).rows[0]?.id;
+        }
+      }
+      if (inserted.rows[0]) {
+        await client.query(
+          `UPDATE ai_follow_up_schedules SET status='cancelled',next_run_at=NULL,processing_started_at=NULL,
+             cancellation_reason='contact_replied',updated_at=now()
+           WHERE conversation_id=$1 AND status IN ('scheduled','processing')`,
+          [current.id]
+        );
+        await ensureCaseAssignment(client, {
+          tenantId: message.tenantId,
+          selector: { conversationId: current.id },
+          reason: current.status === "closed" ? "retorno_conversa_encerrada" : "novo_contato",
+          forceRotation: current.status === "closed"
+        });
+      }
+      return { conversationId: current.id, messageId, acquired };
+    });
+    if (input.shouldClaim && !transaction.acquired) return null;
+    if (!transaction.messageId) throw new Error("Instagram inbound message could not be resolved");
+
+    const snapshot = await this.db.query<{
+      ai_active: boolean; contact_name: string | null; instagram_username: string | null;
+      facebook_attribution: Record<string, unknown>; timezone: string;
+      agent_config_version_id: string | null; system_prompt: string | null; ai_model: string | null;
+      model_params: { temperature?: number; max_tokens?: number; reasoning_effort?: ReasoningEffort } | null;
+      enabled_tools: string[] | null; agent_is_active: boolean | null;
+      openrouter_provider: string | null; openrouter_api_key_encrypted: string | null;
+      media_fallback_audio: string | null; media_fallback_image: string | null; media_fallback_document: string | null;
+      humanizer_config: HumanizerConfig | null; lead_status: string | null; lead_qualification_stars: number | null;
+      registered_lead: ConversationContext["registeredLead"] | null;
+      active_appointment: ConversationContext["activeAppointment"] | null;
+    }>(
+      `SELECT c.ai_active,c.contact_name,c.instagram_username,c.facebook_attribution,t.timezone,
+              agent.agent_config_version_id,agent.system_prompt,agent.ai_model,agent.model_params,
+              agent.enabled_tools,agent.agent_is_active,
+              settings.openrouter_provider,settings.openrouter_api_key_encrypted,
+              settings.media_fallback_audio,settings.media_fallback_image,settings.media_fallback_document,
+              settings.humanizer_config,lead.status lead_status,lead.qualification_stars lead_qualification_stars,
+              CASE WHEN lead.id IS NULL THEN NULL ELSE json_build_object(
+                'id',lead.id,'name',lead.name,'interestCategoryId',lead.interest_category_id,
+                'unitId',lead.unit_id,'partnerId',lead.partner_id,'source',lead.source,
+                'status',lead.status,'facebookAttribution',lead.facebook_attribution,
+                'qualificationAnswers',lead.qualification_answers) END registered_lead,
+              (SELECT json_build_object('id',appointment.id,'start',appointment.start_at,
+                 'status',appointment.status,'unitId',appointment.unit_id,'meetLink',appointment.meeting_url)
+               FROM scheduling_appointments appointment
+               WHERE appointment.tenant_id=c.tenant_id AND appointment.lead_id=c.lead_id
+                 AND appointment.status IN ('confirmado','reagendado') AND appointment.end_at>now()
+               ORDER BY appointment.start_at DESC LIMIT 1) active_appointment
+       FROM conversations c JOIN tenants t ON t.id=c.tenant_id
+       LEFT JOIN scheduling_leads lead ON lead.id=c.lead_id AND lead.tenant_id=c.tenant_id
+       LEFT JOIN tenant_ai_settings settings ON settings.tenant_id=c.tenant_id
+       LEFT JOIN LATERAL (
+         SELECT v.id agent_config_version_id,v.system_prompt,v.ai_model,v.model_params,v.enabled_tools,
+                cfg.is_active agent_is_active
+         FROM agent_configs cfg JOIN agent_config_versions v
+           ON v.id=cfg.active_version_id AND v.tenant_id=cfg.tenant_id
+          AND v.agent_config_id=cfg.id AND v.status='active'
+         WHERE cfg.tenant_id=c.tenant_id AND (cfg.session_id=c.session_id OR cfg.session_id IS NULL)
+         ORDER BY (cfg.session_id IS NOT NULL) DESC,cfg.updated_at DESC LIMIT 1
+       ) agent ON true
+       WHERE c.id=$1 AND c.tenant_id=$2`,
+      [transaction.conversationId, message.tenantId]
+    );
+    const row = snapshot.rows[0];
+    if (!row) throw new Error("Instagram conversation disappeared while loading AI context");
+    const historyResult = await this.db.query<{ sender: string; content: string }>(
+      `WITH recent AS (
+         SELECT sender,content,created_at,id FROM messages WHERE conversation_id=$1
+           AND NOT (sender='agent' AND media_is_sticker)
+         ORDER BY created_at DESC,id DESC LIMIT $2
+       ), ranked AS (
+         SELECT *,row_number() OVER(ORDER BY created_at DESC,id DESC) position,
+           sum(char_length(content)) OVER(ORDER BY created_at DESC,id DESC) characters FROM recent
+       ) SELECT sender,content FROM ranked WHERE characters<=$3 OR position=1 ORDER BY created_at,id`,
+      [transaction.conversationId, this.config?.AI_HISTORY_MAX_MESSAGES ?? HISTORY_MAX_MESSAGES,
+        this.config?.AI_HISTORY_MAX_CHARACTERS ?? HISTORY_MAX_CHARACTERS]
+    );
+    const safeTools = (Array.isArray(row.enabled_tools) ? row.enabled_tools : []).filter((name) =>
+      ["pesquisar_contexto", "pesquisar_modelo", "consultar_categorias", "consultar_parceiros", "consultar_unidades", "consultar_agendas"].includes(name)
+    );
+    if (!row.agent_config_version_id || !row.system_prompt || !row.ai_model) {
+      await this.markInboundProcessed(message);
+    }
+    const configuredKey = row.openrouter_api_key_encrypted && this.config
+      ? decryptSecret(row.openrouter_api_key_encrypted, {
+        current: this.config.DATA_ENCRYPTION_KEY,
+        previous: this.config.DATA_ENCRYPTION_KEY_PREVIOUS ? [this.config.DATA_ENCRYPTION_KEY_PREVIOUS] : [],
+        legacy: [this.config.JWT_SECRET]
+      }) : undefined;
+    const contactIdentifier = row.instagram_username ? `@${row.instagram_username}` : `ig:${message.instagramContactId}`;
+    return {
+      conversationId: transaction.conversationId,
+      messageId: transaction.messageId,
+      agentConfigVersionId: row.agent_config_version_id ?? "",
+      aiActive: Boolean(row.ai_active && row.agent_is_active && row.agent_config_version_id),
+      model: row.ai_model ?? "",
+      provider: row.openrouter_provider ?? undefined,
+      systemPrompt: row.system_prompt ?? "",
+      offersGroupLink: this.config?.TRIPZ_OFFERS_GROUP_LINK,
+      tripzZuluEnabled: input.tripzAiEnabled,
+      temperature: row.model_params?.temperature ?? 0.4,
+      maxTokens: row.model_params?.max_tokens ?? 512,
+      reasoningEffort: row.model_params?.reasoning_effort ?? "medium",
+      openRouterApiKey: configuredKey,
+      mediaFallback: {
+        audio: row.media_fallback_audio ?? DEFAULT_MEDIA_FALLBACK.audio,
+        image: row.media_fallback_image ?? DEFAULT_MEDIA_FALLBACK.image,
+        document: row.media_fallback_document ?? DEFAULT_MEDIA_FALLBACK.document,
+        video: row.media_fallback_document ?? DEFAULT_MEDIA_FALLBACK.document
+      },
+      humanizer: this.config ? migrateHumanizerConfig(row.humanizer_config ?? DEFAULT_HUMANIZER_CONFIG) : undefined,
+      enabledToolNames: safeTools,
+      stateToolGatingEnabled: await this.stateToolGatingEnabled(message.tenantId),
+      facebookAttribution: row.facebook_attribution ?? {},
+      contactName: row.contact_name ?? undefined,
+      channel: "instagram",
+      contactIdentifier,
+      timeZone: row.timezone ?? "UTC",
+      leadStatus: row.lead_status ?? undefined,
+      leadQualificationStars: row.lead_qualification_stars ?? undefined,
+      meetingAgendas: [],
+      registeredLead: row.registered_lead ?? undefined,
+      activeAppointment: row.active_appointment ?? undefined,
+      history: historyResult.rows.map((item) => ({
+        role: item.sender === "contact" ? "user" as const : "assistant" as const,
+        content: item.content
+      }))
+    };
+  }
+
   async recordInboundAndLoadContext(message: InboundMessage, options: { claim?: boolean } = {}): Promise<ConversationContext | null> {
     message = canonicalMessageAddress(message);
     const shouldClaim = options.claim !== false;
@@ -391,6 +597,12 @@ export class MessageRepository {
       safeCapabilityEnabled("leads_v1"),
       safeCapabilityEnabled("tripz_ai_v1")
     ]);
+    if (message.channel === "instagram") {
+      return this.recordInstagramInboundAndLoadContext(
+        message as InboundMessage & { channel: "instagram"; instagramContactId: string },
+        { shouldClaim, tripzAiEnabled }
+      );
+    }
     // Single query: upsert conversation, insert message (if new), and get agent config + history
     const result = await withTenantTransaction(this.db, message.tenantId, async (client) => {
       const previous = await client.query<{ status: string }>(
@@ -718,10 +930,12 @@ export class MessageRepository {
         tripzZuluEnabled: false,
         temperature: 0,
         maxTokens: 64,
-        mediaFallback: DEFAULT_MEDIA_FALLBACK,
+        mediaFallback: { ...DEFAULT_MEDIA_FALLBACK, video: DEFAULT_MEDIA_FALLBACK.document },
         enabledToolNames: [],
         facebookAttribution: row.facebook_attribution ?? {},
         contactName: row.contact_name ?? undefined,
+        channel: "whatsapp",
+        contactIdentifier: message.contactPhone,
         timeZone: row.timezone ?? "UTC",
         history: []
       };
@@ -775,13 +989,16 @@ export class MessageRepository {
       mediaFallback: {
         audio: settings.media_fallback_audio ?? DEFAULT_MEDIA_FALLBACK.audio,
         image: settings.media_fallback_image ?? DEFAULT_MEDIA_FALLBACK.image,
-        document: settings.media_fallback_document ?? DEFAULT_MEDIA_FALLBACK.document
+        document: settings.media_fallback_document ?? DEFAULT_MEDIA_FALLBACK.document,
+        video: settings.media_fallback_document ?? DEFAULT_MEDIA_FALLBACK.document
       },
       humanizer: this.config ? migrateHumanizerConfig(settings.humanizer_config ?? DEFAULT_HUMANIZER_CONFIG) : undefined,
       enabledToolNames: settings.enabled_tools,
       stateToolGatingEnabled,
       facebookAttribution: row.facebook_attribution ?? {},
       contactName: row.contact_name ?? undefined,
+      channel: "whatsapp",
+      contactIdentifier: message.contactPhone,
       timeZone: row.timezone,
       leadStatus: row.lead_status ?? undefined,
       commercialAutomationOverride: row.commercial_override_active,
@@ -1201,6 +1418,53 @@ export class MessageRepository {
       [this.messageKey(message), message.status]
     );
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async confirmInstagramEcho(message: {
+    tenantId: string; sessionId: string; externalId: string;
+  }): Promise<boolean> {
+    const result = await this.db.query<{ conversation_id: string }>(
+      `UPDATE messages m SET status=CASE WHEN m.status='failed' THEN 'sent' ELSE m.status END
+       FROM conversations c
+       WHERE m.conversation_id=c.id AND c.tenant_id=$1 AND c.session_id=$2
+         AND c.instagram_contact_id IS NOT NULL AND c.contact_phone IS NULL
+         AND m.provider_message_key=$3 AND m.sender IN ('agent','human')
+       RETURNING m.conversation_id`,
+      [message.tenantId, message.sessionId, this.messageKey(message)]
+    );
+    if (result.rows[0]) {
+      await this.notifyConversationMessagesChanged(message.tenantId, result.rows[0].conversation_id);
+      return true;
+    }
+    return false;
+  }
+
+  async updateInstagramMessageReaction(message: {
+    tenantId: string; sessionId: string; externalId: string; emoji: string | null;
+  }): Promise<boolean> {
+    const result = await this.db.query<{ conversation_id: string }>(
+      `UPDATE messages m SET reaction_emoji=$4
+       FROM conversations c
+       WHERE m.conversation_id=c.id AND c.tenant_id=$1 AND c.session_id=$2
+         AND c.instagram_contact_id IS NOT NULL AND c.contact_phone IS NULL
+         AND m.provider_message_key=$3
+       RETURNING m.conversation_id`,
+      [message.tenantId, message.sessionId, this.messageKey(message), message.emoji]
+    );
+    if (result.rows[0]) {
+      await this.notifyConversationMessagesChanged(message.tenantId, result.rows[0].conversation_id);
+      return true;
+    }
+    return false;
+  }
+
+  private async notifyConversationMessagesChanged(tenantId: string, conversationId: string): Promise<void> {
+    await this.db.query(
+      `SELECT pg_notify('atendon_realtime_changes',json_build_object(
+         'v',1,'type','conversation.messages.changed','workspaceId',$1::text,'conversationId',$2::text
+       )::text)`,
+      [tenantId, conversationId]
+    );
   }
 
   async pauseForHandoff(input: {
@@ -1918,8 +2182,53 @@ export class MessageRepository {
       : new Error(result.errorMessage);
   }
 
+  private async recordInstagramHuman(
+    message: HumanMessage & { channel: "instagram"; instagramContactId: string }
+  ): Promise<"recorded" | "duplicate"> {
+    return withTenantTransaction(this.db, message.tenantId, async (client) => {
+      const conversation = await client.query<{ id: string }>(
+        `UPDATE conversations SET ai_active=false,handoff_reason='manually_paused',handoff_error_code=NULL,
+           instagram_username=COALESCE($4,instagram_username),last_message_at=now(),status='open',resolved_at=NULL,
+           queue_id=COALESCE(queue_id,
+             (SELECT id FROM conversation_queues WHERE tenant_id=$1 AND is_initial AND archived_at IS NULL LIMIT 1))
+         WHERE tenant_id=$1 AND session_id=$2 AND instagram_contact_id=$3 AND contact_phone IS NULL
+         RETURNING id`,
+        [message.tenantId, message.sessionId, message.instagramContactId, message.instagramUsername ?? null]
+      );
+      const row = conversation.rows[0];
+      if (!row) throw new Error("Instagram conversation does not belong to tenant and connection");
+      await ensureCaseAssignment(client, {
+        tenantId: message.tenantId,
+        selector: { conversationId: row.id },
+        reason: "novo_contato"
+      });
+      await client.query(
+        `UPDATE ai_follow_up_schedules SET status='cancelled',next_run_at=NULL,processing_started_at=NULL,
+           cancellation_reason='human_intervened',updated_at=now()
+         WHERE conversation_id=$1 AND status IN ('scheduled','processing')`,
+        [row.id]
+      );
+      const inserted = await client.query(
+        `INSERT INTO messages(
+           conversation_id,sender,content,media_type,external_message_id,provider_message_key,
+           media_mime_type,media_file_name,media_size_bytes,media_is_sticker
+         ) VALUES($1,'human',$2,$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT(provider_message_key) DO NOTHING`,
+        [row.id, message.text, message.mediaType ?? null, message.externalId, this.messageKey(message),
+          message.mediaMimeType ?? null, message.mediaFileName ?? null,
+          message.mediaSizeBytes ?? null, message.mediaIsSticker ?? false]
+      );
+      return inserted.rowCount === 0 ? "duplicate" : "recorded";
+    });
+  }
+
   async recordHuman(message: HumanMessage): Promise<"recorded" | "duplicate"> {
     message = canonicalMessageAddress(message);
+    if (message.channel === "instagram") {
+      return this.recordInstagramHuman(
+        message as HumanMessage & { channel: "instagram"; instagramContactId: string }
+      );
+    }
     const conversation = await withTenantTransaction(this.db, message.tenantId, async (client) => {
       const recorded = await client.query<{ id: string }>(
         `WITH conv AS (

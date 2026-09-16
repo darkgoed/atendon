@@ -8,20 +8,45 @@ import { api } from "@/lib/api";
 import { audioDisplayName } from "@/lib/audio-waveform";
 import { confirmedFailedSend, definitiveProviderRejection } from "@/lib/conversation-send";
 
-type MediaType = "audio" | "image" | "document";
+type MediaType = "audio" | "image" | "video" | "document";
 type Attachment = { file: globalThis.File; mediaType: MediaType };
 export type ReplyTarget = { id: string; content: string; sender: "contact" | "agent" | "human" };
 
-const ACCEPTED_FILES = "image/jpeg,image/png,image/webp,image/gif,audio/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.rtf";
+export type ConversationComposerCapabilities = {
+  channel: "whatsapp" | "instagram";
+  can_send: boolean;
+  reason: string | null;
+  window_expires_at: string | null;
+  text: boolean;
+  image: boolean;
+  audio: boolean;
+  video: boolean;
+  document: boolean;
+};
+
+const ACCEPTED_FILES: Record<MediaType, string> = {
+  image: "image/jpeg,image/png,image/webp,image/gif",
+  video: "video/*",
+  audio: "audio/*",
+  document: ".pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.rtf"
+};
+const MEDIA_LABELS: Record<MediaType, string> = {
+  audio: "Áudio",
+  image: "Imagem",
+  video: "Vídeo",
+  document: "Documento"
+};
 const MAX_BYTES: Record<MediaType, number> = {
   audio: 16 * 1024 * 1024,
   image: 16 * 1024 * 1024,
+  video: 32 * 1024 * 1024,
   document: 32 * 1024 * 1024
 };
 
 function attachmentType(file: globalThis.File): MediaType {
   if (file.type.startsWith("audio/")) return "audio";
   if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
   return "document";
 }
 
@@ -42,16 +67,22 @@ function fileBase64(file: globalThis.File): Promise<string> {
 
 export function ConversationComposer({
   conversationId,
+  channel = "whatsapp",
   replyTo,
   onCancelReply,
   onSent,
-  onError
+  onError,
+  capabilities,
+  capabilitiesError
 }: {
   conversationId: string;
+  channel?: "whatsapp" | "instagram";
   replyTo?: ReplyTarget | null;
   onCancelReply?: () => void;
   onSent: () => Promise<void> | void;
   onError: (message: string) => void;
+  capabilities?: ConversationComposerCapabilities;
+  capabilitiesError?: unknown;
 }) {
   const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<Attachment | null>(null);
@@ -59,6 +90,7 @@ export function ConversationComposer({
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -67,6 +99,41 @@ export function ConversationComposer({
   const discardRecordingRef = useRef(false);
   const recordingTimerRef = useRef<number | null>(null);
   const sendAttemptRef = useRef<{ signature: string; key: string } | null>(null);
+  const channelCapabilities = capabilities?.channel === channel ? capabilities : undefined;
+  const capabilitiesUnavailable = channel === "instagram" && (!channelCapabilities || Boolean(capabilitiesError));
+  const windowExpiresAt = channelCapabilities?.window_expires_at
+    ? new Date(channelCapabilities.window_expires_at).getTime()
+    : null;
+  const windowExpired = channel === "instagram"
+    && windowExpiresAt !== null
+    && Number.isFinite(windowExpiresAt)
+    && now >= windowExpiresAt;
+  const canSend = !capabilitiesUnavailable && !windowExpired && (channelCapabilities?.can_send ?? true);
+  const supports = (mediaType: MediaType) => canSend && (channelCapabilities?.[mediaType] ?? (channel !== "instagram" && mediaType !== "video"));
+  const canSendText = canSend && (channelCapabilities?.text ?? channel !== "instagram");
+  const canAttach = (["image", "audio", "video", "document"] as const).some(supports);
+  const acceptedFiles = (["image", "video", "audio", "document"] as const)
+    .filter(supports)
+    .map((mediaType) => ACCEPTED_FILES[mediaType])
+    .join(",");
+  const availabilityMessage = capabilitiesUnavailable
+    ? capabilitiesError
+      ? "Não foi possível verificar as permissões de envio do Instagram. Tente novamente."
+      : "Verificando as permissões de envio do Instagram…"
+    : windowExpired
+      ? "A janela de 24 horas do Instagram expirou. Aguarde uma nova mensagem do contato."
+      : !canSend
+        ? channelCapabilities?.reason ?? "Este canal não pode enviar mensagens agora."
+        : "";
+
+  useEffect(() => {
+    setNow(Date.now());
+    if (windowExpiresAt === null || !Number.isFinite(windowExpiresAt)) return;
+    const delay = windowExpiresAt - Date.now();
+    if (delay <= 0) return;
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.min(delay, 2_147_483_647));
+    return () => window.clearTimeout(timer);
+  }, [windowExpiresAt]);
 
   useEffect(() => {
     if (!attachment) {
@@ -96,6 +163,7 @@ export function ConversationComposer({
 
   function selectFile(file: globalThis.File) {
     const mediaType = attachmentType(file);
+    if (!supports(mediaType)) return onError(`${MEDIA_LABELS[mediaType]} não é suportado por este canal`);
     const limit = MAX_BYTES[mediaType];
     if (!file.size) return onError("O arquivo selecionado está vazio");
     if (file.size > limit) return onError(`O limite para este anexo é ${Math.round(limit / 1024 / 1024)} MB`);
@@ -105,6 +173,7 @@ export function ConversationComposer({
   }
 
   async function startRecording() {
+    if (!supports("audio")) return onError("Áudio não é suportado por este canal");
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       return onError("Este navegador não oferece gravação de áudio");
     }
@@ -152,7 +221,9 @@ export function ConversationComposer({
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = draft.trim();
-    if (recording || (!text && !attachment)) return;
+    if (recording || !canSend || (!text && !attachment)) return;
+    if (attachment && !supports(attachment.mediaType)) return onError(`${MEDIA_LABELS[attachment.mediaType]} não é suportado por este canal`);
+    if (text && !canSendText) return onError("Texto não é suportado por este canal");
     const signature = `${conversationId}:${text}:${attachment?.mediaType ?? "text"}:${attachment?.file.name ?? ""}:${attachment?.file.size ?? 0}:${attachment?.file.lastModified ?? 0}:${replyTo?.id ?? ""}`;
     const previous = sendAttemptRef.current;
     let attempt = previous?.signature === signature ? previous : { signature, key: globalThis.crypto.randomUUID() };
@@ -233,12 +304,15 @@ export function ConversationComposer({
           {attachment.mediaType === "audio" && previewUrl ? (
             <VoiceMessagePlayer src={previewUrl} label={audioDisplayName(attachment.file.name)} />
           ) : null}
-          {attachment.mediaType === "document" ? <File size={24} className="shrink-0 text-[var(--accent-soft)]" /> : null}
+          {attachment.mediaType === "video" && previewUrl ? (
+            <video src={previewUrl} controls preload="metadata" className="h-14 max-w-28 rounded-lg object-cover" aria-label={`Prévia de ${attachment.file.name}`} />
+          ) : null}
+          {attachment.mediaType === "document" ? <File size={24} className="shrink-0 text-[var(--primary-text)]" /> : null}
           <div className={attachment.mediaType === "audio" ? "w-28 min-w-0 shrink-0" : "min-w-0 flex-1"}>
             <strong className="block truncate text-xs text-[var(--text)]">
               {attachment.mediaType === "audio" ? audioDisplayName(attachment.file.name) : attachment.file.name}
             </strong>
-            <span className="mono mt-1 block text-xs uppercase tracking-wide text-[var(--faint)]">{attachment.mediaType} · {formatBytes(attachment.file.size)}</span>
+            <span className="mono mt-1 block text-xs uppercase tracking-wide text-[var(--text-muted)]">{attachment.mediaType} · {formatBytes(attachment.file.size)}</span>
           </div>
           <Button type="button" onClick={() => setAttachment(null)} className="btn p-2 active:scale-95" aria-label="Remover anexo" disabled={sending}>
             <X size={16} />
@@ -262,17 +336,17 @@ export function ConversationComposer({
           type="file"
           tabIndex={-1}
           aria-label="Selecionar arquivo para anexar"
-          accept={ACCEPTED_FILES}
+          accept={acceptedFiles}
           onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) selectFile(file);
             event.target.value = "";
           }}
         />
-        <Button type="button" className="btn h-11 w-11 p-0 active:scale-95" onClick={() => fileInputRef.current?.click()} aria-label="Anexar arquivo" disabled={sending || recording}>
+        <Button type="button" className="btn h-11 w-11 p-0 active:scale-95" onClick={() => fileInputRef.current?.click()} aria-label="Anexar arquivo" disabled={sending || recording || !canAttach}>
           <Paperclip size={19} />
         </Button>
-        <Button type="button" className="btn h-11 w-11 p-0 active:scale-95" onClick={startRecording} aria-label="Gravar áudio" disabled={sending || recording}>
+        <Button type="button" className="btn h-11 w-11 p-0 active:scale-95" onClick={startRecording} aria-label="Gravar áudio" disabled={sending || recording || !supports("audio")}>
           <Microphone size={19} />
         </Button>
         <label className="field gap-0">
@@ -282,16 +356,17 @@ export function ConversationComposer({
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={handleComposerKeyDown}
             className="conversation-composer__textarea input min-h-11 max-h-32 resize-y py-3 leading-5"
-            placeholder={attachment?.mediaType === "audio" ? "Áudio pronto para enviar" : attachment ? "Adicionar uma legenda" : "Responder pelo WhatsApp conectado"}
+            placeholder={attachment?.mediaType === "audio" ? "Áudio pronto para enviar" : attachment ? "Adicionar uma legenda" : channel === "instagram" ? "Responder pelo Instagram" : "Responder pelo WhatsApp conectado"}
             autoComplete="off"
-            disabled={sending || recording || attachment?.mediaType === "audio"}
+            disabled={sending || recording || attachment?.mediaType === "audio" || !canSendText}
           />
         </label>
-        <Button type="submit" className="conversation-composer__send btn primary h-11 active:scale-95" aria-label={sending ? "Enviando mensagem" : "Enviar mensagem"} disabled={sending || recording || (!draft.trim() && !attachment)}>
+        <Button type="submit" className="conversation-composer__send btn primary h-11 active:scale-95" aria-label={sending ? "Enviando mensagem" : "Enviar mensagem"} disabled={sending || recording || !canSend || (!draft.trim() && !attachment)}>
           {sending ? <span className="h-4 w-4 animate-pulse rounded-full border border-current" aria-hidden="true" /> : <PaperPlaneRight size={16} aria-hidden="true" />}
           <span>{sending ? "Enviando…" : "Enviar"}</span>
         </Button>
       </div>
+      {availabilityMessage ? <p className="mt-2 text-xs text-[var(--warning-text)]" role="status">{availabilityMessage}</p> : null}
       <div className="conversation-composer__footer">
         <div className="conversation-composer__quick-replies" aria-label="Respostas rápidas">
           <span>Enviar proposta</span>

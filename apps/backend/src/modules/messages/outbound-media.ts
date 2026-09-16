@@ -4,12 +4,14 @@ import type { MediaType } from "./types.js";
 const MAX_BYTES: Record<MediaType, number> = {
   audio: 16 * 1024 * 1024,
   image: 16 * 1024 * 1024,
+  video: 25 * 1024 * 1024,
   document: 32 * 1024 * 1024
 };
 
 const ALLOWED_MIME_TYPES: Record<MediaType, Set<string>> = {
   audio: new Set(["audio/aac", "audio/flac", "audio/m4a", "audio/mp4", "audio/mpeg", "audio/ogg", "audio/opus", "audio/wav", "audio/webm", "audio/x-m4a", "audio/x-wav"]),
   image: new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]),
+  video: new Set(["video/mp4", "video/ogg", "video/quicktime", "video/webm"]),
   document: new Set([
     "application/msword",
     "application/octet-stream",

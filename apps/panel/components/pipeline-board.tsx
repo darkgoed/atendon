@@ -16,19 +16,19 @@ function pipelineColumnWidth(width: PipelinePreferences["columnWidth"]): number 
 
 function stageTone(stage: PipelineStage): string {
   if (stage.operational_kind === "ai_follow_up") return "var(--info)";
-  if (stage.operational_kind === "call") return "var(--urgent)";
+  if (stage.operational_kind === "call") return "var(--danger)";
   return {
-    novo: "var(--text-8)",
+    novo: "var(--text-muted)",
     em_atendimento: "var(--info)",
-    aguardando_resposta: "var(--warn)",
+    aguardando_resposta: "var(--warning)",
     qualificado: "var(--primary)",
-    agendado: "var(--cat-referral)",
-    em_negociacao: "var(--urgent)",
-    proposta_enviada: "var(--warn)",
+    agendado: "var(--cat-3-text)",
+    em_negociacao: "var(--danger)",
+    proposta_enviada: "var(--warning)",
     follow_up: "var(--info)",
-    fechado: "var(--ok)",
+    fechado: "var(--success)",
     perdido: "var(--danger)"
-  }[stage.technical_status] ?? "var(--text-7)";
+  }[stage.technical_status] ?? "var(--text-muted)";
 }
 
 function formatStageValue(leads: PipelineLead[]): string {
@@ -126,10 +126,10 @@ export function PipelineBoard({
 
   if (loadError && leads.length === 0 && !loading) {
     return (
-      <section className="grid min-h-64 flex-1 place-items-center border border-dashed border-[var(--warn-border)] p-6 text-center" aria-label="Erro no quadro de pipeline">
+      <section className="grid min-h-64 flex-1 place-items-center border border-dashed border-[var(--warning-border)] p-6 text-center" aria-label="Erro no quadro de pipeline">
         <div className="max-w-md">
           <strong className="text-sm">Não foi possível carregar o pipeline</strong>
-          <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">{loadError}</p>
+          <p className="mt-2 text-xs leading-relaxed text-[var(--text-secondary)]">{loadError}</p>
           <button type="button" className="btn primary mt-4 active:scale-[.98]" onClick={onRetry}><ArrowClockwise size={15} aria-hidden="true" />Tentar novamente</button>
         </div>
       </section>
@@ -137,7 +137,7 @@ export function PipelineBoard({
   }
 
   if (!loading && stages.length === 0) {
-    return <section className="grid min-h-64 flex-1 place-items-center border border-dashed border-[var(--border)] p-6 text-center text-sm text-[var(--muted)]">Nenhuma etapa ativa no pipeline. Abra “Configurar” para revisar as etapas.</section>;
+    return <section className="grid min-h-64 flex-1 place-items-center border border-dashed border-[var(--border)] p-6 text-center text-sm text-[var(--text-secondary)]">Nenhuma etapa ativa no pipeline. Abra “Configurar” para revisar as etapas.</section>;
   }
 
   return (
@@ -187,7 +187,7 @@ export function PipelineBoard({
           })}
       </section>
       {!loading && leads.length === 0 && stages.length > 0 ? (
-        <p className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2 rounded border border-[var(--border)] bg-[var(--dialog)] px-4 py-2 text-xs text-[var(--muted)]" role="status">
+        <p className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2 rounded border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-2 text-xs text-[var(--text-secondary)]" role="status">
           {hasActiveFilters ? "Nenhum lead corresponde aos filtros atuais." : "O pipeline ainda não possui leads."}
         </p>
       ) : null}
@@ -258,7 +258,7 @@ export function PipelineColumn({
           <span className="pipeline-column__menu" aria-hidden="true"><DotsThree size={15} weight="bold" /></span>
         </div>
         <div className="pipeline-column__summary">
-          <span className="mono font-medium text-[var(--text-3)]">{formatStageValue(leads)}</span>
+          <span className="mono font-medium text-[var(--text-secondary)]">{formatStageValue(leads)}</span>
           <span aria-hidden="true">·</span>
           <span>{formatAverageStageAge(leads)}</span>
         </div>

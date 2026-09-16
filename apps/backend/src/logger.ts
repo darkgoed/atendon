@@ -11,6 +11,7 @@ export const LOGGER_REDACTION_PATHS = [
   "req.headers.authorization",
   "req.headers.cookie",
   "req.headers.x-atendon-webhook-secret",
+  "req.headers.x-hub-signature-256",
   "password",
   "password_hash",
   "token",
@@ -30,6 +31,13 @@ export const LOGGER_REDACTION_PATHS = [
   "sourceUrl",
   "mediaUrl",
   "thumbnailUrl",
+  "oauthCode",
+  "authorizationCode",
+  "oauthState",
+  "signedRequest",
+  "instagramContactId",
+  "providerAccountId",
+  "recipientId",
   "*.password",
   "*.password_hash",
   "*.token",
@@ -48,7 +56,14 @@ export const LOGGER_REDACTION_PATHS = [
   "*.ownerJid",
   "*.sourceUrl",
   "*.mediaUrl",
-  "*.thumbnailUrl"
+  "*.thumbnailUrl",
+  "*.oauthCode",
+  "*.authorizationCode",
+  "*.oauthState",
+  "*.signedRequest",
+  "*.instagramContactId",
+  "*.providerAccountId",
+  "*.recipientId"
 ] as const;
 
 export const logger = pino({

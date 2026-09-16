@@ -22,7 +22,13 @@ describe("request log URL sanitization", () => {
       "*.refreshToken",
       "*.externalId",
       "*.contactPhone",
-      "*.instance"
+      "*.instance",
+      "*.oauthCode",
+      "*.oauthState",
+      "*.accessToken",
+      "*.instagramContactId",
+      "*.mediaUrl",
+      "*.signedRequest"
     ]));
   });
 });

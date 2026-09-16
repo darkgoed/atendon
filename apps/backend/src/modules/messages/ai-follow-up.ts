@@ -31,12 +31,23 @@ const HISTORY_MAX_CHARACTERS = 12_000;
 const PROCESSING_LEASE_MINUTES = 10;
 const MAX_FAILURES = 5;
 
+export function isAmbiguousMessageDeliveryError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; outcome?: unknown; ambiguous?: unknown };
+  const code = typeof candidate.code === "string" ? candidate.code.toLowerCase() : "";
+  return candidate.outcome === "ambiguous" || candidate.ambiguous === true
+    || code === "ambiguous" || code.includes("send_ambiguous") || code.includes("delivery_ambiguous");
+}
+
 export interface AiFollowUpClaim {
   conversationId: string;
   agentConfigVersionId: string;
   tenantId: string;
   sessionId: string;
   contactPhone: string;
+  channel: "whatsapp" | "instagram";
+  instagramContactId?: string;
+  windowExpiresAt?: Date;
   contactJid?: string;
   contactName?: string;
   sequenceVersion: number;
@@ -65,7 +76,10 @@ type FollowUpRow = {
   conversation_id: string;
   tenant_id: string;
   session_id: string;
-  contact_phone: string;
+  contact_phone: string | null;
+  channel: "whatsapp" | "instagram";
+  instagram_contact_id: string | null;
+  messaging_window_expires_at: Date | null;
   contact_jid: string | null;
   contact_name: string | null;
   ai_active: boolean;
@@ -131,7 +145,10 @@ export async function scheduleAiFollowUpsAfterAgentReply(
        FROM conversations conversation
        JOIN scheduling_leads lead
          ON lead.tenant_id=conversation.tenant_id
-        AND regexp_replace(lead.phone,'\\D','','g')=regexp_replace(conversation.contact_phone,'\\D','','g')
+        AND (lead.id=conversation.lead_id OR (
+          conversation.lead_id IS NULL AND conversation.contact_phone IS NOT NULL AND lead.phone IS NOT NULL
+          AND regexp_replace(lead.phone,'\\D','','g')=regexp_replace(conversation.contact_phone,'\\D','','g')
+        ))
        WHERE conversation.id=$2 AND conversation.tenant_id=$1
          AND (
            lead.recovery_required
@@ -158,6 +175,7 @@ export async function scheduleAiFollowUpsAfterAgentReply(
               $4::timestamptz + make_interval(mins => s.ai_follow_up_delays_minutes[1]),
               NULL,0,NULL,NULL,now()
      FROM conversations c
+     JOIN whatsapp_sessions connection ON connection.id=c.session_id AND connection.tenant_id=c.tenant_id
      JOIN tenant_ai_settings s ON s.tenant_id=c.tenant_id
      JOIN LATERAL (
        SELECT id,sender FROM messages
@@ -167,6 +185,10 @@ export async function scheduleAiFollowUpsAfterAgentReply(
      WHERE c.id=$2 AND c.tenant_id=$1 AND c.ai_active AND c.status='open'
        AND c.session_id IS NOT NULL
        AND s.ai_follow_up_enabled
+       AND (connection.channel<>'instagram' OR (
+         c.messaging_window_expires_at IS NOT NULL
+         AND $4::timestamptz + make_interval(mins => s.ai_follow_up_delays_minutes[1]) <= c.messaging_window_expires_at
+       ))
        AND NOT EXISTS(SELECT 1 FROM active_appointment)
      ON CONFLICT(conversation_id) DO UPDATE SET
        tenant_id=EXCLUDED.tenant_id,
@@ -287,6 +309,7 @@ export class AiFollowUpRepository {
         `SELECT f.conversation_id,f.tenant_id,f.status,f.next_run_at,f.processing_started_at,
                 f.follow_up_count,f.sequence_version,f.last_agent_message_id,
                 c.session_id,c.contact_phone,c.contact_jid,c.contact_name,c.ai_active,c.status conversation_status,
+                connection.channel,c.instagram_contact_id,c.messaging_window_expires_at,
                 s.ai_follow_up_enabled,s.ai_follow_up_max_count,s.ai_follow_up_interval_minutes,
                 s.ai_follow_up_delays_minutes,s.ai_follow_up_delivery,
                 s.openrouter_provider,s.openrouter_api_key_encrypted,s.humanizer_config,
@@ -295,7 +318,10 @@ export class AiFollowUpRepository {
                 EXISTS(
                   SELECT 1 FROM scheduling_leads lead
                   WHERE lead.tenant_id=c.tenant_id
-                    AND regexp_replace(lead.phone,'\\D','','g')=regexp_replace(c.contact_phone,'\\D','','g')
+                    AND (lead.id=c.lead_id OR (
+                      c.lead_id IS NULL AND c.contact_phone IS NOT NULL AND lead.phone IS NOT NULL
+                      AND regexp_replace(lead.phone,'\\D','','g')=regexp_replace(c.contact_phone,'\\D','','g')
+                    ))
                     AND (
                       lead.recovery_required
                       OR lead.status NOT IN ('novo','em_atendimento','aguardando_resposta','qualificado','em_qualificacao','aprovado')
@@ -309,6 +335,7 @@ export class AiFollowUpRepository {
                 ) active_appointment
          FROM ai_follow_up_schedules f
          JOIN conversations c ON c.id=f.conversation_id AND c.tenant_id=f.tenant_id
+         JOIN whatsapp_sessions connection ON connection.id=c.session_id AND connection.tenant_id=c.tenant_id
          JOIN tenant_ai_settings s ON s.tenant_id=f.tenant_id
          LEFT JOIN LATERAL (
            SELECT v.id agent_config_version_id,v.system_prompt,v.ai_model,v.model_params,cfg.is_active
@@ -346,11 +373,13 @@ export class AiFollowUpRepository {
       }
 
       const completed = row.follow_up_count >= row.ai_follow_up_delays_minutes.length;
+      const windowExpired = row.channel === "instagram" && (!row.messaging_window_expires_at
+        || row.messaging_window_expires_at.getTime() <= Date.now());
       const eligible = row.ai_follow_up_enabled && row.ai_active && row.conversation_status === "open"
         && row.agent_is_active === true && Boolean(row.agent_config_version_id)
         && Boolean(row.system_prompt) && Boolean(row.ai_model)
         && row.latest_message_id === row.last_agent_message_id && row.latest_sender === "agent"
-        && !row.active_appointment && !completed;
+        && !row.active_appointment && !completed && !windowExpired;
       if (!eligible) {
         if (!row.agent_config_version_id && row.agent_is_active === true) {
           const alert = "Configuração ativa do agente sem versão resolvível";
@@ -369,8 +398,9 @@ export class AiFollowUpRepository {
            WHERE conversation_id=$1`,
           [conversationId, completed ? "completed" : "cancelled",
             completed ? "maximum_reached"
-              : row.active_appointment ? "appointment_active"
-                : !row.agent_config_version_id ? "agent_version_missing" : "conversation_changed"]
+              : windowExpired ? "window_expired"
+                : row.active_appointment ? "appointment_active"
+                  : !row.agent_config_version_id ? "agent_version_missing" : "conversation_changed"]
         );
         await client.query("COMMIT");
         return null;
@@ -468,7 +498,10 @@ export class AiFollowUpRepository {
         agentConfigVersionId: row.agent_config_version_id!,
         tenantId: row.tenant_id,
         sessionId: row.session_id,
-        contactPhone: row.contact_phone,
+        contactPhone: row.channel === "instagram" ? `ig:${row.instagram_contact_id}` : row.contact_phone!,
+        channel: row.channel,
+        instagramContactId: row.instagram_contact_id ?? undefined,
+        windowExpiresAt: row.messaging_window_expires_at ?? undefined,
         contactJid: row.contact_jid ?? undefined,
         contactName: row.contact_name ?? undefined,
         sequenceVersion: row.sequence_version,
@@ -501,6 +534,7 @@ export class AiFollowUpRepository {
       `SELECT EXISTS(
          SELECT 1 FROM ai_follow_up_schedules f
          JOIN conversations c ON c.id=f.conversation_id AND c.tenant_id=f.tenant_id
+         JOIN whatsapp_sessions connection ON connection.id=c.session_id AND connection.tenant_id=c.tenant_id
          JOIN tenant_ai_settings s ON s.tenant_id=f.tenant_id
          JOIN LATERAL (
            SELECT id,sender FROM messages WHERE conversation_id=f.conversation_id
@@ -509,6 +543,7 @@ export class AiFollowUpRepository {
          ) latest ON true
          WHERE f.conversation_id=$1 AND f.sequence_version=$2 AND f.status='processing'
            AND c.ai_active AND c.status='open' AND s.ai_follow_up_enabled
+           AND (connection.channel<>'instagram' OR c.messaging_window_expires_at>now())
            AND f.follow_up_count<cardinality(s.ai_follow_up_delays_minutes)
            AND latest.id=f.last_agent_message_id AND latest.sender='agent'
        ) current`,
@@ -600,11 +635,19 @@ export class AiFollowUpRepository {
            status=CASE
              WHEN NOT s.ai_follow_up_enabled OR NOT c.ai_active OR c.status<>'open' THEN 'cancelled'
              WHEN f.follow_up_count+1>=cardinality(s.ai_follow_up_delays_minutes) THEN 'completed'
+             WHEN connection.channel='instagram' AND (
+               c.messaging_window_expires_at IS NULL OR f.sequence_started_at
+                 + make_interval(mins => s.ai_follow_up_delays_minutes[f.follow_up_count+2])>c.messaging_window_expires_at
+             ) THEN 'cancelled'
              ELSE 'scheduled'
            END,
            next_run_at=CASE
              WHEN s.ai_follow_up_enabled AND c.ai_active AND c.status='open'
                AND f.follow_up_count+1<cardinality(s.ai_follow_up_delays_minutes)
+               AND (connection.channel<>'instagram' OR (
+                 c.messaging_window_expires_at IS NOT NULL AND f.sequence_started_at
+                   + make_interval(mins => s.ai_follow_up_delays_minutes[f.follow_up_count+2])<=c.messaging_window_expires_at
+               ))
              THEN f.sequence_started_at
                + make_interval(mins => s.ai_follow_up_delays_minutes[f.follow_up_count+2])
              ELSE NULL
@@ -614,13 +657,18 @@ export class AiFollowUpRepository {
              WHEN NOT s.ai_follow_up_enabled THEN 'configuration_disabled'
              WHEN NOT c.ai_active OR c.status<>'open' THEN 'conversation_inactive'
              WHEN f.follow_up_count+1>=cardinality(s.ai_follow_up_delays_minutes) THEN 'maximum_reached'
+             WHEN connection.channel='instagram' AND (
+               c.messaging_window_expires_at IS NULL OR f.sequence_started_at
+                 + make_interval(mins => s.ai_follow_up_delays_minutes[f.follow_up_count+2])>c.messaging_window_expires_at
+             ) THEN 'window_expired'
              ELSE NULL
            END,
            updated_at=now()
-         FROM tenant_ai_settings s,conversations c
+         FROM tenant_ai_settings s,conversations c,whatsapp_sessions connection
          WHERE f.conversation_id=$1 AND f.tenant_id=$2 AND f.sequence_version=$4
            AND f.status='processing' AND s.tenant_id=f.tenant_id
-           AND c.id=f.conversation_id AND c.tenant_id=f.tenant_id`,
+           AND c.id=f.conversation_id AND c.tenant_id=f.tenant_id
+           AND connection.id=c.session_id AND connection.tenant_id=c.tenant_id`,
         [claim.conversationId, claim.tenantId, lastMessageId, claim.sequenceVersion, input.mediaIsSticker ?? false]
       );
       await client.query("COMMIT");
@@ -647,6 +695,18 @@ export class AiFollowUpRepository {
        SET status='cancelled',next_run_at=NULL,processing_started_at=NULL,cancellation_reason=$3,updated_at=now()
        WHERE conversation_id=$1 AND sequence_version=$2 AND status='processing'`,
       [claim.conversationId, claim.sequenceVersion, reason]
+    );
+  }
+
+  async recordAmbiguousDelivery(
+    claim: Pick<AiFollowUpClaim, "conversationId" | "sequenceVersion">,
+    error: unknown
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE ai_follow_up_schedules SET status='cancelled',next_run_at=NULL,processing_started_at=NULL,
+         failure_count=failure_count+1,last_error=$3,cancellation_reason='delivery_ambiguous',updated_at=now()
+       WHERE conversation_id=$1 AND sequence_version=$2 AND status='processing'`,
+      [claim.conversationId, claim.sequenceVersion, error instanceof Error ? error.message : String(error)]
     );
   }
 
@@ -801,7 +861,7 @@ export class AiFollowUpProcessor {
           sent = await this.gateway.sendSticker(claim.sessionId, destination, { dataBase64: delivery.dataBase64 });
         } else if (delivery.type === "image" || delivery.type === "audio" || delivery.type === "video") {
           if (!delivery.dataBase64 || !delivery.mimeType || !delivery.fileName || !this.gateway.sendMedia) throw new Error(`Configured follow-up ${delivery.type} is unavailable`);
-          sent = await this.gateway.sendMedia(claim.sessionId, destination, { mediaType: delivery.type as never, mimeType: delivery.mimeType, fileName: delivery.fileName, dataBase64: delivery.dataBase64, caption: parsed.text });
+          sent = await this.gateway.sendMedia(claim.sessionId, destination, { mediaType: delivery.type, mimeType: delivery.mimeType, fileName: delivery.fileName, dataBase64: delivery.dataBase64, caption: parsed.text });
         } else {
           sentBubbles = [];
           for (const [index, bubble] of textBubbles.entries()) {
@@ -849,6 +909,10 @@ export class AiFollowUpProcessor {
       }
       return "sent";
     } catch (error) {
+      if (isAmbiguousMessageDeliveryError(error)) {
+        await this.repository.recordAmbiguousDelivery(claim, error);
+        return "cancelled";
+      }
       const terminal = await this.repository.recordFailure(claim, error);
       if (terminal) await this.repository.createFailureAlert(claim.tenantId);
       throw error;

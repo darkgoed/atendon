@@ -13,21 +13,21 @@ export function AiTurnBubble({ progress }: { progress: AiTurnProgress }) {
   return (
     <div className="flex justify-end" aria-live="polite" aria-atomic="true" role="status">
       <div className="ai-turn-max-width flex flex-col items-end gap-1">
-        <div className="flex items-center gap-1.5 px-1 text-xs font-medium text-[var(--accent-soft)]">
+        <div className="flex items-center gap-1.5 px-1 text-xs font-medium text-[var(--primary-text)]">
           <Robot size={12} weight="duotone" aria-hidden="true" />
           <span>{aiTurnPhaseLabel(progress)}</span>
           {progress.phase !== "preview" && progress.phase !== "sending" ? (
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)]" aria-hidden="true" />
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--primary)]" aria-hidden="true" />
           ) : null}
         </div>
-        <div className="ai-turn-minimum border border-dashed border-[var(--border-ai)] bg-[var(--accent-bg)] px-3.5 py-2.5 shadow-sm transition-[opacity,transform] duration-300">
+        <div className="ai-turn-minimum border border-dashed border-[var(--primary-border)] bg-[var(--primary-subtle)] px-3.5 py-2.5 shadow-sm transition-[opacity,transform] duration-300">
           {showPreview ? (
             <>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--body)]">
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-secondary)]">
                 {progress.preview}
               </p>
               {progress.previewTruncated ? (
-                <p className="mt-2 border-t border-[var(--border-ai)] pt-1.5 text-xs text-[var(--faint-text)]">
+                <p className="mt-2 border-t border-[var(--primary-border)] pt-1.5 text-xs text-[var(--text-muted)]">
                   Prévia abreviada no painel
                 </p>
               ) : null}

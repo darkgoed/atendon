@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { readFile, readdir } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
@@ -8,7 +10,16 @@ import { runMigrations } from "../src/db/migration-runner.js";
 import { fileURLToPath } from "node:url";
 
 const migrationDirectory = fileURLToPath(new URL("../src/db/migrations", import.meta.url));
-const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
+const sourceUrl = new URL(config.DATABASE_URL);
+const adminUrl = new URL(sourceUrl);
+adminUrl.pathname = "/postgres";
+const databaseName = `atendon_0154_0157_${randomUUID().replaceAll("-", "")}`;
+const databaseUrl = new URL(sourceUrl);
+databaseUrl.pathname = `/${databaseName}`;
+const adminPool = new pg.Pool({ connectionString: adminUrl.toString() });
+const pool = new pg.Pool({ connectionString: databaseUrl.toString() });
+let databaseCreated = false;
+let temporaryRoot = "";
 let tenantId = "";
 let userId = "";
 let queueId = "";
@@ -46,15 +57,27 @@ async function snapshot(client: pg.Pool | pg.Client): Promise<EssentialSnapshot>
 
 beforeAll(async () => {
   const files = (await readdir(migrationDirectory)).filter((file) => file.endsWith(".sql")).sort();
-  const migrationClient = new pg.Client({ connectionString: config.DATABASE_URL });
+  const cutoff = files.indexOf("0157_connection_channel.sql");
+  expect(cutoff).toBeGreaterThanOrEqual(0);
+  const stagedFiles = files.slice(0, cutoff + 1);
+  temporaryRoot = await mkdtemp(join(tmpdir(), "atendon-0154-0157-"));
+  const stagedDirectory = join(temporaryRoot, "migrations");
+  await mkdir(stagedDirectory);
+  for (const file of stagedFiles) {
+    await copyFile(join(migrationDirectory, file), join(stagedDirectory, file));
+  }
+
+  await adminPool.query(`CREATE DATABASE "${databaseName}" TEMPLATE template0`);
+  databaseCreated = true;
+  const migrationClient = new pg.Client({ connectionString: databaseUrl.toString() });
   await migrationClient.connect();
-  const result = await runMigrations(migrationClient, migrationDirectory, () => undefined);
+  const result = await runMigrations(migrationClient, stagedDirectory, () => undefined);
   await migrationClient.end();
-  // This suite is intentionally run by test:disposable, where the runner has
-  // already built the complete database. Do not silently replace it with a
-  // reduced schema if a caller uses the wrong test command.
-  expect(result.existing.length + result.applied.length + result.adopted.length).toBe(files.length);
-  expect(result.applied).toEqual([]);
+  // Isolate the historical proof from later migrations: 0158 adds triggers,
+  // indexes and foreign keys that intentionally depend on 0157's channel.
+  expect(result.applied).toEqual(stagedFiles);
+  expect(result.existing).toEqual([]);
+  expect(result.adopted).toEqual([]);
 
   const client = await pool.connect();
   try {
@@ -97,6 +120,15 @@ afterAll(async () => {
   if (tenantId) await pool.query("DELETE FROM tenants WHERE id=$1", [tenantId]);
   if (userId) await pool.query("DELETE FROM users WHERE id=$1", [userId]);
   await pool.end();
+  if (databaseCreated) {
+    await adminPool.query(
+      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid()",
+      [databaseName]
+    );
+    await adminPool.query(`DROP DATABASE IF EXISTS "${databaseName}"`);
+  }
+  await adminPool.end();
+  if (temporaryRoot) await rm(temporaryRoot, { recursive: true, force: true });
 });
 
 describe("0154–0157 em banco descartável", () => {

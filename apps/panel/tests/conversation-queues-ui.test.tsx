@@ -32,9 +32,10 @@ const queues = [
   { id: "q-done", name: "Resolvido", color: "#64748b", is_resolved: true, conversation_count: 0, archived_at: null }
 ];
 type FixtureConversation = {
-  id: string; session_id: string; lead_id: string; contact_phone: string; contact_name: string; ai_active: boolean;
+  id: string; session_id: string; lead_id: string; contact_phone: string | null; contact_name: string | null; ai_active: boolean;
   last_message: string; last_message_at: string; status: "open" | "closed"; unread_count: number;
   queue_id: string; queue_name: string; channel: "whatsapp" | "instagram"; next_action: string | null; next_action_at: string | null;
+  instagram_username?: string | null; contact_identifier?: string | null; contact_presence?: string | null; contact_presence_updated_at?: string | null;
 };
 
 const baseConversation: FixtureConversation = {
@@ -102,6 +103,30 @@ describe("inbox de filas e canais", () => {
     await renderInbox("/conversas?id=c-1");
     expect((await screen.findAllByText("Ana")).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole("img", { name: "Canal Instagram" })).toHaveLength(2);
+  });
+
+  it("opens a null-identity Instagram thread without @id, Número, or WhatsApp presence", async () => {
+    conversation = {
+      ...conversation,
+      channel: "instagram",
+      contact_name: null,
+      contact_phone: null,
+      instagram_username: null,
+      contact_identifier: "17841400000000000",
+      contact_presence: "available",
+      contact_presence_updated_at: new Date().toISOString()
+    };
+    await renderInbox();
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Contato do Instagram/ }));
+
+    await waitFor(() => expect(screen.getAllByRole("img", { name: "Canal Instagram" })).toHaveLength(2));
+    expect(screen.getAllByText("Contato do Instagram").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Identidade do Instagram indisponível")).toBeInTheDocument();
+    expect(screen.queryByText("@17841400000000000")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Número:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/online|presença indisponível|visto por último/)).not.toBeInTheDocument();
   });
 
   it("compõe chips de fila e filtros na query server-side", async () => {

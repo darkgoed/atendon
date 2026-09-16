@@ -2,9 +2,8 @@ import { Worker } from "bullmq";
 import { logger } from "./logger.js";
 import { createWhatsAppRuntime } from "./runtime.js";
 import { redisConnection } from "./queue/connection.js";
-import { ensureInboundAiTurn, INBOUND_QUEUE, type InboundJobData } from "./queue/message-queue.js";
+import { enqueueInbound, ensureInboundAiTurn, INBOUND_QUEUE, type InboundJobData } from "./queue/message-queue.js";
 import { HUMAN_OUTBOUND_QUEUE, type HumanOutboundJob } from "./queue/human-message-queue.js";
-import { MessageRepository } from "./modules/messages/repository.js";
 import { db } from "./db/client.js";
 import { ConversationBusyRetryError, isAutomaticAiRecoveryError } from "./modules/messages/process-message.js";
 import { HANDOFF_NOTIFICATION_QUEUE, enqueueHandoffNotification, type HandoffNotificationJob } from "./queue/handoff-notification-queue.js";
@@ -21,6 +20,11 @@ import {
   WORKER_HEARTBEAT_TTL_MS
 } from "./readiness.js";
 import { AI_FOLLOW_UP_QUEUE, enqueueAiFollowUp, type AiFollowUpJob } from "./queue/ai-follow-up-queue.js";
+import {
+  createInstagramInboxDispatcher,
+  drainInstagramInboxTenant,
+  InstagramWorkerScheduler
+} from "./modules/instagram/index.js";
 
 import { config } from "./config.js";
 import {
@@ -86,9 +90,40 @@ import {
 } from "./billing/mercadopago-renewal.js";
 export { runOAuthTokenRenewalBatch } from "./billing/mercadopago-renewal.js";
 
-const { manager, processor, followUpProcessor, followUpRepository } = createWhatsAppRuntime();
+const {
+  manager,
+  processor,
+  followUpProcessor,
+  followUpRepository,
+  messageRepository,
+  instagramRuntime,
+  gateway
+} = createWhatsAppRuntime();
 const webPushRuntime = startWebPushRuntime();
 const workerMetrics = { maxDataPoints: 24 * 60 };
+const instagramDispatcher = createInstagramInboxDispatcher({
+  database: db,
+  instagram: instagramRuntime,
+  messages: messageRepository,
+  enqueueInbound
+});
+const instagramScheduler = new InstagramWorkerScheduler({
+  listActiveTenants: () => instagramRuntime.repository.listActiveTenants(),
+  drainTenant: (tenantId) => drainInstagramInboxTenant(instagramRuntime.service, tenantId, instagramDispatcher),
+  refreshDueTokens: () => instagramRuntime.service.refreshDueTokens(),
+  onDrain: (tenantId, drained) => {
+    if (drained > 0) logger.info({ tenantId, drained }, "Instagram durable inbox drained");
+  },
+  onRefresh: (result) => {
+    if (result.failed > 0 || result.revoked > 0) logger.warn({ result }, "Instagram token refresh completed with issues");
+    else if (result.refreshed > 0) logger.info({ result }, "Instagram tokens refreshed");
+    else logger.debug({ result }, "Instagram token refresh completed");
+  },
+  onError: (operation, error) => logger.error(
+    { error },
+    operation === "drain" ? "Instagram inbox drain failed" : "Instagram token refresh scheduler failed"
+  )
+});
 const worker = new Worker<InboundJobData>(INBOUND_QUEUE, async (job) => {
   let data = job.data;
   if (!data.aiTurnId) {
@@ -113,14 +148,16 @@ const worker = new Worker<InboundJobData>(INBOUND_QUEUE, async (job) => {
   metrics: workerMetrics
 });
 const humanWorker = new Worker<HumanOutboundJob>(HUMAN_OUTBOUND_QUEUE, async (job) => {
-  const sent = await manager.sendText(job.data.sessionId, job.data.contactJid ?? job.data.contactPhone, job.data.text);
-  await new MessageRepository(db).recordHuman({
+  const destination = job.data.contactJid ?? job.data.contactPhone;
+  const sent = await gateway.sendText(job.data.sessionId, destination, job.data.text);
+  const instagramContactId = destination.startsWith("ig:") ? destination.slice(3) : undefined;
+  await messageRepository.recordHuman({
     kind: "human", externalId: sent.externalId, tenantId: job.data.tenantId,
-    sessionId: job.data.sessionId, contactPhone: job.data.contactPhone, contactJid: job.data.contactJid, text: job.data.text
+    sessionId: job.data.sessionId, contactPhone: destination, contactJid: job.data.contactJid, text: job.data.text,
+    ...(instagramContactId ? { channel: "instagram" as const, instagramContactId } : {})
   });
   return sent.externalId;
 }, { connection: redisConnection, concurrency: 5, metrics: workerMetrics });
-const messageRepository = new MessageRepository(db);
 const handoffWorker = new Worker<HandoffNotificationJob>(HANDOFF_NOTIFICATION_QUEUE, async (job) => {
   const notification = await messageRepository.getPendingHandoffNotification(job.data.notificationId);
   if (!notification) return "already_delivered";
@@ -599,6 +636,7 @@ void reconcilePendingMeetingResults()
   .catch((error) => logger.error({ error }, "Initial pending meeting result reconciliation failed"));
 void reconcileTripzAiTurns()
   .catch((error) => logger.error({ component: "TripzAI", error }, "[TripzAI] initial queued turn reconciliation failed"));
+instagramScheduler.start();
 if (config.MEET_ENABLED) {
   void scheduleMeetMaintenanceJobs()
     .catch((error) => logger.error({ error }, "Meet recording repeatable jobs could not be scheduled"));
@@ -623,6 +661,7 @@ async function shutdown(): Promise<void> {
   clearInterval(oauthTokenRenewalTimer);
   clearInterval(heartbeatTimer);
   clearInterval(tripzAiReconciler);
+  await instagramScheduler.stop();
   try {
     const redis = await worker.client;
     await redis.del(WORKER_HEARTBEAT_KEY, ...Object.values(CRITICAL_WORKER_HEARTBEAT_KEYS));

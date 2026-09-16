@@ -62,6 +62,7 @@ import { usePermission } from "@/lib/use-permission";
 import { ChannelBadge, type Channel } from "@/components/channel-badge";
 import { ConversationNextAction } from "@/components/conversation-next-action";
 import { ConversationPreBriefing } from "@/components/conversation-pre-briefing";
+import { instagramDisplayIdentity, instagramDisplayName } from "@/lib/channel-identity";
 
 const supportedConversationFilters = new Set(["human", "ai", "mine", "unassigned", "scheduled", "resolved"]);
 
@@ -83,7 +84,10 @@ type Conversation = {
   id: string;
   session_id?: string | null;
   lead_id?: string;
-  contact_phone: string;
+  contact_phone: string | null;
+  contact_identifier?: string | null;
+  instagram_username?: string | null;
+  messaging_window_expires_at?: string | null;
   contact_name?: string;
   avatar_url?: string | null;
   ai_active: boolean;
@@ -129,7 +133,7 @@ type Message = {
   id: string;
   sender: "contact" | "agent" | "human";
   content: string;
-  media_type: "audio" | "image" | "document" | null;
+  media_type: "audio" | "image" | "video" | "document" | null;
   media_mime_type?: string | null;
   media_file_name?: string | null;
   media_size_bytes?: number | null;
@@ -159,6 +163,7 @@ type ConversationThreadResponse = {
     has_more_after: boolean;
   };
 };
+type ConversationCapabilities = { channel: "whatsapp" | "instagram"; can_send: boolean; reason: string | null; window_expires_at: string | null; text: boolean; image: boolean; audio: boolean; video: boolean; document: boolean; reactions: boolean; edit: boolean; delete: boolean; stickers: boolean };
 type ConversationDeltaResponse = ConversationThreadResponse & {
   cursors: NonNullable<ConversationThreadResponse["cursors"]>;
   page: NonNullable<ConversationThreadResponse["page"]>;
@@ -210,19 +215,19 @@ function contactPresenceLabel(conversation: Conversation): string {
 function MessageTicks({ status }: { status: string }) {
   const label = status === "read" ? "Mensagem lida" : status === "delivered" ? "Mensagem entregue" : "Mensagem enviada";
   const Icon = status === "read" || status === "delivered" ? Checks : Check;
-  return <><Icon size={13} weight="bold" className={status === "read" ? "text-[var(--info)]" : "text-[var(--text-7)]"} aria-hidden="true" /><span className="sr-only">{label}</span></>;
+  return <><Icon size={13} weight="bold" className={status === "read" ? "text-[var(--info-text)]" : "text-[var(--text-muted)]"} aria-hidden="true" /><span className="sr-only">{label}</span></>;
 }
 
 function ConversationBadge({ item }: { item: Conversation }) {
   const active = item.ai_active;
   return (
     <span className="conversation-list__ai-status inline-flex min-w-0 shrink-0 items-center gap-1 text-xs font-medium">
-      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-[var(--accent)]" : "bg-[var(--warn)]"}`} aria-hidden="true" />
-      <span className={`shrink-0 whitespace-nowrap ${active ? "text-[var(--accent-soft)]" : "text-[var(--warn)]"}`}>
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-[var(--primary)]" : "bg-[var(--warning)]"}`} aria-hidden="true" />
+      <span className={`shrink-0 whitespace-nowrap ${active ? "text-[var(--primary-text)]" : "text-[var(--warning-text)]"}`}>
         {active ? "IA ativa" : "IA pausada"}
       </span>
       {!active && item.handoff_reason ? (
-        <span className="truncate text-[var(--faint)]">· {handoffReasonLabel(item.handoff_reason)}</span>
+        <span className="truncate text-[var(--text-muted)]">· {handoffReasonLabel(item.handoff_reason)}</span>
       ) : null}
     </span>
   );
@@ -230,7 +235,9 @@ function ConversationBadge({ item }: { item: Conversation }) {
 
 function ConversationItem({ item, selected, showLeadTags, onClick }: { item: Conversation; selected: string; showLeadTags: boolean; onClick: (id: string) => void }) {
   const isSelected = selected === item.id;
-  const title = item.contact_name ?? item.contact_phone;
+  const title = item.channel === "instagram"
+    ? instagramDisplayName(item.contact_name, item.instagram_username, item.contact_identifier, item.contact_phone)
+    : item.contact_name ?? item.contact_phone ?? "Contato sem identificação";
   const unread = item.unread_count ?? 0;
   const showTicks = item.last_message_sender === "agent" || item.last_message_sender === "human";
 
@@ -242,50 +249,50 @@ function ConversationItem({ item, selected, showLeadTags, onClick }: { item: Con
       className={[
         "conversation-list__item group flex w-full items-start text-left transition",
         isSelected
-          ? "bg-[var(--primary-tint-bg)]"
-          : "bg-[var(--surface)] hover:bg-[var(--hover)]"
+          ? "bg-[var(--primary-subtle)]"
+          : "bg-[var(--surface)] hover:bg-[var(--surface-hover)]"
       ].join(" ")}
     >
       <div className="relative shrink-0">
         <ContactAvatar
           name={title}
           src={item.avatar_url}
-          className={`conversation-list__avatar h-8 w-8 text-xs transition ${isSelected ? "border-[var(--primary-tint-border)] text-[var(--primary-text)]" : ""}`}
+          className={`conversation-list__avatar h-8 w-8 text-xs transition ${isSelected ? "border-[var(--primary-border)] text-[var(--primary-text)]" : ""}`}
         />
-        {contactIsOnline(item) ? <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full border-2 border-[var(--surface)] bg-[var(--ok)]" aria-hidden="true" /> : null}
+        {item.channel !== "instagram" && contactIsOnline(item) ? <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full border-2 border-[var(--surface)] bg-[var(--success)]" aria-hidden="true" /> : null}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline justify-between gap-2">
           <strong data-unread={unread > 0 ? "true" : undefined} className={`conversation-list__name min-w-0 truncate text-[var(--text)] ${unread > 0 ? "font-semibold" : ""}`}><ChannelBadge channel={item.channel === "instagram" ? "instagram" : "whatsapp"} size={12} /> {title}</strong>
-          <time className="conversation-list__time mono shrink-0 text-[var(--text-8)]">{formatClock(item.last_message_at)}</time>
+          <time className="conversation-list__time mono shrink-0 text-[var(--text-muted)]">{formatClock(item.last_message_at)}</time>
         </div>
-        {item.contact_name ? <p className="conversation-list__company mono truncate text-[var(--text-6)]" dir="ltr">{item.contact_phone}</p> : null}
+        {item.contact_name ? <p className="conversation-list__company mono truncate text-[var(--text-muted)]" dir="ltr">{item.channel === "instagram" ? instagramDisplayIdentity(item.instagram_username, item.contact_identifier) : item.contact_phone}</p> : null}
         <div className="conversation-list__preview-row flex min-w-0 items-start justify-between gap-2">
-          <p className="conversation-list__preview line-clamp-2 min-w-0 flex-1 text-[var(--text-4)]">
+          <p className="conversation-list__preview line-clamp-2 min-w-0 flex-1 text-[var(--text-secondary)]">
             {showTicks && item.last_message_status ? (
               <span className="mr-1 inline-flex align-middle"><MessageTicks status={item.last_message_status} /></span>
             ) : null}
             {item.last_message ?? "Sem mensagens ainda"}
           </p>
           {unread > 0 ? (
-            <span className="conversation-list__unread mono flex shrink-0 items-center justify-center rounded-full bg-[var(--primary)] font-semibold text-[var(--primary-fg)]">
+            <span className="conversation-list__unread mono flex shrink-0 items-center justify-center rounded-full bg-[var(--primary)] font-semibold text-[var(--primary-foreground)]">
               {unread > 99 ? "99+" : unread}
             </span>
           ) : null}
         </div>
         <div className="conversation-list__footer flex min-w-0 items-center gap-1.5 overflow-hidden">
           <ConversationBadge item={item} />
-          <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-[var(--faint)]">
+          <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-[var(--text-muted)]">
             {item.assigned_user_first_name ? <span className="truncate">{item.assigned_user_first_name}</span> : null}
             {!item.ai_active && item.status === "open" && item.handoff_reason !== "manually_paused" ? (
-              <span className={`mono shrink-0 ${Number(item.waiting_minutes) >= 15 ? "text-[var(--urgent)]" : "text-[var(--text-7)]"}`}>
+              <span className={`mono shrink-0 ${Number(item.waiting_minutes) >= 15 ? "text-[var(--danger-text)]" : "text-[var(--text-muted)]"}`}>
                 {waitingLabel(Number(item.waiting_minutes))}{Number(item.waiting_minutes) >= 15 ? " · SLA" : ""}
               </span>
             ) : null}
           </span>
         </div>
         {item.next_action ? (
-          <p className={`mt-1 truncate text-xs ${item.next_action_due || (item.next_action_at && new Date(item.next_action_at).getTime() <= Date.now()) ? "font-semibold text-[var(--warn)]" : "text-[var(--faint)]"}`}>
+          <p className={`mt-1 truncate text-xs ${item.next_action_due || (item.next_action_at && new Date(item.next_action_at).getTime() <= Date.now()) ? "font-semibold text-[var(--warning-text)]" : "text-[var(--text-muted)]"}`}>
             Próxima ação: {item.next_action}{item.next_action_at ? ` · ${new Date(item.next_action_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}
           </p>
         ) : null}
@@ -303,7 +310,8 @@ function MessageItem({
   onReply,
   onReact,
   onEdit,
-  onDelete
+  onDelete,
+  actionCapabilities
 }: {
   conversationId: string;
   message: Message;
@@ -313,6 +321,7 @@ function MessageItem({
   onReact: (messageId: string, emoji: string) => void;
   onEdit: (messageId: string, text: string) => Promise<void>;
   onDelete: (messageId: string, forEveryone: boolean) => void;
+  actionCapabilities?: Pick<ConversationCapabilities, "reactions" | "edit" | "delete">;
 }) {
   const isContact = message.sender === "contact";
   const isSticker = Boolean(message.media_is_sticker);
@@ -348,11 +357,14 @@ function MessageItem({
           onReact={(emoji) => onReact(message.id, emoji)}
           onEdit={isOwn && !message.media_type ? () => setEditing(true) : undefined}
           onDelete={(forEveryone) => onDelete(message.id, forEveryone)}
+          allowReactions={actionCapabilities?.reactions}
+          allowEdit={actionCapabilities?.edit}
+          allowDelete={actionCapabilities?.delete}
         />
       ) : null}
       <div className="conversation-message__content conversation-message-content-width flex min-w-0 flex-col">
-        <span className={`conversation-message__meta mb-1 flex min-w-0 items-center gap-1.5 text-xs text-[var(--text-7)] ${isContact ? "self-start" : "self-end"}`}>
-          <strong className="truncate font-semibold text-[var(--text-5)]">{author}</strong>
+        <span className={`conversation-message__meta mb-1 flex min-w-0 items-center gap-1.5 text-xs text-[var(--text-muted)] ${isContact ? "self-start" : "self-end"}`}>
+          <strong className="truncate font-semibold text-[var(--text-secondary)]">{author}</strong>
           {message.sender === "agent" ? <span className="conversation-message__badge">IA</span> : null}
           <time className="mono shrink-0">{formatClock(message.created_at, timezone)}</time>
           {message.ai_model_used ? <span className="truncate">· {message.ai_model_used}</span> : null}
@@ -367,12 +379,12 @@ function MessageItem({
               : isContact
                 ? "border border-[var(--border)] bg-[var(--surface)]"
                 : isOwn
-                  ? "border border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-fg)]"
-                  : "border border-[var(--primary-tint-border)] bg-[var(--primary-tint-bg)]"
+                  ? "border border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
+                  : "border border-[var(--primary-border)] bg-[var(--primary-subtle)]"
           ].join(" ")}
         >
           {isDeleted ? (
-            <p className="whitespace-pre-wrap text-sm italic leading-snug text-[var(--faint)]">
+            <p className="whitespace-pre-wrap text-sm italic leading-snug text-[var(--text-muted)]">
               {message.deleted_for_everyone_at ? "Você apagou esta mensagem para todos" : "Mensagem apagada"}
             </p>
           ) : (
@@ -418,6 +430,9 @@ function MessageItem({
           onCopy={() => { void navigator.clipboard?.writeText(message.content); }}
           onReact={(emoji) => onReact(message.id, emoji)}
           onDelete={(forEveryone) => onDelete(message.id, forEveryone)}
+          allowReactions={actionCapabilities?.reactions}
+          allowEdit={actionCapabilities?.edit}
+          allowDelete={actionCapabilities?.delete}
         />
       ) : null}
     </div>
@@ -427,7 +442,7 @@ function MessageItem({
 function MessageDateSeparator({ label }: { label: string }) {
   return (
     <div className="my-1 flex justify-center" role="separator" aria-label={label}>
-      <time className="conversation-system-marker mono px-3 py-1 text-xs font-medium leading-none text-[var(--text-8)]">
+      <time className="conversation-system-marker mono px-3 py-1 text-xs font-medium leading-none text-[var(--text-muted)]">
         {label}
       </time>
     </div>
@@ -567,6 +582,11 @@ export default function Conversations() {
     threadPath,
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 3_000 }
+  );
+  const { data: channelCapabilities, error: channelCapabilitiesError } = useSWR<ConversationCapabilities>(
+    selected ? `/conversations/${selected}/channel-capabilities` : null,
+    fetcher,
+    { refreshInterval: 30_000, revalidateOnFocus: true, dedupingInterval: 3_000 }
   );
   const { data: assigneeData } = useSWR<{ assignees: Assignee[] }>(
     canReply && session ? "/conversations/assignees" : null,
@@ -1324,7 +1344,7 @@ export default function Conversations() {
   return (
     <Shell flush activeConversationId={selected} onOpenConversation={setSelected}>
       <div className="conversation-screen flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-        <header className="conversation-screen__header flex shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] px-4">
+        <header className="conversation-screen__header flex shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--surface-sunken)] px-4">
           <h1>{hasWorkspaceScope ? "Conversas" : "Minhas conversas"}</h1>
           <span className="conversation-screen__summary mono">{items.length} na fila</span>
 
@@ -1340,22 +1360,22 @@ export default function Conversations() {
               <div>
                 <div className="flex items-center gap-2.5">
                   <h1 className="text-lg font-semibold tracking-tight text-[var(--text)]">{hasWorkspaceScope ? "Conversas" : "Minhas conversas"}</h1>
-                  <span className="mono rounded border border-[var(--border-ai)] bg-[var(--accent-bg)] px-1.5 py-0.5 text-xs text-[var(--accent)]">CV—01</span>
+                  <span className="mono rounded border border-[var(--primary-border)] bg-[var(--primary-subtle)] px-1.5 py-0.5 text-xs text-[var(--primary)]">CV—01</span>
                 </div>
-                <p className="conversation-list__description mt-0.5 text-xs text-[var(--muted)]">
+                <p className="conversation-list__description mt-0.5 text-xs text-[var(--text-secondary)]">
                   {hasWorkspaceScope
                     ? "Fila, histórico e envio manual pelo WhatsApp conectado."
                     : "Atendimentos atribuídos a você, com histórico e envio pelo WhatsApp."}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <span className="mono rounded-full border border-[var(--border)] bg-transparent px-2 py-0.5 text-xs text-[var(--faint)]">
+                <span className="mono rounded-full border border-[var(--border)] bg-transparent px-2 py-0.5 text-xs text-[var(--text-muted)]">
                   {items.length}
                 </span>
               </div>
             </div>
             <label className="conversation-list__search search-field mb-2.5">
-              <MagnifyingGlass className="shrink-0 text-[var(--faint)]" size={16} aria-hidden="true" />
+              <MagnifyingGlass className="shrink-0 text-[var(--text-muted)]" size={16} aria-hidden="true" />
               <span className="sr-only">Buscar conversa</span>
               <input
                 className="input min-w-0"
@@ -1419,12 +1439,12 @@ export default function Conversations() {
                     onClick={() => setFilter(key as string)}
                     aria-pressed={filter === key}
                     className={`flex min-w-0 items-center justify-center gap-1 truncate rounded-md px-1.5 py-1.5 text-xs font-medium transition ${
-                      filter === key ? "border border-[var(--border-ai)] bg-[var(--accent-bg)] text-[var(--accent-soft)]" : "border border-transparent text-[var(--muted)] hover:text-[var(--body)]"
+                      filter === key ? "border border-[var(--primary-border)] bg-[var(--primary-subtle)] text-[var(--primary-text)]" : "border border-transparent text-[var(--text-secondary)] hover:text-[var(--text-secondary)]"
                     }`}
                   >
                     <span className="truncate">{label}</span>
                     {Number(count) > 0 ? (
-                      <span className="mono flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] px-1 text-xs font-semibold text-[var(--primary-fg)]">
+                      <span className="mono flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] px-1 text-xs font-semibold text-[var(--primary-foreground)]">
                         {Number(count) > 99 ? "99+" : count}
                       </span>
                     ) : null}
@@ -1432,7 +1452,7 @@ export default function Conversations() {
                 ))}
               </div>
             ) : (
-              <div className="rounded-md border border-[var(--border-ai)] px-3 py-1.5 text-xs font-medium text-[var(--accent-soft)]">
+              <div className="rounded-md border border-[var(--primary-border)] px-3 py-1.5 text-xs font-medium text-[var(--primary-text)]">
                 Minhas conversas abertas
               </div>
             )}
@@ -1444,9 +1464,9 @@ export default function Conversations() {
             tabIndex={0}
             aria-label="Lista de conversas"
           >
-            {assignmentNotice ? <div className="mb-2.5 rounded-md border border-[var(--border-ai)] p-2.5 text-xs leading-relaxed text-[var(--accent-soft)]" role="status">{assignmentNotice}</div> : null}
+            {assignmentNotice ? <div className="mb-2.5 rounded-md border border-[var(--primary-border)] p-2.5 text-xs leading-relaxed text-[var(--primary-text)]" role="status">{assignmentNotice}</div> : null}
             {listError ? (
-              <div className="mb-2.5 flex items-center justify-between gap-2 rounded-md border border-[var(--warn-border)] bg-transparent p-2.5 text-sm text-[var(--warn)]" role="alert">
+              <div className="mb-2.5 flex items-center justify-between gap-2 rounded-md border border-[var(--warning-border)] bg-transparent p-2.5 text-sm text-[var(--warning-text)]" role="alert">
                 <span>Não foi possível carregar as conversas.</span>
                 <button type="button" className="btn warn shrink-0 px-2 py-1 text-xs" onClick={() => void mutateList()}>Tentar novamente</button>
               </div>
@@ -1476,7 +1496,7 @@ export default function Conversations() {
             </div>
           ) : threadError ? (
             <div className="flex h-full items-center justify-center p-6">
-              <div className="max-w-md rounded-lg border border-[var(--warn-border)] bg-transparent p-5 text-[var(--warn)]" role="alert">
+              <div className="max-w-md rounded-lg border border-[var(--warning-border)] bg-transparent p-5 text-[var(--warning-text)]" role="alert">
                 <strong className="block text-sm">Falha ao carregar a conversa</strong>
                 <p className="mt-2 text-sm leading-relaxed">{threadError.message}</p>
                 <button type="button" className="btn warn mt-3" onClick={() => void mutateThread()}>Tentar novamente</button>
@@ -1513,7 +1533,7 @@ export default function Conversations() {
                   title="Dados do contato"
                 >
                   <ContactAvatar
-                    name={thread.conversation.contact_name ?? thread.conversation.contact_phone}
+                    name={thread.conversation.channel === "instagram" ? instagramDisplayName(thread.conversation.contact_name, thread.conversation.instagram_username, thread.conversation.contact_identifier, thread.conversation.contact_phone) : thread.conversation.contact_name ?? thread.conversation.contact_phone ?? "Contato sem identificação"}
                     src={thread.conversation.avatar_url}
                     className="h-7 w-7 text-xs"
                   />
@@ -1525,17 +1545,17 @@ export default function Conversations() {
                     onClick={(event) => openContactPanel(event.currentTarget)}
                     title="Abrir dados do contato"
                   >
-                    {thread.conversation.contact_name ?? thread.conversation.contact_phone}
+                    {thread.conversation.channel === "instagram" ? instagramDisplayName(thread.conversation.contact_name, thread.conversation.instagram_username, thread.conversation.contact_identifier, thread.conversation.contact_phone) : thread.conversation.contact_name ?? thread.conversation.contact_phone ?? "Contato sem identificação"}
                   </button>
-                  <div className="conversation-thread__meta mt-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs text-[var(--text-6)]">
+                  <div className="conversation-thread__meta mt-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs text-[var(--text-muted)]">
                     <ChannelBadge channel={thread.conversation.channel === "instagram" ? "instagram" : "whatsapp"} size={13} />
-                    {threadConnectionLabel ? <><span className="shrink-0 text-[var(--text-9)]">·</span><span className="shrink-0">Número: {threadConnectionLabel}</span></> : null}
-                    <span className="shrink-0 text-[var(--text-9)]">·</span>
-                    <span className="mono" dir="ltr">{thread.conversation.contact_phone}</span>
-                    <span className={`inline-flex items-center gap-1.5 ${contactIsOnline(thread.conversation) ? "text-[var(--accent-soft)]" : "text-[var(--faint)]"}`}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${contactIsOnline(thread.conversation) ? "animate-pulse bg-[var(--accent)]" : "bg-[var(--faint)]"}`} aria-hidden="true" />
+                    {thread.conversation.channel !== "instagram" && threadConnectionLabel ? <><span className="shrink-0 text-[var(--text-muted)]">·</span><span className="shrink-0">Número: {threadConnectionLabel}</span></> : null}
+                    <span className="shrink-0 text-[var(--text-muted)]">·</span>
+                    <span className="mono" dir="ltr">{thread.conversation.channel === "instagram" ? instagramDisplayIdentity(thread.conversation.instagram_username, thread.conversation.contact_identifier) : thread.conversation.contact_phone ?? "telefone indisponível"}</span>
+                    {thread.conversation.channel !== "instagram" ? <span className={`inline-flex items-center gap-1.5 ${contactIsOnline(thread.conversation) ? "text-[var(--primary-text)]" : "text-[var(--text-muted)]"}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${contactIsOnline(thread.conversation) ? "animate-pulse bg-[var(--primary)]" : "bg-[var(--text-muted)]"}`} aria-hidden="true" />
                       {contactPresenceLabel(thread.conversation)}
-                    </span>
+                    </span> : null}
                     <ConversationBadge item={thread.conversation} />
                     {leadsEnabled ? <LeadTagChips tags={thread.conversation.tags} compact /> : null}
                     <span>{thread.conversation.assigned_user_email ? `Responsável: ${thread.conversation.assigned_user_email}` : "Sem responsável"}</span>
@@ -1548,7 +1568,7 @@ export default function Conversations() {
                       <ConversationStatusPicker
                         leadId={thread.conversation.lead_id}
                         leadName={thread.conversation.contact_name}
-                        leadPhone={thread.conversation.contact_phone}
+                        leadPhone={thread.conversation.contact_phone ?? ""}
                         leadStatus={thread.conversation.lead_status ?? thread.conversation.pipeline_stage.technical_status}
                         leadUpdatedAt={thread.conversation.lead_updated_at}
                         pipelineStage={thread.conversation.pipeline_stage}
@@ -1558,7 +1578,7 @@ export default function Conversations() {
                     ) : null
                   ) : null}
                   {canReply ? thread.conversation.status === "closed"
-                    ? <span className="text-xs text-[var(--muted)]" aria-label="Fila atual">Fila: {thread.conversation.queue_name ?? "Sem fila"}</span>
+                    ? <span className="text-xs text-[var(--text-secondary)]" aria-label="Fila atual">Fila: {thread.conversation.queue_name ?? "Sem fila"}</span>
                     : <label className="field"><span className="sr-only">Fila do atendimento</span><select className="input py-1.5 text-xs" aria-label="Fila do atendimento" value={thread.conversation.queue_id ?? ""} onChange={(event) => { if (event.target.value) void moveConversationToQueue(event.target.value); }}><option value="">Sem fila</option>{(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></label>
                     : null}
                   {canReply && thread.conversation.status === "open" ? <button className="btn primary shrink-0 active:scale-95" onClick={resolveConversation} disabled={changingOwner || followUpPending}>
@@ -1624,7 +1644,7 @@ export default function Conversations() {
                                 {changingOwner ? "Assumindo…" : "Assumir conversa"}
                               </button>
                             ) : null}
-                            {canReply ? (
+                            {canReply && activeConversation.channel !== "instagram" ? (
                               <label className="field px-3 py-2">
                                 <span className="label">Assinatura do atendente</span>
                                 <select
@@ -1670,13 +1690,13 @@ export default function Conversations() {
                 </div>
               </header>
 
-              {evaluationNotice ? <div className="shrink-0 border-b border-[var(--border-ai)] px-4 py-2 text-xs text-[var(--accent-soft)]" role="status">{evaluationNotice}</div> : null}
-              {aiActionNotice ? <div className="shrink-0 border-b border-[var(--border-ai)] px-4 py-2 text-xs text-[var(--accent-soft)]" role="status">{aiActionNotice}</div> : null}
+              {evaluationNotice ? <div className="shrink-0 border-b border-[var(--primary-border)] px-4 py-2 text-xs text-[var(--primary-text)]" role="status">{evaluationNotice}</div> : null}
+              {aiActionNotice ? <div className="shrink-0 border-b border-[var(--primary-border)] px-4 py-2 text-xs text-[var(--primary-text)]" role="status">{aiActionNotice}</div> : null}
 
               {thread.conversation.status === "open" && !thread.conversation.ai_active ? (
-                <div className="conversation-thread__pause flex shrink-0 items-center gap-2 border-b border-[var(--warn-border)] bg-transparent px-4 py-1.5 text-[var(--warn)]">
+                <div className="conversation-thread__pause flex shrink-0 items-center gap-2 border-b border-[var(--warning-border)] bg-transparent px-4 py-1.5 text-[var(--warning-text)]">
                   <Pause size={13} className="shrink-0" />
-                  <p className="truncate text-xs leading-tight text-[var(--warn-muted)]">
+                  <p className="truncate text-xs leading-tight text-[var(--warning-text)]">
                     {thread.conversation.handoff_reason === "manually_paused"
                       ? "IA pausada manualmente para este contato — responda pelo painel ou celular."
                       : "Transferida para atendimento humano — responda pelo painel ou celular."}
@@ -1690,9 +1710,9 @@ export default function Conversations() {
                   <div
                     ref={messagesRef}
                     onScroll={trackScroll}
-                    className="conversation-history h-full overflow-y-auto px-3.5 py-4 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--border-ai)] sm:px-5"
+                    className="conversation-history h-full overflow-y-auto px-3.5 py-4 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--primary-border)] sm:px-5"
                     role="region"
-                    aria-label={`Histórico da conversa com ${thread.conversation.contact_name ?? thread.conversation.contact_phone}`}
+                    aria-label={`Histórico da conversa com ${thread.conversation.contact_name ?? thread.conversation.instagram_username ?? thread.conversation.contact_identifier ?? thread.conversation.contact_phone ?? "Contato sem identificação"}`}
                     tabIndex={0}
                   >
                     {hasMoreBefore ? (
@@ -1732,6 +1752,13 @@ export default function Conversations() {
                                 onReact={reactToMessage}
                                 onEdit={editMessage}
                                 onDelete={deleteMessage}
+                                actionCapabilities={thread.conversation?.channel === "instagram"
+                                  ? {
+                                      reactions: channelCapabilities?.reactions === true,
+                                      edit: channelCapabilities?.edit === true,
+                                      delete: channelCapabilities?.delete === true
+                                    }
+                                  : undefined}
                               />
                             </Fragment>
                           );
@@ -1745,7 +1772,7 @@ export default function Conversations() {
                     <button
                       type="button"
                       onClick={() => scrollToBottom()}
-                      className="btn absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full border-[var(--strong)] bg-[var(--app)] p-2 text-[var(--text)]"
+                      className="btn absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full border-[var(--border-strong)] bg-[var(--bg)] p-2 text-[var(--text)]"
                       aria-label="Ir para a mensagem mais recente"
                     >
                       <ArrowDown size={16} />
@@ -1757,12 +1784,15 @@ export default function Conversations() {
                   <ConversationComposer
                     key={selected}
                     conversationId={selected}
+                    channel={thread.conversation.channel === "instagram" ? "instagram" : "whatsapp"}
                     replyTo={replyTarget}
                     onCancelReply={() => setReplyTarget(null)}
                     onError={setError}
+                    capabilities={channelCapabilities}
+                    capabilitiesError={channelCapabilitiesError}
                     onSent={async () => { setReplyTarget(null); await Promise.all([mutateList(), mutateThread()]); }}
                   />
-                ) : <p className="shrink-0 border-t border-[var(--border)] p-4 text-center text-xs text-[var(--muted)]">{thread.conversation.status === "closed" ? "Conversa resolvida. Reabra para continuar o atendimento." : thread.conversation.ai_active ? "A IA está ativa nesta conversa. Pause a IA antes de responder manualmente." : "Seu acesso permite consultar esta conversa, sem enviar mensagens."}</p>}
+                ) : <p className="shrink-0 border-t border-[var(--border)] p-4 text-center text-xs text-[var(--text-secondary)]">{thread.conversation.status === "closed" ? "Conversa resolvida. Reabra para continuar o atendimento." : thread.conversation.ai_active ? "A IA está ativa nesta conversa. Pause a IA antes de responder manualmente." : "Seu acesso permite consultar esta conversa, sem enviar mensagens."}</p>}
               </div>
             </>
           )}
@@ -1789,9 +1819,9 @@ export default function Conversations() {
       </div>
 
       {error ? (
-        <div className="error fixed inset-x-4 bottom-20 flex items-start justify-between gap-3 rounded-lg border border-[var(--warn-border)] bg-[var(--app)] p-3 sm:bottom-4 sm:left-auto sm:max-w-sm" role="alert">
+        <div className="error fixed inset-x-4 bottom-20 flex items-start justify-between gap-3 rounded-lg border border-[var(--warning-border)] bg-[var(--bg)] p-3 sm:bottom-4 sm:left-auto sm:max-w-sm" role="alert">
           <span>{error}</span>
-          <button type="button" className="shrink-0 rounded p-1 text-[var(--warn)]" onClick={() => setError("")} aria-label="Fechar aviso"><X size={15} aria-hidden="true" /></button>
+          <button type="button" className="shrink-0 rounded p-1 text-[var(--warning-text)]" onClick={() => setError("")} aria-label="Fechar aviso"><X size={15} aria-hidden="true" /></button>
         </div>
       ) : null}
 
@@ -1799,7 +1829,7 @@ export default function Conversations() {
         <ConversationScheduler
           conversationId={thread.conversation.id}
           contactName={thread.conversation.contact_name}
-          contactPhone={thread.conversation.contact_phone}
+          contactPhone={thread.conversation.contact_phone ?? ""}
           onClose={() => setSchedulerOpen(false)}
         />
       ) : null}
@@ -1807,7 +1837,7 @@ export default function Conversations() {
       {pendingConfirm ? (
         <ModalDialog labelledBy="confirm-action-title" onClose={() => setPendingConfirm(null)}>
           <h2 id="confirm-action-title" className="text-base">Confirmar ação</h2>
-          <p className="text-sm text-[var(--muted)]">{pendingConfirm.message}</p>
+          <p className="text-sm text-[var(--text-secondary)]">{pendingConfirm.message}</p>
           <div className="flex justify-end gap-2">
             <button type="button" className="btn" onClick={() => setPendingConfirm(null)}>Cancelar</button>
             <button

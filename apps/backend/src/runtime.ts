@@ -9,19 +9,29 @@ import { enqueueHandoffNotification } from "./queue/handoff-notification-queue.j
 import { AiFollowUpProcessor, AiFollowUpRepository } from "./modules/messages/ai-follow-up.js";
 import { aiTurnProgressStore } from "./modules/realtime/ai-turn-progress.js";
 import { MeetingConfirmationRepository } from "./modules/scheduling/meeting-confirmation.js";
+import { createInstagramRuntime } from "./modules/instagram/index.js";
+import type { InstagramRuntime } from "./modules/instagram/types.js";
+import { ChannelGatewayRouter } from "./modules/messages/channel-gateway.js";
+import type { MessageGateway } from "./modules/messages/types.js";
 
 export function createWhatsAppRuntime(): {
   manager: WhatsAppSessionManager;
   processor: MessageProcessor;
   followUpProcessor: AiFollowUpProcessor;
   followUpRepository: AiFollowUpRepository;
+  messageRepository: MessageRepository;
+  instagramRuntime: InstagramRuntime;
+  gateway: MessageGateway;
 } {
   const manager = new WhatsAppSessionManager(db, config, logger);
+  const instagramRuntime = createInstagramRuntime({ database: db, runtimeConfig: config });
+  const gateway = new ChannelGatewayRouter(db, manager, instagramRuntime, config);
   const ai = new OpenRouterClient(config);
   const meetingConfirmations = new MeetingConfirmationRepository(db);
+  const messageRepository = new MessageRepository(db, config);
   const processor = new MessageProcessor(
-    new MessageRepository(db, config),
-    manager,
+    messageRepository,
+    gateway,
     ai,
     async (notification) => {
       await enqueueHandoffNotification(notification.id);
@@ -35,6 +45,14 @@ export function createWhatsAppRuntime(): {
       meetingConfirmations.registerContactConfirmation(tenantId, appointmentId, response)
   );
   const followUpRepository = new AiFollowUpRepository(db, config);
-  const followUpProcessor = new AiFollowUpProcessor(followUpRepository, manager, ai);
-  return { manager, processor, followUpProcessor, followUpRepository };
+  const followUpProcessor = new AiFollowUpProcessor(followUpRepository, gateway, ai);
+  return {
+    manager,
+    processor,
+    followUpProcessor,
+    followUpRepository,
+    messageRepository,
+    instagramRuntime,
+    gateway
+  };
 }

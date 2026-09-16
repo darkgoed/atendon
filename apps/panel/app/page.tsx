@@ -7,14 +7,13 @@ import useSWR from "swr";
 import { ContactAvatar } from "@/components/contact-avatar";
 import { Empty, LoadingCards } from "@/components/page-state";
 import { Shell } from "@/components/shell";
-import { PageHeader } from "@/components/ui";
+import { Button, Dot, PageHeader, Panel, PanelBody, PanelFooter, PanelHeader, Section } from "@/components/ui";
 import { CommercialDashboard, type CommercialDashboardData } from "@/components/commercial-dashboard";
 import { DashboardWidgets } from "@/components/dashboard-widgets";
 import { api } from "@/lib/api";
 import { useCapabilities } from "@/lib/capabilities";
 import { panelFeatureEnabled, type PanelFeatureFlagsResponse } from "@/lib/feature-flags";
 import { handoffReasonLabel } from "@/lib/labels";
-import styles from "@/components/metrics-dashboard.module.css";
 import { useRealtimeSignals } from "@/lib/realtime";
 import {
   canAccessRootWorkspace,
@@ -105,6 +104,8 @@ export default function Overview() {
   if (!featureFlags && !featureFlagsError) return <Shell><LoadingCards /></Shell>;
   if (widgetsEnabled) return <DashboardWidgets />;
 
+  const connected = data?.connection.status === "connected";
+
   return (
     <Shell>
       <PageHeader title={hasWorkspaceScope ? "Visão geral" : "Minha operação"} description={hasWorkspaceScope ? "O pulso do atendimento hoje." : "Seus atendimentos, leads e reuniões em um só lugar."} />
@@ -121,83 +122,104 @@ export default function Overview() {
           }}
           onCustomEndChange={setCustomEnd}
         /> : null}
-        <div className={styles.realtimeBand}>
-          <span className="label">ATENDIMENTO EM TEMPO REAL</span>
-        </div>
-        <section className="grid4">
-          <div className="card">
-            <span className="label">Conexão WhatsApp</span>
-            <div className={`mt-2.5 flex items-center gap-2 text-lg font-semibold leading-tight ${data.connection.status === "connected" ? "accent" : "warning"}`}>
-              <i className={`dot ${data.connection.status !== "connected" ? "warn" : ""}`} aria-hidden="true" />
-              {data.connection.status === "connected" ? "Conectado" : "Desconectado"}
-            </div>
-            <p className="sub mono">status: {data.connection.status}</p>
-          </div>
-          <div className="card warn">
-            <span className="label">Aguardando humano</span>
-            <div className="metric warning">{data.counts.handoff}</div>
-            <p className="sub">
-              {hasWorkspaceScope
-                ? `${data.counts.handoff_unassigned} sem responsável · ${data.counts.handoff_over_sla} acima de 15 min`
-                : `${data.counts.handoff_over_sla} dos seus atendimentos acima de 15 min`}
-            </p>
-          </div>
-          <div className="card">
-            <span className="label">Conversas abertas</span>
-            <div className="metric">{data.counts.open}</div>
-            <p className="sub">{data.counts.ai_open} com IA · {data.counts.resolved_today} resolvidas hoje</p>
-          </div>
-          <div className="card">
-            <span className="label">Mensagens hoje</span>
-            <div className="metric">{data.counts.messagesToday}</div>
-            <p className="sub">contato, IA e humano</p>
-          </div>
-        </section>
+
+        {/* Indicadores de tempo real: UMA superfície com divisores, não quatro
+            cards. Quatro caixas emolduradas lado a lado para quatro números é
+            exatamente a densidade errada — os números competem com a moldura. */}
+        <Section title="Atendimento em tempo real" className="overview-realtime">
+          <Panel>
+            <dl className="overview-metrics">
+              <div className="overview-metrics__item">
+                <dt className="type-overline">Conexão WhatsApp</dt>
+                <dd className="overview-metrics__status">
+                  <Dot tone={connected ? "success" : "warning"} />
+                  <span className={connected ? "success-text" : "warning"}>{connected ? "Conectado" : "Desconectado"}</span>
+                </dd>
+                <p className="type-meta mono">status: {data.connection.status}</p>
+              </div>
+              <div className="overview-metrics__item">
+                <dt className="type-overline">Aguardando humano</dt>
+                <dd className="metric warning">{data.counts.handoff}</dd>
+                <p className="type-meta">
+                  {hasWorkspaceScope
+                    ? `${data.counts.handoff_unassigned} sem responsável · ${data.counts.handoff_over_sla} acima de 15 min`
+                    : `${data.counts.handoff_over_sla} dos seus atendimentos acima de 15 min`}
+                </p>
+              </div>
+              <div className="overview-metrics__item">
+                <dt className="type-overline">Conversas abertas</dt>
+                <dd className="metric">{data.counts.open}</dd>
+                <p className="type-meta">{data.counts.ai_open} com IA · {data.counts.resolved_today} resolvidas hoje</p>
+              </div>
+              <div className="overview-metrics__item">
+                <dt className="type-overline">Mensagens hoje</dt>
+                <dd className="metric">{data.counts.messagesToday}</dd>
+                <p className="type-meta">contato, IA e humano</p>
+              </div>
+            </dl>
+          </Panel>
+        </Section>
 
         <section className="grid-main">
-          <div className="card">
-            <div className="cardtitle">
-              <span>{hasWorkspaceScope ? "Aguardando atendimento humano" : "Meus atendimentos aguardando ação"}</span>
-              <Link href={`/conversas?filtro=${hasWorkspaceScope ? "human" : "mine"}`} className="accent inline-flex items-center gap-1 text-xs">Ver conversas <ArrowRight size={13} aria-hidden="true" /></Link>
-            </div>
+          {/* Fila de handoff: uma LISTA de linhas divididas. Antes cada item era
+              um bloco com borda e fundo âmbar dentro de um card — caixa dentro
+              de caixa, e o alerta gritava mais que o conteúdo. */}
+          <Panel>
+            <PanelHeader>
+              <h2 className="type-section-title">{hasWorkspaceScope ? "Aguardando atendimento humano" : "Meus atendimentos aguardando ação"}</h2>
+              <Link href={`/conversas?filtro=${hasWorkspaceScope ? "human" : "mine"}`} className="overview-link">
+                Ver conversas <ArrowRight size={13} aria-hidden="true" />
+              </Link>
+            </PanelHeader>
             {data.handoffs.length === 0 ? <Empty>Nenhuma conversa aguardando humano.</Empty> : (
-              <div className="grid gap-2">
+              <ul className="overview-queue">
                 {data.handoffs.map((item) => (
-                  <div key={item.id} className={styles.handoffItem}>
+                  <li key={item.id} className="overview-queue__item">
                     <ContactAvatar
                       name={item.contact_name ?? item.contact_phone}
                       src={item.avatar_url}
-                      className={`${styles.handoffAvatar} text-xs text-[var(--warn)]`}
+                      className="overview-queue__avatar"
                     />
-                    <div className={styles.handoffMeta}>
-                      <strong className="block truncate text-sm">{item.contact_name ?? item.contact_phone}</strong>
-                      <span className="text-xs text-[var(--warn-muted)]">
+                    <div className="overview-queue__meta">
+                      <strong className="truncate">{item.contact_name ?? item.contact_phone}</strong>
+                      <span className="type-meta">
                         {handoffReasonLabel(item.handoff_reason)} · {waitingLabel(Number(item.waiting_minutes))}
                         {item.assigned_user_email ? ` · ${item.assigned_user_email}` : " · sem responsável"}
                       </span>
                     </div>
-                    <Link className="btn warn" href={`/conversas?id=${item.id}`}>Abrir</Link>
-                  </div>
+                    <Button asChild size="sm"><Link href={`/conversas?id=${item.id}`}>Abrir</Link></Button>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
-            <p className={`sub ${styles.handoffNote}`}>
-              Mais antiga: {waitingLabel(Number(data.counts.oldest_handoff_minutes))}.
-              {hasWorkspaceScope
-                ? " O atendente responsável também é avisado no WhatsApp da empresa."
-                : " Esta fila mostra somente conversas atribuídas a você."}
-            </p>
-          </div>
-          <div className="card flex flex-col">
-            <div className="cardtitle">Agente</div>
-            {data.agent ? <>
-              <dl className="grid gap-4">
-                <div><dt className="label">Status</dt><dd className={`mt-1 ${data.agent.is_active ? "accent" : "warning"}`}>{data.agent.is_active ? "Ativo" : "Pausado"}</dd></div>
-                <div><dt className="label">Modelo</dt><dd className="mono mt-1 text-xs">{data.agent.ai_model ?? "Não configurado"}</dd></div>
-              </dl>
-              {canReadAgent ? <Link href="/agente" className="btn mt-auto text-center">Abrir agente</Link> : null}
-            </> : <p className="sub">Seu perfil não possui acesso às configurações do agente.</p>}
-          </div>
+            <PanelFooter className="overview-queue__note">
+              <p className="type-meta">
+                Mais antiga: {waitingLabel(Number(data.counts.oldest_handoff_minutes))}.
+                {hasWorkspaceScope
+                  ? " O atendente responsável também é avisado no WhatsApp da empresa."
+                  : " Esta fila mostra somente conversas atribuídas a você."}
+              </p>
+            </PanelFooter>
+          </Panel>
+
+          <Panel>
+            <PanelHeader><h2 className="type-section-title">Agente</h2></PanelHeader>
+            <PanelBody>
+              {data.agent ? <div className="stack stack--tight">
+                <dl className="overview-agent">
+                  <div>
+                    <dt className="type-overline">Status</dt>
+                    <dd className={data.agent.is_active ? "success-text" : "warning"}>{data.agent.is_active ? "Ativo" : "Pausado"}</dd>
+                  </div>
+                  <div>
+                    <dt className="type-overline">Modelo</dt>
+                    <dd className="mono type-meta">{data.agent.ai_model ?? "Não configurado"}</dd>
+                  </div>
+                </dl>
+                {canReadAgent ? <Button asChild size="sm"><Link href="/agente">Abrir agente</Link></Button> : null}
+              </div> : <p className="sub">Seu perfil não possui acesso às configurações do agente.</p>}
+            </PanelBody>
+          </Panel>
         </section>
       </>}
     </Shell>

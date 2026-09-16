@@ -70,6 +70,22 @@ test("Compose define o stack completo, redes internas e volumes legados estávei
   assert.equal(config.services["atendon-api"].environment.EVOLUTION_API_URL, "http://evolution-api:8080");
   assert.equal(config.services["atendon-api"].environment.MEET_JWT_SECRET, undefined);
   assert.equal(config.services["atendon-worker"].environment.MEET_JWT_SECRET, undefined);
+  for (const name of [
+    "INSTAGRAM_APP_ID",
+    "INSTAGRAM_APP_SECRET",
+    "INSTAGRAM_WEBHOOK_VERIFY_TOKEN",
+    "INSTAGRAM_REDIRECT_URI",
+    "INSTAGRAM_GRAPH_VERSION",
+    "INSTAGRAM_MAX_CONNECTIONS",
+    "INSTAGRAM_TIMEOUT_MS",
+    "INSTAGRAM_MEDIA_MAX_BYTES"
+  ]) {
+    assert.ok(Object.hasOwn(config.services["atendon-api"].environment, name), `${name} ausente da API`);
+    assert.ok(Object.hasOwn(config.services["atendon-worker"].environment, name), `${name} ausente do worker`);
+    assert.equal(config.services["atendon-api"].environment[name], config.services["atendon-worker"].environment[name]);
+  }
+  assert.equal(config.services["atendon-panel"].environment.INSTAGRAM_APP_SECRET, undefined);
+  assert.equal(config.services["atendon-panel"].build.args.INSTAGRAM_APP_SECRET, undefined);
   for (const privilegedName of ["POSTGRES_PASSWORD", "MIGRATION_DATABASE_URL", "ATENDON_MIGRATION_DB_PASSWORD"]) {
     assert.equal(config.services["atendon-api"].environment[privilegedName], undefined);
     assert.equal(config.services["atendon-worker"].environment[privilegedName], undefined);

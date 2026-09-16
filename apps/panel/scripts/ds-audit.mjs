@@ -151,7 +151,12 @@ const run = async () => {
       for (const route of routes) {
         const key = `${theme}|${vp.name}|${route}`;
         try {
-          await page.goto(base + route, { waitUntil: "networkidle", timeout: 30000 });
+          // `networkidle` NUNCA resolve em rotas que fazem polling (/403 e
+          // /offline revalidam /me em intervalo), e o timeout aparecia como
+          // "erro da página" quando o defeito era do instrumento. Esperamos o
+          // DOM e damos um tempo fixo para a hidratação pintar.
+          await page.goto(base + route, { waitUntil: "domcontentloaded", timeout: 30000 });
+          await page.waitForLoadState("load").catch(() => undefined);
           await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
           await page.waitForTimeout(500);
           const res = await page.evaluate(PROBE);

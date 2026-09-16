@@ -23,13 +23,13 @@ export function AgendaCreateDialog({ actions, timezone }: { actions: AgendaActio
         <div><span className="label">Novo agendamento</span><h2 id="agenda-create-title" className="mt-1">Agendar reunião</h2></div>
         <Button className="p-2" aria-label="Fechar" disabled={creating} onClick={closeCreate}><X size={16} aria-hidden="true" /></Button>
       </div>
-      <p id="agenda-create-description" className="text-sm text-[var(--muted)]">Escolha um lead existente ou cadastre um novo contato. Defina o início; a reunião terá 60 minutos.</p>
+      <p id="agenda-create-description" className="text-sm text-[var(--text-secondary)]">Escolha um lead existente ou cadastre um novo contato. Defina o início; a reunião terá 60 minutos.</p>
       {actionError ? <p className="error" role="alert">{actionError}</p> : null}
       <form className="grid gap-5" onSubmit={createAppointment}>
         {permissions.canCreateLeads ? (
           <div className="grid grid-cols-2 gap-1 rounded-lg border border-[var(--border)] p-1" role="group" aria-label="Origem do contato">
-            <button type="button" className={`rounded px-3 py-2 text-xs font-semibold active:scale-[.98] ${createMode === "existing" ? "bg-[var(--accent-bg)] text-[var(--accent-soft)]" : "text-[var(--muted)]"}`} aria-pressed={createMode === "existing"} onClick={() => setCreateMode("existing")}>Lead existente</button>
-            <button type="button" className={`rounded px-3 py-2 text-xs font-semibold active:scale-[.98] ${createMode === "new" ? "bg-[var(--accent-bg)] text-[var(--accent-soft)]" : "text-[var(--muted)]"}`} aria-pressed={createMode === "new"} onClick={() => { setCreateMode("new"); requestAnimationFrame(() => newContactNameRef.current?.focus()); }}>Novo contato</button>
+            <button type="button" className={`rounded px-3 py-2 text-xs font-semibold active:scale-[.98] ${createMode === "existing" ? "bg-[var(--primary-subtle)] text-[var(--primary-text)]" : "text-[var(--text-secondary)]"}`} aria-pressed={createMode === "existing"} onClick={() => setCreateMode("existing")}>Lead existente</button>
+            <button type="button" className={`rounded px-3 py-2 text-xs font-semibold active:scale-[.98] ${createMode === "new" ? "bg-[var(--primary-subtle)] text-[var(--primary-text)]" : "text-[var(--text-secondary)]"}`} aria-pressed={createMode === "new"} onClick={() => { setCreateMode("new"); requestAnimationFrame(() => newContactNameRef.current?.focus()); }}>Novo contato</button>
           </div>
         ) : null}
         {createMode === "existing" ? (
@@ -50,9 +50,9 @@ export function AgendaCreateDialog({ actions, timezone }: { actions: AgendaActio
           <small className="sub">Horário do workspace: {timezone}. Duração padrão de 60 minutos; o horário pode ser compartilhado por mais de um lead, mas conflitos permanecem bloqueados para o mesmo closer.</small>
         </div>
         <section className="grid gap-3 border-t border-[var(--border)] pt-5" aria-labelledby="agenda-create-assignee-title">
-          <div className="flex items-start gap-3"><UsersThree className="mt-0.5 text-[var(--accent-soft)]" size={19} aria-hidden="true" /><div><strong id="agenda-create-assignee-title" className="block text-sm">Closer responsável</strong><p className="sub mt-1 text-xs">A lista considera disponibilidade e conflitos no horário escolhido.</p></div></div>
+          <div className="flex items-start gap-3"><UsersThree className="mt-0.5 text-[var(--primary-text)]" size={19} aria-hidden="true" /><div><strong id="agenda-create-assignee-title" className="block text-sm">Closer responsável</strong><p className="sub mt-1 text-xs">A lista considera disponibilidade e conflitos no horário escolhido.</p></div></div>
           {createAssigneesLoading ? <div className="skeleton h-11" aria-label="Carregando closers" /> : createAssigneesError ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-[var(--warn)]" role="alert"><span>{messageFrom(createAssigneesError, "Não foi possível carregar os closers.")}</span><button type="button" className="btn warn" onClick={() => void retryCreateAssignees()}>Tentar novamente</button></div>
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-[var(--warning-text)]" role="alert"><span>{messageFrom(createAssigneesError, "Não foi possível carregar os closers.")}</span><button type="button" className="btn warn" onClick={() => void retryCreateAssignees()}>Tentar novamente</button></div>
           ) : createAssigneesData?.can_select_assignee ? (
             <label className="field">
               <span className="sr-only">Closer responsável pela reunião</span>
@@ -62,7 +62,7 @@ export function AgendaCreateDialog({ actions, timezone }: { actions: AgendaActio
               </Select>
               {createAssigneesData.assignees.length === 0 ? <small className="sub">Nenhum closer está configurado no pool de atendimento.</small> : null}
             </label>
-          ) : <p className="text-sm text-[var(--body)]">O responsável será definido automaticamente pelo rodízio.</p>}
+          ) : <p className="text-sm text-[var(--text-secondary)]">O responsável será definido automaticamente pelo rodízio.</p>}
         </section>
         <div className="flex justify-end gap-2 border-t border-[var(--border)] pt-4">
           <button type="button" className="btn" disabled={creating} onClick={closeCreate}>Cancelar</button>

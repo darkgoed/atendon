@@ -65,7 +65,11 @@ export async function registerWhatsAppConnectionRoutes(
         qr_code: connection.qrCode,
         last_connected_at: connection.lastConnectedAt,
         disconnected_reason: connection.disconnectedReason,
-        created_at: connection.createdAt
+        created_at: connection.createdAt,
+        instagram_account_id: connection.instagramAccountId,
+        instagram_username: connection.instagramUsername,
+        token_expires_at: connection.tokenExpiresAt,
+        reconnect_required: connection.reconnectRequired
       })),
       limits: { used: connections.filter((connection) => connection.channel === "whatsapp").length, max }
     };
@@ -75,9 +79,10 @@ export async function registerWhatsAppConnectionRoutes(
     const session = await requirePermission(request, "connection.manage");
     const body = createConnection.parse(request.body);
     if (body.channel === "instagram") {
-      return reply.status(501).send({
-        code: "CHANNEL_NOT_AVAILABLE",
-        message: "Canal Instagram ainda não disponível para conexão"
+      return reply.status(409).send({
+        code: "INSTAGRAM_OAUTH_REQUIRED",
+        message: "Conecte o Instagram pelo fluxo OAuth",
+        authorization_path: "/instagram/oauth/start"
       });
     }
     const created = await withTenantTransaction(db, session.tenantId, async (client) => {

@@ -5,3 +5,5 @@ export * from "./field";
 export * from "./layout";
 export * from "./status";
 export * from "./table";
+export * from "./dialog";
+export * from "./overlays";

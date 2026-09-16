@@ -193,7 +193,7 @@ export function buildOperationalPipelineStages(
   operational.push({
     id: `${CALL_STAGE_PREFIX}${source.id}`,
     name: "Ligação",
-    color: "var(--urgent)",
+    color: "var(--danger)",
     position: source.position + maxCount / 100,
     capacity_target: null,
     technical_status: "follow_up",

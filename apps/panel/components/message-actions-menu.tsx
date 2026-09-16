@@ -13,7 +13,11 @@ export function MessageActionsMenu({
   onCopy,
   onReact,
   onEdit,
-  onDelete
+  onDelete,
+  allowAdvanced = true,
+  allowReactions = allowAdvanced,
+  allowEdit = allowAdvanced,
+  allowDelete = allowAdvanced
 }: {
   isOwn: boolean;
   align: "start" | "end";
@@ -23,6 +27,10 @@ export function MessageActionsMenu({
   onReact: (emoji: string) => void;
   onEdit?: () => void;
   onDelete: (forEveryone: boolean) => void;
+  allowAdvanced?: boolean;
+  allowReactions?: boolean;
+  allowEdit?: boolean;
+  allowDelete?: boolean;
 }) {
   return (
     <PopoverMenu
@@ -35,7 +43,7 @@ export function MessageActionsMenu({
     >
       {(close) => (
         <>
-          <div className="message-actions-menu__reactions">
+          {allowReactions ? <div className="message-actions-menu__reactions">
             {QUICK_REACTIONS.map((emoji) => (
               <button
                 key={emoji}
@@ -47,19 +55,19 @@ export function MessageActionsMenu({
                 {emoji}
               </button>
             ))}
-          </div>
+          </div> : null}
           <button type="button" className="conversation-action-menu__item" onClick={() => { onReply(); close(); }}>
             <ArrowBendUpLeft size={15} aria-hidden="true" /> Responder
           </button>
           <button type="button" className="conversation-action-menu__item" onClick={() => { onCopy(); close(); }}>
             <Copy size={15} aria-hidden="true" /> Copiar
           </button>
-          {isOwn && onEdit ? (
+          {allowEdit && isOwn && onEdit ? (
             <button type="button" className="conversation-action-menu__item" onClick={() => { onEdit(); close(); }}>
               <PencilSimple size={15} aria-hidden="true" /> Editar
             </button>
           ) : null}
-          {isOwn ? (
+          {allowDelete && isOwn ? (
             <button
               type="button"
               className="conversation-action-menu__item conversation-action-menu__item--warn"
@@ -68,13 +76,13 @@ export function MessageActionsMenu({
               <Trash size={15} aria-hidden="true" /> Apagar para todos
             </button>
           ) : null}
-          <button
+          {allowDelete ? <button
             type="button"
             className="conversation-action-menu__item conversation-action-menu__item--warn"
             onClick={() => { if (window.confirm("Apagar esta mensagem?")) { onDelete(false); close(); } }}
           >
             <Trash size={15} aria-hidden="true" /> Apagar
-          </button>
+          </button> : null}
         </>
       )}
     </PopoverMenu>

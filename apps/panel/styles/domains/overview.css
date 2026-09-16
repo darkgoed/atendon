@@ -1,0 +1,92 @@
+/* ============================================================================
+   Domínio: visão geral (overview)
+   ----------------------------------------------------------------------------
+   Decisões de produto:
+   - Indicadores de tempo real vivem em UMA superfície dividida por 1px, não em
+     quatro cards emoldurados. Quatro molduras para quatro números é a densidade
+     errada: a borda pesa mais que o dado.
+   - A fila de handoff é uma LISTA de linhas, não uma pilha de blocos âmbar.
+     O estado de alerta aparece no número e no rótulo, não pintando o item todo.
+   - O painel do agente é contexto, não destaque: par rótulo/valor + uma ação.
+   ========================================================================= */
+
+.overview-realtime { margin-block: var(--space-5); }
+
+/* Régua de métricas: colunas divididas por 1px dentro do MESMO painel. */
+.overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-width: 0;
+}
+.overview-metrics__item {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-4) var(--pad-panel-lg);
+}
+.overview-metrics__item + .overview-metrics__item { border-left: 1px solid var(--border-subtle); }
+.overview-metrics__item > dd { margin: 0; min-width: 0; }
+.overview-metrics__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  font-size: var(--text-body-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+}
+
+/* Link "ver tudo" do cabeçalho de painel. */
+.overview-link {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--primary-text);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+}
+.overview-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+/* Fila de handoff. */
+.overview-queue { display: grid; min-width: 0; }
+.overview-queue__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: var(--row-height-lg);
+  padding: var(--space-2) var(--pad-panel-lg);
+  transition: background-color var(--duration-fast) var(--ease);
+}
+.overview-queue__item + .overview-queue__item { border-top: 1px solid var(--border-subtle); }
+.overview-queue__item:hover { background: var(--surface-hover); }
+.overview-queue__avatar { flex: none; font-size: var(--text-micro); }
+.overview-queue__meta { display: grid; min-width: 0; gap: 1px; }
+.overview-queue__meta strong { color: var(--text); font-size: var(--text-control); font-weight: var(--weight-semibold); }
+/* O rodapé de nota não é uma barra de ações: alinhe o texto à esquerda. */
+.overview-queue__note { justify-content: flex-start; background: transparent; }
+
+/* Painel do agente: pares rótulo/valor. */
+.overview-agent { display: grid; gap: var(--space-3); min-width: 0; }
+.overview-agent > div { display: grid; gap: var(--space-1); min-width: 0; }
+.overview-agent dd { margin: 0; color: var(--text); font-size: var(--text-control); }
+
+@media (max-width: 1180px) {
+  .overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Ao quebrar em duas colunas a divisória vertical precisa virar horizontal,
+     senão sobra uma borda solta no meio da segunda linha. */
+  .overview-metrics__item:nth-child(2n + 1) { border-left: 0; }
+  .overview-metrics__item:nth-child(n + 3) { border-top: 1px solid var(--border-subtle); }
+}
+
+@media (max-width: 700px) {
+  .overview-metrics { grid-template-columns: minmax(0, 1fr); }
+  .overview-metrics__item { border-left: 0; }
+  .overview-metrics__item + .overview-metrics__item { border-top: 1px solid var(--border-subtle); }
+  .overview-queue__item { grid-template-columns: auto minmax(0, 1fr); row-gap: var(--space-2); }
+  .overview-queue__item > .btn { grid-column: 1 / -1; }
+}

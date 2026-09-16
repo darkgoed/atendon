@@ -1,4 +1,5 @@
-export type MediaType = "audio" | "image" | "document";
+export type MediaType = "audio" | "image" | "document" | "video";
+export type MessageChannel = "whatsapp" | "instagram";
 export type MessageDeliveryStatus = "sent" | "delivered" | "read" | "failed";
 
 export interface ReadReceipt {
@@ -13,6 +14,9 @@ export interface InboundMessage {
   tenantId: string;
   sessionId: string;
   contactPhone: string;
+  channel?: MessageChannel;
+  instagramContactId?: string;
+  instagramUsername?: string;
   contactJid?: string;
   contactName?: string;
   text: string;
@@ -45,6 +49,9 @@ export interface HumanMessage {
   tenantId: string;
   sessionId: string;
   contactPhone: string;
+  channel?: MessageChannel;
+  instagramContactId?: string;
+  instagramUsername?: string;
   contactJid?: string;
   text: string;
   mediaType?: MediaType;

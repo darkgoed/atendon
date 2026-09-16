@@ -181,6 +181,14 @@ const schema = z.object({
   EVOLUTION_WEBHOOK_URL: z.string().url().default("http://host.docker.internal:3110"),
   EVOLUTION_WEBHOOK_SECRET: z.string().min(24).default(ephemeralSecret()),
   EVOLUTION_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  INSTAGRAM_APP_ID: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
+  INSTAGRAM_APP_SECRET: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
+  INSTAGRAM_WEBHOOK_VERIFY_TOKEN: z.preprocess((value) => value === "" ? undefined : value, z.string().min(16).optional()),
+  INSTAGRAM_REDIRECT_URI: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
+  INSTAGRAM_GRAPH_VERSION: z.string().regex(/^v[0-9]+\.[0-9]+$/).default("v26.0"),
+  INSTAGRAM_MAX_CONNECTIONS: z.coerce.number().int().positive().max(100).default(10),
+  INSTAGRAM_TIMEOUT_MS: z.coerce.number().int().positive().max(120_000).default(15_000),
+  INSTAGRAM_MEDIA_MAX_BYTES: z.coerce.number().int().positive().max(100 * 1024 * 1024).default(25 * 1024 * 1024),
   JWT_SECRET: z.string().min(32).default(developmentJwtSecret),
   MEET_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   MEET_JWT_SECRET: z.string().min(32).default(developmentMeetJwtSecret),
@@ -383,6 +391,23 @@ function validateConfig(value: AppConfig, context: z.RefinementCtx, environment:
       context.addIssue({ code: "custom", path: ["PANEL_ORIGIN"], message: "PANEL_ORIGIN deve conter somente a origem, sem caminho ou barra final" });
     } else if (panelOrigin.origin !== panelPublicUrl.origin) {
       context.addIssue({ code: "custom", path: ["PANEL_ORIGIN"], message: "PANEL_ORIGIN e PANEL_PUBLIC_URL devem usar a mesma origem" });
+    }
+
+    if (value.INSTAGRAM_REDIRECT_URI) {
+      const instagramRedirectUrl = new URL(value.INSTAGRAM_REDIRECT_URI);
+      if (instagramRedirectUrl.protocol !== "https:" || isLoopbackHostname(instagramRedirectUrl.hostname)) {
+        context.addIssue({
+          code: "custom",
+          path: ["INSTAGRAM_REDIRECT_URI"],
+          message: "A URI de callback do Instagram deve ser pública e usar HTTPS em produção"
+        });
+      } else if (instagramRedirectUrl.origin !== panelPublicUrl.origin) {
+        context.addIssue({
+          code: "custom",
+          path: ["INSTAGRAM_REDIRECT_URI"],
+          message: "A URI de callback do Instagram deve usar a origem pública do painel"
+        });
+      }
     }
 
     if (value.MEET_ENABLED) {

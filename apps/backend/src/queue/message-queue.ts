@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Queue } from "bullmq";
 import { redisConnection } from "./connection.js";
 import type { SessionMessage } from "../modules/messages/types.js";
@@ -27,7 +27,22 @@ export function ensureInboundAiTurn(data: InboundJobData): InboundJobData & { ai
 }
 
 export function inboundJobId(message: SessionMessage): string {
-  return `${message.tenantId}_${message.sessionId}_${message.externalId}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const channel = message.channel ?? "whatsapp";
+  const contactIdentity = channel === "instagram"
+    ? message.instagramContactId ?? message.contactPhone
+    : message.contactJid ?? message.contactPhone;
+  const digest = createHash("sha256")
+    .update(message.tenantId)
+    .update("\0")
+    .update(channel)
+    .update("\0")
+    .update(message.sessionId)
+    .update("\0")
+    .update(contactIdentity)
+    .update("\0")
+    .update(message.externalId)
+    .digest("base64url");
+  return `in_${digest}`;
 }
 
 export function inboundRecoveryJobId(message: SessionMessage): string {

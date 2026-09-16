@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { readStyleSources } from "./style-sources";
 
 const panel = path.resolve(process.cwd());
 const read = (p: string) => fs.readFileSync(path.join(panel, p), "utf8");
-const styleFiles = ["tokens.css", "base.css", "components.css", "shell.css", "domains/feedback.css", "domains/agenda.css", "domains/conversations.css", "domains/pipeline.css", "domains/auth.css", "domains/post-sales.css", "domains/agenda-calendar.css", "domains/leads.css"];
-const readStyles = () => styleFiles.map((file) => read(`styles/${file}`)).join("\n");
+const readStyles = () => readStyleSources();
 
 describe("responsive UI regressions", () => {
   it("keeps progressive billing grids", () => {

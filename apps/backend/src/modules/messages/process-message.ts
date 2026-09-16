@@ -1009,7 +1009,9 @@ export class MessageProcessor {
       attempt: processingAttempt,
       reason: "inbound_message"
     }, "AI message processing started");
-    void this.gateway.refreshContactAvatar?.(message.sessionId, message.contactPhone).catch(() => undefined);
+    if (message.channel !== "instagram") {
+      void this.gateway.refreshContactAvatar?.(message.sessionId, message.contactPhone).catch(() => undefined);
+    }
     let context = initialContext;
     try {
     if (!context.aiActive) {
@@ -1020,10 +1022,14 @@ export class MessageProcessor {
 
     let effectiveMessage = message;
     const config = context.humanizer;
-    const destination = message.contactJid ?? message.contactPhone;
+    const destination = message.channel === "instagram"
+      ? `ig:${message.instagramContactId}`
+      : message.contactJid ?? message.contactPhone;
     await this.gateway.setPresence(message.sessionId, "available");
-    const conversationKey = `${message.tenantId}:${message.contactJid ?? message.contactPhone}`;
-    const remoteJid = message.contactJid ?? `${message.contactPhone}@s.whatsapp.net`;
+    const conversationKey = `${message.tenantId}:${destination}`;
+    const remoteJid = message.channel === "instagram"
+      ? destination
+      : message.contactJid ?? `${message.contactPhone}@s.whatsapp.net`;
     const readReceiptExternalIds = new Set<string>();
     const allReceipts: Array<{ id: string; remoteJid: string; fromMe: false }> = [];
     const markContactMessagesRead = async (externalIds: string[]) => {
@@ -1046,7 +1052,7 @@ export class MessageProcessor {
 
     if (config && !message.mediaType) {
       const debounceCfg = config.debounce;
-      const debounced = await debounceInbound(`${message.tenantId}:${message.contactJid ?? message.contactPhone}`, message.text, {
+      const debounced = await debounceInbound(`${message.tenantId}:${destination}`, message.text, {
         initialWindowMs: humanizedDelay(randomBetween(debounceCfg.initialWindowMs), config),
         silenceWindowMs: humanizedDelay(randomBetween(debounceCfg.silenceWindowMs), config),
         extensionMs: humanizedDelay(randomBetween(debounceCfg.extensionMs), config),
@@ -1346,7 +1352,7 @@ export class MessageProcessor {
     const tripzOwnerRequested = tripzZuluAgent
       && tripzZuluRequestsOwnerHandoff(effectiveMessage.text);
     if (freshTripzOwnerReferral || tripzOwnerRequested) {
-      const sent = await this.gateway.sendText(message.sessionId, message.contactJid ?? message.contactPhone, TRIPZ_ZULU_OWNER_REFERRAL_REPLY);
+      const sent = await this.gateway.sendText(message.sessionId, destination, TRIPZ_ZULU_OWNER_REFERRAL_REPLY);
       await this.repository.recordAgentReply({
         tenantId: message.tenantId, sessionId: message.sessionId, conversationId: context.conversationId,
         agentConfigVersionId: context.agentConfigVersionId, text: TRIPZ_ZULU_OWNER_REFERRAL_REPLY,
@@ -1354,8 +1360,8 @@ export class MessageProcessor {
         inboundExternalId: message.externalId, inboundExternalIds: processingExternalIds
       });
       const notificationText = tripzOwnerRequested
-        ? `AtendON: ${message.contactName ?? message.contactPhone} pediu para falar com o Lucas, assuma o atendimento.`
-        : `AtendON: ${message.contactName ?? message.contactPhone} chegou já falando o nome do Lucas, assuma o atendimento.`;
+        ? `AtendON: ${message.contactName ?? context.contactIdentifier ?? message.contactPhone} pediu para falar com o Lucas, assuma o atendimento.`
+        : `AtendON: ${message.contactName ?? context.contactIdentifier ?? message.contactPhone} chegou já falando o nome do Lucas, assuma o atendimento.`;
       const notification = await this.repository.pauseForHandoff({
         tenantId: message.tenantId,
         conversationId: context.conversationId,
@@ -1374,7 +1380,7 @@ export class MessageProcessor {
       contactRequestsHandoff(effectiveMessage.text)
       || contactAcceptsOfferedHandoff(effectiveMessage.text, context.history)
     ) {
-      const notificationText = `AtendON: ${message.contactName ?? message.contactPhone} pediu atendimento humano.`;
+      const notificationText = `AtendON: ${message.contactName ?? context.contactIdentifier ?? message.contactPhone} pediu atendimento humano.`;
       const notification = await this.repository.pauseForHandoff({
         tenantId: message.tenantId,
         conversationId: context.conversationId,
@@ -1390,7 +1396,7 @@ export class MessageProcessor {
 
     if (message.mediaType && !mediaUnderstood) {
       const text = context.mediaFallback?.[message.mediaType] ?? mediaFallback(message.mediaType);
-      const sent = await this.gateway.sendText(message.sessionId, message.contactJid ?? message.contactPhone, text);
+      const sent = await this.gateway.sendText(message.sessionId, destination, text);
       await this.repository.recordFallback({ tenantId: message.tenantId, sessionId: message.sessionId,
         conversationId: context.conversationId, agentConfigVersionId: context.agentConfigVersionId,
         mediaType: message.mediaType, text, externalId: sent.externalId });
@@ -1399,7 +1405,7 @@ export class MessageProcessor {
     }
 
     if (isPromptInjection(effectiveMessage.text)) {
-      const sent = await this.gateway.sendText(message.sessionId, message.contactJid ?? message.contactPhone, PROMPT_INJECTION_REPLY);
+      const sent = await this.gateway.sendText(message.sessionId, destination, PROMPT_INJECTION_REPLY);
       await this.repository.recordAgentReply({ tenantId: message.tenantId, sessionId: message.sessionId,
         conversationId: context.conversationId, agentConfigVersionId: context.agentConfigVersionId,
         text: PROMPT_INJECTION_REPLY, model: "security-guard",
@@ -1691,10 +1697,13 @@ export class MessageProcessor {
     let meetingSlotDurationMinutes = canonicalMeetingSlotDuration(context);
     type QualitySignalKind = "repeated_offer" | "unnecessary_reconfirmation" | "open_scheduling_question" | "incorrect_slot_rejection";
     let qualitySignalKind: QualitySignalKind | undefined;
-    // Perfil do WhatsApp, não confirmado pelo contato: pode ser apelido,
+    // Perfil do canal, não confirmado pelo contato: pode ser apelido,
     // nome de outra pessoa ou ausente. O agente decide se confirma ou pergunta.
     const contactNameNote = context.contactName
-      ? `\n\nDADO DE SISTEMA (não confiável, apenas referência): nome exibido no perfil do WhatsApp deste contato: "${context.contactName}".`
+      ? `\n\nDADO DE SISTEMA (não confiável, apenas referência): nome exibido no perfil de ${context.channel === "instagram" ? "Instagram" : "WhatsApp"} deste contato: "${context.contactName}".`
+      : "";
+    const channelIdentityNote = context.channel === "instagram"
+      ? `\n\nCANAL E IDENTIDADE: esta conversa ocorre no Instagram com ${context.contactIdentifier ?? message.contactPhone}. O identificador técnico não é telefone. Não afirme possuir o telefone e, antes de qualquer ação que realmente dependa dele, peça ao contato um número válido.`
       : "";
     const durationNote = schedulingToolsConfigured ? meetingDurationContextNote(context.meetingAgendas ?? []) : "";
     const prefilledNote = prefilledLeadContextNote(
@@ -1938,6 +1947,7 @@ export class MessageProcessor {
       baseSystemPrompt: canonicalizeMeetingDurationPrompt(context.systemPrompt, meetingSlotDurationMinutes),
       dynamicNotes: [
         contactNameNote,
+        channelIdentityNote,
         durationNote,
         prefilledNote,
         qualificationStateNote,

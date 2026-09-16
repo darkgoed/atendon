@@ -14,6 +14,11 @@ const meetOrigin = new URL(
 ).origin;
 
 export const panelProxyPaths = ["/backend/:path*", "/api/:path*"] as const;
+export const panelInstagramProxyPaths = [
+  "/instagram/oauth/callback",
+  "/webhooks/instagram",
+  "/instagram/media/:path*"
+] as const;
 
 export function createPanelContentSecurityPolicy(environment = process.env.NODE_ENV, allowedMeetOrigin = meetOrigin) {
   return [
@@ -62,6 +67,7 @@ const config: NextConfig = {
         source: "/billing/providers/mercadopago/oauth/callback",
         destination: `${backendUrl}/billing/providers/mercadopago/oauth/callback`
       },
+      ...panelInstagramProxyPaths.map((source) => ({ source, destination: `${backendUrl}${source}` })),
       ...panelProxyPaths.map((source) => ({ source, destination: `${backendUrl}/:path*` }))
     ];
   }

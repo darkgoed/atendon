@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { copyFile, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -43,6 +43,49 @@ describe("migrations on a clean database", () => {
           fileURLToPath(new URL("../src/db/migrations", import.meta.url)),
           () => undefined
         )).applied).toEqual([]);
+        const instagramMigrationPath = fileURLToPath(new URL(
+          "../src/db/migrations/0158_instagram.sql",
+          import.meta.url
+        ));
+        await expect(fresh.query(await readFile(instagramMigrationPath, "utf8"))).resolves.toBeDefined();
+        const instagramSchema = await fresh.query<{
+          whatsapp_identity_index: string | null;
+          instagram_account_index: string | null;
+          instagram_conversation_index: string | null;
+          instagram_lead_index: string | null;
+          oauth_table: string | null;
+          inbox_table: string | null;
+          outbox_table: string | null;
+          media_table: string | null;
+          phone_nullable: boolean;
+          lead_phone_nullable: boolean;
+        }>(
+          `SELECT
+             to_regclass('public.uq_conversations_session_phone')::text whatsapp_identity_index,
+             to_regclass('public.uq_instagram_provider_account_global')::text instagram_account_index,
+             to_regclass('public.uq_instagram_conversation_identity')::text instagram_conversation_index,
+             to_regclass('public.uq_instagram_lead_identity')::text instagram_lead_index,
+             to_regclass('public.instagram_oauth_states')::text oauth_table,
+             to_regclass('public.instagram_webhook_inbox')::text inbox_table,
+             to_regclass('public.instagram_webhook_outbox')::text outbox_table,
+             to_regclass('public.instagram_media')::text media_table,
+             (SELECT is_nullable='YES' FROM information_schema.columns
+              WHERE table_name='conversations' AND column_name='contact_phone') phone_nullable,
+             (SELECT is_nullable='YES' FROM information_schema.columns
+              WHERE table_name='scheduling_leads' AND column_name='phone') lead_phone_nullable`
+        );
+        expect(instagramSchema.rows[0]).toEqual({
+          whatsapp_identity_index: "uq_conversations_session_phone",
+          instagram_account_index: "uq_instagram_provider_account_global",
+          instagram_conversation_index: "uq_instagram_conversation_identity",
+          instagram_lead_index: "uq_instagram_lead_identity",
+          oauth_table: "instagram_oauth_states",
+          inbox_table: "instagram_webhook_inbox",
+          outbox_table: "instagram_webhook_outbox",
+          media_table: "instagram_media",
+          phone_nullable: true,
+          lead_phone_nullable: true
+        });
         const flags = await fresh.query<{
           total: number;
           defaults_off: boolean;
@@ -378,6 +421,11 @@ describe("migrations on a clean database", () => {
           "INSERT INTO messages(conversation_id,sender,content) VALUES($1,'agent','Tenant B message') RETURNING id",
           [conversationB]
         )).rows[0];
+        await expect(fresh.query(
+          `INSERT INTO messages(conversation_id,sender,content,media_type,media_mime_type)
+           VALUES($1,'agent','Fresh Instagram video','video','video/mp4')`,
+          [conversationA]
+        )).resolves.toBeDefined();
         expect(messageA.tenant_id).toBe(tenantA);
         await expect(fresh.query(
           "INSERT INTO messages(tenant_id,conversation_id,sender,content) VALUES($1,$2,'contact','Forged tenant')",

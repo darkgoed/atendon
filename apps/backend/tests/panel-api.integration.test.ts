@@ -23,6 +23,34 @@ let tenantA: string; let tenantB: string; let conversationA: string; let convers
 let phoneSequence=Number(Date.now().toString().slice(-8));
 const nextPhone=()=>`5511${String(++phoneSequence).slice(-8).padStart(8,"0")}`;
 
+async function createInstagramConversationFixture() {
+  const instagramContactId=`igsid-${randomUUID()}`;
+  const sessionId=(await pool.query<{id:string}>(
+    `INSERT INTO whatsapp_sessions(tenant_id,status,channel,is_primary,phone_number)
+     VALUES($1,'connected','instagram',false,NULL) RETURNING id`,
+    [tenantA]
+  )).rows[0].id;
+  const leadId=(await pool.query<{id:string}>(
+    `INSERT INTO scheduling_leads(
+       tenant_id,phone,name,source,instagram_contact_id,instagram_username,instagram_session_id
+     ) VALUES($1,NULL,'Contato Instagram','instagram',$2,'cliente_teste',$3) RETURNING id`,
+    [tenantA,instagramContactId,sessionId]
+  )).rows[0].id;
+  const conversationId=(await pool.query<{id:string}>(
+    `INSERT INTO conversations(
+       tenant_id,session_id,contact_phone,contact_name,instagram_contact_id,instagram_username,lead_id,ai_active
+     ) VALUES($1,$2,NULL,'Contato Instagram',$3,'cliente_teste',$4,false) RETURNING id`,
+    [tenantA,sessionId,instagramContactId,leadId]
+  )).rows[0].id;
+  return {conversationId,leadId,sessionId};
+}
+
+async function deleteInstagramConversationFixture(fixture:{conversationId:string;leadId:string;sessionId:string}) {
+  await pool.query("DELETE FROM conversations WHERE id=$1",[fixture.conversationId]);
+  await pool.query("DELETE FROM scheduling_leads WHERE id=$1",[fixture.leadId]);
+  await pool.query("DELETE FROM whatsapp_sessions WHERE id=$1",[fixture.sessionId]);
+}
+
 beforeAll(async () => {
   await app.ready();
   const a = await pool.query<{id:string}>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id", [`Painel A ${randomUUID()}`]);
@@ -32,6 +60,21 @@ beforeAll(async () => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const planId=(await client.query<{id:string}>("SELECT id FROM plans WHERE code='MEDIUM'")).rows[0].id;
+    for (const tenant of [tenantA,tenantB]) {
+      await client.query(
+        `INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,current_period_start,current_period_end)
+         VALUES($1,$2,'ACTIVE',now(),now()+interval '1 month')`,
+        [tenant,planId]
+      );
+      await client.query(
+        `INSERT INTO tenant_feature_flag_overrides(tenant_id,flag_key,enabled)
+         SELECT $1,flag_key,true FROM feature_flag_definitions
+         WHERE flag_key=ANY($2::text[])
+         ON CONFLICT(tenant_id,flag_key) DO UPDATE SET enabled=true,updated_at=now()`,
+        [tenant,["dashboard_v1","leads_v1","pipeline_v1","appointments_v1","workspace_admin_v1"]]
+      );
+    }
     for (const tenant of [tenantA, tenantB]) await ensureWorkspaceDefaultRoles(client, tenant);
     emailA = `a-${randomUUID()}@test.local`;
     emailB = `b-${randomUUID()}@test.local`;
@@ -1213,34 +1256,40 @@ describe("panel API tenant isolation",()=>{
       await app.inject({method:"PATCH",url:`/conversations/${conversationA}/reactivate`,headers:{cookie:cookieA}});
     }
   });
-  it("rejects WhatsApp message routes for Instagram conversations before any effect", async () => {
-    const original = (await pool.query<{ channel: string }>("SELECT s.channel FROM conversations c JOIN whatsapp_sessions s ON s.id=c.session_id WHERE c.id=$1", [conversationA])).rows[0].channel;
-    await pool.query("UPDATE whatsapp_sessions SET channel='instagram' WHERE id=(SELECT session_id FROM conversations WHERE id=$1)", [conversationA]);
+  it("keeps reply-with-ai unavailable for Instagram before any WhatsApp effect", async () => {
+    const instagram=await createInstagramConversationFixture();
     const sendText = vi.spyOn(WhatsAppSessionManager.prototype, "sendText");
     const sendMedia = vi.spyOn(WhatsAppSessionManager.prototype, "sendMedia");
     const pause = vi.spyOn(QualificationService.prototype, "pauseForConversation");
     try {
-      for (const [url, payload] of [
-        [`/conversations/${conversationA}/messages`, { text: "não enviar" }],
-        [`/conversations/${conversationA}/messages`, { mediaType: "image", mimeType: "image/png", fileName: "x.png", dataBase64: "iVBORw0KGgo=" }],
-        [`/conversations/${conversationA}/reply-with-ai`, undefined]
-      ] as const) {
-        const response = await app.inject({ method: "POST", url, headers: { cookie: cookieA, "idempotency-key": `instagram-${randomUUID()}` }, ...(payload ? { payload } : {}) });
-        expect(response.statusCode).toBe(409);
-        expect(response.json()).toEqual({ error: "Esta conversa pertence ao canal Instagram e não pode ser enviada pelo WhatsApp" });
-      }
+      const before=await pool.query<{messages:number;requests:number}>(
+        `SELECT
+           (SELECT count(*)::int FROM messages WHERE conversation_id=$1) messages,
+           (SELECT count(*)::int FROM outbound_message_requests WHERE conversation_id=$1) requests`,
+        [instagram.conversationId]
+      );
+      const response = await app.inject({
+        method: "POST", url: `/conversations/${instagram.conversationId}/reply-with-ai`, headers: { cookie: cookieA }
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toEqual({ error: "Esta conversa pertence ao canal Instagram e não pode ser enviada pelo WhatsApp" });
+      expect((await pool.query<{messages:number;requests:number}>(
+        `SELECT
+           (SELECT count(*)::int FROM messages WHERE conversation_id=$1) messages,
+           (SELECT count(*)::int FROM outbound_message_requests WHERE conversation_id=$1) requests`,
+        [instagram.conversationId]
+      )).rows[0]).toEqual(before.rows[0]);
       expect(sendText).not.toHaveBeenCalled();
       expect(sendMedia).not.toHaveBeenCalled();
       expect(pause).not.toHaveBeenCalled();
     } finally {
       sendText.mockRestore(); sendMedia.mockRestore(); pause.mockRestore();
-      await pool.query("UPDATE whatsapp_sessions SET channel=$2 WHERE id=(SELECT session_id FROM conversations WHERE id=$1)", [conversationA, original]);
+      await deleteInstagramConversationFixture(instagram);
     }
   });
 
-  it("rejects every WhatsApp-only message effect for Instagram and keeps local deletion available", async () => {
-    const original = (await pool.query<{ channel: string }>("SELECT s.channel FROM conversations c JOIN whatsapp_sessions s ON s.id=c.session_id WHERE c.id=$1", [conversationA])).rows[0].channel;
-    await pool.query("UPDATE whatsapp_sessions SET channel='instagram' WHERE id=(SELECT session_id FROM conversations WHERE id=$1)", [conversationA]);
+  it("blocks unsupported Instagram message effects and keeps local deletion available", async () => {
+    const instagram=await createInstagramConversationFixture();
     const messages = await pool.query<{ id: string }>(
       `INSERT INTO messages(conversation_id,sender,content,external_message_id)
        VALUES ($1,'human','canal instagram follow-up','external-follow-up'),
@@ -1248,7 +1297,7 @@ describe("panel API tenant isolation",()=>{
               ($1,'human','canal instagram edit','external-edit'),
               ($1,'human','canal instagram delete','external-delete')
        RETURNING id`,
-      [conversationA]
+      [instagram.conversationId]
     );
     const [followUpMessage, reactionMessage, editMessage, deleteMessage] = messages.rows;
     const sendText = vi.spyOn(WhatsAppSessionManager.prototype, "sendText");
@@ -1257,32 +1306,32 @@ describe("panel API tenant isolation",()=>{
     const deleteForEveryone = vi.spyOn(WhatsAppSessionManager.prototype, "deleteMessageForEveryone");
     try {
       const followUp = await app.inject({
-        method: "POST", url: `/conversations/${conversationA}/follow-up`,
+        method: "POST", url: `/conversations/${instagram.conversationId}/follow-up`,
         headers: { cookie: cookieA, "idempotency-key": `instagram-follow-up-${randomUUID()}` }
       });
       expect(followUp.statusCode).toBe(409);
       expect(followUp.json()).toEqual({ error: "Esta conversa pertence ao canal Instagram e não pode ser enviada pelo WhatsApp" });
 
       const reaction = await app.inject({
-        method: "POST", url: `/conversations/${conversationA}/messages/${reactionMessage.id}/react`,
+        method: "POST", url: `/conversations/${instagram.conversationId}/messages/${reactionMessage.id}/react`,
         headers: { cookie: cookieA }, payload: { emoji: "👍" }
       });
       expect(reaction.statusCode).toBe(409);
-      expect(reaction.json()).toEqual({ error: "Esta conversa pertence ao canal Instagram e não pode ser enviada pelo WhatsApp" });
+      expect(reaction.json()).toEqual({ code: "CHANNEL_OPERATION_UNSUPPORTED", error: "A operação reagir não é suportada no Instagram" });
 
       const edit = await app.inject({
-        method: "PATCH", url: `/conversations/${conversationA}/messages/${editMessage.id}`,
+        method: "PATCH", url: `/conversations/${instagram.conversationId}/messages/${editMessage.id}`,
         headers: { cookie: cookieA }, payload: { text: "não editar" }
       });
       expect(edit.statusCode).toBe(409);
-      expect(edit.json()).toEqual({ error: "Esta conversa pertence ao canal Instagram e não pode ser enviada pelo WhatsApp" });
+      expect(edit.json()).toEqual({ code: "CHANNEL_OPERATION_UNSUPPORTED", error: "A operação editar mensagem não é suportada no Instagram" });
 
       const everyone = await app.inject({
-        method: "DELETE", url: `/conversations/${conversationA}/messages/${deleteMessage.id}`,
+        method: "DELETE", url: `/conversations/${instagram.conversationId}/messages/${deleteMessage.id}`,
         headers: { cookie: cookieA }, payload: { forEveryone: true }
       });
       expect(everyone.statusCode).toBe(409);
-      expect(everyone.json()).toEqual({ error: "Esta conversa pertence ao canal Instagram e não pode ser enviada pelo WhatsApp" });
+      expect(everyone.json()).toEqual({ code: "CHANNEL_OPERATION_UNSUPPORTED", error: "A operação apagar mensagem para todos não é suportada no Instagram" });
 
       const untouched = await pool.query<{ content: string; deleted_at: Date | null; deleted_for_everyone_at: Date | null }>(
         "SELECT content,deleted_at,deleted_for_everyone_at FROM messages WHERE id=ANY($1::uuid[]) ORDER BY id",
@@ -1296,7 +1345,7 @@ describe("panel API tenant isolation",()=>{
       expect(deleteForEveryone).not.toHaveBeenCalled();
 
       const local = await app.inject({
-        method: "DELETE", url: `/conversations/${conversationA}/messages/${followUpMessage.id}`,
+        method: "DELETE", url: `/conversations/${instagram.conversationId}/messages/${followUpMessage.id}`,
         headers: { cookie: cookieA }, payload: { forEveryone: false }
       });
       expect(local.statusCode).toBe(200);
@@ -1309,7 +1358,7 @@ describe("panel API tenant isolation",()=>{
     } finally {
       sendText.mockRestore(); sendReaction.mockRestore(); updateText.mockRestore(); deleteForEveryone.mockRestore();
       await pool.query("DELETE FROM messages WHERE id=ANY($1::uuid[])", [messages.rows.map((message) => message.id)]);
-      await pool.query("UPDATE whatsapp_sessions SET channel=$2 WHERE id=(SELECT session_id FROM conversations WHERE id=$1)", [conversationA, original]);
+      await deleteInstagramConversationFixture(instagram);
     }
   });
 
@@ -1358,7 +1407,7 @@ describe("panel API tenant isolation",()=>{
         "/agent/improvement-proposals",
         "/agent/versions",
         "/agent/evaluator-settings"
-      ]) expect((await app.inject({url,headers:{cookie}})).statusCode).toBe(403);
+      ]) expect((await app.inject({url,headers:{cookie}})).statusCode).toBe(404);
     }
     const agentPayload={systemPrompt:"tentativa não ROOT",aiModel:"blocked/model",temperature:.5,maxTokens:512,isActive:false};
     expect((await app.inject({method:"PUT",url:"/agent",headers:{cookie:cookieA},payload:agentPayload})).statusCode).toBe(403);

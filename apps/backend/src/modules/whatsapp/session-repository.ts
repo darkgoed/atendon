@@ -27,15 +27,20 @@ export class SessionRepository {
     label: string; phoneNumber: string | null; isPrimary: boolean;
     qrCode: string | null; lastConnectedAt: string | null;
     disconnectedReason: string | null; createdAt: string;
+    instagramAccountId: string | null; instagramUsername: string | null;
+    tokenExpiresAt: string | null; reconnectRequired: boolean;
   }>> {
     const result = await this.db.query<{
       id: string; tenant_id: string; status: string; instance_name: string;
       channel: ConnectionChannel; label: string; phone_number: string | null;
       is_primary: boolean; qr_code: string | null; last_connected_at: string | null;
       disconnected_reason: string | null; created_at: string;
+      provider_account_id: string | null; provider_username: string | null;
+      token_expires_at: string | null; reconnect_required: boolean;
     }>(
       `SELECT id, tenant_id, status, instance_name, label, phone_number, is_primary,
-              qr_code, last_connected_at, disconnected_reason, created_at, channel
+              qr_code, last_connected_at, disconnected_reason, created_at, channel,
+              provider_account_id,provider_username,token_expires_at,reconnect_required
        FROM whatsapp_sessions
        WHERE tenant_id=$1 AND archived_at IS NULL
        ORDER BY is_primary DESC, created_at`, [tenantId]
@@ -45,7 +50,11 @@ export class SessionRepository {
       channel: row.channel,
       label: row.label, phoneNumber: row.phone_number, isPrimary: row.is_primary,
       qrCode: row.qr_code, lastConnectedAt: row.last_connected_at,
-      disconnectedReason: row.disconnected_reason, createdAt: row.created_at
+      disconnectedReason: row.disconnected_reason, createdAt: row.created_at,
+      instagramAccountId: row.provider_account_id,
+      instagramUsername: row.provider_username,
+      tokenExpiresAt: row.token_expires_at,
+      reconnectRequired: row.reconnect_required
     }));
   }
 

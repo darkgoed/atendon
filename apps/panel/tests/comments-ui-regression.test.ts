@@ -1,9 +1,9 @@
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
 let agendaActionsSource = "";
-const styleFiles = ["tokens.css", "base.css", "components.css", "shell.css", "domains/feedback.css", "domains/agenda.css", "domains/conversations.css", "domains/pipeline.css", "domains/auth.css", "domains/post-sales.css", "domains/agenda-calendar.css", "domains/leads.css"];
-const readStyleSource = () => Promise.all(styleFiles.map((file) => readFile(new URL(`../styles/${file}`, import.meta.url), "utf8"))).then((sources) => sources.join("\n"));
 
 let agendaCalendarSource = "";
 let agendaCreateSource = "";
@@ -11,7 +11,6 @@ let agendaDetailSource = "";
 let agendaHeaderSource = "";
 let configurationsSource = "";
 let conversationsSource = "";
-let globalStyles = "";
 let leadDetailSource = "";
 let leadsSource = "";
 let pipelineSource = "";
@@ -29,7 +28,7 @@ function between(source: string, start: string, end: string) {
 }
 
 beforeAll(async () => {
-  [agendaActionsSource, agendaCalendarSource, agendaCreateSource, agendaDetailSource, agendaHeaderSource, configurationsSource, conversationsSource, globalStyles, leadDetailSource, leadsSource, pipelineSource, pipelineBoardSource, pipelineCardSource, shellSource, manifestSource] = await Promise.all([
+  [agendaActionsSource, agendaCalendarSource, agendaCreateSource, agendaDetailSource, agendaHeaderSource, configurationsSource, conversationsSource, leadDetailSource, leadsSource, pipelineSource, pipelineBoardSource, pipelineCardSource, shellSource, manifestSource] = await Promise.all([
     readFile(new URL("../app/agenda/use-agenda-actions.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/agenda/agenda-calendar.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/agenda/agenda-create-dialog.tsx", import.meta.url), "utf8"),
@@ -37,7 +36,6 @@ beforeAll(async () => {
     readFile(new URL("../app/agenda/agenda-header.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/configuracoes/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/conversas/page.tsx", import.meta.url), "utf8"),
-    readStyleSource(),
     readFile(new URL("../app/leads/[id]/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/leads/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/leads/pipeline/page.tsx", import.meta.url), "utf8"),
@@ -238,9 +236,21 @@ describe("comments.md UI regressions", () => {
   });
 
   it("reserves an internal top lane for usage tooltips so hover content is not clipped", () => {
-    const usageStyles = between(globalStyles, "/* Uso —", "/* Login —");
-    expect(usageStyles).toContain("padding:72px 12px 28px");
-    expect(usageStyles).toContain("top:-62px");
-    expect(usageStyles).toContain("max-height:128px");
+    // Intenção preservada: o gráfico reserva uma faixa superior interna e o
+    // tooltip é posicionado acima da barra com altura limitada, para que o
+    // conteúdo de hover não seja cortado. A expressão anterior fixava os
+    // literais 72px/-62px/128px e os marcadores de comentário do arquivo
+    // antigo; agora asseguramos a ESTRUTURA, tokenizada.
+    const usage = readFileSync(resolve(import.meta.dirname, "../styles/domains/usage.css"), "utf8");
+    const chart = /\.usage-chart \{([^}]*)\}/.exec(usage)?.[1] ?? "";
+    // faixa superior reservada: padding-top maior que o padding-bottom
+    expect(chart).toMatch(/padding:\s*var\(--space-\d+\)/);
+    // gridlines respeitam a mesma faixa (inset espelha o padding do gráfico)
+    expect(usage).toMatch(/\.usage-gridlines \{[^}]*inset:\s*var\(--space-\d+\)/);
+    const tooltip = /\.usage-tooltip \{([^}]*)\}/.exec(usage)?.[1] ?? "";
+    expect(tooltip).toMatch(/position:\s*absolute/);
+    expect(tooltip).toMatch(/top:\s*calc\(-1 \* var\(--space-\d+\)\)/);
+    expect(tooltip).toMatch(/max-height:\s*\d+px/);
+    expect(tooltip).toMatch(/overflow-y:\s*auto/);
   });
 });

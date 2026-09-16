@@ -83,3 +83,40 @@ export async function rotateGoogleMeetDataKeys(client: RotationClient, keyring: 
     throw error;
   }
 }
+
+export async function rotateInstagramDataKeys(client: RotationClient, keyring: SecretKeyring): Promise<RotationResult> {
+  await client.query("BEGIN");
+  try {
+    const result = await client.query(
+      `SELECT id,tenant_id,credentials_encrypted
+       FROM whatsapp_sessions
+       WHERE channel='instagram' AND credentials_encrypted IS NOT NULL
+       ORDER BY tenant_id,id
+       FOR UPDATE`
+    ) as { rows: Array<{ id: string; tenant_id: string; credentials_encrypted: string }> };
+    let rotated = 0;
+    let unchanged = 0;
+
+    for (const row of result.rows) {
+      if (!encryptedSecretNeedsRotation(row.credentials_encrypted, keyring.current)) {
+        unchanged += 1;
+        continue;
+      }
+      const plaintext = decryptSecret(row.credentials_encrypted, keyring);
+      const replacement = encryptSecret(plaintext, keyring.current);
+      await client.query(
+        `UPDATE whatsapp_sessions
+         SET credentials_encrypted=$4
+         WHERE id=$1 AND tenant_id=$2 AND credentials_encrypted=$3`,
+        [row.id, row.tenant_id, row.credentials_encrypted, replacement]
+      );
+      rotated += 1;
+    }
+
+    await client.query("COMMIT");
+    return { rotated, unchanged };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+}

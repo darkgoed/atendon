@@ -17,7 +17,7 @@ export function DashboardMetricWidget({ data, percentage = false }: { data: Dash
 }
 
 export function DashboardTeamWidget({ data, percentage = false }: { data: DashboardTeamData; percentage?: boolean }) {
-  if (!data.items.length) return <p className="py-6 text-sm text-[var(--muted)]">Nenhum resultado por equipe no período.</p>;
+  if (!data.items.length) return <p className="py-6 text-sm text-[var(--text-secondary)]">Nenhum resultado por equipe no período.</p>;
   return (
     <div className="space-y-2">
       {data.items.map((item) => (

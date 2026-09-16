@@ -60,7 +60,7 @@ export function AgendaLeadCombobox({ selected, disabled, onSelect }: {
     <div className="agenda-lead-combobox field relative">
       <label className="label" htmlFor={inputId}>Lead</label>
       <div className="relative">
-        <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" size={17} aria-hidden="true" />
+        <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={17} aria-hidden="true" />
         <input
           id={inputId}
           data-autofocus
@@ -107,16 +107,16 @@ export function AgendaLeadCombobox({ selected, disabled, onSelect }: {
         ) : null}
       </div>
       {showResults ? (
-        <div id={listboxId} role="listbox" aria-label="Resultados de leads" className="agenda-lead-combobox__results absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-[var(--border-3)] bg-[var(--surface)] p-1">
-          {query.trim() !== debouncedQuery ? <p className="px-3 py-3 text-sm text-[var(--muted)]" role="status">Buscando…</p> : null}
-          {query.trim() === debouncedQuery && isLoading ? <p className="px-3 py-3 text-sm text-[var(--muted)]" role="status">Buscando leads…</p> : null}
+        <div id={listboxId} role="listbox" aria-label="Resultados de leads" className="agenda-lead-combobox__results absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1">
+          {query.trim() !== debouncedQuery ? <p className="px-3 py-3 text-sm text-[var(--text-secondary)]" role="status">Buscando…</p> : null}
+          {query.trim() === debouncedQuery && isLoading ? <p className="px-3 py-3 text-sm text-[var(--text-secondary)]" role="status">Buscando leads…</p> : null}
           {query.trim() === debouncedQuery && error ? (
-            <div className="flex items-center justify-between gap-3 px-3 py-2 text-sm text-[var(--warn)]" role="alert">
+            <div className="flex items-center justify-between gap-3 px-3 py-2 text-sm text-[var(--warning-text)]" role="alert">
               <span>Não foi possível buscar leads.</span>
               <button type="button" className="btn warn" onMouseDown={(event) => event.preventDefault()} onClick={() => void mutate()}>Tentar novamente</button>
             </div>
           ) : null}
-          {query.trim() === debouncedQuery && !isLoading && !error && leads.length === 0 ? <p className="px-3 py-3 text-sm text-[var(--muted)]" role="status">Nenhum lead encontrado.</p> : null}
+          {query.trim() === debouncedQuery && !isLoading && !error && leads.length === 0 ? <p className="px-3 py-3 text-sm text-[var(--text-secondary)]" role="status">Nenhum lead encontrado.</p> : null}
           {query.trim() === debouncedQuery && !isLoading && !error ? leads.map((lead, index) => (
             <button
               id={`${listboxId}-${lead.id}`}
@@ -129,7 +129,7 @@ export function AgendaLeadCombobox({ selected, disabled, onSelect }: {
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => choose(lead)}
             >
-              <span className="min-w-0"><strong className="block truncate">{lead.nome?.trim() || "Sem nome"}</strong><span className="mono text-xs text-[var(--muted)]">{formatBrazilianPhone(lead.telefone)}</span></span>
+              <span className="min-w-0"><strong className="block truncate">{lead.nome?.trim() || "Sem nome"}</strong><span className="mono text-xs text-[var(--text-secondary)]">{formatBrazilianPhone(lead.telefone)}</span></span>
               {index === activeIndex ? <Check className="shrink-0" size={16} aria-hidden="true" /> : null}
             </button>
           )) : null}

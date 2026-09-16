@@ -1,6 +1,7 @@
 import { api } from "./api";
 
 export type ConnectionChannel = "whatsapp" | "instagram";
+export type InstagramConnectionStatus = "connected" | "disconnected" | "reauth_required" | "permission_error";
 
 export interface ConnectionState {
   id: string;
@@ -8,11 +9,41 @@ export interface ConnectionState {
   channel?: ConnectionChannel;
   is_primary: boolean;
   phone_number: string | null;
-  status: "qr_pending" | "connected" | "disconnected" | "banned";
+  instagram_username?: string | null;
+  instagram_account_id?: string | null;
+  token_expires_at?: string | null;
+  reconnect_required?: boolean;
+  status: "qr_pending" | "connected" | "disconnected" | "banned" | InstagramConnectionStatus;
   qr_code: string | null;
   last_connected_at: string | null;
   disconnected_reason: string | null;
   created_at: string;
+}
+
+export interface InstagramStatus {
+  configured: boolean;
+  missing: string[];
+  graph_version: string;
+  max_connections: number;
+}
+
+export function getInstagramStatus() {
+  return api<InstagramStatus>("/instagram/status");
+}
+
+export function startInstagramOAuth(label: string, connectionId?: string) {
+  return api<{ authorization_url: string }>("/instagram/oauth/start", {
+    method: "POST",
+    body: JSON.stringify({ label, ...(connectionId ? { connection_id: connectionId } : {}) })
+  });
+}
+
+export function disconnectInstagram(id: string) {
+  return api<{ ok: true }>(`/instagram/connections/${id}/disconnect`, { method: "POST" });
+}
+
+export function refreshInstagram(id: string) {
+  return api<{ ok: true }>(`/instagram/connections/${id}/refresh`, { method: "POST" });
 }
 
 export interface ConnectionLimits {

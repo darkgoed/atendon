@@ -120,7 +120,7 @@ export function PipelineCard({
 
       {visible("nextMeeting") && lead.latest_appointment ? (
         <div className="pipeline-card__meeting">
-          <CalendarBlank className="mt-px shrink-0 text-[var(--faint)]" size={13} aria-hidden="true" />
+          <CalendarBlank className="mt-px shrink-0 text-[var(--text-muted)]" size={13} aria-hidden="true" />
           <span className="min-w-0"><span className="block truncate">{formatDateTime(lead.latest_appointment.start, timezone)}</span><span className="pipeline-card__meeting-status">{lead.latest_appointment.status.replaceAll("_", " ")}</span></span>
         </div>
       ) : null}

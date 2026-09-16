@@ -13,11 +13,12 @@ import {
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ContactAvatar } from "./contact-avatar";
 import { Button, Input } from "@/components/ui";
+import { instagramDisplayIdentity, instagramDisplayName } from "@/lib/channel-identity";
 
 export type ContactPanelMessage = {
   id: string;
   content: string;
-  media_type: "audio" | "image" | "document" | null;
+  media_type: "audio" | "image" | "video" | "document" | null;
   media_mime_type?: string | null;
   media_file_name?: string | null;
   media_size_bytes?: number | null;
@@ -26,7 +27,10 @@ export type ContactPanelMessage = {
 export type ContactPanelConversation = {
   id: string;
   contact_name?: string;
-  contact_phone: string;
+  contact_phone: string | null;
+  contact_identifier?: string | null;
+  instagram_username?: string | null;
+  channel?: "whatsapp" | "instagram" | null;
   avatar_url?: string | null;
 };
 
@@ -82,7 +86,9 @@ export function ConversationContactPanel({
   const panelRef = useRef<HTMLElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const title = conversation.contact_name?.trim() || conversation.contact_phone;
+  const title = conversation.channel === "instagram"
+    ? instagramDisplayName(conversation.contact_name, conversation.instagram_username, conversation.contact_identifier, conversation.contact_phone)
+    : conversation.contact_name?.trim() || conversation.contact_phone || "Contato sem identificação";
 
   useEffect(() => {
     const panel = panelRef.current;
@@ -160,7 +166,7 @@ export function ConversationContactPanel({
   }
 
   return (
-    <aside ref={panelRef} className="conversation-contact-panel flex min-h-0 min-w-0 flex-col border-l border-[var(--border)] bg-[var(--panel)]" aria-label="Dados do contato" tabIndex={-1}>
+    <aside ref={panelRef} className="conversation-contact-panel flex min-h-0 min-w-0 flex-col border-l border-[var(--border)] bg-[var(--surface)]" aria-label="Dados do contato" tabIndex={-1}>
       <header className="conversation-contact-panel__header flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-3">
         <h2 className="text-sm font-bold text-[var(--text)]">Dados do lead</h2>
         <Button type="button" autoFocus data-autofocus className="conversation-contact-panel__icon" onClick={onClose} aria-label="Fechar dados do contato" title="Fechar">
@@ -169,7 +175,7 @@ export function ConversationContactPanel({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <section className="conversation-contact-panel__identity border-b border-[var(--border-2)] px-4 py-4">
+        <section className="conversation-contact-panel__identity border-b border-[var(--border-subtle)] px-4 py-4">
           <div className="flex min-w-0 items-center gap-3">
             <ContactAvatar name={title} src={conversation.avatar_url} className="h-10 w-10 shrink-0 text-sm" />
             <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -205,16 +211,16 @@ export function ConversationContactPanel({
             )}
             </div>
           </div>
-          {saveError ? <p className="mt-2 text-left text-xs text-[var(--warn)]" role="alert">{saveError}</p> : null}
-          <p className="mono mt-2 truncate text-xs text-[var(--text-6)]" dir="ltr">{conversation.contact_phone}</p>
+          {saveError ? <p className="mt-2 text-left text-xs text-[var(--warning-text)]" role="alert">{saveError}</p> : null}
+          <p className="mono mt-2 truncate text-xs text-[var(--text-muted)]" dir="ltr">{conversation.channel === "instagram" ? instagramDisplayIdentity(conversation.instagram_username, conversation.contact_identifier) : conversation.contact_phone ?? "Identidade sem telefone"}</p>
         </section>
 
-        <section className="border-b border-[var(--border-2)] px-4 py-3.5" aria-labelledby="contact-panel-content-title">
+        <section className="border-b border-[var(--border-subtle)] px-4 py-3.5" aria-labelledby="contact-panel-content-title">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h3 id="contact-panel-content-title" className="conversation-contact-panel__section-title">Mídia, links e docs</h3>
-            <span className="mono text-xs text-[var(--faint-text)]">{media.length + links.length + docs.length}</span>
+            <span className="mono text-xs text-[var(--text-muted)]">{media.length + links.length + docs.length}</span>
           </div>
-          <div className="grid grid-cols-3 gap-1 rounded-md border border-[var(--border)] bg-[var(--panel-secondary)] p-1" role="tablist" aria-label="Conteúdo da conversa">
+          <div className="grid grid-cols-3 gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-sunken)] p-1" role="tablist" aria-label="Conteúdo da conversa">
             {([[
               "media", "Mídia", ImageSquare
             ], ["links", "Links", LinkSimple], ["docs", "Docs", FileText]] as const).map(([key, label, Icon]) => (
@@ -243,7 +249,7 @@ export function ConversationContactPanel({
           ) : null}
 
           {assetsError ? (
-            <div className="mt-3 flex items-center justify-between gap-2 border border-[var(--warn-border)] bg-[var(--warn-bg)] p-2 text-xs text-[var(--warn)]" role="alert">
+            <div className="mt-3 flex items-center justify-between gap-2 border border-[var(--warning-border)] bg-[var(--warning-subtle)] p-2 text-xs text-[var(--warning-text)]" role="alert">
               <span>{assetsError}</span>
               {onRetryAssets ? <Button type="button" className="btn shrink-0 text-xs" onClick={onRetryAssets}>Tentar novamente</Button> : null}
             </div>
@@ -285,7 +291,7 @@ export function ConversationContactPanel({
                     <FileText size={18} aria-hidden="true" />
                     <span className="min-w-0 flex-1">
                       <strong className="block truncate text-xs text-[var(--text)]">{message.media_file_name ?? "Documento"}</strong>
-                      <span className="mono mt-0.5 block truncate text-xs text-[var(--faint-text)]">{message.media_mime_type ?? "arquivo"}{message.media_size_bytes ? ` · ${formatBytes(message.media_size_bytes)}` : ""}</span>
+                      <span className="mono mt-0.5 block truncate text-xs text-[var(--text-muted)]">{message.media_mime_type ?? "arquivo"}{message.media_size_bytes ? ` · ${formatBytes(message.media_size_bytes)}` : ""}</span>
                     </span>
                     <ArrowDown size={15} aria-hidden="true" />
                   </a>

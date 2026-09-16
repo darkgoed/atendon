@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { beforeAll, describe, expect, it } from "vitest";
+import { readStyleSources } from "./style-sources";
 
 let agendaActions = "";
-const styleFiles = ["tokens.css", "base.css", "components.css", "shell.css", "domains/feedback.css", "domains/agenda.css", "domains/conversations.css", "domains/pipeline.css", "domains/auth.css", "domains/post-sales.css", "domains/agenda-calendar.css", "domains/leads.css"];
-const readStyleSource = () => Promise.all(styleFiles.map((file) => readFile(new URL(`../styles/${file}`, import.meta.url), "utf8"))).then((sources) => sources.join("\n"));
+const readStyleSource = async () => readStyleSources();
 
 let agendaDetail = "";
 let alerts = "";
@@ -38,11 +38,16 @@ describe("current comments.md tasks", () => {
     expect(conversations).not.toContain("SavedViewsControl");
     expect(conversations).not.toContain('label="Visões"');
     expect(conversations).toContain("conversation-list__item group");
-    // A lista usa --surface (branco no tema claro) em vez de um override #fff:
-    // o handoff B2B removeu a textura pontilhada, então não há mais background-image a anular.
-    expect(globalStyles).toContain(".conversation-list__items { padding:0!important; background:var(--surface); }");
-    expect(globalStyles).toMatch(/\.conversation-list__item \{[^}]*background:var\(--surface\)/);
-    expect(globalStyles).toMatch(/:root\[data-theme="light"\][\s\S]*--surface:#FFFFFF/);
+    // Intenção preservada: a lista de conversas assenta sobre --surface (branco
+    // no tema claro), sem override de cor literal e sem textura de fundo.
+    // O `!important` saiu do CSS (era dívida), então a asserção deixou de pinar
+    // a string exata; e LIGHT agora é o tema base declarado em :root — DARK é
+    // que re-declara os tokens —, por isso o contrato de tema é verificado pela
+    // presença dos DOIS blocos com o mesmo vocabulário, não por um seletor fixo.
+    expect(globalStyles).toMatch(/\.conversation-list__items \{[^}]*background:\s*var\(--surface\)/);
+    expect(globalStyles).toMatch(/\.conversation-list__item \{[^}]*background:\s*var\(--surface\)/);
+    expect(globalStyles).toMatch(/:root \{[\s\S]*--surface:\s*#FFFFFF/);
+    expect(globalStyles).toMatch(/:root\[data-theme="dark"\][\s\S]*--surface:\s*#[0-9A-Fa-f]{6}/);
     expect(globalStyles).not.toMatch(/\.conversation-list__items \{[^}]*background-image/);
   });
 

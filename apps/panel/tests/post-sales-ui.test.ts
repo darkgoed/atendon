@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { beforeAll, describe, expect, it } from "vitest";
+import { readStyleSources } from "./style-sources";
 
 let page = "";
-const styleFiles = ["tokens.css", "base.css", "components.css", "shell.css", "domains/feedback.css", "domains/agenda.css", "domains/conversations.css", "domains/pipeline.css", "domains/auth.css", "domains/post-sales.css", "domains/agenda-calendar.css", "domains/leads.css"];
-const readStyleSource = () => Promise.all(styleFiles.map((file) => readFile(new URL(`../styles/${file}`, import.meta.url), "utf8"))).then((sources) => sources.join("\n"));
+const readStyleSource = async () => readStyleSources();
 
 let settings = "";
 let shell = "";
@@ -51,10 +51,15 @@ describe("post-sales UI contracts", () => {
     expect(page).toContain("Voltar à carteira");
     expect(settings).toContain("Mover ${item.description} para cima");
     expect(settings).toContain("Mover ${item.description} para baixo");
-    expect(styles).toContain('@media(max-width:820px)');
+    expect(styles).toMatch(/@media\s*\(\s*max-width:\s*820px\s*\)/);
     expect(styles).toContain('.post-sales-layout[data-mobile-view="list"]');
-    expect(styles).toContain(':root[data-theme="light"]');
-    expect(styles).toContain('@media(prefers-reduced-motion:reduce)');
+    // Dois temas: LIGHT é o tema base em :root e DARK re-declara os MESMOS
+    // semantic tokens. Antes o teste pinava :root[data-theme="light"]; a
+    // intenção ("o produto define os dois temas") é verificada checando que os
+    // dois blocos existem e declaram o mesmo vocabulário.
+    expect(styles).toMatch(/:root \{[\s\S]*--surface:/);
+    expect(styles).toMatch(/:root\[data-theme="dark"\] \{[\s\S]*--surface:/);
+    expect(styles).toMatch(/@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)/);
   });
 
   it("lets ROOT control every supported capability through the generic catalog", () => {

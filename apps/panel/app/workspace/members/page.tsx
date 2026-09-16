@@ -176,7 +176,7 @@ export default function WorkspaceMembersPage() {
 
       {error ? <p className="error mb-4" role="alert">{error}</p> : null}
       {dataError ? (
-        <section className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-4" role="alert">
+        <section className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-4" role="alert">
           <p className="error">{dataError instanceof Error ? dataError.message : "Não foi possível carregar os membros."}</p>
           <button type="button" className="btn warn" onClick={() => void Promise.all([mutateMembers(), mutateRoles(), mutateInvitations()])}>Tentar novamente</button>
         </section>

@@ -105,13 +105,13 @@ describe("dashboard widget REST resources", () => {
     expect((await app.inject({ url: "/dashboard/widgets/open_conversations", headers: { cookie: operatorACookie } })).statusCode).toBe(200);
   });
 
-  it("counts and selects only active WhatsApp sessions, not a primary Instagram session", async () => {
+  it("counts and selects only active WhatsApp sessions, not a non-primary Instagram session", async () => {
     await pool.query(
-      `INSERT INTO whatsapp_sessions(tenant_id,label,is_primary,status,channel)
+      `INSERT INTO whatsapp_sessions(tenant_id,label,is_primary,status,channel,phone_number)
        VALUES
-         ($1,'Instagram primary',true,'disconnected','instagram'),
-         ($1,'WhatsApp active',false,'connected','whatsapp'),
-         ($2,'Foreign WhatsApp',false,'connected','whatsapp')`,
+         ($1,'Instagram active',false,'connected','instagram',NULL),
+         ($1,'WhatsApp active',false,'connected','whatsapp',NULL),
+         ($2,'Foreign WhatsApp',false,'connected','whatsapp',NULL)`,
       [tenantA, tenantB]
     );
     await pool.query(

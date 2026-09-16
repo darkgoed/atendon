@@ -13,7 +13,9 @@ export const metadata: Metadata = {
 };
 
 // Aplica tema e estado da sidebar antes da pintura para evitar flash.
+// DARK é o padrão do produto: o <html> já sai do servidor com data-theme="dark"
+// e o script só troca para light quando há preferência salva.
 const bootPrefs = `try{var r=document.documentElement;if(localStorage.getItem("atendon-theme")==="light")r.dataset.theme="light";if(localStorage.getItem("atendon-sidebar")==="collapsed")r.dataset.sidebar="collapsed"}catch(e){}`;
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="pt-BR" suppressHydrationWarning><body><script dangerouslySetInnerHTML={{ __html: bootPrefs }} /><PwaBootstrap /><PanelAccessGuard>{children}</PanelAccessGuard><ErrorToasts/></body></html>;
+  return <html lang="pt-BR" data-theme="dark" suppressHydrationWarning><body><script dangerouslySetInnerHTML={{ __html: bootPrefs }} /><PwaBootstrap /><PanelAccessGuard>{children}</PanelAccessGuard><ErrorToasts/></body></html>;
 }

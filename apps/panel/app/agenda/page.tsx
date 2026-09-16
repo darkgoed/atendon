@@ -184,8 +184,8 @@ function buildTimeGrid(days: Date[], slots: Record<string, Slot[]>, appointments
 
 function AvailabilityWarning({ failedDays, retrying, onRetry }: { failedDays: string[]; retrying: boolean; onRetry: () => Promise<void> }) {
   return (
-    <section className="mb-5 flex flex-wrap items-center justify-between gap-4 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-4" role="status" aria-live="polite">
-      <div className="flex min-w-0 flex-1 items-start gap-3"><WarningCircle className="mt-0.5 shrink-0 text-[var(--warn)]" size={20} aria-hidden="true" /><div><strong className="block text-sm text-[var(--warn)]">Disponibilidade atualizada parcialmente</strong><p className="mt-1 text-sm text-[var(--warn-muted)]">Falha em {failedDays.map((date) => new Date(`${date}T00:00:00.000Z`).toLocaleDateString("pt-BR", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "2-digit" })).join(", ")}. Os demais dias continuam válidos; onde havia dados anteriores, eles foram preservados e sinalizados.</p></div></div>
+    <section className="mb-5 flex flex-wrap items-center justify-between gap-4 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-4" role="status" aria-live="polite">
+      <div className="flex min-w-0 flex-1 items-start gap-3"><WarningCircle className="mt-0.5 shrink-0 text-[var(--warning-text)]" size={20} aria-hidden="true" /><div><strong className="block text-sm text-[var(--warning-text)]">Disponibilidade atualizada parcialmente</strong><p className="mt-1 text-sm text-[var(--warning-text)]">Falha em {failedDays.map((date) => new Date(`${date}T00:00:00.000Z`).toLocaleDateString("pt-BR", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "2-digit" })).join(", ")}. Os demais dias continuam válidos; onde havia dados anteriores, eles foram preservados e sinalizados.</p></div></div>
       <button type="button" className="btn warn" disabled={retrying} onClick={() => void onRetry()}>{retrying ? "Tentando novamente…" : "Tentar dias com falha novamente"}</button>
     </section>
   );
@@ -193,8 +193,8 @@ function AvailabilityWarning({ failedDays, retrying, onRetry }: { failedDays: st
 
 function PendingWarning({ count, onShow }: { count: number; onShow: () => void }) {
   return (
-    <section className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-3" aria-live="polite">
-      <div className="flex items-start gap-3"><WarningCircle className="mt-0.5 shrink-0 text-[var(--warn)]" size={19} aria-hidden="true" /><div><strong className="block text-sm text-[var(--warn)]">{count} {count === 1 ? "reunião aguarda" : "reuniões aguardam"} resultado</strong><p className="mt-0.5 text-xs text-[var(--warn-muted)]">Registre o desfecho para manter o acompanhamento comercial atualizado.</p></div></div>
+    <section className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-3" aria-live="polite">
+      <div className="flex items-start gap-3"><WarningCircle className="mt-0.5 shrink-0 text-[var(--warning-text)]" size={19} aria-hidden="true" /><div><strong className="block text-sm text-[var(--warning-text)]">{count} {count === 1 ? "reunião aguarda" : "reuniões aguardam"} resultado</strong><p className="mt-0.5 text-xs text-[var(--warning-text)]">Registre o desfecho para manter o acompanhamento comercial atualizado.</p></div></div>
       <button type="button" className="btn warn" onClick={onShow}>Ver resultados pendentes</button>
     </section>
   );

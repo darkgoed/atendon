@@ -17,7 +17,7 @@ export function ContactAvatar({ name, src, className = "" }: ContactAvatarProps)
 
   return (
     <span
-      className={`relative grid shrink-0 place-items-center overflow-hidden rounded-full border border-[var(--border)] bg-transparent font-semibold text-[var(--body)] ${className}`}
+      className={`relative grid shrink-0 place-items-center overflow-hidden rounded-full border border-[var(--border)] bg-transparent font-semibold text-[var(--text-secondary)] ${className}`}
       aria-hidden="true"
     >
       {src && !failed ? (

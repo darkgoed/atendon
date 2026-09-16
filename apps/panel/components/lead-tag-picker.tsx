@@ -83,14 +83,14 @@ export function LeadTagPicker({
         <>
           {isLoading ? <div className="grid gap-1.5" role="status" aria-label="Carregando etiquetas">{[1, 2, 3].map((item) => <span key={item} className="skeleton h-8" />)}</div> : null}
           {error ? <p className="error p-2" role="alert">{error.message}</p> : null}
-          {!isLoading && !error && !data?.tags.length ? <p className="p-2 text-xs text-[var(--muted)]">Nenhuma etiqueta disponível.</p> : null}
+          {!isLoading && !error && !data?.tags.length ? <p className="p-2 text-xs text-[var(--text-secondary)]">Nenhuma etiqueta disponível.</p> : null}
           {data?.tags.filter((tag) => !tag.archived_at).map((tag) => {
             const active = assignedIds.has(tag.id);
             return (
               <button
                 key={tag.id}
                 type="button"
-                className="flex min-h-9 items-center gap-2 rounded px-2 text-left text-xs transition-colors hover:bg-[var(--active)] active:scale-[.98] disabled:opacity-50"
+                className="flex min-h-9 items-center gap-2 rounded px-2 text-left text-xs transition-colors hover:bg-[var(--surface-active)] active:scale-[.98] disabled:opacity-50"
                 onClick={() => void toggle(tag)}
                 disabled={pendingId != null}
                 aria-pressed={active}

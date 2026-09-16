@@ -109,6 +109,7 @@ export function MeetRoom({ endpoint, publicAccess = false }: { endpoint: string;
         const origin = normalizeMeetOrigin(access.domain);
         const Constructor = await loadJitsiApi(origin);
         if (!active || !parentNode) return;
+        const background = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
 
         instance = new Constructor(new URL(origin).host, {
           roomName: access.room_name,
@@ -125,7 +126,7 @@ export function MeetRoom({ endpoint, publicAccess = false }: { endpoint: string;
           },
           interfaceConfigOverwrite: {
             APP_NAME: "AtendON Meet",
-            DEFAULT_BACKGROUND: "#0E1315",
+            DEFAULT_BACKGROUND: background,
             DISABLE_JOIN_LEAVE_NOTIFICATIONS: false,
             JITSI_WATERMARK_LINK: "",
             MOBILE_APP_PROMO: false,

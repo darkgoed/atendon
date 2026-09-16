@@ -6,7 +6,7 @@ import { VoiceMessagePlayer } from "@/components/ui/voice-input";
 export interface ConversationMediaMessage {
   id: string;
   content: string;
-  media_type: "audio" | "image" | "document";
+  media_type: "audio" | "image" | "video" | "document";
   media_mime_type?: string | null;
   media_file_name?: string | null;
   media_size_bytes?: number | null;
@@ -45,6 +45,10 @@ export function ConversationMessageMedia({ conversationId, message }: { conversa
     );
   }
 
+  if (message.media_type === "video") {
+    return <video src={src} controls preload="metadata" className="max-h-80 max-w-full rounded-md" aria-label={message.content || message.media_file_name || "Vídeo"} />;
+  }
+
   const rawFileName = message.media_file_name || (message.media_type === "image" ? "Imagem" : "Documento");
   const fileName = rawFileName;
 
@@ -62,11 +66,11 @@ export function ConversationMessageMedia({ conversationId, message }: { conversa
   }
 
   return (
-    <a href={src} className="media-preview-download-min-width flex items-center gap-3 rounded-md border border-[var(--border)] px-3 py-2.5 transition hover:border-[var(--strong)]" download>
-      <FileArrowDown size={24} className="shrink-0 text-[var(--accent-soft)]" />
+    <a href={src} className="media-preview-download-min-width flex items-center gap-3 rounded-md border border-[var(--border)] px-3 py-2.5 transition hover:border-[var(--border-strong)]" download>
+      <FileArrowDown size={24} className="shrink-0 text-[var(--primary-text)]" />
       <span className="min-w-0 flex-1">
         <strong className="block truncate text-xs text-[var(--text)]">{fileName}</strong>
-        <span className="mono mt-1 block text-xs uppercase tracking-wide text-[var(--faint)]">{message.media_mime_type || "arquivo"}{message.media_size_bytes ? ` · ${formatBytes(message.media_size_bytes)}` : ""}</span>
+        <span className="mono mt-1 block text-xs uppercase tracking-wide text-[var(--text-muted)]">{message.media_mime_type || "arquivo"}{message.media_size_bytes ? ` · ${formatBytes(message.media_size_bytes)}` : ""}</span>
       </span>
     </a>
   );

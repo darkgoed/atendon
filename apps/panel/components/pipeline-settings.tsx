@@ -95,35 +95,35 @@ export function PipelineSettings({
           <div className="min-w-0">
             <span className="label">Organização do quadro</span>
             <h2 id="pipeline-settings-title" className="mt-1 text-lg font-semibold">Configurar pipeline</h2>
-            <p id="pipeline-settings-description" className="mt-1 max-w-[65ch] text-xs leading-relaxed text-[var(--muted)]">Edite ordem, capacidade e movimentos. As regras comerciais continuam protegidas pelo status técnico.</p>
+            <p id="pipeline-settings-description" className="mt-1 max-w-[65ch] text-xs leading-relaxed text-[var(--text-secondary)]">Edite ordem, capacidade e movimentos. As regras comerciais continuam protegidas pelo status técnico.</p>
           </div>
           <button type="button" className="grid size-9 shrink-0 place-items-center rounded border border-[var(--border)] active:scale-[.94]" onClick={() => setOpen(false)} aria-label="Fechar configuração"><X size={16} aria-hidden="true" /></button>
         </header>
 
         <div className="min-h-0 overflow-y-auto px-4 py-4 sm:px-5">
           {followUpConfig?.enabled ? (
-            <aside className="mb-4 flex items-start gap-3 rounded-lg border border-[var(--border)] bg-[var(--active)]/55 p-3" aria-label="Etapas automáticas da IA">
-              <PhoneCall className="mt-0.5 shrink-0 text-[var(--accent-soft)]" size={18} aria-hidden="true" />
-              <p className="text-xs leading-relaxed text-[var(--body)]"><strong className="block text-sm">Fluxo automático visível no quadro</strong>As {followUpConfig.max_count} tentativa(s) configuradas na IA aparecem como Follow-up 1 a {followUpConfig.max_count}; ao final, o lead segue para Ligação. Essas colunas são sincronizadas automaticamente e não precisam ser criadas aqui.</p>
+            <aside className="mb-4 flex items-start gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-active)]/55 p-3" aria-label="Etapas automáticas da IA">
+              <PhoneCall className="mt-0.5 shrink-0 text-[var(--primary-text)]" size={18} aria-hidden="true" />
+              <p className="text-xs leading-relaxed text-[var(--text-secondary)]"><strong className="block text-sm">Fluxo automático visível no quadro</strong>As {followUpConfig.max_count} tentativa(s) configuradas na IA aparecem como Follow-up 1 a {followUpConfig.max_count}; ao final, o lead segue para Ligação. Essas colunas são sincronizadas automaticamente e não precisam ser criadas aqui.</p>
             </aside>
           ) : null}
 
           <section className={styles.dialogSection} aria-labelledby="pipeline-active-stages-title">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 id="pipeline-active-stages-title" className="text-sm font-semibold">Etapas ativas</h3>
-              <span className="mono type-caption text-[var(--muted)]">{stages.filter((stage) => !stage.archived_at).length} etapa(s)</span>
+              <span className="mono type-caption text-[var(--text-secondary)]">{stages.filter((stage) => !stage.archived_at).length} etapa(s)</span>
             </div>
             <div className="grid gap-2">
               {stages.filter((stage) => !stage.archived_at).sort((left, right) => left.position - right.position).map((stage) => (
                 <StageEditor key={stage.id} stage={stage} stages={stages} transitions={transitions} onChanged={onChanged} />
               ))}
-              {!stages.some((stage) => !stage.archived_at) ? <p className="rounded border border-dashed border-[var(--border)] p-5 text-center text-xs text-[var(--muted)]">Nenhuma etapa ativa.</p> : null}
+              {!stages.some((stage) => !stage.archived_at) ? <p className="rounded border border-dashed border-[var(--border)] p-5 text-center text-xs text-[var(--text-secondary)]">Nenhuma etapa ativa.</p> : null}
             </div>
           </section>
 
           <section className={styles.dialogSection}>
             <h3 className="text-sm font-semibold">Adicionar etapa</h3>
-            <p className="mt-1 text-xs text-[var(--muted)]">Use uma etapa manual apenas quando ela representar uma fase comercial real.</p>
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">Use uma etapa manual apenas quando ela representar uma fase comercial real.</p>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Field className="lg:col-span-2" label="Nome"><Input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} /></Field>
               <Field className="lg:col-span-2" label="Status técnico"><Select value={technicalStatus} onChange={(event) => setTechnicalStatus(event.target.value)}>{technicalStatuses.map((status) => <option key={status} value={status}>{pipelineStatusLabel(status)}</option>)}</Select></Field>
@@ -191,8 +191,8 @@ function StageEditor({ stage, stages, transitions, onChanged }: { stage: Configu
     finally { setPending(false); }
   }
 
-  return <details className="group overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--panel)]">
-    <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 px-3 active:scale-[.99]"><span className="size-2.5 rounded-full" style={{ backgroundColor: stage.color }} /><span className="min-w-0 flex-1 truncate text-sm font-medium">{stage.name}</span><span className="rounded bg-[var(--active)] px-2 py-1 type-caption text-[var(--muted)]">{pipelineStatusLabel(stage.technical_status)}</span><span className="mono type-caption text-[var(--faint)]">#{stage.position}</span></summary>
+  return <details className="group overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+    <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 px-3 active:scale-[.99]"><span className="size-2.5 rounded-full" style={{ backgroundColor: stage.color }} /><span className="min-w-0 flex-1 truncate text-sm font-medium">{stage.name}</span><span className="rounded bg-[var(--surface-active)] px-2 py-1 type-caption text-[var(--text-secondary)]">{pipelineStatusLabel(stage.technical_status)}</span><span className="mono type-caption text-[var(--text-muted)]">#{stage.position}</span></summary>
     <div className="grid gap-4 border-t border-[var(--border)] p-3 sm:p-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Nome"><Input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} /></Field>

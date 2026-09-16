@@ -1,13 +1,109 @@
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { margin: 0; background: var(--app); color: var(--text); font-family: var(--font-sans); font-size: var(--font-size-body); line-height: var(--leading-body); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
-button, input, textarea, select { font: inherit; }
+/* ============================================================================
+   Reset + elementos base. Tudo aqui consome a camada semântica de tokens.css.
+   Nenhum valor de cor literal, nenhuma dimensão fora da escala.
+   (O preflight do Tailwind v4 já zera margens e list-style; as regras abaixo
+   apenas tornam explícito o que o design system garante.)
+   ========================================================================= */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-body);
+  letter-spacing: var(--tracking-tight);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Títulos herdam peso/tracking do sistema; o tamanho vem da classe de tipo
+   ou do elemento, nunca de um valor arbitrário na página. */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-title);
+}
+h1 { font-size: var(--text-page-title); }
+h2 { font-size: var(--text-section-title); }
+h3, h4, h5, h6 { font-size: var(--text-body); }
+
+a { color: var(--primary-text); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+hr { height: 1px; border: 0; background: var(--border-subtle); }
+
+small { font-size: var(--text-meta); }
+
+code, kbd, samp, pre, .mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+button, input, textarea, select { font: inherit; letter-spacing: inherit; color: inherit; }
 button { cursor: pointer; }
-button:disabled { cursor: not-allowed; opacity: .62; }
-:where(a,button,input,textarea,select,[tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: var(--ring); }
-.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+button:disabled, [aria-disabled="true"] { cursor: not-allowed; }
+button:disabled { color: var(--text-disabled); }
+
+img, svg, video, canvas { display: block; max-width: 100%; }
+
+::selection { background: var(--primary-subtle-hover); color: var(--text); }
+
+/* ---- Foco --------------------------------------------------------------
+   Um único padrão para todo o produto: outline removido e substituído pelo
+   anel de foco tokenizado. É este par que o ds-grep reconhece como legítimo. */
+:where(a, button, input, textarea, select, summary, [tabindex], [role="button"],
+       [role="tab"], [role="option"], [role="menuitem"], [role="switch"]):focus { outline: none; }
+:where(a, button, input, textarea, select, summary, [tabindex], [role="button"],
+       [role="tab"], [role="option"], [role="menuitem"], [role="switch"]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ---- Utilidades de acessibilidade ------------------------------------- */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- Scrollbars -------------------------------------------------------- */
 * { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
-*::-webkit-scrollbar { width: 10px; height: 10px; } *::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: var(--radius-pill); border: 3px solid transparent; background-clip: padding-box; }
-@keyframes shimmer { to { background-position: -200% 0; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes popIn { from { opacity: 0; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border: 3px solid transparent;
+  border-radius: var(--radius-pill);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); background-clip: padding-box; }
+
+/* ---- Animações do sistema (sem decoração) ----------------------------- */
+@keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes popIn { from { opacity: 0; transform: translateY(4px) scale(.99); } to { opacity: 1; transform: none; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

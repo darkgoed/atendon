@@ -40,23 +40,47 @@ async function cookie(userId: string, tenant: string, email: string, role: strin
   return `atendon_session=${await createSessionToken({ userId, tenantId: tenant, email, role })}`;
 }
 
-async function createLeadAndThread(tenant: string, sessionId: string, leadName: string, interestCategoryId: string | null, assignedUserId: string | null) {
+async function createLeadAndThread(
+  tenant: string,
+  sessionId: string,
+  channel: "whatsapp" | "instagram",
+  leadName: string,
+  interestCategoryId: string | null,
+  assignedUserId: string | null
+) {
+  const instagramContactId = channel === "instagram" ? `igsid-${randomUUID()}` : null;
+  const instagramUsername = instagramContactId ? `briefing_${instagramContactId.slice(6, 18)}` : null;
+  const phone = channel === "whatsapp" ? `551199${String(phoneSequence++).padStart(7, "0")}` : null;
   const lead = await first<{ id: string }>(
     `INSERT INTO scheduling_leads(
-       tenant_id,phone,name,interest_category_id,unit_id,status,source,campaign,next_action,next_action_at,pipeline_stage_id
+       tenant_id,phone,name,interest_category_id,unit_id,status,source,campaign,next_action,next_action_at,pipeline_stage_id,
+       instagram_contact_id,instagram_username,instagram_session_id
      )
-     SELECT $1,$2,$3,$4,$5,'em_atendimento',$6,$7,$8,$9,id
+     SELECT $1,$2,$3,$4,$5,'em_atendimento',$6,$7,$8,$9,id,$10,$11,$12
      FROM pipeline_stages
      WHERE tenant_id=$1 AND technical_status='em_atendimento' AND is_default
      RETURNING id`,
-    [tenant, `551199${String(phoneSequence++).padStart(7, "0")}`, leadName, interestCategoryId, unitId, source, campaign, nextAction, nextActionAt]
+    [
+      tenant,
+      phone,
+      leadName,
+      interestCategoryId,
+      unitId,
+      source,
+      campaign,
+      nextAction,
+      nextActionAt,
+      instagramContactId,
+      instagramUsername,
+      channel === "instagram" ? sessionId : null
+    ]
   );
   if (!lead) throw new Error("briefing integration lead was not created");
   const conversation = await first<{ id: string }>(
     `INSERT INTO conversations(
-       tenant_id,session_id,contact_phone,contact_name,lead_id,assigned_user_id,queue_id,status
+       tenant_id,session_id,contact_phone,contact_name,instagram_contact_id,instagram_username,lead_id,assigned_user_id,queue_id,status
      )
-     SELECT $1,$2,lead.phone,lead.name,lead.id,$4,q.id,'open'
+     SELECT $1,$2,lead.phone,lead.name,lead.instagram_contact_id,lead.instagram_username,lead.id,$4,q.id,'open'
      FROM scheduling_leads lead
      JOIN conversation_queues q ON q.tenant_id=lead.tenant_id AND q.is_initial
      WHERE lead.id=$3
@@ -107,7 +131,13 @@ beforeAll(async () => {
        SELECT $1,$2,id,'active',now() FROM workspace_roles WHERE workspace_id=$1 AND name='OWNER'`,
       [foreignTenantId, foreignOwnerId]
     );
-    await client.query("INSERT INTO whatsapp_sessions(tenant_id,label,status,channel) VALUES($1,'Briefing WhatsApp','connected','whatsapp'),($1,'Briefing Instagram','connected','instagram'),($2,'Foreign briefing','connected','whatsapp')", [tenantId, foreignTenantId]);
+    await client.query(
+      `INSERT INTO whatsapp_sessions(tenant_id,label,status,channel,is_primary,phone_number)
+       VALUES($1,'Briefing WhatsApp','connected','whatsapp',false,NULL),
+             ($1,'Briefing Instagram','connected','instagram',false,NULL),
+             ($2,'Foreign briefing','connected','whatsapp',false,NULL)`,
+      [tenantId, foreignTenantId]
+    );
     const nullability = await client.query<{ is_nullable: string }>(
       `SELECT is_nullable FROM information_schema.columns
        WHERE table_schema='public' AND table_name='scheduling_leads' AND column_name='interest_category_id'`
@@ -136,10 +166,10 @@ beforeAll(async () => {
   const instagramSession = (await first<{ id: string }>("SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 AND channel='instagram' LIMIT 1", [tenantId]))?.id;
   const foreignSession = (await first<{ id: string }>("SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 LIMIT 1", [foreignTenantId]))?.id;
   if (!tenantSession || !instagramSession || !foreignSession) throw new Error("briefing integration channel sessions were not seeded");
-  conversationId = (await createLeadAndThread(tenantId, tenantSession, `Lead briefing ${suffix}`, categoryId, ownerId)).conversationId;
-  instagramConversationId = (await createLeadAndThread(tenantId, instagramSession, `Lead Instagram ${suffix}`, categoryId, ownerId)).conversationId;
-  scopedConversationId = (await createLeadAndThread(tenantId, tenantSession, `Lead scoped ${suffix}`, categoryId, ownerId)).conversationId;
-  foreignConversationId = (await createLeadAndThread(foreignTenantId, foreignSession, `Lead foreign ${suffix}`, categoryId, foreignOwnerId)).conversationId;
+  conversationId = (await createLeadAndThread(tenantId, tenantSession, "whatsapp", `Lead briefing ${suffix}`, categoryId, ownerId)).conversationId;
+  instagramConversationId = (await createLeadAndThread(tenantId, instagramSession, "instagram", `Lead Instagram ${suffix}`, categoryId, ownerId)).conversationId;
+  scopedConversationId = (await createLeadAndThread(tenantId, tenantSession, "whatsapp", `Lead scoped ${suffix}`, categoryId, ownerId)).conversationId;
+  foreignConversationId = (await createLeadAndThread(foreignTenantId, foreignSession, "whatsapp", `Lead foreign ${suffix}`, categoryId, foreignOwnerId)).conversationId;
 });
 
 afterAll(async () => {
@@ -189,8 +219,8 @@ describe("conversation thread briefing contract", () => {
       [tenantId]
     );
     try {
-      const sessionId = (await first<{ id: string }>("SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 LIMIT 1", [tenantId]))!.id;
-      const fixture = await createLeadAndThread(tenantId, sessionId, `Lead fallback ${suffix}`, `missing-${suffix}`, ownerId);
+      const sessionId = (await first<{ id: string }>("SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 AND channel='whatsapp' LIMIT 1", [tenantId]))!.id;
+      const fixture = await createLeadAndThread(tenantId, sessionId, "whatsapp", `Lead fallback ${suffix}`, `missing-${suffix}`, ownerId);
       for (const url of [`/conversations/${fixture.conversationId}/messages`, `/conversations/${fixture.conversationId}/messages/v2`]) {
         const response = await app.inject({ url, headers: { cookie: ownerCookie } });
         expect(response.statusCode).toBe(200);

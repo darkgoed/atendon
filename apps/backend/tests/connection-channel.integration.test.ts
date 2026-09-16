@@ -5,9 +5,11 @@ import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { createSessionToken } from "../src/auth/session.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
+import { InstagramRepository } from "../src/modules/instagram/repository.js";
 import { WhatsAppSessionManager } from "../src/modules/whatsapp/session-manager.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
+const instagramRepository = new InstagramRepository(pool, config.DATA_ENCRYPTION_KEY);
 const app = buildApp();
 const tenants: string[] = [];
 const users: string[] = [];
@@ -56,15 +58,20 @@ async function fixture() {
       `INSERT INTO whatsapp_sessions(tenant_id,label,is_primary,status,channel)
        VALUES($1,'Principal',true,'connected','whatsapp') RETURNING id`, [tenantId]
     )).rows[0].id;
-    const instagramSessionId = (await client.query<{ id: string }>(
-      `INSERT INTO whatsapp_sessions(tenant_id,label,is_primary,status,channel)
-       VALUES($1,'Instagram schema-ready',false,'connected','instagram') RETURNING id`, [tenantId]
-    )).rows[0].id;
+
     const token = await createSessionToken({
       userId, tenantId, email: `channel-${userId}@test.local`, role: "OWNER", sessionVersion: 1
     });
     await client.query("COMMIT");
-    return { tenantId, userId, sessionId, instagramSessionId, cookie: `atendon_session=${token}` };
+    const instagram = await instagramRepository.saveConnection({
+      tenantId,
+      label: "Instagram @fixture",
+      accountId: `ig-account-${randomUUID()}`,
+      username: "fixture",
+      accessToken: `fixture-token-${randomUUID()}`,
+      expiresAt: new Date(Date.now() + 86_400_000)
+    });
+    return { tenantId, userId, sessionId, instagramSessionId: instagram.id, cookie: `atendon_session=${token}` };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -188,9 +195,11 @@ describe("canal das conexões e conversas", () => {
     expect(connection.statusCode).toBe(200);
     expect(connection.json().connection.id).toBe(context.sessionId);
     await pool.query("UPDATE whatsapp_sessions SET is_primary=false WHERE id=$1", [context.sessionId]);
-    await pool.query("UPDATE whatsapp_sessions SET is_primary=true WHERE id=$1", [context.instagramSessionId]);
     const instagramPrimary = await app.inject({ url: "/connection", headers: { cookie: context.cookie } });
     expect(instagramPrimary.json().connection.id).toBe(context.sessionId);
+    expect((await pool.query<{ is_primary: boolean }>(
+      "SELECT is_primary FROM whatsapp_sessions WHERE id=$1", [context.instagramSessionId]
+    )).rows[0].is_primary).toBe(false);
     const reconnect = await app.inject({ method: "POST", url: "/connection/reconnect", headers: { cookie: context.cookie } });
     expect(reconnect.statusCode).toBe(202);
     start.mockClear();
@@ -201,10 +210,22 @@ describe("canal das conexões e conversas", () => {
     const foreign = await fixture();
     const ownPhone = testPhone();
     const foreignPhone = testPhone();
+    const instagramContactId = `igsid-${randomUUID()}`;
     await pool.query(
       `INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name)
-       VALUES($1,$2,$3,'WhatsApp'),($1,$4,$5,'Instagram')`,
-      [own.tenantId, own.sessionId, ownPhone, own.instagramSessionId, `${ownPhone}2`]
+       VALUES($1,$2,$3,'WhatsApp')`,
+      [own.tenantId, own.sessionId, ownPhone]
+    );
+    const instagramLeadId = (await pool.query<{ id: string }>(
+      `INSERT INTO scheduling_leads(tenant_id,phone,name,source,instagram_contact_id,instagram_session_id)
+       VALUES($1,NULL,'Instagram','instagram',$2,$3) RETURNING id`,
+      [own.tenantId, instagramContactId, own.instagramSessionId]
+    )).rows[0].id;
+    await pool.query(
+      `INSERT INTO conversations(
+         tenant_id,session_id,contact_phone,contact_name,instagram_contact_id,instagram_username,lead_id
+       ) VALUES($1,$2,NULL,'Instagram',$3,'fixture_contact',$4)`,
+      [own.tenantId, own.instagramSessionId, instagramContactId, instagramLeadId]
     );
     await pool.query(
       "INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name) VALUES($1,$2,$3,'Foreign')",
@@ -218,7 +239,7 @@ describe("canal das conexões e conversas", () => {
     expect(rows.some((row) => row.contact_name === "Foreign")).toBe(false);
   });
 
-  it("recusa Instagram com 501, sem linha, limite alterado ou chamada Evolution, inclusive repetido", async () => {
+  it("inicia Instagram pelo fluxo OAuth sem linha, limite alterado ou chamada Evolution, inclusive repetido", async () => {
     const context = await fixture();
     const before = await pool.query<{ count: number }>(
       "SELECT count(*)::int count FROM whatsapp_sessions WHERE tenant_id=$1 AND archived_at IS NULL", [context.tenantId]
@@ -231,9 +252,12 @@ describe("canal das conexões e conversas", () => {
       method: "POST", url: "/connections", headers: { cookie: context.cookie },
       payload: { label: "Meta", channel: "instagram" }
     });
-    expect(first.statusCode).toBe(501);
-    expect(first.json()).toEqual({ code: "CHANNEL_NOT_AVAILABLE", message: "Canal Instagram ainda não disponível para conexão" });
-    expect(second.statusCode).toBe(501);
+    expect(first.statusCode).toBe(409);
+    expect(first.json()).toEqual(expect.objectContaining({
+      code: "INSTAGRAM_OAUTH_REQUIRED",
+      authorization_path: "/instagram/oauth/start"
+    }));
+    expect(second.statusCode).toBe(409);
     expect(second.json()).toEqual(first.json());
     expect(start).not.toHaveBeenCalled();
     const after = await pool.query<{ count: number }>(
@@ -328,7 +352,6 @@ describe("canal das conexões e conversas", () => {
   it("cria a primeira WhatsApp como primária quando só há Instagram ativa", async () => {
     const context = await fixture();
     await pool.query("UPDATE whatsapp_sessions SET is_primary=false,archived_at=now() WHERE id=$1", [context.sessionId]);
-    await pool.query("UPDATE whatsapp_sessions SET is_primary=true WHERE id=$1", [context.instagramSessionId]);
 
     const response = await app.inject({
       method: "POST", url: "/connections", headers: { cookie: context.cookie },
@@ -340,6 +363,9 @@ describe("canal das conexões e conversas", () => {
       [context.tenantId]
     );
     expect(created.rows[0]).toEqual({ is_primary: true, channel: "whatsapp" });
+    expect((await pool.query<{ is_primary: boolean }>(
+      "SELECT is_primary FROM whatsapp_sessions WHERE id=$1", [context.instagramSessionId]
+    )).rows[0].is_primary).toBe(false);
   });
 
   it("bloqueia criação no limite pelo número real de WhatsApps, ignorando Instagram", async () => {

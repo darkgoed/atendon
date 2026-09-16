@@ -205,12 +205,21 @@ describe("persistent idempotency for outbound effects", () => {
   });
 
   it("does not recover failed manual messages from an Instagram connection", async () => {
+    const instagramContactId = `igsid-${randomUUID()}`;
     const instagramSession = (await pool.query<{ id: string }>(
-      "INSERT INTO whatsapp_sessions(tenant_id,status,channel) VALUES($1,'connected','instagram') RETURNING id", [tenantA]
+      "INSERT INTO whatsapp_sessions(tenant_id,status,channel,is_primary,phone_number) VALUES($1,'connected','instagram',false,NULL) RETURNING id", [tenantA]
+    )).rows[0].id;
+    const instagramLead = (await pool.query<{ id: string }>(
+      `INSERT INTO scheduling_leads(
+         tenant_id,phone,name,source,instagram_contact_id,instagram_username,instagram_session_id
+       ) VALUES($1,NULL,'Contato Instagram','instagram',$2,'cliente_teste',$3) RETURNING id`,
+      [tenantA, instagramContactId, instagramSession]
     )).rows[0].id;
     const instagramConversation = (await pool.query<{ id: string }>(
-      "INSERT INTO conversations(tenant_id,session_id,contact_phone) VALUES($1,$2,'5511900010102') RETURNING id",
-      [tenantA, instagramSession]
+      `INSERT INTO conversations(
+         tenant_id,session_id,contact_phone,contact_name,instagram_contact_id,instagram_username,lead_id
+       ) VALUES($1,$2,NULL,'Contato Instagram',$3,'cliente_teste',$4) RETURNING id`,
+      [tenantA, instagramSession, instagramContactId, instagramLead]
     )).rows[0].id;
     await pool.query(
       `INSERT INTO outbound_message_requests(tenant_id,conversation_id,idempotency_key,request_hash,status,recovery_payload)
@@ -218,13 +227,18 @@ describe("persistent idempotency for outbound effects", () => {
       [tenantA, instagramConversation, `instagram-${randomUUID()}`, "hash-instagram", JSON.stringify({ sendText: "não enviar", displayText: "não enviar", sentByUserId: userA })]
     );
     const retry = vi.fn().mockResolvedValue({ externalId: "must-not-send" });
-    await expect(repository.recoverFailedManualMessages(tenantA, retry)).resolves.toMatchObject({});
+    await repository.recoverFailedManualMessages(tenantA, retry);
     expect(retry).not.toHaveBeenCalledWith(expect.objectContaining({ text: "não enviar" }));
     expect((await pool.query<{ status: string }>(
       "SELECT status FROM outbound_message_requests WHERE conversation_id=$1", [instagramConversation]
     )).rows[0].status).toBe("failed");
+    expect((await pool.query(
+      "SELECT id FROM messages WHERE conversation_id=$1",
+      [instagramConversation]
+    )).rowCount).toBe(0);
     await pool.query("DELETE FROM outbound_message_requests WHERE conversation_id=$1", [instagramConversation]);
     await pool.query("DELETE FROM conversations WHERE id=$1", [instagramConversation]);
+    await pool.query("DELETE FROM scheduling_leads WHERE id=$1", [instagramLead]);
     await pool.query("DELETE FROM whatsapp_sessions WHERE id=$1", [instagramSession]);
   });
 

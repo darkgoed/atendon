@@ -122,7 +122,7 @@ export function PipelineTransitionDialog({
         <div>
           <span className="eyebrow">MOVIMENTAÇÃO SEGURA</span>
           <h2 id="pipeline-transition-title" className="mt-2 text-lg font-semibold">Mover {lead.nome ?? "lead"}</h2>
-          <p id="pipeline-transition-description" className="mt-1 text-xs leading-relaxed text-[var(--muted)]">Escolha a etapa e registre os dados exigidos para manter o histórico comercial consistente.</p>
+          <p id="pipeline-transition-description" className="mt-1 text-xs leading-relaxed text-[var(--text-secondary)]">Escolha a etapa e registre os dados exigidos para manter o histórico comercial consistente.</p>
         </div>
         <button type="button" className="grid size-9 shrink-0 place-items-center rounded border border-[var(--border)] active:scale-[.94]" onClick={onClose} disabled={pending} aria-label="Fechar movimentação">
           <X size={16} aria-hidden="true" />

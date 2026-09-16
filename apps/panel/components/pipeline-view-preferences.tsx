@@ -54,7 +54,7 @@ export function PipelineViewPreferences({
               <button
                 key={density}
                 type="button"
-                className={`min-h-9 rounded border px-3 text-xs transition-colors active:scale-[.98] ${value.density === density ? "border-[var(--accent)] bg-[var(--active)] text-[var(--accent-soft)]" : "border-[var(--border)] text-[var(--body)]"}`}
+                className={`min-h-9 rounded border px-3 text-xs transition-colors active:scale-[.98] ${value.density === density ? "border-[var(--primary)] bg-[var(--surface-active)] text-[var(--primary-text)]" : "border-[var(--border)] text-[var(--text-secondary)]"}`}
                 aria-pressed={value.density === density}
                 onClick={() => onChange({ ...value, density })}
               >

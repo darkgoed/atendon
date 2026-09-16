@@ -4,11 +4,23 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
-import { inboundQueue } from "../src/queue/message-queue.js";
+import { inboundJobId, inboundQueue } from "../src/queue/message-queue.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const app = buildApp();
 const records: Array<{ tenantId: string; sessionId: string; instanceName: string }> = [];
+const inboundJobIds = new Set<string>();
+
+function equalProviderMessage(record: { tenantId: string; sessionId: string }) {
+  return {
+    externalId: "same-provider-id",
+    tenantId: record.tenantId,
+    sessionId: record.sessionId,
+    contactPhone: "5511999999999",
+    contactJid: "5511999999999@s.whatsapp.net",
+    text: "olá"
+  };
+}
 
 async function removeInboundJob(jobId: string): Promise<void> {
   const deadline = Date.now() + 5_000;
@@ -35,10 +47,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const record of records) {
-    const jobId = `${record.tenantId}_${record.sessionId}_same-provider-id`.replace(/[^a-zA-Z0-9_-]/g, "_");
-    await removeInboundJob(jobId);
-  }
+  for (const jobId of inboundJobIds) await removeInboundJob(jobId);
   await pool.query("DELETE FROM tenants WHERE id=ANY($1::uuid[])", [records.map((record) => record.tenantId)]);
   await app.close();
   await pool.end();
@@ -46,7 +55,11 @@ afterAll(async () => {
 
 describe("Evolution webhook Redis buffer", () => {
   it("buffers equal provider IDs independently under the tenant resolved from each instance", async () => {
+    const jobs = [];
     for (const record of records) {
+      const expectedMessage = equalProviderMessage(record);
+      const jobId = inboundJobId(expectedMessage);
+      inboundJobIds.add(jobId);
       const payload = {
         event: "messages.upsert", instance: record.instanceName,
         data: { key: { id: "same-provider-id", remoteJid: "5511999999999@s.whatsapp.net", fromMe: false }, message: {
@@ -55,13 +68,16 @@ describe("Evolution webhook Redis buffer", () => {
       };
       const response = await app.inject({ method: "POST", url: "/webhooks/evolution", headers: { "x-atendon-webhook-secret": config.EVOLUTION_WEBHOOK_SECRET }, payload });
       expect(response.statusCode).toBe(204);
+      const firstJob = await inboundQueue.getJob(jobId);
+      expect(firstJob?.data).toMatchObject({ ...expectedMessage, referral:{sourceType:"ad",sourceId:"ad-redis",headline:"Newave"} });
+
       expect((await app.inject({ method:"POST",url:"/webhooks/evolution",headers:{"x-atendon-webhook-secret":config.EVOLUTION_WEBHOOK_SECRET},payload })).statusCode).toBe(204);
+      const duplicateJob = await inboundQueue.getJob(jobId);
+      expect(duplicateJob?.data.aiTurnId).toBe(firstJob?.data.aiTurnId);
+      jobs.push(duplicateJob);
     }
-    for (const record of records) {
-      const jobId = `${record.tenantId}_${record.sessionId}_same-provider-id`.replace(/[^a-zA-Z0-9_-]/g, "_");
-      const job = await inboundQueue.getJob(jobId);
-      expect(job?.data).toMatchObject({ tenantId: record.tenantId, sessionId: record.sessionId, externalId: "same-provider-id",referral:{sourceType:"ad",sourceId:"ad-redis",headline:"Newave"} });
-    }
+    expect(jobs).toHaveLength(records.length);
+    expect(new Set(jobs.map((job) => job?.id)).size).toBe(records.length);
   });
 
   it("rejects unknown instances before writing to Redis", async () => {

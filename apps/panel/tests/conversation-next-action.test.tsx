@@ -86,9 +86,14 @@ describe("ConversationNextAction", () => {
     expect(screen.queryByText("Pendência")).not.toBeInTheDocument();
 
     act(() => vi.advanceTimersByTime(1_000));
-    expect(screen.getByText("Pendência")).toHaveClass("text-[var(--warn)]");
-    expect(screen.getByText("Retomar contato")).toHaveClass("text-[var(--warn)]");
-    expect(screen.getByRole("region")).toHaveClass("border-[var(--warn-border)]");
+    // Intenção: ao vencer, o bloco inteiro assume o tratamento de AVISO.
+    // Os nomes de token mudaram no refactor do design system: `--warn` era um
+    // alias legado e a cor de status COMO TEXTO agora é `--warning-text` (a
+    // variante corrigida para WCAG AA sobre todas as superfícies); `--warn-border`
+    // virou `--warning-border`. O comportamento verificado é o mesmo.
+    expect(screen.getByText("Pendência")).toHaveClass("text-[var(--warning-text)]");
+    expect(screen.getByText("Retomar contato")).toHaveClass("text-[var(--warning-text)]");
+    expect(screen.getByRole("region")).toHaveClass("border-[var(--warning-border)]");
 
     unmount();
     expect(clearIntervalSpy).toHaveBeenCalled();

@@ -18,7 +18,7 @@ import {
 import { BrandMark } from "./brand-mark";
 import { Shell } from "./shell";
 
-const publicPaths = ["/login", "/convite", "/invitations", "/reuniao", "/offline", "/403"] as const;
+const publicPaths = ["/login", "/privacidade", "/convite", "/invitations", "/reuniao", "/offline", "/403"] as const;
 const capabilityExemptPaths = ["/conversas", "/perfil", "/alterar-senha", "/root"] as const;
 const startsAt = (path: string, base: string) => path === base || path.startsWith(`${base}/`);
 const createTenantCache = () => new Map();
@@ -40,8 +40,8 @@ function CapabilityUnavailable({ name, catalogError }: { name: string; catalogEr
   const { retry } = useCapabilities();
   return (
     <Shell>
-      <section className="mx-auto grid max-w-2xl gap-5 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-5 py-8 sm:grid-cols-[44px_minmax(0,1fr)]" role="alert">
-        <span className="grid size-11 place-items-center rounded-full border border-[var(--warn-border)] text-[var(--warn)]">
+      <section className="mx-auto grid max-w-2xl gap-5 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-5 py-8 sm:grid-cols-[44px_minmax(0,1fr)]" role="alert">
+        <span className="grid size-11 place-items-center rounded-full border border-[var(--warning-border)] text-[var(--warning-text)]">
           <LockSimple size={21} aria-hidden="true" />
         </span>
         <div>

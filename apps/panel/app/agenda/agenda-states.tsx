@@ -14,8 +14,8 @@ export function AgendaLoading({ label }: { label: string }) {
 
 export function AgendaError({ message, onRetry, retrying = false }: { message: string; onRetry: () => void | Promise<unknown>; retrying?: boolean }) {
   return (
-    <section className="grid justify-items-start gap-3 border-y border-[var(--warn-border)] bg-[var(--warn-bg)] px-4 py-5 text-[var(--warn)]" role="alert">
-      <div className="flex items-start gap-3"><WarningCircle className="mt-0.5 shrink-0" size={20} aria-hidden="true" /><div><strong className="block text-sm">Não foi possível carregar a agenda</strong><p className="mt-1 text-sm text-[var(--warn-muted)]">{message}</p></div></div>
+    <section className="grid justify-items-start gap-3 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-5 text-[var(--warning-text)]" role="alert">
+      <div className="flex items-start gap-3"><WarningCircle className="mt-0.5 shrink-0" size={20} aria-hidden="true" /><div><strong className="block text-sm">Não foi possível carregar a agenda</strong><p className="mt-1 text-sm text-[var(--warning-text)]">{message}</p></div></div>
       <Button tone="danger" disabled={retrying} onClick={() => void onRetry()}>{retrying ? "Tentando novamente…" : "Tentar novamente"}</Button>
     </section>
   );

@@ -130,6 +130,44 @@ describe("multiple WhatsApp connections page", () => {
     expect(addButton).toHaveAttribute("title", "Seu plano permite até 2 conexões de WhatsApp.");
   });
 
+  it("handles sanitized Instagram callback success and error states", async () => {
+    mockInitialLoad();
+    window.history.replaceState({}, "", "/conexao?instagram=connected");
+    const { unmount } = render(<ConnectionPage />);
+    expect(await screen.findByText("Instagram conectado com sucesso.")).toBeInTheDocument();
+
+    unmount();
+    window.history.replaceState({}, "", "/conexao?instagram=error&error=raw-provider-secret");
+    render(<ConnectionPage />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível concluir a autorização do Instagram");
+    expect(screen.queryByText("raw-provider-secret")).not.toBeInTheDocument();
+  });
+
+  it("does not render an Instagram connection as a WhatsApp card", async () => {
+    const instagramOnly = [{
+      ...connections[0],
+      id: "ig-only",
+      channel: "instagram" as const,
+      is_primary: false,
+      phone_number: null,
+      instagram_username: "atendon",
+      instagram_account_id: "17841400000000000"
+    }];
+    apiMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === "/connections" && !init) return { connections: instagramOnly, limits: { used: 0, max: 3 } };
+      if (path === "/instagram/status") return { configured: true, missing: [], graph_version: "v26.0", max_connections: 10 };
+      if (path === "/connection/failed-messages") return { recovery };
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+
+    render(<ConnectionPage />);
+
+    expect(await screen.findByRole("article", { name: "Instagram @atendon" })).toBeInTheDocument();
+    expect(screen.getByText("Nenhuma sessão de WhatsApp configurada.")).toBeInTheDocument();
+    expect(screen.queryByText("WhatsApp conectado")).not.toBeInTheDocument();
+    expect(screen.queryByText("Principal")).not.toBeInTheDocument();
+  });
+
   it("shows the backend plan error when creating a connection over the limit", async () => {
     const planError = "Seu plano atingiu o limite de conexões do WhatsApp";
     mockInitialLoad(3);
