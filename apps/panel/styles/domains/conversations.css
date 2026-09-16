@@ -82,14 +82,7 @@
   border-bottom: 1px solid var(--border-subtle);
   background: var(--surface);
 }
-.conversation-list__heading {
-  margin-bottom: var(--space-2);
-  color: var(--text-muted);
-  font-size: var(--text-micro);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-overline);
-  text-transform: uppercase;
-}
+.conversation-list__meta { color: var(--text-secondary); }
 .conversation-list__search { margin-bottom: var(--space-2); }
 .conversation-list__search .input { min-height: var(--control-height); font-size: var(--text-control); }
 

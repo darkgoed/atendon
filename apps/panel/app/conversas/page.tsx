@@ -263,7 +263,7 @@ function ConversationItem({ item, selected, showLeadTags, onClick }: { item: Con
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline justify-between gap-2">
-          <strong data-unread={unread > 0 ? "true" : undefined} className={`conversation-list__name min-w-0 truncate text-[var(--text)] ${unread > 0 ? "font-semibold" : ""}`}><ChannelBadge channel={item.channel === "instagram" ? "instagram" : "whatsapp"} size={12} /> {title}</strong>
+          <strong data-unread={unread > 0 ? "true" : undefined} className={`conversation-list__name min-w-0 truncate text-[var(--text)] ${unread > 0 ? "font-semibold" : ""}`}>{title}</strong>
           <time className="conversation-list__time mono shrink-0 text-[var(--text-muted)]">{formatClock(item.last_message_at)}</time>
         </div>
         {item.contact_name ? <p className="conversation-list__company mono truncate text-[var(--text-muted)]" dir="ltr">{item.channel === "instagram" ? instagramDisplayIdentity(item.instagram_username, item.contact_identifier) : item.contact_phone}</p> : null}
@@ -281,6 +281,7 @@ function ConversationItem({ item, selected, showLeadTags, onClick }: { item: Con
           ) : null}
         </div>
         <div className="conversation-list__footer flex min-w-0 items-center gap-1.5 overflow-hidden">
+          <ChannelBadge channel={item.channel === "instagram" ? "instagram" : "whatsapp"} size={12} />
           <ConversationBadge item={item} />
           <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-[var(--text-muted)]">
             {item.assigned_user_first_name ? <span className="truncate">{item.assigned_user_first_name}</span> : null}
@@ -1356,23 +1357,15 @@ export default function Conversations() {
         >
         <aside className="conversation-list flex min-h-0 flex-col border-r border-[var(--border)] bg-transparent">
           <header className="conversation-list__header shrink-0 border-b border-[var(--border)] px-3.5 py-3">
-            <div className="conversation-list__heading mb-3 flex items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2.5">
-                  <h1 className="text-lg font-semibold tracking-tight text-[var(--text)]">{hasWorkspaceScope ? "Conversas" : "Minhas conversas"}</h1>
-                  <span className="mono rounded border border-[var(--primary-border)] bg-[var(--primary-subtle)] px-1.5 py-0.5 text-xs text-[var(--primary)]">CV—01</span>
-                </div>
-                <p className="conversation-list__description mt-0.5 text-xs text-[var(--text-secondary)]">
-                  {hasWorkspaceScope
-                    ? "Fila, histórico e envio manual pelo WhatsApp conectado."
-                    : "Atendimentos atribuídos a você, com histórico e envio pelo WhatsApp."}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <span className="mono rounded-full border border-[var(--border)] bg-transparent px-2 py-0.5 text-xs text-[var(--text-muted)]">
-                  {items.length}
-                </span>
-              </div>
+            <div className="conversation-list__meta mb-3 flex items-start justify-between gap-3">
+              <p className="conversation-list__description text-xs leading-relaxed text-[var(--text-secondary)]">
+                {hasWorkspaceScope
+                  ? "Fila, histórico e envio manual pelo WhatsApp conectado."
+                  : "Atendimentos atribuídos a você, com histórico e envio pelo WhatsApp."}
+              </p>
+              <span className="mono shrink-0 rounded-full border border-[var(--border)] bg-transparent px-2 py-0.5 text-xs text-[var(--text-muted)]">
+                {items.length}
+              </span>
             </div>
             <label className="conversation-list__search search-field mb-2.5">
               <MagnifyingGlass className="shrink-0 text-[var(--text-muted)]" size={16} aria-hidden="true" />
