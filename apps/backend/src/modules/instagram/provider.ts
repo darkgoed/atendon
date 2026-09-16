@@ -76,12 +76,19 @@ function requiredString(value: unknown, field: string): string {
 }
 
 function oauthTokenEntry(response: Record<string, unknown>): Record<string, unknown> {
-  if (!Array.isArray(response.data)
-    || response.data.length !== 1
-    || !isRecord(response.data[0])) {
-    throw new MetaAmbiguousError(new Error("Meta OAuth response has invalid data envelope"));
+  if (Array.isArray(response.data)
+    && response.data.length === 1
+    && isRecord(response.data[0])) {
+    return response.data[0];
   }
-  return response.data[0];
+  // A Business Login com Instagram Login responde com objeto plano
+  // { access_token, user_id, permissions } na prática, embora a documentação
+  // mostre o envelope { data: [...] }. Aceitar os dois formatos.
+  if (typeof response.access_token === "string"
+    && (typeof response.user_id === "string" || typeof response.user_id === "number")) {
+    return { ...response, user_id: String(response.user_id) };
+  }
+  throw new MetaAmbiguousError(new Error("Meta OAuth response has invalid data envelope"));
 }
 
 function oauthPermissions(value: unknown): string[] {

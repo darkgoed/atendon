@@ -237,12 +237,38 @@ describe("MetaInstagramProvider HTTP contract", () => {
     expect(exchange.calls).toHaveLength(1);
   });
 
+  it("accepts the flat Instagram Login token response observed in production", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-16T00:00:00.000Z"));
+    const exchange = sequenceFetch([
+      Response.json({
+        access_token: "short-token",
+        user_id: "account-1",
+        permissions: "instagram_business_basic,instagram_business_manage_messages"
+      }),
+      Response.json({ access_token: "long-token", expires_in: 5_184_000 }),
+      Response.json({ user_id: "account-1", username: "business" })
+    ]);
+    const provider = new MetaInstagramProvider({
+      appId: "app-id",
+      appSecret: "app-secret",
+      graphVersion: "v26.0",
+      fetchImpl: exchange.fetchImpl
+    });
+
+    await expect(provider.exchangeOAuthCode({
+      code: "one-time-code",
+      redirectUri: "https://app.example/callback"
+    })).resolves.toMatchObject({
+      accountId: "account-1",
+      username: "business",
+      accessToken: "long-token",
+      scopes: ["instagram_business_basic", "instagram_business_manage_messages"]
+    });
+    expect(exchange.calls).toHaveLength(3);
+  });
+
   it.each([
-    ["flat legacy response", {
-      access_token: "short-secret-token",
-      user_id: "account-1",
-      permissions: "instagram_business_basic,instagram_business_manage_messages"
-    }],
     ["missing data", {}],
     ["empty data", { data: [] }],
     ["multiple data entries", {
