@@ -53,8 +53,8 @@ export type MetaProviderOptions = {
 };
 
 class MetaRejectedError extends Error {
-  constructor(readonly status: number) {
-    super("Meta request rejected");
+  constructor(readonly status: number, readonly detail?: string) {
+    super(detail ? `Meta request rejected (${status}): ${detail}` : "Meta request rejected");
   }
 }
 
@@ -216,7 +216,13 @@ export class MetaInstagramProvider implements InstagramProvider {
         signal: controller.signal
       });
       if (response.status >= 400 && response.status < 500) {
-        throw new MetaRejectedError(response.status);
+        let detail: string | undefined;
+        try {
+          detail = (await response.text()).slice(0, 500);
+        } catch {
+          detail = undefined;
+        }
+        throw new MetaRejectedError(response.status, detail);
       }
       if (!response.ok) {
         throw new MetaAmbiguousError();

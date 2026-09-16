@@ -150,7 +150,11 @@ export async function registerInstagramRoutes(
       });
       reply.clearCookie("instagram_oauth_nonce", { path: "/" });
       return reply.redirect(location("connected"));
-    } catch {
+    } catch (error) {
+      request.log.error(
+        { err: error, context: "instagram_oauth_callback" },
+        "Instagram OAuth callback failed"
+      );
       reply.clearCookie("instagram_oauth_nonce", { path: "/" });
       return reply.redirect(location("error"));
     }
