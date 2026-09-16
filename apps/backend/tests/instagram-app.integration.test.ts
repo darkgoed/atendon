@@ -38,6 +38,7 @@ const provider: InstagramProvider = {
   exchangeOAuthCode: vi.fn(),
   refreshAccessToken: vi.fn(),
   subscribeWebhook: vi.fn(),
+  fetchUserProfile: vi.fn().mockResolvedValue({ username: null, name: null, profilePictureUrl: null }),
   async sendText(input) {
     providerCalls.text.push(input);
     if (input.text.includes("explicitamente rejeitada")) {
@@ -607,5 +608,65 @@ describe("Instagram wired into buildApp", () => {
     expect(response.statusCode).toBe(409);
     expect(response.json().code).toBe("CHANNEL_OPERATION_UNSUPPORTED");
     expect(whatsappSendText).not.toHaveBeenCalled();
+  });
+
+  it("rejects an Instagram account that is active in another tenant", async () => {
+    const first = await fixture();
+    const second = await fixture();
+    await expect(repository.saveConnection({
+      tenantId: second.tenantId,
+      label: "Tentativa de invasão",
+      accountId: first.instagramAccountId,
+      username: first.instagramAccountId,
+      accessToken: "stolen-token",
+      expiresAt: new Date(Date.now() + 60_000)
+    })).rejects.toMatchObject({ code: "INSTAGRAM_ACCOUNT_ALREADY_CONNECTED" });
+    expect((await pool.query<{ tenant_id: string }>(
+      "SELECT tenant_id FROM whatsapp_sessions WHERE id=$1",
+      [first.instagramSessionId]
+    )).rows[0].tenant_id).toBe(first.tenantId);
+  });
+
+  it("lets a disconnected account be connected from another tenant", async () => {
+    const previous = await fixture();
+    const next = await fixture();
+    await repository.disconnect(previous.tenantId, previous.instagramSessionId);
+    const claimed = await repository.saveConnection({
+      tenantId: next.tenantId,
+      label: "Reconexão em outro workspace",
+      accountId: previous.instagramAccountId,
+      username: previous.instagramAccountId,
+      accessToken: "fresh-token",
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    expect(claimed.tenant_id).toBe(next.tenantId);
+    expect(claimed.status).toBe("connected");
+    await expect(repository.resolveAccount(previous.instagramAccountId)).resolves.toMatchObject({
+      tenantId: next.tenantId,
+      sessionId: claimed.id
+    });
+    const previousRow = (await pool.query<{ archived_at: Date | null; credentials_encrypted: string | null }>(
+      "SELECT archived_at,credentials_encrypted FROM whatsapp_sessions WHERE id=$1",
+      [previous.instagramSessionId]
+    )).rows[0];
+    expect(previousRow.archived_at).not.toBeNull();
+    expect(previousRow.credentials_encrypted).toBeNull();
+  });
+
+  it("revives the same tenant's archived row when the account reconnects there", async () => {
+    const context = await fixture();
+    await repository.disconnect(context.tenantId, context.instagramSessionId);
+    const revived = await repository.saveConnection({
+      tenantId: context.tenantId,
+      label: "Reconexão no mesmo workspace",
+      accountId: context.instagramAccountId,
+      username: context.instagramAccountId,
+      accessToken: "revived-token",
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    expect(revived.id).toBe(context.instagramSessionId);
+    expect(revived.status).toBe("connected");
+    expect(revived.archived_at).toBeNull();
+    await expect(repository.getToken(context.tenantId, revived.id)).resolves.toBe("revived-token");
   });
 });

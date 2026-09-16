@@ -138,13 +138,17 @@ export class InstagramRepository {
         );
         if (!tenant.rows[0]) throw repositoryError("Tenant not found", 404, "TENANT_NOT_FOUND");
 
-        const globallyOwned = await client.query<{ id: string; tenant_id: string }>(
-          `SELECT id,tenant_id FROM whatsapp_sessions
-           WHERE channel='instagram' AND provider_account_id=$1
+        // Active ownership is global: one ACTIVE row per Meta account, so a
+        // second tenant can never claim a live webhook stream. Archived rows
+        // hold no credentials and are never routed, so they no longer block —
+        // otherwise a disconnect would lock the account to this tenant forever.
+        const activeOwner = await client.query<{ id: string; tenant_id: string; archived_at: Date | string | null }>(
+          `SELECT id,tenant_id,archived_at FROM whatsapp_sessions
+           WHERE channel='instagram' AND provider_account_id=$1 AND archived_at IS NULL
            FOR UPDATE`,
           [input.accountId]
         );
-        if (globallyOwned.rows[0] && globallyOwned.rows[0].tenant_id !== input.tenantId) {
+        if (activeOwner.rows[0] && activeOwner.rows[0].tenant_id !== input.tenantId) {
           throw repositoryError(
             "Instagram account already belongs to another tenant",
             409,
@@ -171,12 +175,21 @@ export class InstagramRepository {
             );
           }
           target = row;
-        } else if (globallyOwned.rows[0]) {
-          const existing = await client.query<{ id: string; archived_at: Date | string | null }>(
-            "SELECT id,archived_at FROM whatsapp_sessions WHERE id=$1 FOR UPDATE",
-            [globallyOwned.rows[0].id]
+        } else if (activeOwner.rows[0]) {
+          target = activeOwner.rows[0];
+        } else {
+          // Account is free everywhere: revive this tenant's most recent
+          // archived row when one exists, so reconnecting keeps conversation
+          // history linked to the same session.
+          const archivedMine = await client.query<{ id: string; archived_at: Date | string | null }>(
+            `SELECT id,archived_at FROM whatsapp_sessions
+             WHERE tenant_id=$1 AND channel='instagram' AND provider_account_id=$2
+               AND archived_at IS NOT NULL
+             ORDER BY archived_at DESC LIMIT 1
+             FOR UPDATE`,
+            [input.tenantId, input.accountId]
           );
-          target = existing.rows[0];
+          target = archivedMine.rows[0];
         }
 
         const activatesConnection = !target || target.archived_at !== null;
