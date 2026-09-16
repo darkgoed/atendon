@@ -56,10 +56,10 @@ describe("personalizable dashboard UI", () => {
 
   it("renders the overview with charts instead of plain numbers", () => {
     expect(component).toContain('from "@/components/commercial-dashboard-charts"');
-    expect(component).toContain("<TrendChart data={series} />");
-    expect(component).toContain("<Sparkline values={series.map((item) => item[spark])}");
-    expect(component).toContain("<RateRing value={Number(funnel.lead_to_sale ?? 0)}");
-    expect(component).toContain("trendDelta(series, spark)");
+    expect(component).toContain("<LineAreaChart");
+    expect(component).toContain("<Sparkline values={series.map((item) => item[kpi.spark as SparkKey])}");
+    expect(component).toContain("<Funnel stages={stages}");
+    expect(component).toContain("trendDelta(series, kpi.spark)");
   });
 
   it("applies one period filter — including a custom range — to every widget", () => {

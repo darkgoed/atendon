@@ -803,3 +803,131 @@ th[aria-sort="descending"]::after { content: " ↓"; }
   .dialog { width: calc(100vw - var(--space-4)); max-height: calc(100dvh - var(--space-6)); }
   .segmented > button, .segmented > .segmented__item { min-height: var(--control-height); }
 }
+
+/* =================================================== 11. DATA VISUALIZATION ==
+   KPI, gráficos (ECharts) e funil real em SVG. Um vocabulário só para os
+   dashboards: nenhum gráfico deve inventar chrome próprio. */
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.kpi-grid--highlight {
+  grid-template-columns: minmax(0, 1fr);
+  border: 0;
+  background: transparent;
+}
+.kpi-grid--highlight .kpi-card { padding: 0; }
+.kpi-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: start;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  padding: var(--space-4);
+  background: var(--surface);
+}
+.kpi-card__label { grid-column: 1; grid-row: 1; min-width: 0; overflow: hidden; color: var(--text-muted); font-size: var(--text-meta); font-weight: var(--weight-regular); text-overflow: ellipsis; white-space: nowrap; }
+.kpi-card__dd { grid-column: 1 / -1; grid-row: 2; margin: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.kpi-card__icon { grid-column: 2; grid-row: 1; display: grid; flex: none; place-items: center; color: var(--text-subtle); }
+.kpi-card__icon--primary { color: var(--primary); }
+.kpi-card__icon--success { color: var(--success); }
+.kpi-card__icon--warning { color: var(--warning); }
+.kpi-card__icon--danger { color: var(--danger); }
+.kpi-card__icon--info { color: var(--info); }
+.kpi-card__body { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); min-width: 0; }
+.kpi-card__value {
+  color: var(--text);
+  font-size: var(--text-metric);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-flat);
+  letter-spacing: var(--tracking-title);
+  font-variant-numeric: tabular-nums;
+}
+.kpi-card__value--primary { color: var(--primary-text); }
+.kpi-card__value--success { color: var(--success-text); }
+.kpi-card__value--warning { color: var(--warning-text); }
+.kpi-card__value--danger { color: var(--danger-text); }
+.kpi-card__value--info { color: var(--info-text); }
+.kpi-card__delta {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-semibold);
+}
+.kpi-card__delta--up { color: var(--success-text); }
+.kpi-card__delta--down { color: var(--warning-text); }
+.kpi-card__hint { min-width: 0; overflow: hidden; color: var(--text-muted); font-size: var(--text-meta); text-overflow: ellipsis; white-space: nowrap; }
+.kpi-card__spark { margin-top: auto; margin-inline: calc(var(--space-4) * -1) calc(var(--space-4) * -1); margin-bottom: calc(var(--space-1) * -1); }
+
+.chart-canvas { min-width: 0; }
+.chart-canvas__loading {
+  min-height: 120px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, var(--surface-sunken), var(--surface-hover), var(--surface-sunken));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+.chart-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-subtle);
+  font-size: var(--text-meta);
+  text-align: center;
+}
+.chart-empty__icon { display: grid; place-items: center; color: var(--text-subtle); }
+
+.donut-chart { position: relative; min-width: 0; }
+.donut-chart__canvas { width: 100%; }
+.donut-chart__center {
+  position: absolute;
+  top: 50%;
+  left: 32%;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+.donut-chart__center strong { color: var(--text); font-size: var(--text-section-title); font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums; }
+.donut-chart__center span { color: var(--text-muted); font-size: var(--text-micro); }
+
+.funnel-chart { min-width: 0; }
+.funnel-chart__svg { width: 100%; height: auto; }
+
+/* Barra de filtros de um dashboard: um único toolbar, nunca linhas empilhadas. */
+.dashboard-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.dashboard-toolbar__title { min-width: 0; }
+.dashboard-toolbar__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+
+/* Cabeçalho de painel de gráfico: título + legenda na mesma linha. */
+.chart-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.chart-panel__title { color: var(--text); font-size: var(--text-control); font-weight: var(--weight-semibold); }

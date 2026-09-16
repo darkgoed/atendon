@@ -10,8 +10,6 @@ import {
   Handshake,
   PhoneCall,
   SlidersHorizontal,
-  TrendDown,
-  TrendUp,
   UserMinus,
   UsersThree,
   X,
@@ -19,10 +17,21 @@ import {
 } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
-import { RateRing, Sparkline, TrendChart } from "@/components/commercial-dashboard-charts";
+import { Sparkline } from "@/components/commercial-dashboard-charts";
 import { DashboardMetricWidget, DashboardTeamWidget, type DashboardMetricData, type DashboardTeamData } from "@/components/dashboard-metric-widget";
 import { Shell } from "@/components/shell";
-import { Button, Card, Input, PageHeader, Select } from "@/components/ui";
+import {
+  Button,
+  Card,
+  Funnel,
+  Input,
+  KpiCard,
+  KpiGrid,
+  LineAreaChart,
+  PageHeader,
+  Select,
+  type FunnelStage
+} from "@/components/ui";
 import { api } from "@/lib/api";
 import { useCapabilities } from "@/lib/capabilities";
 import { trendDelta, type CommercialDashboardSeries } from "@/lib/commercial-dashboard";
@@ -89,34 +98,7 @@ function EmptyWidget({ message }: { message: string }) {
 }
 
 type SparkKey = "scheduled" | "completed" | "no_show";
-const legend: Array<[string, string]> = [["Agendadas", "var(--primary)"], ["Realizadas", "var(--success)"], ["No-show", "var(--warning)"]];
-
-function KpiTile({ label, value, hint, tone, icon: TileIcon, spark, series }: {
-  label: string; value: string; hint: string; tone: string; icon: Icon; spark?: SparkKey; series: CommercialDashboardSeries;
-}) {
-  const delta = spark ? trendDelta(series, spark) : null;
-  return (
-    <div className={styles.widgetMetricTile}>
-      <div className="flex items-start justify-between gap-2">
-        <p className={styles.widgetMetricLabel}>{label}</p>
-        <TileIcon size={16} weight="duotone" aria-hidden="true" style={{ color: tone }} />
-      </div>
-      <div>
-        <div className="flex flex-wrap items-end gap-x-2 gap-y-1">
-          <span className={`mono ${styles.widgetMetricValue}`} style={{ color: tone }}>{value}</span>
-          {delta !== null ? (
-            <span className={`mono inline-flex items-center gap-0.5 type-caption font-semibold ${delta >= 0 ? "text-[var(--success-text)]" : "text-[var(--warning-text)]"}`} title="Segunda metade do período comparada à primeira">
-              {delta >= 0 ? <TrendUp size={12} weight="bold" aria-hidden="true" /> : <TrendDown size={12} weight="bold" aria-hidden="true" />}
-              {percent(Math.abs(delta))}
-            </span>
-          ) : null}
-        </div>
-        <p className="sub">{hint}</p>
-      </div>
-      {spark ? <Sparkline values={series.map((item) => item[spark])} tone={tone} className="-mb-1 h-8 w-full" /> : null}
-    </div>
-  );
-}
+const legend: Array<[string, string]> = [["Agendadas", "primary"], ["Realizadas", "success"], ["No-show", "warning"]];
 
 const GROUP_LABELS: Record<string, string> = {
   atendimento: "Atendimento",
@@ -168,32 +150,56 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
   if (widgetKey === "commercial_metrics") {
     const result = (data.result ?? {}) as Record<string, unknown>;
     const series = (Array.isArray(data.series) ? data.series : []) as CommercialDashboardSeries;
-    const kpis: Array<{ label: string; value: string; hint: string; tone: string; icon: Icon; spark?: SparkKey }> = [
-      { label: "Novos contatos", value: metric(result.new_contacts), hint: "contatos únicos no período", tone: "var(--primary)", icon: UsersThree },
+    const kpis: Array<{ label: string; value: string; hint: string; tone: "primary" | "success" | "warning"; icon: Icon; spark?: SparkKey }> = [
+      { label: "Novos contatos", value: metric(result.new_contacts), hint: "contatos únicos no período", tone: "primary", icon: UsersThree },
       ...(appointmentsEnabled ? [
-        { label: "Agendamentos", value: metric(result.appointments), hint: "reuniões marcadas", tone: "var(--primary)", icon: CalendarCheck, spark: "scheduled" as SparkKey },
-        { label: "Calls realizadas", value: metric(result.calls), hint: "o lead compareceu", tone: "var(--success)", icon: PhoneCall, spark: "completed" as SparkKey },
-        { label: "No-show", value: metric(result.no_show), hint: "o lead não compareceu", tone: "var(--warning)", icon: UserMinus, spark: "no_show" as SparkKey }
+        { label: "Agendamentos", value: metric(result.appointments), hint: "reuniões marcadas", tone: "primary" as const, icon: CalendarCheck, spark: "scheduled" as SparkKey },
+        { label: "Calls realizadas", value: metric(result.calls), hint: "o lead compareceu", tone: "success" as const, icon: PhoneCall, spark: "completed" as SparkKey },
+        { label: "No-show", value: metric(result.no_show), hint: "o lead não compareceu", tone: "warning" as const, icon: UserMinus, spark: "no_show" as SparkKey }
       ] : []),
-      { label: "Vendas", value: metric(result.sales), hint: "fechamentos registrados", tone: "var(--success)", icon: Handshake },
-      { label: "Valor vendido", value: money(result.sold_value), hint: `ticket médio ${money(result.average_ticket)}`, tone: "var(--success)", icon: CurrencyCircleDollar }
+      { label: "Vendas", value: metric(result.sales), hint: "fechamentos registrados", tone: "success", icon: Handshake },
+      { label: "Valor vendido", value: money(result.sold_value), hint: `ticket médio ${money(result.average_ticket)}`, tone: "success", icon: CurrencyCircleDollar }
     ];
     return (
       <div className={styles.widgetContent}>
-        <div className={styles.widgetMetricGrid}>
-          {kpis.map((kpi) => <KpiTile key={kpi.label} {...kpi} series={series} />)}
-        </div>
+        <KpiGrid>
+          {kpis.map((kpi) => {
+            const delta = kpi.spark ? trendDelta(series, kpi.spark) : null;
+            return (
+              <KpiCard
+                key={kpi.label}
+                label={kpi.label}
+                value={kpi.value}
+                hint={kpi.hint}
+                tone={kpi.tone}
+                icon={<kpi.icon size={16} weight="duotone" aria-hidden="true" />}
+                delta={delta !== null ? { value: delta, label: "Segunda metade do período comparada à primeira" } : null}
+                spark={kpi.spark ? <Sparkline values={series.map((item) => item[kpi.spark as SparkKey])} tone={`var(--${kpi.tone})`} className="h-8 w-full" /> : null}
+              />
+            );
+          })}
+        </KpiGrid>
         {series.length > 1 ? (
           <section className={styles.widgetChart} aria-label="Evolução no período">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold">Evolução no período</h3>
+            <div className="chart-panel__head">
+              <h3 className="chart-panel__title">Evolução no período</h3>
               <div className={styles.chartLegend}>
-                {legend.map(([label, color]) => (
-                  <span key={label} className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />{label}</span>
+                {legend.map(([label, tone]) => (
+                  <span key={label} className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full" style={{ backgroundColor: `var(--${tone})` }} aria-hidden="true" />{label}</span>
                 ))}
               </div>
             </div>
-            <TrendChart data={series} />
+            <LineAreaChart
+              ariaLabel="Evolução de reuniões marcadas, realizadas e não comparecidas"
+              height={230}
+              data={series.map((item) => ({ x: item.day, scheduled: item.scheduled, completed: item.completed, no_show: item.no_show }))}
+              series={[
+                { key: "scheduled", label: "Agendadas", tone: "primary" },
+                { key: "completed", label: "Realizadas", tone: "success" },
+                { key: "no_show", label: "No-show", tone: "warning" }
+              ]}
+              xLabelFormatter={(value) => new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" }).format(new Date(`${value}T12:00:00.000Z`))}
+            />
           </section>
         ) : null}
       </div>
@@ -203,53 +209,25 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
     const funnel = (data.funnel ?? {}) as Record<string, unknown>;
     const result = (data.result ?? {}) as Record<string, unknown>;
     const due = Number(result.due_meetings ?? 0);
-    const stages: Array<{ label: string; value: number; color: string; step: string | null; rate: unknown }> = [
-      { label: "Novos contatos", value: Number(result.new_contacts ?? 0), color: "var(--primary)", step: null, rate: null },
-      { label: "Agendamentos", value: Number(result.appointments ?? 0), color: "var(--primary)", step: "Lead → Agendamento", rate: funnel.lead_to_appointment },
-      { label: "Calls realizadas", value: Number(result.calls ?? 0), color: "var(--success)", step: "Agendamento → Comparecimento", rate: funnel.appointment_to_attendance },
-      { label: "Vendas", value: Number(result.sales ?? 0), color: "var(--success)", step: "Call → Venda", rate: funnel.call_to_sale }
+    const stages: FunnelStage[] = [
+      { label: "Novos contatos", value: Number(result.new_contacts ?? 0), tone: "primary" },
+      { label: "Agendamentos", value: Number(result.appointments ?? 0), tone: "primary", conversionLabel: `Lead → Agendamento · ${percent(funnel.lead_to_appointment)}` },
+      { label: "Calls realizadas", value: Number(result.calls ?? 0), tone: "success", conversionLabel: `Agendamento → Comparecimento · ${percent(funnel.appointment_to_attendance)}` },
+      { label: "Vendas", value: Number(result.sales ?? 0), tone: "success", conversionLabel: `Call → Venda · ${percent(funnel.call_to_sale)}` }
     ];
-    const top = Math.max(...stages.map((stage) => stage.value), 1);
     return (
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_15rem]">
-        <div>
-          {stages.map((stage) => (
-            <div key={stage.label}>
-              {stage.step ? (
-                <div className="flex flex-wrap items-center justify-center gap-x-2 py-2 type-caption text-[var(--text-muted)]">
-                  <CaretDown size={12} aria-hidden="true" />
-                  <span>{stage.step}</span>
-                  <strong className="mono text-[var(--text)]">{percent(stage.rate)}</strong>
-                </div>
-              ) : null}
-              <div
-                className="mx-auto flex min-w-0 items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-[width] duration-500"
-                style={{
-                  width: `${Math.round(46 + (stage.value / top) * 54)}%`,
-                  borderColor: `color-mix(in srgb, ${stage.color} 30%, transparent)`,
-                  background: `linear-gradient(90deg, color-mix(in srgb, ${stage.color} 18%, transparent), color-mix(in srgb, ${stage.color} 6%, transparent))`
-                }}
-              >
-                <span className="truncate text-sm">{stage.label}</span>
-                <strong className="mono flex-none text-base tabular-nums" style={{ color: stage.color }}>{metric(stage.value)}</strong>
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className={styles.funnelLayout}>
+        <Funnel stages={stages} height={220} ariaLabel="Funil de conversão: contatos, agendamentos, calls e vendas" />
         <dl className="grid grid-cols-1 gap-3 self-start sm:grid-cols-2 xl:grid-cols-1">
-          <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] p-3">
-            <RateRing value={Number(funnel.lead_to_sale ?? 0)} tone="var(--primary)" />
-            <div className="min-w-0">
-              <dt className="type-caption uppercase tracking-[.1em] text-[var(--text-muted)]">Lead → Venda</dt>
-              <dd className="mt-1 type-caption leading-snug sub">conversão ponta a ponta do período</dd>
-            </div>
+          <div className="kpi-card">
+            <dt className="kpi-card__label">Lead → Venda</dt>
+            <dd className="kpi-card__value kpi-card__value--primary">{percent(funnel.lead_to_sale ?? 0)}</dd>
+            <p className="kpi-card__hint">conversão ponta a ponta do período</p>
           </div>
-          <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] p-3">
-            <RateRing value={Number(funnel.no_show_rate ?? 0)} tone="var(--warning)" />
-            <div className="min-w-0">
-              <dt className="type-caption uppercase tracking-[.1em] text-[var(--text-muted)]">Taxa de no-show</dt>
-              <dd className="mt-1 type-caption leading-snug sub">sobre {metric(due)} reunião(ões) já vencida(s)</dd>
-            </div>
+          <div className="kpi-card">
+            <dt className="kpi-card__label">Taxa de no-show</dt>
+            <dd className="kpi-card__value kpi-card__value--warning">{percent(funnel.no_show_rate ?? 0)}</dd>
+            <p className="kpi-card__hint">sobre {metric(due)} reunião(ões) já vencida(s)</p>
           </div>
         </dl>
       </div>

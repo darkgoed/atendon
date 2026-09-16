@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import type { PanelSession } from "@/lib/session";
-import { AdminMetricGrid, AdminMetricValue, AdminPage, AdminPageHeader, AdminSection } from "@/components/admin";
+import { AdminMetric, AdminMetricGrid, AdminPage, AdminPageHeader, AdminSection } from "@/components/admin";
 
 type BillingMetric = {
   tenantId: string;
@@ -46,7 +46,7 @@ export default function MetricsPage() {
       </form>
     </AdminSection>
     {error ? <p className="error">Não foi possível carregar as métricas.</p> : !data ? <div className="card">Carregando…</div> : <AdminMetricGrid>
-      {([["Receita", money(totals.revenueCents)], ["Custo", money(totals.costCents)], ["Transações", totals.transactions.toLocaleString("pt-BR")], ["Empresas", tenants.toLocaleString("pt-BR")]] as const).map(([label, value]) => <article className="card" key={label}><p className="sub">{label}</p><AdminMetricValue>{value}</AdminMetricValue></article>)}
+      {([["Receita", money(totals.revenueCents), "success"], ["Custo", money(totals.costCents), "warning"], ["Transações", totals.transactions.toLocaleString("pt-BR"), "primary"], ["Empresas", tenants.toLocaleString("pt-BR"), "neutral"]] as const).map(([label, value, tone]) => <AdminMetric key={label} label={label} value={value} tone={tone} />)}
     </AdminMetricGrid>}
   </AdminPage></Shell>;
 }

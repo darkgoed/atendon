@@ -168,7 +168,7 @@ export function ConversationContactPanel({
   return (
     <aside ref={panelRef} className="conversation-contact-panel flex min-h-0 min-w-0 flex-col border-l border-[var(--border)] bg-[var(--surface)]" aria-label="Dados do contato" tabIndex={-1}>
       <header className="conversation-contact-panel__header flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-3">
-        <h2 className="text-sm font-bold text-[var(--text)]">Dados do lead</h2>
+        <h2 className="text-sm font-semibold text-[var(--text)]">Dados do lead</h2>
         <Button type="button" autoFocus data-autofocus className="conversation-contact-panel__icon" onClick={onClose} aria-label="Fechar dados do contato" title="Fechar">
           <X size={18} aria-hidden="true" />
         </Button>
@@ -195,7 +195,7 @@ export function ConversationContactPanel({
               </div>
             ) : (
               <>
-                <strong className="truncate text-sm font-bold text-[var(--text)]">{title}</strong>
+                <strong className="truncate text-sm font-semibold text-[var(--text)]">{title}</strong>
                 {canEdit ? (
                   <Button
                     type="button"

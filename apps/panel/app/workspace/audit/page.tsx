@@ -8,7 +8,7 @@ import { LoadingCards } from "@/components/page-state";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { filterAuditLogs, type AuditLogEntry } from "@/lib/audit-ui";
-import { AdminMetricGrid, AdminPage, AdminPageHeader, AdminSection } from "@/components/admin";
+import { AdminMetric, AdminMetricGrid, AdminPage, AdminPageHeader, AdminSection } from "@/components/admin";
 
 const fetcher = <T,>(url: string) => api<T>(url);
 
@@ -34,10 +34,10 @@ export default function WorkspaceAuditPage() {
       {data ? (
         <>
           <AdminMetricGrid>
-            <Metric label="Eventos" value={logs.length} detail="até 200 registros" />
-            <Metric label="ROOT assistido" value={logs.filter((log) => log.actor_scope === "root").length} detail="ações com escopo elevado" />
-            <Metric label="Operadores" value={new Set(logs.map((log) => log.actor_email).filter(Boolean)).size} detail="atores únicos" />
-            <Metric label="Filtrados" value={filtered.length} detail="pela busca atual" />
+            <AdminMetric label="Eventos" value={logs.length} detail="até 200 registros" />
+            <AdminMetric label="ROOT assistido" value={logs.filter((log) => log.actor_scope === "root").length} detail="ações com escopo elevado" tone="warning" />
+            <AdminMetric label="Operadores" value={new Set(logs.map((log) => log.actor_email).filter(Boolean)).size} detail="atores únicos" />
+            <AdminMetric label="Filtrados" value={filtered.length} detail="pela busca atual" tone="primary" />
           </AdminMetricGrid>
 
           <AdminSection className="card admin-card" title="Eventos recentes" description="ordem decrescente">
@@ -47,15 +47,5 @@ export default function WorkspaceAuditPage() {
       ) : null}
       </AdminPage>
     </Shell>
-  );
-}
-
-function Metric({ label, value, detail }: { label: string; value: number; detail: string }) {
-  return (
-    <div className="card">
-      <span className="label">{label}</span>
-      <div className="metric mono">{value}</div>
-      <p className="sub">{detail}</p>
-    </div>
   );
 }

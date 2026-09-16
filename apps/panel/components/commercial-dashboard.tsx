@@ -4,19 +4,14 @@ import {
   ArrowLineDown,
   CalendarBlank,
   ChartLineUp,
-  CheckCircle,
-  ClockCountdown,
   PhoneCall,
   Target,
-  TrendDown,
-  TrendUp,
-  UsersThree,
-  WarningCircle
+  UsersThree
 } from "@phosphor-icons/react";
 import Link from "next/link";
-import { RateRing, Sparkline, TrendChart } from "@/components/commercial-dashboard-charts";
+import { Sparkline } from "@/components/commercial-dashboard-charts";
 import { Empty } from "@/components/page-state";
-import { Button, Card, Input, TableScroll } from "@/components/ui";
+import { BarComparisonChart, Button, Card, DonutChart, Input, KpiCard, KpiGrid, LineAreaChart, TableScroll } from "@/components/ui";
 import { trendDelta, type CommercialDashboardSeries } from "@/lib/commercial-dashboard";
 import styles from "./metrics-dashboard.module.css";
 
@@ -178,7 +173,6 @@ export function CommercialDashboard({
   onCustomStartChange: (value: string) => void;
   onCustomEndChange: (value: string) => void;
 }) {
-  const maxFunnel = Math.max(data.metrics.scheduled, 1);
   const now = Date.now();
   const delta = trendDelta(data.series);
 
@@ -238,41 +232,25 @@ export function CommercialDashboard({
 
       <div className={styles.agendaChartGrid}>
         <Card>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <span className="label">Calls criadas</span>
-              <div className="flex items-end gap-2.5">
-                <div className="metric mt-3">{data.metrics.created}</div>
-                {delta !== null ? (
-                  <span className={`mono mb-1 inline-flex items-center gap-1 text-xs font-semibold ${delta >= 0 ? "text-[var(--success-text)]" : "text-[var(--warning-text)]"}`} title="Segunda metade do período comparada à primeira">
-                    {delta >= 0 ? <TrendUp size={13} weight="bold" aria-hidden="true" /> : <TrendDown size={13} weight="bold" aria-hidden="true" />}
-                    {formatPercent(Math.abs(delta))}
-                  </span>
-                ) : null}
-              </div>
-              <p className="sub">novos agendamentos no período</p>
-            </div>
-            <PhoneCall className="text-[var(--primary)]" size={22} aria-hidden="true" />
-          </div>
-          <Sparkline values={data.series.map((item) => item.scheduled)} />
-        </Card>
-
-        <Card>
-          <div className="cardtitle"><span>Calls no período</span><CalendarBlank size={19} aria-hidden="true" /></div>
-          <dl className={styles.metricStrip}>
-            {[
-              ["Marcadas", data.metrics.scheduled, "text-[var(--primary)]"],
-              ["Compareceram", data.metrics.completed, "text-[var(--success-text)]"],
-              ["Resultado pendente", data.metrics.result_pending, "text-[var(--warning-text)]"],
-              ["Não comp.", data.metrics.no_show, "text-[var(--danger-text)]"],
-              ["Canceladas", data.metrics.cancelled, "text-[var(--text-secondary)]"]
-            ].map(([label, value, tone]) => (
-              <div key={String(label)} className="px-3 py-2 first:pl-0 last:pr-0">
-                <dt className="type-caption text-[var(--text-muted)]">{label}</dt>
-                <dd className={`mono mt-1 text-xl font-semibold ${tone}`}>{value}</dd>
-              </div>
-            ))}
-          </dl>
+          <div className="cardtitle"><span>Calls no período</span><CalendarBlank size={17} aria-hidden="true" /></div>
+          <KpiGrid className="kpi-grid--highlight">
+            <KpiCard
+              label="Criadas"
+              value={data.metrics.created}
+              hint="novos agendamentos no período"
+              tone="primary"
+              icon={<PhoneCall size={16} weight="duotone" aria-hidden="true" />}
+              delta={delta !== null ? { value: delta, label: "Segunda metade do período comparada à primeira" } : null}
+              spark={<Sparkline values={data.series.map((item) => item.scheduled)} tone="var(--primary)" className="h-8 w-full" />}
+            />
+          </KpiGrid>
+          <KpiGrid className="mt-3">
+            <KpiCard label="Marcadas" value={data.metrics.scheduled} tone="primary" />
+            <KpiCard label="Compareceram" value={data.metrics.completed} tone="success" />
+            <KpiCard label="Resultado pendente" value={data.metrics.result_pending} tone="warning" />
+            <KpiCard label="Não comp." value={data.metrics.no_show} tone="danger" />
+            <KpiCard label="Canceladas" value={data.metrics.cancelled} />
+          </KpiGrid>
         </Card>
 
         <Card>
@@ -317,16 +295,16 @@ export function CommercialDashboard({
 
         <Card>
           <div className="cardtitle"><span>Taxas</span><ChartLineUp size={19} aria-hidden="true" /></div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-1">
-            <div className="flex items-center gap-3">
-              <RateRing value={data.metrics.attendance_rate} tone="var(--success)" />
-              <dl><dt className="sub text-xs">Comparecimento</dt><dd className="mono mt-1 text-2xl font-semibold">{formatPercent(data.metrics.attendance_rate)}</dd></dl>
-            </div>
-            <div className="flex items-center gap-3">
-              <RateRing value={data.metrics.no_show_rate} tone="var(--warning)" />
-              <dl><dt className="sub text-xs">Não comparecimento</dt><dd className="mono mt-1 text-2xl font-semibold text-[var(--warning-text)]">{formatPercent(data.metrics.no_show_rate)}</dd></dl>
-            </div>
-          </div>
+          <DonutChart
+            height={168}
+            ariaLabel="Comparecimento vs. não comparecimento no período"
+            centerValue={formatPercent(data.metrics.attendance_rate)}
+            centerLabel="comparecimento"
+            data={[
+              { label: "Compareceram", value: data.metrics.attendance_rate, tone: "success" },
+              { label: "Não compareceram", value: data.metrics.no_show_rate, tone: "warning" }
+            ]}
+          />
         </Card>
 
         <Card>
@@ -362,15 +340,20 @@ export function CommercialDashboard({
         </Card>
 
         <Card>
-          <div className="cardtitle">
-            <span className="inline-flex items-center gap-2"><ChartLineUp size={19} aria-hidden="true" /> Evolução de calls</span>
-            <div className="flex flex-wrap gap-3 type-caption text-[var(--text-muted)]">
-              <span className="inline-flex items-center gap-1"><i className="size-2 rounded-full bg-[var(--primary)]" /> Marcadas</span>
-              <span className="inline-flex items-center gap-1"><i className="size-2 rounded-full bg-[var(--success)]" /> Compareceram</span>
-              <span className="inline-flex items-center gap-1"><i className="size-2 rounded-full bg-[var(--warning)]" /> Não comp.</span>
-            </div>
+          <div className="chart-panel__head">
+            <span className="chart-panel__title inline-flex items-center gap-2"><ChartLineUp size={17} aria-hidden="true" /> Evolução de calls</span>
           </div>
-          <TrendChart data={data.series} />
+          <LineAreaChart
+            ariaLabel="Evolução de reuniões marcadas, realizadas e não comparecidas"
+            height={220}
+            data={data.series.map((item) => ({ x: item.day, scheduled: item.scheduled, completed: item.completed, no_show: item.no_show }))}
+            series={[
+              { key: "scheduled", label: "Marcadas", tone: "primary" },
+              { key: "completed", label: "Compareceram", tone: "success" },
+              { key: "no_show", label: "Não comp.", tone: "warning" }
+            ]}
+            xLabelFormatter={(value) => new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" }).format(new Date(`${value}T12:00:00.000Z`))}
+          />
         </Card>
 
         {data.scope.type === "workspace" ? (
@@ -416,29 +399,20 @@ export function CommercialDashboard({
         ) : null}
 
         <Card>
-          <div className="cardtitle"><span className="inline-flex items-center gap-2"><Target size={19} aria-hidden="true" /> Funil do período</span></div>
-          <div className="grid gap-4">
-            {[
-              { label: "Marcadas", value: data.metrics.scheduled, color: "bg-[var(--primary)]", Icon: PhoneCall },
-              { label: "Compareceram", value: data.metrics.completed, color: "bg-[var(--success)]", Icon: CheckCircle },
-              { label: "Não compareceram", value: data.metrics.no_show, color: "bg-[var(--warning)]", Icon: WarningCircle },
-              { label: "Próximas", value: data.metrics.upcoming, color: "bg-[var(--text-secondary)]", Icon: ClockCountdown }
-            ].map(({ label, value, color, Icon }) => (
-              <div key={label}>
-                <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
-                  <span className="inline-flex items-center gap-2 text-[var(--text-secondary)]"><Icon size={15} aria-hidden="true" />{label}</span>
-                  <strong className="mono text-[var(--text)]">{value}</strong>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-active)]">
-                  <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.max(value ? 4 : 0, (value / maxFunnel) * 100)}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-5 border-t border-[var(--border)] pt-4">
-            <span className="label">QUALIDADE MÉDIA DOS LEADS</span>
-            <div className="mt-2 flex items-end gap-2">
-              <strong className="mono text-2xl">{data.metrics.average_quality ?? "—"}</strong>
+          <div className="cardtitle"><span className="inline-flex items-center gap-2"><Target size={19} aria-hidden="true" /> Composição das calls</span></div>
+          <BarComparisonChart
+            ariaLabel="Composição das calls marcadas no período por desfecho"
+            data={[
+              { label: "Marcadas", value: data.metrics.scheduled, tone: "primary" },
+              { label: "Compareceram", value: data.metrics.completed, tone: "success" },
+              { label: "Não compareceram", value: data.metrics.no_show, tone: "warning" },
+              { label: "Próximas", value: data.metrics.upcoming, tone: "info" }
+            ]}
+          />
+          <div className="mt-4 border-t border-[var(--border)] pt-3">
+            <span className="kpi-card__label">Qualidade média dos leads</span>
+            <div className="mt-1.5 flex items-end gap-2">
+              <strong className="mono text-2xl font-semibold">{data.metrics.average_quality ?? "—"}</strong>
               <span className="sub pb-1 text-xs">{data.metrics.average_quality === null ? "sem avaliação no período" : "de 5 estrelas"}</span>
             </div>
           </div>

@@ -1,5 +1,5 @@
 import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
-import { Button, Field, PageHeader, TableScroll } from "@/components/ui";
+import { Button, Field, KpiCard, KpiGrid, PageHeader, TableScroll } from "@/components/ui";
 import styles from "./admin.module.css";
 
 export function AdminPage({ children, className = "", ...props }: Omit<HTMLAttributes<HTMLDivElement>, "children"> & { children: ReactNode }) {
@@ -23,11 +23,16 @@ export function AdminCard({ children, className = "", ...props }: HTMLAttributes
 }
 
 export function AdminMetricGrid({ children, className = "", ...props }: HTMLAttributes<HTMLElement> & { children: ReactNode }) {
-  return <section {...props} className={`${styles.metricGrid} ${className}`.trim()}>{children}</section>;
+  return <KpiGrid {...props} className={className}>{children}</KpiGrid>;
 }
 
 export function AdminMetricValue({ children, className = "", ...props }: HTMLAttributes<HTMLElement> & { children: ReactNode }) {
   return <strong {...props} className={`${styles.metricValue} ${className}`.trim()}>{children}</strong>;
+}
+
+/** Card de KPI padrão do console admin — rótulo, valor e detalhe opcional. */
+export function AdminMetric({ label, value, detail, tone }: { label: string; value: ReactNode; detail?: ReactNode; tone?: ComponentProps<typeof KpiCard>["tone"] }) {
+  return <KpiCard label={label} value={value} hint={detail} tone={tone} />;
 }
 
 export function AdminField({ label, hint, error, children, ...props }: Omit<ComponentProps<typeof Field>, "children"> & { children: ReactNode }) {
