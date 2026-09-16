@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 /* Ordem = cascata do design system: tokens → reset → primitives → shell →
    domínios. Cada domínio é dono exclusivo do seu arquivo; nada de regra de

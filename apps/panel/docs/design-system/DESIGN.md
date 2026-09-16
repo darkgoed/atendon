@@ -18,22 +18,22 @@ colors:
   info: "#8EB1DF"
 typography:
   body:
-    fontFamily: Manrope
+    fontFamily: Geist
     fontSize: 14px
     fontWeight: 400
     lineHeight: 1.5
   caption:
-    fontFamily: Manrope
+    fontFamily: Geist
     fontSize: 12px
     fontWeight: 500
     lineHeight: 1.45
   control:
-    fontFamily: Manrope
+    fontFamily: Geist
     fontSize: 13px
     fontWeight: 600
     lineHeight: 1.25
   body-large:
-    fontFamily: Manrope
+    fontFamily: Geist
     fontSize: 16px
     fontWeight: 400
     lineHeight: 1.5
@@ -94,7 +94,7 @@ Runtime record colors remain data-driven: pass the record color through an inlin
 
 ## Typography
 
-The runtime font is Manrope, loaded by `app/globals.css`. Body text is 14px at 1.5 line-height; body-large is 16px; captions are 12px at 1.45; controls use 13px semibold text. Monospace is reserved for identifiers, timestamps, and tabular metrics.
+The runtime font is Geist, loaded by `app/globals.css` (system-ui fallback). Body text is 14px at 1.5 line-height; body-large is 16px; captions are 12px at 1.45; controls use 13px semibold text. Monospace is reserved for identifiers, timestamps, and tabular metrics.
 
 ## Layout
 
