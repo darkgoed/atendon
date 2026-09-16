@@ -310,7 +310,7 @@ export function Shell({
             {mobileNavOpen ? <X size={18} aria-hidden="true" /> : <List size={18} aria-hidden="true" />}
           </button>
         </div>
-        {!session.user.isRoot && session.workspaces.length > 1 ? (
+        {session.activeWorkspace && session.workspaces.length > 1 ? (
           <WorkspaceSwitcher
             activeWorkspaceId={session.activeWorkspace?.id}
             disabled={switchingWorkspace}
@@ -355,7 +355,7 @@ export function Shell({
           ) : null}
         </div>
         <div className="mobile-account-tools">
-          {!session.user.isRoot && session.workspaces.length > 1 ? (
+          {session.activeWorkspace && session.workspaces.length > 1 ? (
             <label className="mobile-workspace-select">
               <span className="sr-only">Workspace atual</span>
               <select value={session.activeWorkspace?.id} disabled={switchingWorkspace} onChange={(event) => void switchWorkspace(event.target.value)}>
