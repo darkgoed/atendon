@@ -256,6 +256,23 @@ export class MetaInstagramProvider implements InstagramProvider {
     }
   }
 
+  // IDs do Instagram excedem Number.MAX_SAFE_INTEGER: se chegarem como número
+  // JSON, o JSON.parse arredonda o valor e a comparação de identidade falha.
+  private async requestJsonPreservingUserIds(url: string, init?: RequestInit): Promise<Record<string, unknown>> {
+    const response = await this.request(url, init);
+    try {
+      const text = await response.text();
+      const data: unknown = JSON.parse(
+        text.replace(/("user_id"\s*:\s*)(\d+)/g, '$1"$2"')
+      );
+      if (!isRecord(data)) throw new Error("Meta response must be an object");
+      return data;
+    } catch (error) {
+      if (error instanceof MetaAmbiguousError) throw error;
+      throw new MetaAmbiguousError(error);
+    }
+  }
+
   async exchangeOAuthCode(input: { code: string; redirectUri: string }): Promise<OAuthIdentity> {
     const body = new FormData();
     body.set("client_id", this.options.appId);
@@ -264,7 +281,7 @@ export class MetaInstagramProvider implements InstagramProvider {
     body.set("redirect_uri", input.redirectUri);
     body.set("code", input.code);
 
-    const shortTokenResponse = await this.requestJson(
+    const shortTokenResponse = await this.requestJsonPreservingUserIds(
       "https://api.instagram.com/oauth/access_token",
       { method: "POST", body }
     );
@@ -287,9 +304,11 @@ export class MetaInstagramProvider implements InstagramProvider {
       fields: "user_id,username",
       access_token: longAccessToken
     }).toString();
-    const identity = await this.requestJson(identityUrl.toString());
+    const identity = await this.requestJsonPreservingUserIds(identityUrl.toString());
     const accountId = requiredString(identity.user_id, "user_id");
-    if (accountId !== shortUserId) throw new Error("Meta account identity mismatch");
+    if (accountId !== shortUserId) {
+      throw new Error(`Meta account identity mismatch (${shortUserId} != ${accountId})`);
+    }
 
     return {
       accountId,

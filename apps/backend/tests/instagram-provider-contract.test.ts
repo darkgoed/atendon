@@ -268,6 +268,30 @@ describe("MetaInstagramProvider HTTP contract", () => {
     expect(exchange.calls).toHaveLength(3);
   });
 
+  it("preserves Instagram user ids larger than Number.MAX_SAFE_INTEGER", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-16T00:00:00.000Z"));
+    // Raw wire format: numeric user_id beyond 2^53 that JSON.parse would round.
+    const exchange = sequenceFetch([
+      new Response(
+        '{"access_token":"short-token","user_id":17841400000000001,"permissions":"instagram_business_basic,instagram_business_manage_messages"}'
+      ),
+      Response.json({ access_token: "long-token", expires_in: 5_184_000 }),
+      new Response('{"user_id":"17841400000000001","username":"business"}')
+    ]);
+    const provider = new MetaInstagramProvider({
+      appId: "app-id",
+      appSecret: "app-secret",
+      graphVersion: "v26.0",
+      fetchImpl: exchange.fetchImpl
+    });
+
+    await expect(provider.exchangeOAuthCode({
+      code: "one-time-code",
+      redirectUri: "https://app.example/callback"
+    })).resolves.toMatchObject({ accountId: "17841400000000001" });
+  });
+
   it.each([
     ["missing data", {}],
     ["empty data", { data: [] }],
