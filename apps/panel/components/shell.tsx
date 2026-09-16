@@ -310,6 +310,14 @@ export function Shell({
             {mobileNavOpen ? <X size={18} aria-hidden="true" /> : <List size={18} aria-hidden="true" />}
           </button>
         </div>
+        {!session.user.isRoot && session.workspaces.length > 1 ? (
+          <WorkspaceSwitcher
+            activeWorkspaceId={session.activeWorkspace?.id}
+            disabled={switchingWorkspace}
+            onChange={switchWorkspace}
+            workspaces={session.workspaces}
+          />
+        ) : null}
         <button type="button" className="palette-trigger" onClick={() => setPaletteOpen(true)} aria-label="Buscar página (Ctrl+K)" title="Buscar página (Ctrl+K)">
           <MagnifyingGlass size={15} aria-hidden="true" />
           <span>Buscar…</span>
@@ -371,14 +379,6 @@ export function Shell({
           <button type="button" onClick={() => void logout()} aria-label="Sair"><SignOut size={20} aria-hidden="true" /></button>
         </div>
         </div>
-        {!session.user.isRoot && session.workspaces.length > 1 ? (
-          <WorkspaceSwitcher
-            activeWorkspaceId={session.activeWorkspace?.id}
-            disabled={switchingWorkspace}
-            onChange={switchWorkspace}
-            workspaces={session.workspaces}
-          />
-        ) : null}
         <div className="sidebar-footer">
           {currentAttendant ? (
             <Button

@@ -77,7 +77,8 @@ test("switching tenants replaces every capability-driven navigation surface", as
   await expect(page.getByRole("heading", { name: "Perfil" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Agenda" })).toBeVisible();
 
-  await page.locator(".workspace-switcher__select").selectOption(tenantB.id);
+  await page.locator(".workspace-switcher__trigger").click();
+  await page.getByRole("option", { name: new RegExp(tenantB.name) }).click();
   await expect(page.getByRole("heading", { name: "Perfil" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Agenda" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Conversas" })).toBeVisible();
