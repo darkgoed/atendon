@@ -149,7 +149,31 @@ export async function handleEvolutionWebhook(request: FastifyRequest, reply: Fas
       const rawState = event.data.state ?? event.data.status ?? event.data.connection ?? event.data.instance ?? "";
       const state = String(rawState).toLowerCase();
       deps.log.info({ rawState, state, allDataKeys: Object.keys(event.data) }, "CONNECTION_UPDATE parsed state");
-      const status = state === "open" || state === "connected" ? "connected" : state === "connecting" ? "qr_pending" : "disconnected";
+      // A Evolution/Baileys emite "close" com frequência em reconexões
+      // TRANSITÓRIAS (ping timeout, restart de instância disparado por nós
+      // mesmos em recoverClosedConnection, blip de rede) das quais ela se
+      // recupera sozinha em segundos — sem exigir novo QR code. Antes,
+      // qualquer estado != open/connecting virava "disconnected" na hora,
+      // então o painel mostrava "desconectado" para um número que na
+      // prática continuava conectado e voltava a funcionar sozinho. Só é
+      // um desligamento de verdade (exige reconexão manual) quando a
+      // Evolution sinaliza logout explícito (401/loggedOut) ou já não há
+      // mais tentativa de reconexão (shouldReconnect=false).
+      const reasonCode = String(
+        event.data.statusReason ?? event.data.reason ?? (event.data as Record<string, unknown>).code ?? ""
+      ).toLowerCase();
+      const explicitLogout = reasonCode === "401" || reasonCode.includes("loggedout") || reasonCode.includes("logged_out");
+      const noReconnect = (event.data as Record<string, unknown>).shouldReconnect === false;
+      const isTerminalDisconnect = state !== "open" && state !== "connected" && state !== "connecting"
+        && (explicitLogout || noReconnect || (state !== "close" && state !== ""));
+      const status = state === "open" || state === "connected" ? "connected"
+        : state === "connecting" ? "qr_pending"
+        : isTerminalDisconnect ? "disconnected"
+        : null;
+      if (status === null) {
+        deps.log.info({ sessionId: identity.id, state, reasonCode }, "Transient CONNECTION_UPDATE ignored (no status change)");
+        return reply.status(204).send();
+      }
       const owner = String(event.data.ownerJid ?? event.data.wuid ?? "").split("@")[0].split(":")[0] || undefined;
       const reason = status === "disconnected" ? String(event.data.reason ?? event.data.statusReason ?? (state || "connection_closed")) : undefined;
       await repository.updateStatus(identity.id, status, owner, undefined, reason);

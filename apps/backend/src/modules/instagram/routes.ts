@@ -47,9 +47,10 @@ export interface InstagramRouteOptions {
   authorize?: InstagramRouteAuthorizer;
 }
 
-function callbackLocation(panelPublicUrl: string, outcome: "connected" | "error"): string {
+function callbackLocation(panelPublicUrl: string, outcome: "connected" | "error", reasonCode?: string): string {
   const destination = new URL("/conexao", panelPublicUrl);
   destination.searchParams.set("instagram", outcome);
+  if (reasonCode) destination.searchParams.set("instagram_reason", reasonCode);
   return destination.toString();
 }
 
@@ -126,7 +127,8 @@ export async function registerInstagramRoutes(
   });
 
   app.get("/instagram/oauth/callback", async (request, reply) => {
-    const location = (outcome: "connected" | "error") => callbackLocation(panelPublicUrl, outcome);
+    const location = (outcome: "connected" | "error", reasonCode?: string) =>
+      callbackLocation(panelPublicUrl, outcome, reasonCode);
     try {
       if (!configured || !options.redirectUri) throw new Error("Instagram is not configured");
       const session = await authorize(request, "connection.manage");
@@ -156,7 +158,16 @@ export async function registerInstagramRoutes(
         "Instagram OAuth callback failed"
       );
       reply.clearCookie("instagram_oauth_nonce", { path: "/" });
-      return reply.redirect(location("error"));
+      // A mensagem genérica escondia o motivo real de falhas legítimas e
+      // recorrentes (ex.: conta do Instagram já conectada em outro tenant,
+      // ou faltando o escopo instagram_business_manage_messages) atrás de
+      // "verifique as permissões", levando o usuário a tentar reautorizar
+      // repetidamente sem nunca resolver. O painel usa este código para
+      // mostrar a causa específica.
+      const reasonCode = typeof (error as { code?: unknown })?.code === "string"
+        ? (error as { code: string }).code
+        : undefined;
+      return reply.redirect(location("error", reasonCode));
     }
   });
 

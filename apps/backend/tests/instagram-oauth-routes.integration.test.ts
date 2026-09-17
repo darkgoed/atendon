@@ -269,7 +269,9 @@ describe("Instagram OAuth and Fastify routes", () => {
     });
 
     expect(callback.statusCode).toBe(302);
-    expect(callback.headers.location).toBe("https://panel.example.test/conexao?instagram=error");
+    expect(callback.headers.location).toBe(
+      "https://panel.example.test/conexao?instagram=error&instagram_reason=INSTAGRAM_REQUIRED_SCOPE_MISSING"
+    );
     expect(provider.exchangeOAuthCode).toHaveBeenCalledTimes(1);
     expect(provider.subscribeWebhook).not.toHaveBeenCalled();
     await expect(repository.resolveAccount(accountId)).resolves.toBeNull();

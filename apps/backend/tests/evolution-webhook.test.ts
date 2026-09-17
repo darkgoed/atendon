@@ -385,6 +385,28 @@ describe("Evolution webhook connection alerts", () => {
     });
     expect(query).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO system_alerts"), ["tenant-a", expect.stringContaining("Suporte")]);
   });
+
+  // Regressão de produção: a Evolution/Baileys emite "close" com frequência
+  // em reconexões TRANSITÓRIAS (ping timeout, restart de instância, blip de
+  // rede) das quais se recupera sozinha sem exigir novo QR — sem reason de
+  // logout e sem shouldReconnect=false. Antes, isso marcava a sessão como
+  // "disconnected" na hora, mostrando "desconectado" para um número que
+  // continuava conectado na prática. Não deve atualizar o status nem
+  // disparar alerta.
+  it("ignores a transient close without a logout reason (no status change, no alert)", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: "session-a", tenant_id: "tenant-a", label: "Suporte", archived_at: null }] })
+      .mockResolvedValue({ rows: [], rowCount: 0 });
+    const status = vi.fn().mockReturnValue({ send: vi.fn() });
+    await handleEvolutionWebhook({ headers: { "x-atendon-webhook-secret": config.EVOLUTION_WEBHOOK_SECRET }, body: {
+      event: "connection.update", instance: "atendon_a", data: { state: "close" }
+    }} as unknown as FastifyRequest, { status } as unknown as FastifyReply, {
+      db: { query } as never, whatsapp: {} as WhatsAppSessionManager, log: { info: vi.fn(), warn: vi.fn() } as unknown as FastifyBaseLogger
+    });
+    expect(query).not.toHaveBeenCalledWith(expect.stringContaining("UPDATE whatsapp_sessions"), expect.anything());
+    expect(query).not.toHaveBeenCalledWith(expect.stringContaining("INSERT INTO system_alerts"), expect.anything());
+    expect(status).toHaveBeenCalledWith(204);
+  });
 });
 
 describe("Evolution webhook ack status mapping", () => {

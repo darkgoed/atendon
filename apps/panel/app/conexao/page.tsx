@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowsClockwise, CheckCircle, PencilSimple, Plus, Star, Trash, Warning } from "@phosphor-icons/react";
+import { ArrowsClockwise, CheckCircle, DotsThreeVertical, PencilSimple, Plus, Star, Trash, Warning } from "@phosphor-icons/react";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useRef, useState } from "react";
 import { Empty } from "@/components/page-state";
@@ -22,6 +22,7 @@ import {
 } from "@/lib/connections";
 import { usePermission } from "@/lib/use-permission";
 import { Button } from "@/components/ui/button";
+import { PopoverMenu } from "@/components/popover-menu";
 import { InstagramConnections } from "@/components/instagram-connections";
 import styles from "../channels-ai.module.css";
 
@@ -178,7 +179,20 @@ export default function Connection() {
     const params = new URLSearchParams(window.location.search);
     const result = params.get("instagram");
     if (result === "connected") setNotice("Instagram conectado com sucesso.");
-    if (result === "error") setActionError("Não foi possível concluir a autorização do Instagram. Verifique as permissões e tente novamente.");
+    if (result === "error") {
+      // O backend passa o code do erro real (ex.: conta já conectada em
+      // outro workspace, ou faltando permissão obrigatória) em vez de uma
+      // mensagem genérica que escondia a causa e levava a tentar de novo
+      // sem nunca resolver.
+      const reason = params.get("instagram_reason");
+      setActionError(
+        reason === "INSTAGRAM_ACCOUNT_ALREADY_CONNECTED"
+          ? "Esta conta do Instagram já está conectada em outro workspace do AtendON. Desconecte-a lá antes de conectar aqui."
+          : reason === "INSTAGRAM_REQUIRED_SCOPE_MISSING"
+          ? "A autorização do Instagram não concedeu todas as permissões necessárias. Ao autorizar, marque todas as opções solicitadas e tente novamente."
+          : "Não foi possível concluir a autorização do Instagram. Verifique as permissões e tente novamente."
+      );
+    }
     return () => { active = false; };
   }, []);
 
@@ -519,10 +533,46 @@ export default function Connection() {
                   </div>
                   {canManageConnection ? (
                     <div className="flex flex-wrap gap-2">
-                      <button type="button" className="btn" disabled={busy} onClick={() => { setEditingId(item.id); setEditLabel(item.label); setActionError(""); setNotice(""); }}><PencilSimple size={15} aria-hidden="true" />Renomear</button>
-                      {!item.is_primary ? <button type="button" className="btn" disabled={busy} onClick={(event) => requestConfirmedAction({ kind: "promote", connection: item }, event.currentTarget)}><Star size={15} aria-hidden="true" />Tornar principal</button> : null}
                       <button type="button" className="btn" disabled={busy} aria-expanded={confirmingReconnect && reconnectTarget?.id === item.id} aria-controls="connection-reconnect-confirmation" onClick={(event) => openReconnect(item, event.currentTarget)}><ArrowsClockwise size={15} aria-hidden="true" />Reconectar</button>
-                      <button type="button" className="btn warn" disabled={busy} onClick={(event) => requestConfirmedAction({ kind: "archive", connection: item }, event.currentTarget)}><Trash size={15} aria-hidden="true" />Remover</button>
+                      <PopoverMenu
+                        buttonClassName="btn"
+                        icon={<DotsThreeVertical size={15} weight="bold" aria-hidden="true" />}
+                        ariaLabel={`Mais ações da conexão ${item.label}`}
+                        title="Mais ações"
+                        align="end"
+                        panelClassName="conversation-action-menu__panel"
+                      >
+                        {(closeMenu) => (
+                          <>
+                            <button
+                              type="button"
+                              className="conversation-action-menu__item"
+                              disabled={busy}
+                              onClick={() => { closeMenu(); setEditingId(item.id); setEditLabel(item.label); setActionError(""); setNotice(""); }}
+                            >
+                              <PencilSimple size={15} aria-hidden="true" /> Renomear
+                            </button>
+                            {!item.is_primary ? (
+                              <button
+                                type="button"
+                                className="conversation-action-menu__item"
+                                disabled={busy}
+                                onClick={(event) => { closeMenu(); requestConfirmedAction({ kind: "promote", connection: item }, event.currentTarget); }}
+                              >
+                                <Star size={15} aria-hidden="true" /> Tornar principal
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="conversation-action-menu__item conversation-action-menu__item--warn"
+                              disabled={busy}
+                              onClick={(event) => { closeMenu(); requestConfirmedAction({ kind: "archive", connection: item }, event.currentTarget); }}
+                            >
+                              <Trash size={15} aria-hidden="true" /> Remover
+                            </button>
+                          </>
+                        )}
+                      </PopoverMenu>
                     </div>
                   ) : null}
                 </div>
