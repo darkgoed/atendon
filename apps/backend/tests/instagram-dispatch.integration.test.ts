@@ -250,27 +250,27 @@ describe("durable Instagram inbox dispatch", () => {
     expect(freshProvider.fetchUserProfile).not.toHaveBeenCalled();
   });
 
-  // Regressão: um attachment ig_reel (reel encaminhado pelo contato) tem
-  // payload.url de vídeo real, mas o `type` declarado no webhook não é
-  // "video" — a classificação deve vir do Content-Type real do download.
-  it("downloads an ig_reel attachment and classifies it by the real content type", async () => {
+  // Regressão: um attachment ig_reel (reel encaminhado pelo contato) traz em
+  // payload.url a PÁGINA do post no instagram.com, não um arquivo de mídia
+  // bruto — confirmado em produção (payload.url real observado:
+  // https://www.instagram.com/reel/...). Tentar baixar isso como mídia
+  // sempre falha ("Unsupported media type"/HTML). Deve virar texto com link,
+  // sem NUNCA chamar fetchMedia.
+  it("turns an ig_reel attachment into a text fallback with the post link, without attempting a download", async () => {
     const instagramRepository = new InstagramRepository(pool, key);
     const reelContactId = `igsid-${randomUUID()}`;
     const reelMid = `message:${randomUUID()}`;
     const reelProvider: InstagramProvider = {
       ...provider,
       fetchUserProfile: vi.fn().mockResolvedValue({ username: null, name: null, profilePictureUrl: null }),
-      fetchMedia: vi.fn().mockResolvedValue({
-        bytes: Buffer.from("reel-bytes"), contentType: "video/mp4", sizeBytes: 10,
-        finalUrl: "https://lookaside.instagram.test/reel.mp4"
-      })
+      fetchMedia: vi.fn().mockRejectedValue(new Error("fetchMedia must not be called for ig_reel"))
     };
     await instagramRepository.persistEvent(tenantId, sessionId, {
       kind: "message", eventId: `message:${reelMid}`, accountId, providerUserId: reelContactId,
       timestamp: new Date(), text: "", isEcho: false,
       raw: {
         sender: { id: reelContactId }, recipient: { id: accountId }, timestamp: Date.now(),
-        message: { mid: reelMid, attachments: [{ type: "ig_reel", payload: { url: "https://lookaside.instagram.test/reel-cdn", title: "Reel legal" } }] }
+        message: { mid: reelMid, attachments: [{ type: "ig_reel", payload: { url: "https://www.instagram.com/reel/DdXpfzQRyCj/", title: "Reel legal" } }] }
       }
     }, Buffer.from("{}"));
 
@@ -285,10 +285,10 @@ describe("durable Instagram inbox dispatch", () => {
     });
     const drained = await drainInstagramInboxTenant(service, tenantId, dispatch);
     expect(drained).toBe(1);
-    expect(reelProvider.fetchMedia).toHaveBeenCalledWith({
-      url: "https://lookaside.instagram.test/reel-cdn", accessToken: "provider-token"
-    });
-    expect(reelEnqueued[0]).toMatchObject({ mediaType: "video", mediaMimeType: "video/mp4" });
+    expect(reelProvider.fetchMedia).not.toHaveBeenCalled();
+    expect(reelEnqueued[0]).not.toHaveProperty("mediaType");
+    expect(reelEnqueued[0].text).toContain("Reel legal");
+    expect(reelEnqueued[0].text).toContain("https://www.instagram.com/reel/DdXpfzQRyCj/");
   });
 
   // Regressão: attachment `template` (sem payload.url, comum em

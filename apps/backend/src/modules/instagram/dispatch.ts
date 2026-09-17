@@ -75,10 +75,9 @@ export function instagramInboundExternalId(tenantId: string, sessionId: string, 
 }
 
 // A Meta não garante que `attachments[].type` declarado no JSON do webhook
-// (image/audio/video/file/share/story_mention/ig_reel/reel/...) corresponda
-// 1:1 a um MediaType interno estável — reels/shares/story mentions também
-// carregam vídeo real, por exemplo. Por isso classificamos pelo Content-Type
-// REAL detectado no download (já validado por assinatura mágica em
+// (image/audio/video/file/...) corresponda exatamente ao Content-Type real
+// do arquivo. Por isso classificamos pelo Content-Type REAL detectado no
+// download (já validado por assinatura mágica em
 // provider.ts::matchesMimeMagic), não pelo `type` declarado pelo webhook.
 function mediaTypeFromContentType(contentType: string): MediaType | null {
   if (contentType.startsWith("image/")) return "image";
@@ -88,14 +87,20 @@ function mediaTypeFromContentType(contentType: string): MediaType | null {
   return null;
 }
 
-// Tipos de attachment que a Meta documenta como carregando `payload.url` de
-// mídia real baixável. `sticker`/`ephemeral` são deliberadamente excluídos:
-// a Meta não gera webhook para GIF/sticker normal, e mídia efêmera
-// (view-once) chega como `{"type":"ephemeral"}` sem URL — nenhum dos dois é
-// um erro nosso, é limitação/contrato da própria plataforma.
-const DOWNLOADABLE_ATTACHMENT_TYPES = new Set([
-  "image", "audio", "video", "file", "share", "story_mention", "ig_reel", "reel"
-]);
+// Tipos de attachment cujo payload.url aponta para o arquivo de mídia bruto
+// na CDN da Meta (lookaside.fbsbx.com), servido diretamente com o
+// Content-Type real — únicos seguros para download binário. Confirmado em
+// produção: `ig_reel`/`reel` (e, pela mesma natureza de "referência a post"
+// em vez de arquivo, também `share`/`story_mention`) trazem em payload.url a
+// PÁGINA do post/reel (ex. https://www.instagram.com/reel/...), não um
+// arquivo — tentar baixar sempre falha com "Unsupported media type" e
+// desperdiça uma chamada. Para esses, ver referencePostFallbackText() logo
+// abaixo: viram texto com link em vez de uma tentativa de download.
+const DOWNLOADABLE_ATTACHMENT_TYPES = new Set(["image", "audio", "video", "file"]);
+// Tipos que referenciam um post/reel/story do Instagram por página (não por
+// arquivo de mídia bruto) — sempre viram texto com link, nunca uma
+// tentativa de download que sabemos que vai falhar.
+const POST_REFERENCE_ATTACHMENT_TYPES = new Set(["ig_reel", "reel", "share", "story_mention"]);
 
 function attachmentUrl(attachment: Record<string, unknown>): string | null {
   if (!DOWNLOADABLE_ATTACHMENT_TYPES.has(String(attachment.type))) return null;
@@ -104,10 +109,12 @@ function attachmentUrl(attachment: Record<string, unknown>): string | null {
 }
 
 // Melhor esforço para não perder o conteúdo de attachments sem URL baixável
-// (ex.: `template` reencaminhado por automações tipo ManyChat) ou mensagens
-// marcadas `is_unsupported`. Nunca deve lançar: vira apenas o texto da
-// mensagem, preservando a conversa/identidade em vez de derrubar o evento em
-// retry infinito por um formato de payload conhecido-mas-não-suportado.
+// (ex.: `template` reencaminhado por automações tipo ManyChat, ou
+// `ig_reel`/`reel`/`share`/`story_mention` cuja URL é a página do post, não
+// o arquivo) ou mensagens marcadas `is_unsupported`. Nunca deve lançar: vira
+// apenas o texto da mensagem, preservando a conversa/identidade em vez de
+// derrubar o evento em retry infinito por um formato de payload
+// conhecido-mas-não-suportado.
 function unsupportedContentFallbackText(attachment: Record<string, unknown> | null): string {
   if (attachment?.type === "template") {
     const generic = record(record(attachment.payload)?.generic);
@@ -115,6 +122,15 @@ function unsupportedContentFallbackText(attachment: Record<string, unknown> | nu
     const first = record(elements[0]);
     const title = typeof first?.title === "string" ? first.title.trim() : "";
     if (title) return title;
+  }
+  if (attachment && POST_REFERENCE_ATTACHMENT_TYPES.has(String(attachment.type))) {
+    const payload = record(attachment.payload);
+    const url = typeof payload?.url === "string" ? payload.url : "";
+    const title = typeof payload?.title === "string" ? payload.title.trim() : "";
+    const kind = attachment.type === "ig_reel" || attachment.type === "reel" ? "reel"
+      : attachment.type === "story_mention" ? "story" : "post";
+    const label = `[${kind === "reel" ? "Reel" : kind === "story" ? "Story" : "Post"} do Instagram compartilhado]`;
+    return [title, label, url].filter(Boolean).join("\n");
   }
   return "[Conteúdo não suportado recebido pelo Instagram]";
 }
