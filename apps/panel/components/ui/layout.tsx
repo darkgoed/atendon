@@ -10,12 +10,13 @@ export const Cluster = forwardRef<HTMLDivElement, LayoutProps>(function Cluster(
   return <div {...props} ref={ref} className={`cluster ${className}`.trim()} style={{ ...style, "--cluster-gap": gap } as CSSProperties}>{children}</div>;
 });
 
+// As descrições de cabeçalho saíram de todas as telas (comments.md): título e
+// ações bastam — nem todos os operadores são leigos e haverá treinamento.
 export type PageHeaderProps = Omit<HTMLAttributes<HTMLElement>, "children" | "title"> & {
   title: ReactNode;
-  description?: ReactNode;
   actions?: ReactNode;
 };
 
-export const PageHeader = forwardRef<HTMLElement, PageHeaderProps>(function PageHeader({ title, description, actions, className = "", ...props }, ref) {
-  return <header {...props} ref={ref} className={`pagehead ${className}`.trim()}><div><h1>{title}</h1>{description && <p className="sub">{description}</p>}</div>{actions && <div className="pagehead__actions">{actions}</div>}</header>;
+export const PageHeader = forwardRef<HTMLElement, PageHeaderProps>(function PageHeader({ title, actions, className = "", ...props }, ref) {
+  return <header {...props} ref={ref} className={`pagehead ${className}`.trim()}><div><h1>{title}</h1></div>{actions && <div className="pagehead__actions">{actions}</div>}</header>;
 });

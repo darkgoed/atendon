@@ -143,7 +143,6 @@ export default function PostSalesChecklistSettingsPage() {
       <header className="pagehead post-sales-head">
         <div>
           <h1>Configurar checklist</h1>
-          <p>Defina a sequência real da empresa. Novos itens chegam pendentes aos clientes ativos.</p>
         </div>
         <Link className="btn" href="/pos-venda"><ArrowLeft size={16} aria-hidden="true" /> Voltar à carteira</Link>
       </header>

@@ -37,7 +37,7 @@ export default function MetricsPage() {
   if (!root) return <Shell><div className="card"><p>Esta área está disponível apenas para usuários ROOT.</p></div></Shell>;
 
   return <Shell><AdminPage>
-    <AdminPageHeader title="Métricas SaaS" description="Agregados exatos de receita, custo e transações." />
+    <AdminPageHeader title="Métricas SaaS" />
     <AdminSection className="card" title="Filtros" description="Refine o período e o escopo da consulta.">      <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Filtros de métricas">
         {([["tenantId", "Tenant ID"], ["planId", "Plano ID"], ["start", "De"], ["end", "Até"]] as const).map(([name, label]) => <label className="field" key={name}>
           <span className="label">{label}</span>

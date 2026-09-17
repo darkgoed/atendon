@@ -1,5 +1,6 @@
 "use client";
 
+import { ContactChatLink } from "@/components/contact-chat-link";
 import { Empty } from "@/components/page-state";
 import { Button, TableScroll } from "@/components/ui";
 import { pipelineStageAutomationLabel } from "@/components/pipeline-board";
@@ -33,7 +34,12 @@ export function PipelineList({ leads, stages, members, legacy, loading, canMove,
           <td data-label="Responsável">{memberName(lead)}</td>
           <td data-label="Idade no estágio">{formatPipelineAge(lead.atualizado_em)}</td>
           <td data-label="Próximo follow-up">{lead.proxima_acao_em ? new Date(lead.proxima_acao_em).toLocaleString("pt-BR") : lead.proxima_acao ?? "—"}</td>
-          {canMove ? <td data-label="Ações"><Button disabled={pendingLeadIds.has(lead.id)} onClick={() => onMoveRequest(lead)}>Mover</Button></td> : null}
+          {canMove ? <td data-label="Ações">
+            <div className="flex items-center gap-1.5">
+              <ContactChatLink conversationId={lead.conversation_id} name={lead.nome} />
+              <Button disabled={pendingLeadIds.has(lead.id)} onClick={() => onMoveRequest(lead)}>Mover</Button>
+            </div>
+          </td> : null}
         </tr>;
       })}</tbody>
     </table>

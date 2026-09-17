@@ -36,8 +36,8 @@ beforeAll(async () => {
     readFile(new URL("../app/agenda/agenda-header.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/configuracoes/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/conversas/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/leads/[id]/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/leads/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/contatos/[id]/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/contatos/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/pipeline/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/pipeline-board.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/pipeline-card.tsx", import.meta.url), "utf8"),
@@ -199,9 +199,10 @@ describe("comments.md UI regressions", () => {
     expect(leadsSource).toContain('data-label="Resumo"');
     expect(leadsSource).toContain('className="block truncate" title=');
     expect(leadsSource).toContain("whitespace-nowrap");
-    // O nowrap vive na toolbar do header (flex-nowrap); a célula de ações por
-    // linha é flex via .leads-table__actions do CSS do domínio (leads.css).
-    expect(leadsSource).toContain("flex-nowrap");
+    // A toolbar do header é flex com quebra (flex-wrap) para acomodar os
+    // chips de filtro; a célula de ações por linha é flex via
+    // .leads-table__actions do CSS do domínio (leads.css).
+    expect(leadsSource).toContain("flex-wrap");
     expect(leadsSource).toContain("min-h-8");
   });
 

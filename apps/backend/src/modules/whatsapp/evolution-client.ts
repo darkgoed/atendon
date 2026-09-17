@@ -83,7 +83,10 @@ export type PresenceType = "composing" | "paused" | "available" | "unavailable";
 interface EvolutionInstance {
   name?: string;
   instanceName?: string;
-  instance?: { instanceName?: string };
+  instance?: { instanceName?: string; connectionStatus?: string; state?: string; status?: string };
+  connectionStatus?: string;
+  state?: string;
+  status?: string;
 }
 
 export interface EvolutionContact {
@@ -266,6 +269,20 @@ export class EvolutionClient {
 
   async connect(instanceName: string): Promise<Json> {
     return this.request(`/instance/connect/${encodeURIComponent(instanceName)}`);
+  }
+
+  /** Estado real (open/close/connecting) de cada instância, por nome de instância. */
+  async fetchInstanceStates(): Promise<Map<string, string>> {
+    const response = await this.request<EvolutionInstance[] | { instances?: EvolutionInstance[] }>("/instance/fetchInstances");
+    const instances = Array.isArray(response) ? response : response.instances ?? [];
+    const states = new Map<string, string>();
+    for (const item of instances) {
+      const name = item.name ?? item.instanceName ?? item.instance?.instanceName;
+      const state = item.connectionStatus ?? item.state ?? item.status
+        ?? item.instance?.connectionStatus ?? item.instance?.state ?? item.instance?.status;
+      if (name && typeof state === "string") states.set(name, state.toLowerCase());
+    }
+    return states;
   }
 
   async restart(instanceName: string): Promise<void> {

@@ -70,7 +70,7 @@ describe("MetaInstagramProvider HTTP contract", () => {
     });
   });
 
-  it("uses the documented image attachments array and singular non-image attachment", async () => {
+  it("uses the documented singular attachment envelope for every media type", async () => {
     const transport = sequenceFetch([
       Response.json({ recipient_id: "igsid-1", message_id: "image-mid" }),
       Response.json({ recipient_id: "igsid-1", message_id: "audio-mid" })
@@ -94,12 +94,15 @@ describe("MetaInstagramProvider HTTP contract", () => {
       media: { type: "audio", url: "https://cdn.example/audio.m4a" }
     });
 
+    // Envelope singular (`message.attachment`): forma documentada para um
+    // único anexo; a imagem única em `attachments: [...]` era recusada.
     expect(JSON.parse(String(transport.calls[0]?.init?.body))).toEqual({
       recipient: { id: "igsid-1" },
       message: {
-        attachments: [
-          { type: "image", payload: { url: "https://cdn.example/image.png" } }
-        ]
+        attachment: {
+          type: "image",
+          payload: { url: "https://cdn.example/image.png" }
+        }
       }
     });
     expect(JSON.parse(String(transport.calls[1]?.init?.body))).toEqual({
@@ -111,6 +114,52 @@ describe("MetaInstagramProvider HTTP contract", () => {
         }
       }
     });
+  });
+
+  it("sends reply_to at the payload root and surfaces Meta's rejection detail", async () => {
+    const transport = sequenceFetch([
+      Response.json({ recipient_id: "igsid-1", message_id: "reply-mid" }),
+      Response.json({
+        error: {
+          message: "(#10) The content of the media does not match the informed format",
+          code: 10,
+          error_subcode: 2018327,
+          error_user_msg: "O formato da mídia não é suportado"
+        }
+      }, { status: 400 })
+    ]);
+    const provider = new MetaInstagramProvider({
+      appId: "app-id",
+      appSecret: "app-secret",
+      fetchImpl: transport.fetchImpl
+    });
+
+    const sent = await provider.sendText({
+      instagramAccountId: "account-1",
+      recipientId: "igsid-1",
+      accessToken: "access-token",
+      text: "Seguindo o assunto",
+      replyTo: "mid-bruto-da-mensagem-citada"
+    });
+    expect(sent.outcome).toBe("accepted");
+    // reply_to na RAIZ do payload, ao lado de message (doc Instagram Messaging).
+    expect(JSON.parse(String(transport.calls[0]?.init?.body))).toEqual({
+      recipient: { id: "igsid-1" },
+      message: { text: "Seguindo o assunto" },
+      reply_to: { mid: "mid-bruto-da-mensagem-citada" }
+    });
+
+    const rejected = await provider.sendMedia({
+      instagramAccountId: "account-1",
+      recipientId: "igsid-1",
+      accessToken: "access-token",
+      media: { type: "audio", url: "https://cdn.example/audio.webm" }
+    });
+    expect(rejected.outcome).toBe("rejected");
+    if (rejected.outcome === "rejected") {
+      expect(rejected.message).toContain("O formato da mídia não é suportado");
+      expect(rejected.message).toContain("10/2018327");
+    }
   });
 
   it("accepts Meta's documented OAuth envelope while preserving endpoint contracts", async () => {
@@ -591,7 +640,8 @@ describe("MetaInstagramProvider HTTP contract", () => {
     })).resolves.toEqual({
       outcome: "rejected",
       code: "meta_400",
-      message: "Meta rejeitou a mensagem"
+      // O motivo real da Meta vai na mensagem (era descartado antes).
+      message: "Meta rejeitou a mensagem: outside allowed window (código 10)"
     });
     expect(transport.calls).toHaveLength(1);
   });

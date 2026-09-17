@@ -15,7 +15,9 @@ import path from "node:path";
 // registrada e o changelog congelava. O gate continua valendo para qualquer
 // outro arquivo: só estes são ignorados.
 const RELEASE_STATE_DIRS = [".hermes", ".claude", ".agents", ".codex"];
-const RELEASE_STATE_FILES = ["comments.md", "skills-lock.json"];
+// features.md: mesmo caso de comments.md — colagem de referência feita pelo
+// operador/agentes na raiz do app, não é produto.
+const RELEASE_STATE_FILES = ["comments.md", "features.md", "skills-lock.json"];
 
 /** Recebe a saída de `git status --porcelain` e devolve só as entradas que
  * realmente impedem a release. Os caminhos podem vir relativos à raiz do

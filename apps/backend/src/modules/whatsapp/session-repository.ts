@@ -58,14 +58,33 @@ export class SessionRepository {
     }));
   }
 
-  async findByInstance(instanceName: string): Promise<{ id: string; tenantId: string; label: string; archivedAt: string | null } | null> {
-    const result = await this.db.query<{ id: string; tenant_id: string; label: string; archived_at: string | null }>(
-      "SELECT id, tenant_id, label, archived_at FROM whatsapp_sessions WHERE instance_name=$1", [instanceName]
+  /**
+   * Conexões WhatsApp ativas que o banco NÃO considera conectadas. Candidatas a
+   * divergência com a Evolution: se o provedor reporta a instância "open", o
+   * status local está velho e precisa ser reparado.
+   */
+  async listPossiblyStale(): Promise<SessionRecord[]> {
+    const result = await this.db.query<{ id: string; tenant_id: string; status: string; instance_name: string }>(
+      `SELECT s.id, s.tenant_id, s.status, s.instance_name FROM whatsapp_sessions s
+       JOIN tenants t ON t.id = s.tenant_id
+       WHERE t.status IN ('trial', 'active') AND s.status IN ('qr_pending', 'disconnected')
+         AND s.channel = 'whatsapp' AND s.archived_at IS NULL AND s.instance_name IS NOT NULL
+       ORDER BY s.created_at`
+    );
+    return result.rows.map((row) => ({
+      id: row.id, tenantId: row.tenant_id, status: row.status, instanceName: row.instance_name
+    }));
+  }
+
+  async findByInstance(instanceName: string): Promise<{ id: string; tenantId: string; label: string; status: string; archivedAt: string | null } | null> {
+    const result = await this.db.query<{ id: string; tenant_id: string; label: string; status: string; archived_at: string | null }>(
+      "SELECT id, tenant_id, label, status, archived_at FROM whatsapp_sessions WHERE instance_name=$1", [instanceName]
     );
     return result.rows[0] ? {
       id: result.rows[0].id,
       tenantId: result.rows[0].tenant_id,
       label: result.rows[0].label,
+      status: result.rows[0].status,
       archivedAt: result.rows[0].archived_at
     } : null;
   }

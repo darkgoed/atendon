@@ -2625,19 +2625,35 @@ export function buildApp(options: {
     const text = media ? mediaBody?.caption?.trim() || media.fileName : textBody!.text;
     let quoted: { key: { id: string; remoteJid: string; fromMe: boolean }; text: string } | undefined;
     if (body.replyToMessageId) {
-      if (row.channel === "instagram") throw new ChannelOperationUnsupportedError("responder citando");
-      const quotedRow = await db.query<{ sender: "contact" | "agent" | "human"; content: string; external_message_id: string | null }>(
-        "SELECT sender, content, external_message_id FROM messages WHERE id=$1 AND conversation_id=$2",
+      const quotedRow = await db.query<{ sender: "contact" | "agent" | "human"; content: string; external_message_id: string | null; provider_message_key: string | null }>(
+        "SELECT sender, content, external_message_id, provider_message_key FROM messages WHERE id=$1 AND conversation_id=$2",
         [body.replyToMessageId, id]
       );
       if (!quotedRow.rows[0]) return reply.status(404).send({ error: "Mensagem citada não encontrada" });
       const quotedMessage = quotedRow.rows[0];
-      if (!quotedMessage.external_message_id) return reply.status(409).send({ error: "Mensagem citada ainda não foi confirmada pelo WhatsApp" });
-      if (!row.contact_jid) return reply.status(409).send({ error: "Conversa sem identificador do WhatsApp para responder citando" });
-      quoted = {
-        key: { id: quotedMessage.external_message_id, remoteJid: row.contact_jid, fromMe: quotedMessage.sender !== "contact" },
-        text: quotedMessage.content.slice(0, 200)
-      };
+      if (!quotedMessage.external_message_id) return reply.status(409).send({ error: "Mensagem citada ainda não foi confirmada pelo provedor" });
+      if (row.channel === "instagram") {
+        // O Send API do Instagram aceita respostas citadas, mas exige o `mid`
+        // BRUTO do provedor em `reply_to.mid`. Ele mora no último segmento de
+        // provider_message_key (`tenant:sessão:mid`) desde que o dispatcher
+        // passou a gravar a chave bruta; linhas antigas guardam o external_id
+        // com hash (`ig_...`), que a Meta não reconhece — bloquear com o
+        // motivo claro é melhor que enviar uma citação inválida.
+        const rawMid = quotedMessage.provider_message_key?.split(":").slice(2).join(":") ?? "";
+        if (!rawMid || rawMid.startsWith("ig_")) {
+          return reply.status(409).send({ error: "A mensagem citada é anterior ao suporte a respostas do Instagram; cite uma mensagem mais recente" });
+        }
+        quoted = {
+          key: { id: rawMid, remoteJid: destination, fromMe: quotedMessage.sender !== "contact" },
+          text: quotedMessage.content.slice(0, 200)
+        };
+      } else {
+        if (!row.contact_jid) return reply.status(409).send({ error: "Conversa sem identificador do WhatsApp para responder citando" });
+        quoted = {
+          key: { id: quotedMessage.external_message_id, remoteJid: row.contact_jid, fromMe: quotedMessage.sender !== "contact" },
+          text: quotedMessage.content.slice(0, 200)
+        };
+      }
     }
     const signature = await resolveSignatureSettings(db, session.tenantId, id);
     const signatureName = signature

@@ -402,7 +402,7 @@ export function ConversationScheduler({
               </p>
             </div>
           </div>
-          <Link className="btn warn justify-self-start" href="/leads">Abrir leads</Link>
+          <Link className="btn warn justify-self-start" href="/contatos">Abrir contatos</Link>
         </section>
       ) : context.agendamento_ativo ? (
         <section className="grid gap-5 py-2">

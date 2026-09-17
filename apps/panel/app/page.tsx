@@ -108,7 +108,7 @@ export default function Overview() {
 
   return (
     <Shell>
-      <PageHeader title={hasWorkspaceScope ? "Visão geral" : "Minha operação"} description={hasWorkspaceScope ? "O pulso do atendimento hoje." : "Seus atendimentos, leads e reuniões em um só lugar."} />
+      <PageHeader title={hasWorkspaceScope ? "Visão geral" : "Minha operação"} />
       {error ? <p className="error" role="alert">{error.message}</p> : !data ? <LoadingCards /> : <>
         {appointmentsEnabled ? <CommercialDashboard
           data={data.commercial}

@@ -25,6 +25,12 @@ export interface InboundMessage {
   mediaFileName?: string;
   mediaSizeBytes?: number;
   mediaIsSticker?: boolean;
+  /** Chave bruta do provedor (ex.: `mid` do Instagram). Quando presente,
+   * compõe `messages.provider_message_key` e permite resolver respostas
+   * citadas (reply_to) para a mensagem local sem depender do hash. */
+  providerMessageKey?: string;
+  /** `mid` da mensagem citada pelo contato (webhook `message.reply_to`). */
+  replyToExternalId?: string;
   referral?: MessageReferral;
 }
 

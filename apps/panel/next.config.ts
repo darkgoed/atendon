@@ -60,6 +60,13 @@ const config: NextConfig = {
       headers: [...panelSecurityHeaders]
     }];
   },
+  async redirects() {
+    return [
+      // comments.md: /leads virou /contatos; links antigos continuam abrindo a tela.
+      { source: "/leads", destination: "/contatos", permanent: false },
+      { source: "/leads/:path*", destination: "/contatos/:path*", permanent: false }
+    ];
+  },
   async rewrites() {
     return [
       // OAuth returns to the panel origin, but the callback is handled by the API.

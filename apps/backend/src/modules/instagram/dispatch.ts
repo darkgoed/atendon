@@ -46,6 +46,19 @@ function nestedId(value: unknown): string | null {
   return item && typeof item.id === "string" && item.id.length > 0 ? item.id : null;
 }
 
+// `message.reply_to.mid` do webhook do Instagram (resposta citada). O
+// Messenger Platform documenta também `reply_to.message_id`; aceitar os dois
+// campos evita perder a citação se a Meta alternar o formato.
+function instagramReplyToMid(message: Record<string, unknown> | null): string | undefined {
+  const replyTo = record(message?.reply_to);
+  if (!replyTo) return undefined;
+  for (const field of ["mid", "message_id"] as const) {
+    const value = replyTo[field];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return undefined;
+}
+
 function requireString(value: unknown, label: string): string {
   if (typeof value !== "string" || value.length === 0) throw new Error(`Instagram inbox ${label} is missing`);
   return value;
@@ -115,7 +128,13 @@ function attachmentUrl(attachment: Record<string, unknown>): string | null {
 // apenas o texto da mensagem, preservando a conversa/identidade em vez de
 // derrubar o evento em retry infinito por um formato de payload
 // conhecido-mas-não-suportado.
-function unsupportedContentFallbackText(attachment: Record<string, unknown> | null): string {
+// `is_unsupported` (visualização única, localização, perfil compartilhado
+// etc.) chega SEM tipo e SEM anexo: o webhook não informa o que era, então o
+// texto precisa dizer os casos possíveis em vez de fingir certeza.
+function unsupportedContentFallbackText(
+  attachment: Record<string, unknown> | null,
+  message: Record<string, unknown> | null
+): string {
   if (attachment?.type === "template") {
     const generic = record(record(attachment.payload)?.generic);
     const elements = Array.isArray(generic?.elements) ? generic!.elements : [];
@@ -131,6 +150,15 @@ function unsupportedContentFallbackText(attachment: Record<string, unknown> | nu
       : attachment.type === "story_mention" ? "story" : "post";
     const label = `[${kind === "reel" ? "Reel" : kind === "story" ? "Story" : "Post"} do Instagram compartilhado]`;
     return [title, label, url].filter(Boolean).join("\n");
+  }
+  if (attachment?.type === "ephemeral") {
+    return "[Não é possível visualizar a imagem de visualização única recebida pelo Instagram]";
+  }
+  if (attachment?.type === "location") {
+    return "[Não é possível visualizar a localização recebida pelo Instagram]";
+  }
+  if (message?.is_unsupported === true) {
+    return "[Não é possível visualizar este conteúdo pelo AtendON: localização, visualização única ou conteúdo não suportado pelo Instagram]";
   }
   return "[Conteúdo não suportado recebido pelo Instagram]";
 }
@@ -270,7 +298,16 @@ export function createInstagramInboxDispatcher(options: InstagramInboxDispatcher
         const url = attachmentUrl(downloadableAttachment)!;
         const token = await options.instagram.repository.getToken(row.tenant_id, row.session_id);
         const downloaded = await options.instagram.provider.fetchMedia({ url, accessToken: token });
-        const type = mediaTypeFromContentType(downloaded.contentType);
+        // Notas de voz do Instagram chegam num contêiner MP4 que a CDN da Meta
+        // serve com Content-Type `video/mp4` — o mesmo contêiner de vídeos,
+        // indistinguível por assinatura mágica (ver matchesMimeMagic). Quando o
+        // webhook DECLARA o attachment como `audio`, é esse tipo declarado que
+        // decide: sem este desempate, toda nota de voz aparece no painel como
+        // vídeo (player de vídeo com cara de errado) em vez do player de voz.
+        let type = mediaTypeFromContentType(downloaded.contentType);
+        if (type === "video" && String(downloadableAttachment.type) === "audio") {
+          type = "audio";
+        }
         if (!type) throw new Error("Instagram inbox media attachment has an unsupported content type");
         const conversationId = await conversationIdFor(options.database, row, instagramContactId);
         await options.instagram.repository.savePublicMedia({
@@ -292,14 +329,15 @@ export function createInstagramInboxDispatcher(options: InstagramInboxDispatcher
       }
 
       let text = typeof message.text === "string" ? message.text : "";
-      // Attachment presente mas sem URL baixável (ex.: `template`), ou
-      // mensagem explicitamente marcada como não suportada pela Meta: nunca
-      // derruba o processamento — vira texto de fallback para preservar a
-      // conversa/identidade em vez de ficar em retry infinito para sempre
-      // (instagram_webhook_inbox não tem backoff/DLQ).
+      // Attachment presente mas sem URL baixável (ex.: `template`, `ephemeral`
+      // — visualização única —, `location`), ou mensagem explicitamente marcada
+      // como não suportada pela Meta (is_unsupported: localização, perfil
+      // compartilhado etc.): nunca derruba o processamento — vira texto de
+      // fallback para preservar a conversa/identidade em vez de ficar em retry
+      // infinito para sempre (instagram_webhook_inbox não tem backoff/DLQ).
       if (!text && !inboundMedia.mediaType) {
         if (firstAttachment || message.is_unsupported === true) {
-          text = unsupportedContentFallbackText(firstAttachment);
+          text = unsupportedContentFallbackText(firstAttachment, message);
         } else {
           throw new Error("Instagram inbox message has no supported content");
         }
@@ -313,6 +351,10 @@ export function createInstagramInboxDispatcher(options: InstagramInboxDispatcher
         instagramContactId,
         ...enrichment,
         text,
+        // Chave bruta do provedor: compõe provider_message_key e é o que torna
+        // respostas citadas (reply_to) resolvíveis para a mensagem local.
+        providerMessageKey: rawMid,
+        replyToExternalId: instagramReplyToMid(message),
         ...inboundMedia
       });
       return "inbound_enqueued";

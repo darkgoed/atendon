@@ -142,11 +142,14 @@ describe("composition, status, and table primitives", () => {
 
   it("renders semantic page and section headings with actions", () => {
     const ref = createRef<HTMLElement>();
-    render(<PageHeader ref={ref} title="Dashboard" description="Overview" actions={<Button>Refresh</Button>} />);
+    // Descrições de cabeçalho foram removidas de todas as telas: PageHeader
+    // não aceita mais `description` — título e ações bastam.
+    render(<PageHeader ref={ref} title="Dashboard" actions={<Button>Refresh</Button>} />);
     render(<Section title="Recent activity" description="Latest events" actions={<Button>View all</Button>}><p>Rows</p></Section>);
     render(<Card data-testid="summary-card" aria-label="Summary"><p>Card contents</p></Card>);
     expect(ref.current).toHaveClass("pagehead");
     expect(screen.getByRole("heading", { level: 1, name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.queryByText("Overview")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Recent activity" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "View all" })).toBeInTheDocument();

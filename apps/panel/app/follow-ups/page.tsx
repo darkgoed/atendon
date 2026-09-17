@@ -13,7 +13,6 @@ export default function FollowUpsPage() {
         <div>
           <div className="mono mb-3 flex items-center gap-2 type-caption uppercase tracking-[.16em] text-[var(--primary-text)]"><Clock size={18} />Automação da IA</div>
           <h1>Follow-ups</h1>
-          <p>Configure a cadência e a biblioteca de mídias usadas nas mensagens automáticas.</p>
         </div>
       </header>
       <AiFollowUpSettingsPanel />

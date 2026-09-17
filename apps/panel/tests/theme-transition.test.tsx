@@ -66,6 +66,23 @@ describe("transição de tema", () => {
     expect(document.querySelector(".theme-fx")).toBeNull();
   });
 
+  // A onda é feita de camadas empilhadas numa ORDEM que importa: veil (volume)
+  // → spark (impulso) → ring (crista) → halo (bloom, vaza por fora do ring) →
+  // core (o disco que esconde o repaint) → flash (estalo do commit, por cima).
+  // Inverter a ordem apaga o efeito: o core pintaria por cima da crista.
+  it("monta as camadas da onda na ordem de composição", () => {
+    applyThemeWithTransition("light", { x: 100, y: 40 });
+    const layers = Array.from(document.querySelectorAll(".theme-fx > span")).map((node) => node.className);
+    expect(layers).toEqual([
+      "theme-fx__veil",
+      "theme-fx__spark",
+      "theme-fx__ring",
+      "theme-fx__halo",
+      "theme-fx__core",
+      "theme-fx__flash"
+    ]);
+  });
+
   it("ancora a onda no ponto clicado e cobre o canto mais distante", () => {
     applyThemeWithTransition("light", { x: 0, y: 0 });
     const overlay = document.querySelector<HTMLElement>(".theme-fx");

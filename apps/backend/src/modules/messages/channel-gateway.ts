@@ -2,6 +2,7 @@ import type { Pool } from "pg";
 import type { AppConfig } from "../../config.js";
 import { withTenantTransaction } from "../../db/tenant-transaction.js";
 import { signMediaUrl } from "../instagram/media.js";
+import { prepareInstagramOutboundMedia } from "../instagram/media-transcode.js";
 import type { InstagramRuntime, ProviderSendResult } from "../instagram/types.js";
 import { WhatsAppSendRejectedError } from "../whatsapp/errors.js";
 import type {
@@ -106,13 +107,16 @@ function matchesMediaMagic(mimeType: string, bytes: Buffer): boolean {
     case "audio/ogg":
     case "video/ogg":
       return ascii(bytes, 0, "OggS");
+    case "audio/webm":
+    case "video/webm":
+      return startsWith(bytes, [0x1a, 0x45, 0xdf, 0xa3]);
+    case "audio/flac":
+      return ascii(bytes, 0, "fLaC");
     case "audio/mp4":
     case "audio/x-m4a":
     case "video/mp4":
     case "video/quicktime":
       return ascii(bytes, 4, "ftyp");
-    case "video/webm":
-      return startsWith(bytes, [0x1a, 0x45, 0xdf, 0xa3]);
     default:
       return false;
   }
@@ -211,12 +215,17 @@ export class ChannelGatewayRouter implements MessageGateway {
     if (route.channel === "whatsapp") {
       return this.whatsappGateway.sendText(sessionId, destination, text, quoted);
     }
-    if (quoted) this.unsupported("responder citando");
+    // O Send API do Instagram aceita respostas citadas (`reply_to.mid` na raiz
+    // do payload, ao lado de `message` — doc "Send a message", Instagram
+    // Messaging). O id citado precisa ser o `mid` bruto do provedor, que o
+    // app.ts resolve de provider_message_key; mensagens antigas chegam aqui
+    // com o external_id com hash (`ig_...`) e são bloqueadas antes.
     return providerResult(await this.instagramRuntime.gateway.sendText({
       tenantId: route.tenantId,
       connectionId: sessionId,
       recipientId: instagramRecipient(destination),
-      text
+      text,
+      ...(quoted?.key.id ? { replyTo: quoted.key.id } : {})
     }));
   }
 
@@ -230,6 +239,15 @@ export class ChannelGatewayRouter implements MessageGateway {
     const recipientId = instagramRecipient(destination);
     const type = instagramMediaType(media);
     const bytes = validateInstagramMedia(media, this.runtimeConfig.INSTAGRAM_MEDIA_MAX_BYTES);
+    // Formatos que o gravador do painel produz (WebM/Opus no Chrome, OGG no
+    // Firefox, WebP nas imagens) não são aceitos pelo Send API do Instagram —
+    // audio aceita aac/m4a/wav/mp4 e imagem png/jpeg. Converte para o formato
+    // documentado antes de publicar a URL que a Meta vai baixar.
+    const prepared = await prepareInstagramOutboundMedia({
+      mediaType: type,
+      mimeType: media.mimeType,
+      bytes
+    });
     const conversation = await withTenantTransaction(this.database, route.tenantId, async (client) => client.query<{ id: string }>(
       `SELECT id FROM conversations
        WHERE tenant_id=$1 AND session_id=$2 AND instagram_contact_id=$3`,
@@ -242,8 +260,8 @@ export class ChannelGatewayRouter implements MessageGateway {
       tenantId: route.tenantId,
       sessionId,
       conversationId: conversation.rows[0].id,
-      bytes,
-      contentType: media.mimeType.split(";", 1)[0]!.trim().toLowerCase(),
+      bytes: prepared.bytes,
+      contentType: prepared.contentType,
       expiresAt: new Date(Date.now() + PUBLIC_MEDIA_TTL_SECONDS * 1_000)
     });
     const signature = signMediaUrl(saved.id, this.runtimeConfig.DATA_ENCRYPTION_KEY, PUBLIC_MEDIA_TTL_SECONDS);

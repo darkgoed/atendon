@@ -22,7 +22,7 @@ export default function UsoPage() {
   const [loading,setLoading] = useState(true); const [error,setError] = useState("");
   async function load() { setLoading(true); setError(""); try { const [d,h,c] = await Promise.all([api<{dashboard:Dashboard|null}>("/billing/usage-dashboard"), api<{history:Invoice[]}>("/billing/history?limit=20"), api<Credit>("/billing/usage-credit")]); setDashboard(d.dashboard); setHistory(h.history ?? []); setCredit(c); } catch(e) { setError(err(e)); } finally { setLoading(false); } }
   useEffect(() => { void load(); }, []);
-  return <Shell><AdminPage><AdminPageHeader title="Uso" description="Consumo de créditos de IA do tenant e histórico de cobrança." />
+  return <Shell><AdminPage><AdminPageHeader title="Uso" />
     {error && <div role="alert" className="mb-4 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-4 flex justify-between gap-3"><span>{error}</span><button className="btn warn" onClick={() => void load()}>Tentar novamente</button></div>}
     {loading ? <div role="status" aria-busy="true"><span className="sr-only">Carregando uso</span><div className="skeleton h-72" /></div> : dashboard === null ? <div className="card"><h2>Nenhum período de uso disponível</h2><p className="sub">Ainda não há dados de consumo para este tenant.</p></div> : dashboard ? <><Usage dashboard={dashboard}/><CreditForm data={credit} canManage={canManage}/><History history={history} onReload={load}/></> : null}
   </AdminPage></Shell>;

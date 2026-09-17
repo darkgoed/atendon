@@ -182,7 +182,6 @@ export default function Agent() {
       <header className="pagehead">
         <div>
           <h1>Agente principal</h1>
-          <p>Defina o escopo, o provedor e as respostas automáticas.</p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-3">
           {connections.length > 1 ? (

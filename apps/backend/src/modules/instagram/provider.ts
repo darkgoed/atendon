@@ -67,6 +67,41 @@ class MetaAmbiguousError extends Error {
   }
 }
 
+// Extrai o motivo legível do corpo de erro da Meta. Formato típico:
+// {"error":{"message":"...","code":10,"error_subcode":2018327,
+//  "error_user_msg":"...","error_data":{"messaging_product":"instagram", ...}}}
+// A mensagem voltada ao usuário vem primeiro (error_user_msg), depois os
+// dados específicos de mensageria, depois a message técnica; código e
+// subcode entram entre parênteses para diagnóstico sem precisar de logs.
+function metaRejectionDetail(detail: string | undefined): string {
+  if (!detail) return "motivo não informado pela Meta";
+  try {
+    const parsed: unknown = JSON.parse(detail);
+    if (isRecord(parsed) && isRecord(parsed.error)) {
+      const error = parsed.error;
+      const code = typeof error.code === "number" ? error.code : undefined;
+      const subcode = typeof error.error_subcode === "number" ? error.error_subcode : undefined;
+      const codeLabel = code !== undefined || subcode !== undefined
+        ? ` (código ${[code, subcode].filter((value) => value !== undefined).join("/")})`
+        : "";
+      const userMessage = typeof error.error_user_msg === "string" && error.error_user_msg.trim()
+        ? error.error_user_msg.trim()
+        : undefined;
+      const dataMessage = isRecord(error.error_data) && typeof error.error_data.message === "string" && error.error_data.message.trim()
+        ? error.error_data.message.trim()
+        : undefined;
+      const technicalMessage = typeof error.message === "string" && error.message.trim()
+        ? error.message.trim()
+        : undefined;
+      const message = userMessage ?? dataMessage ?? technicalMessage;
+      return message ? `${message}${codeLabel}` : detail.slice(0, 200);
+    }
+  } catch {
+    // corpo não-JSON (HTML de proxy/CDN etc.): mostra o bruto truncado
+  }
+  return detail.slice(0, 200);
+}
+
 // `IGApiException` code 100 com "Unsupported request - method type: <verbo>"
 // NÃO é um erro de método HTTP: a Meta devolve essa mensagem genérica para
 // TODA chamada feita em nome de um usuário que o app ainda não tem permissão
@@ -158,6 +193,12 @@ function asciiAt(bytes: Buffer, offset: number, expected: string): boolean {
 const SUPPORTED_MEDIA_MIME_TYPES = new Set([
   "image/png",
   "image/jpeg",
+  // GIFs compartilhados no Instagram (ex.: link do Giphy) são servidos pela
+  // CDN da Meta com Content-Type image/gif — sem este tipo, o download
+  // falhava com "Unsupported media type" e a mensagem ficava presa no inbox
+  // em retry infinito, sem nunca aparecer na conversa.
+  "image/gif",
+  "image/webp",
   "application/pdf",
   "audio/aac",
   "audio/wav",
@@ -177,6 +218,10 @@ function matchesMimeMagic(contentType: string, bytes: Buffer): boolean {
       return startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     case "image/jpeg":
       return startsWithBytes(bytes, [0xff, 0xd8, 0xff]);
+    case "image/gif":
+      return asciiAt(bytes, 0, "GIF87a") || asciiAt(bytes, 0, "GIF89a");
+    case "image/webp":
+      return asciiAt(bytes, 0, "RIFF") && asciiAt(bytes, 8, "WEBP");
     case "application/pdf":
       return asciiAt(bytes, 0, "%PDF-");
     case "audio/aac":
@@ -484,10 +529,15 @@ export class MetaInstagramProvider implements InstagramProvider {
       };
     } catch (error) {
       if (error instanceof MetaRejectedError) {
+        // A Meta devolve o motivo REAL da recusa no corpo (error_user_msg /
+        // error.message / error_data.message + code + error_subcode). Sem
+        // extraí-lo, o atendente só vê "Meta rejeitou a mensagem" sem saber
+        // se o problema é formato de mídia, janela expirada ou permissão —
+        // exatamente o que acontecia com os envios de imagem/arquivo.
         return {
           outcome: "rejected",
           code: `meta_${error.status}`,
-          message: "Meta rejeitou a mensagem"
+          message: `Meta rejeitou a mensagem: ${metaRejectionDetail(error.detail)}`
         };
       }
       return {
@@ -503,13 +553,17 @@ export class MetaInstagramProvider implements InstagramProvider {
     recipientId: string;
     accessToken: string;
     text: string;
+    replyTo?: string;
   }): Promise<ProviderSendResult> {
     return this.send({
       instagramAccountId: input.instagramAccountId,
       accessToken: input.accessToken,
       payload: {
         recipient: { id: input.recipientId },
-        message: { text: input.text }
+        message: { text: input.text },
+        // `reply_to` fica na RAIZ do payload, ao lado de `message` (doc
+        // "Send a message" do Instagram Messaging) — não dentro de message.
+        ...(input.replyTo ? { reply_to: { mid: input.replyTo } } : {})
       }
     });
   }
@@ -527,11 +581,13 @@ export class MetaInstagramProvider implements InstagramProvider {
     return this.send({
       instagramAccountId: input.instagramAccountId,
       accessToken: input.accessToken,
+      // Envelope SINGULAR (`message.attachment`) para todos os tipos: é a
+      // forma documentada para um único anexo no Instagram Messaging; o
+      // array `message.attachments` é só para coleções de imagens, e o
+      // envio de imagem única em array era recusado pela Meta.
       payload: {
         recipient: { id: input.recipientId },
-        message: input.media.type === "image"
-          ? { attachments: [attachment] }
-          : { attachment }
+        message: { attachment }
       }
     });
   }

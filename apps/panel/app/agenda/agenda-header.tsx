@@ -18,7 +18,6 @@ export function AgendaHeader({ canCreate, canBlock, unit, mode, view, pendingCou
     <PageHeader
       className="agenda-head"
       title="Agenda"
-      description={<><span className="agenda-head__code mono">AG—01</span> Clique em um horário livre para agendar um lead.</>}
       actions={<div className="agenda-head__actions">
         {canBlock ? (
           <Button className="agenda-head__action" onClick={onBlock} icon={<CalendarX size={15} aria-hidden="true" />}>

@@ -299,8 +299,12 @@ export class MessageRepository {
     }
   }
 
-  private messageKey(message: { tenantId: string; sessionId: string; externalId: string }): string {
-    return `${message.tenantId}:${message.sessionId}:${message.externalId}`;
+  private messageKey(message: { tenantId: string; sessionId: string; externalId: string; providerMessageKey?: string }): string {
+    // `providerMessageKey` carrega o identificador bruto do provedor (o `mid`
+    // do Instagram). Usá-lo aqui é o que torna respostas citadas resolvíveis:
+    // o `reply_to.mid` de um webhook aponta para o `mid` bruto, não para o
+    // external_id com hash que o dispatcher fabrica.
+    return `${message.tenantId}:${message.sessionId}:${message.providerMessageKey ?? message.externalId}`;
   }
 
   private async waitForMeetingProvisioning(
@@ -464,6 +468,25 @@ export class MessageRepository {
         }
       }
       if (inserted.rows[0]) {
+        // O webhook do Instagram entrega a resposta citada como
+        // `message.reply_to.mid` (o mid bruto do provedor). Com a mensagem
+        // citada armazenada sob provider_message_key=`tenant:sessão:mid`
+        // (ver MessageRepository.messageKey), a resolução é uma busca direta
+        // pela chave. Mensagens citadas mais antigas que a adoção desta chave
+        // (ou apagadas) simplesmente não resolvem: reply_to fica NULL e a
+        // conversa continua, sem derrubar o processamento.
+        if (message.replyToExternalId) {
+          const quoted = await client.query<{ id: string }>(
+            "SELECT id FROM messages WHERE provider_message_key=$1",
+            [`${message.tenantId}:${message.sessionId}:${message.replyToExternalId}`]
+          );
+          if (quoted.rows[0]) {
+            await client.query(
+              "UPDATE messages SET reply_to_message_id=$2 WHERE id=$1 AND reply_to_message_id IS NULL",
+              [inserted.rows[0].id, quoted.rows[0].id]
+            );
+          }
+        }
         await client.query(
           `UPDATE ai_follow_up_schedules SET status='cancelled',next_run_at=NULL,processing_started_at=NULL,
              cancellation_reason='contact_replied',updated_at=now()

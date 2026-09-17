@@ -154,14 +154,25 @@
      redeclarados em dark/light. Espelham o --bg de cada tema.
      As durações são espelhadas em lib/theme-transition.ts (THEME_SWEEP_MS /
      THEME_SETTLE_MS) — mudar uma exige mudar a outra. */
-  --theme-fx-sweep: 460ms;
-  --theme-fx-settle: 300ms;
+  --theme-fx-sweep: 620ms;
+  --theme-fx-settle: 380ms;
+  /* Easing PRÓPRIO da onda. O --ease-out do sistema é um expo-out extremo
+     (0.16,1,0.3,1): chegaria ao raio final por volta de 40% do tempo, deixando
+     a tela chapada e parada até o commit. Esta curva mantém o impulso inicial
+     mas só fecha a cobertura perto do fim, sem tempo morto. */
+  --theme-fx-ease: cubic-bezier(0.38, 0.22, 0.2, 1);
   --theme-fx-dark-bg: #0F1115;
   --theme-fx-dark-accent: #5B8CFF;
   --theme-fx-dark-glow: rgb(91 140 255 / 0.22);
+  /* Segunda cor da crista: a frente da onda é um degradê entre accent e edge,
+     não uma linha chapada — é o que dá a leitura de "energia" no escuro. */
+  --theme-fx-dark-edge: #A78BFA;
+  --theme-fx-dark-spark: rgb(167 139 250 / 0.55);
   --theme-fx-light-bg: #F7F8FA;
   --theme-fx-light-accent: #2563EB;
   --theme-fx-light-glow: rgb(37 99 235 / 0.16);
+  --theme-fx-light-edge: #38BDF8;
+  --theme-fx-light-spark: rgb(56 189 248 / 0.45);
 
   /* ==================================================== 2. SEMANTIC — LIGHT
      Paleta do brief. Os valores de TEXTO são derivados para cumprir WCAG AA

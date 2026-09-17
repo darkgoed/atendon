@@ -147,7 +147,7 @@ export default function WorkspaceRolesPage() {
 
   return (
     <Shell><AdminPage>
-      <AdminPageHeader title="Funções e permissões" description="Matriz por módulo, com funções protegidas para preservar o OWNER do workspace." actions={<AdminButton tone="primary" disabled={!canCreate} onClick={() => selectRole()}>
+      <AdminPageHeader title="Funções e permissões" actions={<AdminButton tone="primary" disabled={!canCreate} onClick={() => selectRole()}>
           <Plus size={16} aria-hidden="true" />
           Nova função
         </AdminButton>} />

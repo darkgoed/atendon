@@ -53,7 +53,6 @@ export default function PostSaleDebtsPage() {
         <div>
           <Link className="btn post-sales-back-link" href="/pos-venda"><ArrowLeft size={16} aria-hidden="true" /> Voltar</Link>
           <h1>Cobranças de crediário</h1>
-          <p>Carteira importada de crediário por loja, com status e valores em aberto.</p>
         </div>
         <span className="mono post-sales-result-count" role="status" aria-live="polite">
           {isLoading ? "carregando…" : `${debts.length} resultado(s)`}

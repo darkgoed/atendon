@@ -166,8 +166,17 @@ export async function handleEvolutionWebhook(request: FastifyRequest, reply: Fas
       const noReconnect = (event.data as Record<string, unknown>).shouldReconnect === false;
       const isTerminalDisconnect = state !== "open" && state !== "connected" && state !== "connecting"
         && (explicitLogout || noReconnect || (state !== "close" && state !== ""));
+      // "connecting" numa sessão JÁ pareada é ruído de reconexão interna da
+      // Evolution (e chega fora de ordem com o "open" correspondente). Regredir
+      // para qr_pending nesse caso deixa a conexão marcada como não conectada
+      // no banco mesmo com a instância "open" no provedor — e channelCapabilities
+      // passa a responder can_send=false ("A conexão do WhatsApp está
+      // desconectada"), bloqueando o atendente num número que envia e recebe
+      // normalmente. Só um QR/pareamento novo (start/reconnect) volta a sessão
+      // para qr_pending; aqui o estado só avança de não-conectado para qr_pending.
+      const connectingOnLiveSession = state === "connecting" && identity.status === "connected";
       const status = state === "open" || state === "connected" ? "connected"
-        : state === "connecting" ? "qr_pending"
+        : state === "connecting" ? (connectingOnLiveSession ? null : "qr_pending")
         : isTerminalDisconnect ? "disconnected"
         : null;
       if (status === null) {

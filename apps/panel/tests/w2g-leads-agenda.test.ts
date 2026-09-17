@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { statusLabel } from "../app/leads/lead-domain";
+import { statusLabel } from "../app/contatos/lead-domain";
 import { buildPipelineTransitionPayload } from "../lib/pipeline";
 
 describe("leads, pipeline and agenda shared contracts", () => {

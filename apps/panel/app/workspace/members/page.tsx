@@ -173,7 +173,7 @@ export default function WorkspaceMembersPage() {
 
   return (
     <Shell><AdminPage>
-      <AdminPageHeader title="Membros" description="Acesso do workspace, convites pendentes e transferência controlada de propriedade." />
+      <AdminPageHeader title="Membros" />
 
       {error ? <p className="error mb-4" role="alert">{error}</p> : null}
       {dataError ? (

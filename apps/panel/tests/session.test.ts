@@ -217,7 +217,7 @@ describe("case transfer UI scope", () => {
     expect(losesCaseAccessAfterTransfer(operator, "user-2")).toBe(true);
     expect(losesCaseAccessAfterTransfer(operator, operator.user.id)).toBe(false);
     expect(caseScopedNavigationLabel(operator, "/conversas", "Conversas")).toBe("Minhas conversas");
-    expect(caseScopedNavigationLabel(operator, "/leads", "Leads")).toBe("Meus leads");
+    expect(caseScopedNavigationLabel(operator, "/contatos", "Contatos")).toBe("Meus contatos");
     expect(caseScopedNavigationLabel(operator, "/pipeline", "Pipeline")).toBe("Meu pipeline");
     expect(caseScopedNavigationLabel(operator, "/agenda", "Agenda")).toBe("Minha agenda");
   });
@@ -243,7 +243,7 @@ describe("case transfer UI scope", () => {
     expect(canLeaveCaseUnassigned(supervisor)).toBe(true);
     expect(losesCaseAccessAfterTransfer(supervisor, "user-2")).toBe(false);
     expect(caseScopedNavigationLabel(supervisor, "/conversas", "Conversas")).toBe("Conversas");
-    expect(caseScopedNavigationLabel(supervisor, "/leads", "Leads")).toBe("Leads");
+    expect(caseScopedNavigationLabel(supervisor, "/contatos", "Contatos")).toBe("Contatos");
     expect(caseScopedNavigationLabel(supervisor, "/agenda", "Agenda")).toBe("Agenda");
   });
 });

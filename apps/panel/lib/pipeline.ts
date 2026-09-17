@@ -89,6 +89,8 @@ export type PipelineLead = {
   telefone: string;
   nome?: string;
   avatar_url?: string | null;
+  conversation_id?: string | null;
+  instagram_username?: string | null;
   status: string;
   interesse?: string | null;
   situacao?: string | null;

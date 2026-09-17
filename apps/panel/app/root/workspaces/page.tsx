@@ -146,7 +146,7 @@ export default function RootWorkspacesPage() {
 
   return <Shell>
     <AdminPage>
-    <AdminPageHeader title="Workspaces" description="Provisionamento, capabilities comerciais e acesso assistido ROOT." />
+    <AdminPageHeader title="Workspaces" />
     {message ? <p className="error mb-4" role="alert">{message}</p> : null}
     {notice ? <p className="accent mb-4 text-sm" role="status">{notice}</p> : null}
     {error ? <section className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-4" role="alert"><p className="error">{error.message}</p><button type="button" className="btn warn" onClick={() => void mutate()}>Tentar novamente</button></section> : null}

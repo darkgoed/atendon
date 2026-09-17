@@ -211,6 +211,34 @@ export class WhatsAppSessionManager implements MessageGateway {
     }
   }
 
+  /**
+   * Corrige sessões cujo status no banco divergiu do estado real da Evolution.
+   * Um CONNECTION_UPDATE perdido, fora de ordem ou entregue durante um restart
+   * deixa uma conexão viva marcada como qr_pending/disconnected; nesse estado
+   * channelCapabilities responde can_send=false e o painel bloqueia o atendente
+   * ("A conexão do WhatsApp está desconectada") num número que envia e recebe
+   * normalmente. Só promove para connected — nunca desconecta a partir daqui,
+   * porque "close" transitório é ruído conhecido da Evolution/Baileys.
+   */
+  async reconcileConnectionStates(): Promise<{ checked: number; repaired: number }> {
+    if (!this.config.WHATSAPP_ENABLED) return { checked: 0, repaired: 0 };
+    const stale = await this.sessions.listPossiblyStale();
+    if (!stale.length) return { checked: 0, repaired: 0 };
+    const states = await this.evolution.fetchInstanceStates();
+    let repaired = 0;
+    for (const session of stale) {
+      const state = states.get(session.instanceName);
+      if (state !== "open" && state !== "connected") continue;
+      await this.sessions.updateStatus(session.id, "connected");
+      repaired++;
+      this.logger.warn(
+        { sessionId: session.id, instanceName: session.instanceName, previousStatus: session.status },
+        "Session status repaired from Evolution: provider reports the instance is connected"
+      );
+    }
+    return { checked: stale.length, repaired };
+  }
+
   async downloadMedia(sessionId: string, externalId: string): Promise<{
     base64: string;
     mimeType: string;

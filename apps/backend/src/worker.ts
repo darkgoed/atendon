@@ -453,6 +453,14 @@ const businessHoursTicker = setInterval(() => {
   void reconcileBusinessHoursPresence().catch((error) => logger.error({ error }, "Business hours presence reconciliation failed"));
 }, 60_000);
 
+const whatsappStateReconciler = setInterval(() => {
+  void manager.reconcileConnectionStates()
+    .then((result) => {
+      if (result.repaired) logger.warn(result, "WhatsApp connection states repaired from Evolution");
+    })
+    .catch((error) => logger.error({ error }, "WhatsApp connection state reconciliation failed"));
+}, Number(process.env.WHATSAPP_STATE_RECONCILIATION_INTERVAL_MS ?? 60_000));
+
 const logReconciliationResult = (result: ReconciliationResult, message: string): void => {
   const level = reconciliationLogLevel(result);
   if (level === "warn") logger.warn({ result }, message);
@@ -655,6 +663,7 @@ async function shutdown(): Promise<void> {
   clearInterval(schedulingNotificationReconciler);
   clearInterval(followUpReconciler);
   clearInterval(businessHoursTicker);
+  clearInterval(whatsappStateReconciler);
   clearInterval(meetingProvisioningReconciler);
   clearInterval(meetingContactDeliveryReconciler);
   clearInterval(meetingConfirmationReconciler);

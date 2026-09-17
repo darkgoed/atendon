@@ -127,3 +127,51 @@ describe("WhatsApp outbound connection recovery", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 });
+
+describe("WhatsApp connection state reconciliation", () => {
+  // Regressão de produção: um CONNECTION_UPDATE perdido/fora de ordem deixava a
+  // sessão em qr_pending no banco enquanto a Evolution reportava "open". Nesse
+  // estado channelCapabilities devolve can_send=false e o painel bloqueia o
+  // atendente com "A conexão do WhatsApp está desconectada" num número ativo.
+  it("promotes a stale session to connected when Evolution reports the instance open", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json([
+      { name: "instance-live", connectionStatus: "open" },
+      { name: "instance-dead", connectionStatus: "close" }
+    ]));
+    vi.stubGlobal("fetch", fetchMock);
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [
+        { id: "session-live", tenant_id: "tenant-a", status: "qr_pending", instance_name: "instance-live" },
+        { id: "session-dead", tenant_id: "tenant-a", status: "disconnected", instance_name: "instance-dead" }
+      ] })
+      .mockResolvedValue({ rows: [], rowCount: 0 });
+    const warn = vi.fn();
+    const manager = new WhatsAppSessionManager(
+      { query } as unknown as Pool,
+      { ...config, WHATSAPP_ENABLED: true },
+      { warn, info: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as Logger
+    );
+
+    await expect(manager.reconcileConnectionStates()).resolves.toEqual({ checked: 2, repaired: 1 });
+
+    const updates = query.mock.calls.filter(([sql]) => String(sql).includes("UPDATE whatsapp_sessions SET status"));
+    expect(updates).toHaveLength(1);
+    expect(updates[0][1]).toEqual(["session-live", "connected", null, null, null]);
+  });
+
+  it("never downgrades a session from the provider snapshot", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json([{ name: "instance-a", connectionStatus: "close" }]));
+    vi.stubGlobal("fetch", fetchMock);
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: "session-a", tenant_id: "tenant-a", status: "qr_pending", instance_name: "instance-a" }] })
+      .mockResolvedValue({ rows: [], rowCount: 0 });
+    const manager = new WhatsAppSessionManager(
+      { query } as unknown as Pool,
+      { ...config, WHATSAPP_ENABLED: true },
+      { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as Logger
+    );
+
+    await expect(manager.reconcileConnectionStates()).resolves.toEqual({ checked: 1, repaired: 0 });
+    expect(query.mock.calls.filter(([sql]) => String(sql).includes("UPDATE whatsapp_sessions SET status"))).toHaveLength(0);
+  });
+});

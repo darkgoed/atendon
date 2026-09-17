@@ -35,6 +35,8 @@ export type InstagramTextSendInput = {
   connectionId: string;
   recipientId: string;
   text: string;
+  /** `mid` bruto da mensagem citada — vai no `reply_to` do payload raiz. */
+  replyTo?: string;
   /** @deprecated The database window is authoritative; this value is ignored. */
   windowExpiresAt?: Date;
 };
@@ -103,7 +105,8 @@ export class InstagramGateway {
       instagramAccountId: authorized.instagramAccountId,
       recipientId: input.recipientId,
       accessToken: authorized.accessToken,
-      text: input.text
+      text: input.text,
+      ...(input.replyTo ? { replyTo: input.replyTo } : {})
     });
   }
 

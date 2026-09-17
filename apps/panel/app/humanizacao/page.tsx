@@ -126,7 +126,7 @@ export default function HumanizacaoPage() {
 
   return (
     <Shell>
-      <PageHeader title="Humanização" description="Timing, presença, agrupamento, reações e limites configurados por tenant." />
+      <PageHeader title="Humanização" />
 
       {error ? (
         <section className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-4" role="alert">

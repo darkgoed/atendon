@@ -379,4 +379,127 @@ describe("durable Instagram inbox dispatch", () => {
     );
     expect(pending.rows[0].last_error).toBeTruthy();
   });
+
+  // Notas de voz do Instagram chegam em contêiner MP4 servido com
+  // Content-Type video/mp4; sem o desempate pelo tipo DECLARADO (`audio`),
+  // toda nota de voz virava "vídeo" no painel.
+  it("classifies declared-audio mp4 voice notes as audio and carries the raw provider key", async () => {
+    const instagramRepository = new InstagramRepository(pool, key);
+    const voiceProvider: InstagramProvider = {
+      ...provider,
+      fetchMedia: vi.fn().mockResolvedValue({
+        bytes: Buffer.from("voice-bytes"), contentType: "video/mp4", sizeBytes: 11,
+        finalUrl: "https://lookaside.instagram.test/voice.mp4"
+      })
+    };
+    const voiceMid = `voice:${randomUUID()}`;
+    await instagramRepository.persistEvent(tenantId, sessionId, {
+      kind: "message", eventId: `message:${voiceMid}`, accountId, providerUserId: contactId,
+      timestamp: new Date(), text: "", isEcho: false,
+      raw: {
+        sender: { id: contactId }, recipient: { id: accountId }, timestamp: Date.now(),
+        message: { mid: voiceMid, attachments: [{ type: "audio", payload: { url: "https://lookaside.instagram.test/voice.mp4" } }] }
+      }
+    }, Buffer.from("{}"));
+    const service = new InstagramService(instagramRepository, voiceProvider);
+    const messageRepository = new MessageRepository(pool, config, { followUp: async () => "enqueued" });
+    const voiceEnqueued: SessionMessage[] = [];
+    const dispatch = createInstagramInboxDispatcher({
+      database: pool,
+      instagram: { repository: instagramRepository, provider: voiceProvider },
+      messages: messageRepository,
+      enqueueInbound: async (message) => { voiceEnqueued.push(message); }
+    });
+    await drainInstagramInboxTenant(service, tenantId, dispatch);
+
+    const voice = voiceEnqueued.find((message) => message.externalId === instagramInboundExternalId(tenantId, sessionId, voiceMid));
+    expect(voice).toMatchObject({
+      mediaType: "audio",
+      mediaMimeType: "video/mp4",
+      mediaFileName: "instagram-audio.mp4",
+      providerMessageKey: voiceMid
+    });
+  });
+
+  // Resposta citada: o webhook traz message.reply_to.mid e a mensagem citada
+  // mora em provider_message_key=`tenant:sessão:mid` — a resolução para
+  // reply_to_message_id acontece em recordInboundAndLoadContext.
+  it("resolves a quoted reply to the local message id via the raw provider key", async () => {
+    const messageRepository = new MessageRepository(pool, config, { followUp: async () => "enqueued" });
+    const quotedMid = `quoted:${randomUUID()}`;
+    const replyMid = `reply:${randomUUID()}`;
+    // A mensagem citada já existe na conversa, gravada com a chave bruta.
+    const quoted = await pool.query<{ id: string }>(
+      `INSERT INTO messages(conversation_id,sender,content,external_message_id,provider_message_key,status)
+       VALUES($1,'contact','mensagem citada original',$2,$3,'sent') RETURNING id`,
+      [conversationId, instagramInboundExternalId(tenantId, sessionId, quotedMid), `${tenantId}:${sessionId}:${quotedMid}`]
+    );
+    const context = await messageRepository.recordInboundAndLoadContext({
+      channel: "instagram",
+      externalId: instagramInboundExternalId(tenantId, sessionId, replyMid),
+      tenantId, sessionId,
+      contactPhone: `ig:${contactId}`,
+      instagramContactId: contactId,
+      text: "respondendo a citação",
+      providerMessageKey: replyMid,
+      replyToExternalId: quotedMid
+    }, { claim: false });
+    expect(context).not.toBeNull();
+    const stored = (await pool.query<{ reply_to_message_id: string | null }>(
+      "SELECT reply_to_message_id FROM messages WHERE provider_message_key=$1",
+      [`${tenantId}:${sessionId}:${replyMid}`]
+    )).rows[0];
+    expect(stored.reply_to_message_id).toBe(quoted.rows[0].id);
+    // Resolução não deve derrubar o fluxo quando a citada não existe.
+    const missingContext = await messageRepository.recordInboundAndLoadContext({
+      channel: "instagram",
+      externalId: instagramInboundExternalId(tenantId, sessionId, `missing:${randomUUID()}`),
+      tenantId, sessionId,
+      contactPhone: `ig:${contactId}`,
+      instagramContactId: contactId,
+      text: "citando algo inexistente",
+      providerMessageKey: `missing:${randomUUID()}`,
+      replyToExternalId: `nao-existe:${randomUUID()}`
+    }, { claim: false });
+    expect(missingContext).not.toBeNull();
+  });
+
+  // Fallbacks de conteúdo não suportado, com texto específico por caso.
+  it("maps view-once, location and unsupported payloads to specific fallback texts", async () => {
+    const instagramRepository = new InstagramRepository(pool, key);
+    const fallbackProvider: InstagramProvider = { ...provider };
+    const service = new InstagramService(instagramRepository, fallbackProvider);
+    const messageRepository = new MessageRepository(pool, config, { followUp: async () => "enqueued" });
+    const fallbackEnqueued: SessionMessage[] = [];
+    const dispatch = createInstagramInboxDispatcher({
+      database: pool,
+      instagram: { repository: instagramRepository, provider: fallbackProvider },
+      messages: messageRepository,
+      enqueueInbound: async (message) => { fallbackEnqueued.push(message); }
+    });
+
+    const ephemeralMid = `ephemeral:${randomUUID()}`;
+    await instagramRepository.persistEvent(tenantId, sessionId, {
+      kind: "message", eventId: `message:${ephemeralMid}`, accountId, providerUserId: contactId,
+      timestamp: new Date(), text: "", isEcho: false,
+      raw: {
+        sender: { id: contactId }, recipient: { id: accountId }, timestamp: Date.now(),
+        message: { mid: ephemeralMid, attachments: [{ type: "ephemeral" }] }
+      }
+    }, Buffer.from("{}"));
+    const unsupportedMid = `unsupported:${randomUUID()}`;
+    await instagramRepository.persistEvent(tenantId, sessionId, {
+      kind: "message", eventId: `message:${unsupportedMid}`, accountId, providerUserId: contactId,
+      timestamp: new Date(), text: "", isEcho: false,
+      raw: {
+        sender: { id: contactId }, recipient: { id: accountId }, timestamp: Date.now(),
+        message: { mid: unsupportedMid, is_unsupported: true }
+      }
+    }, Buffer.from("{}"));
+    await drainInstagramInboxTenant(service, tenantId, dispatch);
+
+    const texts = fallbackEnqueued.map((message) => message.text);
+    expect(texts).toContain("[Não é possível visualizar a imagem de visualização única recebida pelo Instagram]");
+    expect(texts).toContain("[Não é possível visualizar este conteúdo pelo AtendON: localização, visualização única ou conteúdo não suportado pelo Instagram]");
+  });
 });

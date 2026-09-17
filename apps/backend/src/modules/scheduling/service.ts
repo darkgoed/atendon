@@ -283,6 +283,10 @@ export function leadMapper(row: Record<string, unknown>) {
   return {
     id: row.id, tenant: row.tenant_id, telefone: row.phone, nome: row.name,
     avatar_url: row.avatar_url ?? null,
+    // Conversa aberta com o contato (WhatsApp ou Instagram) e o @ do Instagram
+    // quando a origem é IG: o painel usa o id para o botão de conversar.
+    conversation_id: row.contact_conversation_id ?? null,
+    instagram_username: row.contact_instagram_username ?? null,
     categoria_interesse_id: row.interest_category_id, unidade_id: row.unit_id, parceiro_id: row.partner_id,
     status: row.status, origem: row.source, campanha: row.campaign ?? null, criado_em: row.created_at, atualizado_em: row.updated_at,
     categoria_nome: row.category_name, unidade_nome: row.unit_name, parceiro_nome: row.partner_name,

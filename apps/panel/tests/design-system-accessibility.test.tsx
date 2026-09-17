@@ -9,10 +9,12 @@ import { PostSalesSummaryStrip } from "@/components/post-sales-summary";
 import { Table, TableScroll } from "@/components/ui";
 
 describe("semantic accessibility regressions", () => {
-  it("keeps agenda route heading plain while retaining the visual code outside h1", () => {
+  it("keeps agenda route heading plain and header without description", () => {
+    // Descrições de cabeçalho saíram de todas as telas (comments.md),
+    // incluindo o código AG—01 que acompanhava o título da agenda.
     render(<AgendaHeader canCreate canBlock unit="unit-1" mode="day" view="all" pendingCount={0} onCreate={() => undefined} onBlock={() => undefined} onMode={() => undefined} onView={() => undefined} />);
     expect(screen.getByRole("heading", { level: 1, name: "Agenda" })).toBeInTheDocument();
-    expect(screen.getByText("AG—01")).not.toBe(screen.getByRole("heading", { level: 1 }));
+    expect(screen.queryByText("AG—01")).not.toBeInTheDocument();
   });
 
   it("makes summary and table scroll wrappers named, focusable regions", () => {

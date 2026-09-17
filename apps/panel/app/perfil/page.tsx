@@ -69,7 +69,7 @@ export default function ProfilePage() {
 
   return (
     <Shell>
-      <PageHeader title="Perfil" description="Atualize o acesso da sua conta no painel." />
+      <PageHeader title="Perfil" />
 
       {sessionError ? (
         <section className="mb-5 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-4" role="alert">

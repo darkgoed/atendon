@@ -111,7 +111,7 @@ export function caseScopedNavigationLabel(
   if (hasWorkspaceWideCaseScope(session)) return fallback;
   if (href === "/") return "Minha operação";
   if (href === "/conversas") return "Minhas conversas";
-  if (href === "/leads") return "Meus leads";
+  if (href === "/contatos") return "Meus contatos";
   if (href === "/pipeline") return "Meu pipeline";
   if (href === "/agenda") return "Minha agenda";
   return fallback;

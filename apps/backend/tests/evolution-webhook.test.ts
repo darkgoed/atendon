@@ -407,6 +407,42 @@ describe("Evolution webhook connection alerts", () => {
     expect(query).not.toHaveBeenCalledWith(expect.stringContaining("INSERT INTO system_alerts"), expect.anything());
     expect(status).toHaveBeenCalledWith(204);
   });
+
+  // Regressão de produção: a Evolution emite "connecting" durante reconexões
+  // internas de uma sessão JÁ pareada, e frequentemente fora de ordem com o
+  // "open" correspondente. Regredir para qr_pending nesse caso trava a sessão
+  // como não conectada no painel, e channelCapabilities passa a responder
+  // can_send=false ("A conexão do WhatsApp está desconectada") para um número
+  // que recebe e envia normalmente.
+  it("ignores a transient connecting for an already connected session", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: "session-a", tenant_id: "tenant-a", label: "Suporte", archived_at: null, status: "connected" }] })
+      .mockResolvedValue({ rows: [], rowCount: 0 });
+    const status = vi.fn().mockReturnValue({ send: vi.fn() });
+    await handleEvolutionWebhook({ headers: { "x-atendon-webhook-secret": config.EVOLUTION_WEBHOOK_SECRET }, body: {
+      event: "connection.update", instance: "atendon_a", data: { state: "connecting" }
+    }} as unknown as FastifyRequest, { status } as unknown as FastifyReply, {
+      db: { query } as never, whatsapp: {} as WhatsAppSessionManager, log: { info: vi.fn(), warn: vi.fn() } as unknown as FastifyBaseLogger
+    });
+    expect(query).not.toHaveBeenCalledWith(expect.stringContaining("UPDATE whatsapp_sessions"), expect.anything());
+    expect(status).toHaveBeenCalledWith(204);
+  });
+
+  it("still moves a session that is not connected yet to qr_pending on connecting", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: "session-a", tenant_id: "tenant-a", label: "Suporte", archived_at: null, status: "disconnected" }] })
+      .mockResolvedValue({ rows: [], rowCount: 0 });
+    const status = vi.fn().mockReturnValue({ send: vi.fn() });
+    await handleEvolutionWebhook({ headers: { "x-atendon-webhook-secret": config.EVOLUTION_WEBHOOK_SECRET }, body: {
+      event: "connection.update", instance: "atendon_a", data: { state: "connecting" }
+    }} as unknown as FastifyRequest, { status } as unknown as FastifyReply, {
+      db: { query } as never, whatsapp: {} as WhatsAppSessionManager, log: { info: vi.fn(), warn: vi.fn() } as unknown as FastifyBaseLogger
+    });
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining("UPDATE whatsapp_sessions"),
+      ["session-a", "qr_pending", null, null, null]
+    );
+  });
 });
 
 describe("Evolution webhook ack status mapping", () => {

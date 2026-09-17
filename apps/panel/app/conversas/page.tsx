@@ -1402,11 +1402,6 @@ export default function Conversations() {
         <aside className="conversation-list flex min-h-0 flex-col border-r border-[var(--border)] bg-transparent">
           <header className="conversation-list__header shrink-0 border-b border-[var(--border)] px-3.5 py-3">
             <div className="conversation-list__meta mb-3 flex items-start justify-between gap-3">
-              <p className="conversation-list__description text-xs leading-relaxed text-[var(--text-secondary)]">
-                {hasWorkspaceScope
-                  ? "Fila, histórico e envio manual pelo WhatsApp conectado."
-                  : "Atendimentos atribuídos a você, com histórico e envio pelo WhatsApp."}
-              </p>
               <span className="mono shrink-0 rounded-full border border-[var(--border)] bg-transparent px-2 py-0.5 text-xs text-[var(--text-muted)]">
                 {items.length}
               </span>

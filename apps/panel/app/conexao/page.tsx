@@ -361,7 +361,7 @@ export default function Connection() {
   return (
     <Shell><div className={`${styles.channelsAiPage} channels-ai-page`}>
       <header className="pagehead">
-        <div><h1>Conexão</h1><p>Vincule o WhatsApp usado pelo agente.</p></div>
+        <div><h1>Conexão</h1></div>
         <div className="flex flex-wrap items-center gap-3">
           {loaded && whatsappConnections.length ? (
             <span className="mono rounded-md border border-[var(--primary-border)] px-3 py-2 type-caption text-[var(--primary-text)]">

@@ -324,6 +324,8 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
     const result = await db.query(
       `SELECT ${LEAD_LIST_COLUMNS},c.name category_name,u.name unit_name,p.name partner_name,
               avatar.contact_avatar_url avatar_url,
+              contact_conversation.id contact_conversation_id,
+              contact_conversation.instagram_username contact_instagram_username,
               assigned_user.email assigned_user_email,pool.availability_status assigned_availability_status,
               sdr_user.email sdr_user_email,closer_user.email closer_user_email,
               recovery_user.email recovery_user_email,
@@ -410,6 +412,18 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
          ORDER BY conversation.contact_avatar_updated_at DESC NULLS LAST
          LIMIT 1
        ) avatar ON true
+       LEFT JOIN LATERAL (
+         SELECT conversation.id, conversation.instagram_username
+         FROM conversations conversation
+         WHERE conversation.tenant_id=l.tenant_id
+           AND (
+             (l.phone IS NOT NULL AND conversation.contact_phone IS NOT NULL
+               AND regexp_replace(conversation.contact_phone,'\\D','','g')=regexp_replace(l.phone,'\\D','','g'))
+             OR (l.instagram_contact_id IS NOT NULL AND conversation.instagram_contact_id=l.instagram_contact_id)
+           )
+         ORDER BY conversation.last_message_at DESC NULLS LAST, conversation.id DESC
+         LIMIT 1
+       ) contact_conversation ON true
        LEFT JOIN lead_qualifications q ON q.tenant_id=l.tenant_id AND q.lead_id=l.id
        WHERE ${conditions.join(" AND ")} ORDER BY l.updated_at DESC,l.id DESC LIMIT $${params.length}`, params
     );
@@ -465,6 +479,8 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
     const lead = await db.query(
       `SELECT l.*,c.name category_name,u.name unit_name,p.name partner_name,
               avatar.contact_avatar_url avatar_url,
+              contact_conversation.id contact_conversation_id,
+              contact_conversation.instagram_username contact_instagram_username,
               assigned_user.email assigned_user_email,pool.availability_status assigned_availability_status,
               sdr_user.email sdr_user_email,closer_user.email closer_user_email,
               recovery_user.email recovery_user_email,
@@ -505,6 +521,18 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
          ORDER BY conversation.contact_avatar_updated_at DESC NULLS LAST
          LIMIT 1
        ) avatar ON true
+       LEFT JOIN LATERAL (
+         SELECT conversation.id, conversation.instagram_username
+         FROM conversations conversation
+         WHERE conversation.tenant_id=l.tenant_id
+           AND (
+             (l.phone IS NOT NULL AND conversation.contact_phone IS NOT NULL
+               AND regexp_replace(conversation.contact_phone,'\\D','','g')=regexp_replace(l.phone,'\\D','','g'))
+             OR (l.instagram_contact_id IS NOT NULL AND conversation.instagram_contact_id=l.instagram_contact_id)
+           )
+         ORDER BY conversation.last_message_at DESC NULLS LAST, conversation.id DESC
+         LIMIT 1
+       ) contact_conversation ON true
        WHERE l.id=$1 AND l.tenant_id=$2
          AND (${leadReadScopeCondition(scope, "l", "$3")})`, [id, tenantId, scope.memberId]
     );

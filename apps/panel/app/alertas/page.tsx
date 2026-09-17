@@ -179,7 +179,6 @@ export default function AlertsPage() {
       <header className="pagehead">
         <div>
           <h1>Alertas operacionais</h1>
-          <p>Novas reuniões direcionadas e falhas do sistema continuam disponíveis depois que o aviso rápido desaparece.</p>
         </div>
         <div className="flex items-center gap-3 border-l border-[var(--border)] pl-5">
           <BellRinging size={20} className="text-[var(--warning-text)]" aria-hidden="true" />

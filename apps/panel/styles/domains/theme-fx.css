@@ -39,20 +39,27 @@
   --theme-fx-bg: var(--theme-fx-dark-bg);
   --theme-fx-accent: var(--theme-fx-dark-accent);
   --theme-fx-glow: var(--theme-fx-dark-glow);
+  --theme-fx-edge: var(--theme-fx-dark-edge);
+  --theme-fx-spark: var(--theme-fx-dark-spark);
 }
 .theme-fx[data-theme-fx="light"] {
   --theme-fx-bg: var(--theme-fx-light-bg);
   --theme-fx-accent: var(--theme-fx-light-accent);
   --theme-fx-glow: var(--theme-fx-light-glow);
+  --theme-fx-edge: var(--theme-fx-light-edge);
+  --theme-fx-spark: var(--theme-fx-light-spark);
 }
 
 .theme-fx__core,
 .theme-fx__ring,
+.theme-fx__halo,
+.theme-fx__spark,
+.theme-fx__flash,
 .theme-fx__veil {
   position: absolute;
   inset: 0;
   display: block;
-  will-change: clip-path, opacity;
+  will-change: clip-path, opacity, transform;
 }
 
 /* O disco sólido: cresce de 0 até cobrir o canto mais distante da viewport. */
@@ -69,7 +76,7 @@
    Um radial-gradient NÃO serve aqui: o `100%` dele é a extensão do elemento,
    não o raio animado do clip, então a borda só apareceria no último frame. */
 .theme-fx__ring {
-  background: var(--theme-fx-accent);
+  background: linear-gradient(135deg, var(--theme-fx-edge), var(--theme-fx-accent) 55%, var(--theme-fx-edge));
   opacity: 0;
   clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y));
   -webkit-clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y));
@@ -91,9 +98,58 @@
   animation: theme-fx-veil var(--theme-fx-sweep) var(--ease) forwards;
 }
 
+/* Halo externo da crista: um disco levemente MAIOR que o ring, com a segunda
+   cor e blur. Fica atrás do ring (ordem no DOM) e vaza por fora dele, então a
+   frente da onda ganha um bloom em vez de uma borda dura. O blur é aplicado no
+   próprio elemento, nunca em backdrop-filter — backdrop-filter aqui forçaria o
+   navegador a reler a tela inteira a cada frame e derruba o framerate. */
+.theme-fx__halo {
+  background: var(--theme-fx-edge);
+  opacity: 0;
+  filter: blur(26px);
+  clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y));
+  -webkit-clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y));
+  animation:
+    theme-fx-halo var(--theme-fx-sweep) var(--ease-out) forwards,
+    theme-fx-halo-fade var(--theme-fx-sweep) linear forwards;
+}
+
+/* Centelhas: três anéis finos que saem da origem mais rápido que a onda e se
+   apagam cedo. São conic/radial puros num único elemento — nada de N nós no
+   DOM, a animação inteira continua sendo uma só camada de composição. */
+.theme-fx__spark {
+  background:
+    radial-gradient(circle at var(--theme-fx-x) var(--theme-fx-y),
+      transparent 0%, transparent 34%, var(--theme-fx-spark) 36%, transparent 38%),
+    radial-gradient(circle at var(--theme-fx-x) var(--theme-fx-y),
+      transparent 0%, transparent 58%, var(--theme-fx-spark) 60%, transparent 62%),
+    radial-gradient(circle at var(--theme-fx-x) var(--theme-fx-y),
+      transparent 0%, transparent 82%, var(--theme-fx-spark) 84%, transparent 86%);
+  opacity: 0;
+  transform-origin: var(--theme-fx-x) var(--theme-fx-y);
+  animation: theme-fx-spark var(--theme-fx-sweep) var(--ease-out) forwards;
+}
+
+/* Clarão de impacto: o flash branco curtíssimo no instante do commit, quando a
+   tela já está coberta. É o "estalo" que faz a troca parecer instantânea mesmo
+   durando meio segundo. Entra por cima de tudo (último no DOM). */
+.theme-fx__flash {
+  background: radial-gradient(
+    circle calc(var(--theme-fx-r) * 0.9) at var(--theme-fx-x) var(--theme-fx-y),
+    var(--theme-fx-edge) 0%,
+    transparent 65%
+  );
+  opacity: 0;
+  mix-blend-mode: screen;
+  animation: theme-fx-flash var(--theme-fx-sweep) var(--ease-out) forwards;
+}
+
 /* Estado após o commit: o tema novo já está pintado por baixo; o véu sai. */
 .theme-fx--settle .theme-fx__core,
 .theme-fx--settle .theme-fx__ring,
+.theme-fx--settle .theme-fx__halo,
+.theme-fx--settle .theme-fx__spark,
+.theme-fx--settle .theme-fx__flash,
 .theme-fx--settle .theme-fx__veil {
   animation: none;
   clip-path: none;
@@ -103,6 +159,9 @@
 }
 .theme-fx--settle .theme-fx__core { opacity: 0; }
 .theme-fx--settle .theme-fx__ring,
+.theme-fx--settle .theme-fx__halo,
+.theme-fx--settle .theme-fx__spark,
+.theme-fx--settle .theme-fx__flash,
 .theme-fx--settle .theme-fx__veil { opacity: 0; }
 
 /* Sem clip-path (Safari < 13.1): crossfade da cor de destino cobrindo a tela.
@@ -113,7 +172,10 @@
   opacity: 0;
   animation: theme-fx-cover var(--theme-fx-sweep) var(--ease) forwards;
 }
-.theme-fx--fade .theme-fx__ring { display: none; }
+.theme-fx--fade .theme-fx__ring,
+.theme-fx--fade .theme-fx__halo,
+.theme-fx--fade .theme-fx__spark,
+.theme-fx--fade .theme-fx__flash { display: none; }
 
 @keyframes theme-fx-sweep {
   from { clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y)); -webkit-clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y)); }
@@ -134,6 +196,37 @@
   0% { opacity: 0; }
   14% { opacity: 0.75; }
   62% { opacity: 0.5; }
+  100% { opacity: 0; }
+}
+
+/* O halo abre ~64px à frente do core (o triplo da crista): é o bloom que faz a
+   frente da onda parecer luz e não uma borda recortada. */
+@keyframes theme-fx-halo {
+  from { clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y)); -webkit-clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y)); }
+  to { clip-path: circle(calc(var(--theme-fx-r) + 64px) at var(--theme-fx-x) var(--theme-fx-y)); -webkit-clip-path: circle(calc(var(--theme-fx-r) + 64px) at var(--theme-fx-x) var(--theme-fx-y)); }
+}
+
+@keyframes theme-fx-halo-fade {
+  0% { opacity: 0; }
+  18% { opacity: 0.55; }
+  70% { opacity: 0.28; }
+  100% { opacity: 0; }
+}
+
+/* As centelhas saem juntas da origem, escalam para além da viewport e apagam na
+   metade: são o impulso do clique, não a onda. */
+@keyframes theme-fx-spark {
+  0% { opacity: 0; transform: scale(0.15); }
+  12% { opacity: 0.9; }
+  55% { opacity: 0.35; }
+  100% { opacity: 0; transform: scale(2.4); }
+}
+
+/* O clarão bate no MESMO instante do commit (fim do sweep): é o pico que
+   disfarça o repaint e faz a troca parecer um estalo. */
+@keyframes theme-fx-flash {
+  0%, 62% { opacity: 0; }
+  86% { opacity: 0.5; }
   100% { opacity: 0; }
 }
 

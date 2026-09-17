@@ -26,7 +26,7 @@ const themeFilter = process.env.THEME_FILTER;
 const inventoryPath = process.env.ROUTE_INVENTORY;
 const viewports = [{ name: "360x800", width: 360, height: 800 }, { name: "768x1024", width: 768, height: 1024 }, { name: "1440x900", width: 1440, height: 900 }].filter((v) => !viewportFilter || new RegExp(viewportFilter, "i").test(v.name));
 const themes = ["dark", "light"].filter((v) => !themeFilter || new RegExp(themeFilter, "i").test(v));
-const routeReplacements = { "/invitations/[token]": "/invitations/qa-token", "/convite": "/convite?token=qa-token", "/leads/[id]": `/leads/${IDS.lead}`, "/meet/[roomId]": "/meet/qa-room", "/reuniao/[code]": "/reuniao/qa-code" };
+const routeReplacements = { "/invitations/[token]": "/invitations/qa-token", "/convite": "/convite?token=qa-token", "/contatos/[id]": `/contatos/${IDS.lead}`, "/meet/[roomId]": "/meet/qa-room", "/reuniao/[code]": "/reuniao/qa-code" };
 const routePath = (url) => new URL(url).pathname.replace(/^\/(?:api|backend)/, "");
 const json = (intercept, body, status = 200) => intercept.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 const ROOT_WORKSPACE_ROUTES = new Set(["/alertas", "/follow-ups", "/agente/figurinhas"]);

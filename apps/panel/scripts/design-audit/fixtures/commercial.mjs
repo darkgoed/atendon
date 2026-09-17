@@ -78,8 +78,8 @@ export function commercialFixture(path) {
   if (path === "/dashboard/widgets/layout") return widgetLayout;
   if (path.startsWith("/dashboard/widgets/")) { const key = path.split("/").at(-1); return { key, data: key === "commercial_metrics" ? { result: metricResult, series } : key === "new_leads" ? { value: 12 } : { value: 18500, currency: "BRL" } }; }
   if (path === "/leads" || path.startsWith("/leads?")) return { leads: [lead, lead2], total: 2, next_cursor: null, stages };
-  if (path === `/leads/${IDS.lead}` || path === `/scheduling/leads/${IDS.lead}`) return leadDetail;
-  if (path === `/leads/${IDS.lead}/follow-up` || path === `/scheduling/leads/${IDS.lead}/follow-up`) return followUp;
+  if (path === `/contatos/${IDS.lead}` || path === `/scheduling/leads/${IDS.lead}`) return leadDetail;
+  if (path === `/contatos/${IDS.lead}/follow-up` || path === `/scheduling/leads/${IDS.lead}/follow-up`) return followUp;
   if (path === "/pipeline") return { leads: [lead, lead2], stages, transitions: stages.flatMap((from) => stages.filter((to) => to.id !== from.id).map((to) => ({ from_stage_id: from.id, to_stage_id: to.id }))), follow_up_config: { enabled: true, default_days: 2 }, enforce_transitions: false, timezone: workspace.timezone };
   if (path === "/organization/pipeline") return { stages, transitions: stages.flatMap((from) => stages.filter((to) => to.id !== from.id).map((to) => ({ from_stage_id: from.id, to_stage_id: to.id }))), follow_up_config: { enabled: true, default_days: 2 }, enforce_transitions: false };
   if (path === "/organization/saved-views") return { saved_views: savedViews };

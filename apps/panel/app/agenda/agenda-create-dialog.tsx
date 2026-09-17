@@ -42,7 +42,7 @@ export function AgendaCreateDialog({ actions, timezone }: { actions: AgendaActio
               <input className="input" type="tel" inputMode="numeric" autoComplete="tel-national" value={newLead.telefone} maxLength={13} disabled={creating} onChange={(event) => setNewLead((current) => ({ ...current, telefone: formatBrazilianPhone(event.target.value) }))} placeholder="12 99606-2155" required />
             </label>
             <label className="field sm:col-span-2"><span className="label">Campanha (opcional)</span><input className="input" value={newLead.campanha} maxLength={200} disabled={creating} onChange={(event) => setNewLead((current) => ({ ...current, campanha: event.target.value }))} placeholder="Ex.: Meta · Lançamento agosto" /></label>
-            <small className="sub sm:col-span-2">O contato ficará salvo em Leads sob responsabilidade de quem fez o cadastro.</small>
+            <small className="sub sm:col-span-2">O contato ficará salvo em Contatos sob responsabilidade de quem fez o cadastro.</small>
           </div>
         )}
         <div className="grid gap-4 border-t border-[var(--border)] pt-5">

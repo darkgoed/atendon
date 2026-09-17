@@ -62,6 +62,9 @@ export type InstagramProvider = {
     recipientId: string;
     accessToken: string;
     text: string;
+    /** `mid` bruto da mensagem citada (reply_to) — resolvido de
+     * provider_message_key pelo ChannelGatewayRouter. */
+    replyTo?: string;
   }): Promise<ProviderSendResult>;
   sendMedia(input: {
     instagramAccountId: string;

@@ -24,6 +24,7 @@ test("estado de sessão de agentes não bloqueia a release; código sujo bloquei
     "?? .agents/skills/y/SKILL.md",
     " M .codex/hooks.json",
     " M skills-lock.json",
+    "?? features.md",
     " D .hermes/state/progress.md"
   ].join("\n")), []);
 
@@ -32,7 +33,8 @@ test("estado de sessão de agentes não bloqueia a release; código sujo bloquei
   assert.deepEqual(blockingStatusEntries([
     "?? apps/atendon/.hermes/state/progress.md",
     " M apps/atendon/comments.md",
-    " M apps/atendon/skills-lock.json"
+    " M apps/atendon/skills-lock.json",
+    "?? apps/atendon/features.md"
   ].join("\n")), []);
 
   assert.deepEqual(

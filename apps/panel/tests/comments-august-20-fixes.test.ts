@@ -15,7 +15,7 @@ beforeAll(async () => {
     readFile(new URL("../app/agenda/agenda-time-blocks.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/conversas/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/conversation-status-picker.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/leads/[id]/page.tsx", import.meta.url), "utf8")
+    readFile(new URL("../app/contatos/[id]/page.tsx", import.meta.url), "utf8")
   ]);
 });
 

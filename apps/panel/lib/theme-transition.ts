@@ -26,10 +26,10 @@
 export type PanelTheme = "dark" | "light";
 
 export const THEME_STORAGE_KEY = "atendon-theme";
-/** Duração do avanço da onda; espelhada em --theme-fx-sweep (shell.css). */
-export const THEME_SWEEP_MS = 460;
+/** Duração do avanço da onda; espelhada em --theme-fx-sweep (theme-fx.css). */
+export const THEME_SWEEP_MS = 620;
 /** Duração do desaparecimento do véu; espelhada em --theme-fx-settle. */
-export const THEME_SETTLE_MS = 300;
+export const THEME_SETTLE_MS = 380;
 
 type Origin = { x: number; y: number };
 
@@ -145,8 +145,11 @@ export function applyThemeWithTransition(
   node.style.setProperty("--theme-fx-y", `${Math.round(point.y)}px`);
   node.style.setProperty("--theme-fx-r", `${radius}px`);
   node.appendChild(layer("theme-fx__veil"));
+  node.appendChild(layer("theme-fx__spark"));
   node.appendChild(layer("theme-fx__ring"));
+  node.appendChild(layer("theme-fx__halo"));
   node.appendChild(layer("theme-fx__core"));
+  node.appendChild(layer("theme-fx__flash"));
   document.body.appendChild(node);
 
   const transition: RunningTransition = { node, theme, committed: false, onCommit, timers: [] };

@@ -103,7 +103,6 @@ export default function RootVersionsPage() {
       <AdminPage>
         <AdminPageHeader
           title="Versões e changelogs"
-          description="Histórico completo de releases: build, classificação, commit, métricas do diff, escopo e status da geração por IA."
           actions={
             <input
               className="input"

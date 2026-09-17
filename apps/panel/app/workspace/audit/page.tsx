@@ -21,7 +21,7 @@ export default function WorkspaceAuditPage() {
   return (
     <Shell>
       <AdminPage>
-      <AdminPageHeader title="Auditoria do workspace" description="Leitura operacional das ações sensíveis executadas no tenant atual." actions={
+      <AdminPageHeader title="Auditoria do workspace" actions={
         <label className="search-field admin-search">
           <MagnifyingGlass aria-hidden="true" />
           <span className="sr-only">Filtrar eventos do workspace</span>

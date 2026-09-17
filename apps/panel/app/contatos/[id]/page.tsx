@@ -147,7 +147,7 @@ export default function LeadDetail() {
       setData(undefined);
       setFollowUpData(undefined);
       if (lostExistingAccess) {
-        router.replace("/leads?acesso=atualizado");
+        router.replace("/contatos?acesso=atualizado");
         return;
       }
     }
@@ -360,7 +360,7 @@ export default function LeadDetail() {
         accessEpochRef.current += 1;
         setData(undefined);
         setFollowUpData(undefined);
-        router.replace("/leads?acesso=atualizado");
+        router.replace("/contatos?acesso=atualizado");
         return;
       }
       setFeedback("Acompanhamento interno atualizado.");
@@ -427,9 +427,9 @@ export default function LeadDetail() {
   return (
     <Shell>
       <div className="lead-detail-page">
-      <Link href="/leads" className="lead-detail-page__back inline-flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+      <Link href="/contatos" className="lead-detail-page__back inline-flex items-center gap-2 text-xs text-[var(--text-secondary)]">
         <ArrowLeft aria-hidden="true" />
-        Voltar aos leads
+        Voltar aos contatos
       </Link>
       {error ? <p className="error mb-4" role="alert">{error}</p> : null}
       {feedback ? <p className="accent mb-4" role="status" aria-live="polite">{feedback}</p> : null}

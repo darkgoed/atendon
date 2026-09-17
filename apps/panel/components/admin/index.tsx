@@ -6,8 +6,8 @@ export function AdminPage({ children, className = "", ...props }: Omit<HTMLAttri
   return <div {...props} className={`${styles.page} ${className}`.trim()}>{children}</div>;
 }
 
-export function AdminPageHeader({ title, description, actions }: { title: ReactNode; description?: ReactNode; actions?: ReactNode }) {
-  return <PageHeader title={title} description={description} actions={actions} className={styles.header} />;
+export function AdminPageHeader({ title, actions }: { title: ReactNode; actions?: ReactNode }) {
+  return <PageHeader title={title} actions={actions} className={styles.header} />;
 }
 
 export function AdminActions({ children, end = false, className = "" }: { children: ReactNode; end?: boolean; className?: string }) {

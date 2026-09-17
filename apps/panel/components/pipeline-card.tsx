@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CalendarBlank, Clock } from "@phosphor-icons/react";
+import { ArrowRight, CalendarBlank, Clock, WhatsappLogo } from "@phosphor-icons/react";
 import Link from "next/link";
 import type { DragEvent } from "react";
 
@@ -137,7 +137,17 @@ export function PipelineCard({
       <div className="pipeline-card__footer">
         <span className="pipeline-card__footer-actions">
           {canMove ? <button type="button" className="crm-inline-action" onClick={onMove} disabled={pending}>Mover</button> : null}
-          <Link className="pipeline-card__link" href={`/leads/${lead.id}`}>Detalhes <ArrowRight size={11} aria-hidden="true" /></Link>
+          <Link className="pipeline-card__link" href={`/contatos/${lead.id}`}>Detalhes <ArrowRight size={11} aria-hidden="true" /></Link>
+          {lead.conversation_id ? (
+            <Link
+              className="crm-inline-action flex items-center gap-1"
+              href={`/conversas?id=${encodeURIComponent(lead.conversation_id)}`}
+              aria-label={`Conversar com ${lead.nome ?? lead.telefone} pelo WhatsApp`}
+              title={`Conversar com ${lead.nome ?? lead.telefone}`}
+            >
+              <WhatsappLogo size={13} weight="bold" aria-hidden="true" /> Conversar
+            </Link>
+          ) : null}
         </span>
         {visible("stalled") ? <time className="pipeline-card__age" dateTime={lead.atualizado_em}><Clock size={10} aria-hidden="true" />{formatPipelineAge(lead.atualizado_em)}</time> : <span />}
       </div>

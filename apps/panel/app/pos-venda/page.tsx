@@ -194,7 +194,6 @@ export default function PostSalesPage() {
         <header className="pagehead post-sales-head">
           <div>
             <h1>Carteira de pós-venda</h1>
-            <p>Acompanhe próximos passos e registre cada oferta sem criar outro funil.</p>
           </div>
           <div className="post-sales-head__actions">
             <Link className="btn" href="/pos-venda/cobranca">Cobranças de crediário</Link>
@@ -299,7 +298,7 @@ export default function PostSalesPage() {
                       <p className="mono">{formatPostSalePhone(detail.client.phone_e164)}{detail.client.email ? ` · ${detail.client.email}` : ""}</p>
                     </div>
                     <div className="post-sales-detail__links">
-                      {detail.client.lead_id ? <Link className="btn" href={`/leads/${detail.client.lead_id}`}>Ver lead <ArrowSquareOut size={14} aria-hidden="true" /></Link> : null}
+                      {detail.client.lead_id ? <Link className="btn" href={`/contatos/${detail.client.lead_id}`}>Ver contato <ArrowSquareOut size={14} aria-hidden="true" /></Link> : null}
                       {detail.client.conversation_id ? <Link className="btn" href={`/conversas?id=${detail.client.conversation_id}`}>Abrir conversa <ArrowSquareOut size={14} aria-hidden="true" /></Link> : null}
                     </div>
                   </header>

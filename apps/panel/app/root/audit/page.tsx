@@ -23,7 +23,7 @@ export default function RootAuditPage() {
   return (
     <Shell>
       <AdminPage>
-      <AdminPageHeader title="Auditoria ROOT" description="Eventos globais com contexto de workspace, úteis para trilha administrativa e acesso assistido." actions={
+      <AdminPageHeader title="Auditoria ROOT" actions={
         <label className="search-field admin-search">
           <MagnifyingGlass aria-hidden="true" />
           <span className="sr-only">Filtrar eventos globais</span>

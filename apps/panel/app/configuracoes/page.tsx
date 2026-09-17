@@ -230,7 +230,6 @@ export default function ConfigPage() {
       <header className="pagehead">
         <div>
           <h1>Configurações</h1>
-          <p>Conexões, equipe, IA e regras operacionais em um único lugar.</p>
         </div>
         {catalogTabs.includes(resource as CatalogResource) && canManage ? (
           <Button type="button" tone="primary" onClick={() => setEditing({})}>
