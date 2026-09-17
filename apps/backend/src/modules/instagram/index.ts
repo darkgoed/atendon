@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import { config, type AppConfig } from "../../config.js";
 import { db } from "../../db/client.js";
+import { logger } from "../../logger.js";
 import { MetaInstagramProvider } from "./provider.js";
 import { InstagramRepository } from "./repository.js";
 import { InstagramService } from "./service.js";
@@ -24,7 +25,13 @@ export function createInstagramRuntime(options: CreateInstagramRuntimeOptions = 
     appSecret: runtimeConfig.INSTAGRAM_APP_SECRET ?? "",
     graphVersion: runtimeConfig.INSTAGRAM_GRAPH_VERSION,
     timeoutMs: runtimeConfig.INSTAGRAM_TIMEOUT_MS,
-    mediaMaxBytes: runtimeConfig.INSTAGRAM_MEDIA_MAX_BYTES
+    mediaMaxBytes: runtimeConfig.INSTAGRAM_MEDIA_MAX_BYTES,
+    onTokenExchangeRejected: (error) => {
+      logger.warn(
+        { err: error, context: "instagram_long_lived_token_exchange" },
+        "Instagram recusou a troca pelo token de 60 dias; conexão segue com o token curto até o próximo refresh"
+      );
+    }
   });
   const repository = new InstagramRepository(database, {
     current: runtimeConfig.DATA_ENCRYPTION_KEY,

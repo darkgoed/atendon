@@ -168,6 +168,89 @@ describe("MetaInstagramProvider HTTP contract", () => {
     expect(refresh.calls[0]?.init?.redirect).toBe("manual");
   });
 
+  it("retries the long-lived exchange as POST when Meta rejects the documented GET", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-15T00:00:00.000Z"));
+    const exchange = sequenceFetch([
+      Response.json({
+        access_token: "short-token",
+        user_id: "account-1",
+        permissions: "instagram_business_basic,instagram_business_manage_messages"
+      }),
+      Response.json(
+        { error: { message: "Unsupported request - method type: get", type: "IGApiException", code: 100 } },
+        { status: 400 }
+      ),
+      Response.json({ access_token: "long-token", expires_in: 5_184_000 }),
+      Response.json({ user_id: "account-1", username: "business" })
+    ]);
+    const provider = new MetaInstagramProvider({
+      appId: "app-id",
+      appSecret: "app-secret",
+      graphVersion: "v26.0",
+      fetchImpl: exchange.fetchImpl
+    });
+
+    await expect(provider.exchangeOAuthCode({
+      code: "one-time-code",
+      redirectUri: "https://app.example/callback"
+    })).resolves.toMatchObject({
+      accountId: "account-1",
+      accessToken: "long-token"
+    });
+
+    expect(exchange.calls).toHaveLength(4);
+    expect(exchange.calls[1]?.init?.method ?? "GET").toBe("GET");
+    expect(exchange.calls[2]?.init?.method).toBe("POST");
+    expect(new URL(exchange.calls[2]!.url).pathname).toBe("/access_token");
+  });
+
+  // A Meta rejeita este passo para contas legítimas, de forma reproduzível e
+  // fora do nosso controle. Abortar aqui derruba a conexão inteira; o token
+  // curto autentica /me, webhook e envios, e o refresh promove depois.
+  it("keeps the connection on the short-lived token when Meta rejects both exchange attempts", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-15T00:00:00.000Z"));
+    const rejection = () => Response.json(
+      { error: { message: "Unsupported request - method type: get", type: "IGApiException", code: 100 } },
+      { status: 400 }
+    );
+    const exchange = sequenceFetch([
+      Response.json({
+        access_token: "short-token",
+        user_id: "account-1",
+        permissions: "instagram_business_basic,instagram_business_manage_messages"
+      }),
+      rejection(),
+      rejection(),
+      Response.json({ user_id: "account-1", username: "business" })
+    ]);
+    const observed: Error[] = [];
+    const provider = new MetaInstagramProvider({
+      appId: "app-id",
+      appSecret: "app-secret",
+      graphVersion: "v26.0",
+      fetchImpl: exchange.fetchImpl,
+      onTokenExchangeRejected: (error) => observed.push(error)
+    });
+
+    const identity = await provider.exchangeOAuthCode({
+      code: "one-time-code",
+      redirectUri: "https://app.example/callback"
+    });
+
+    expect(identity).toMatchObject({
+      accountId: "account-1",
+      username: "business",
+      accessToken: "short-token",
+      scopes: ["instagram_business_basic", "instagram_business_manage_messages"]
+    });
+    expect(identity.tokenExpiresAt.getTime()).toBe(Date.parse("2026-09-15T01:00:00.000Z"));
+    expect(observed).toHaveLength(1);
+    // O /me precisa usar o token que ficou salvo, não o long-lived inexistente.
+    expect(exchange.calls[3]?.url).toContain("access_token=short-token");
+  });
+
   it.each([
     [
       "comma-separated strings",

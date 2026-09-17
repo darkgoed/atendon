@@ -8,8 +8,42 @@ import test from "node:test";
 import pg from "pg";
 import { config as loadEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
+import { blockingStatusEntries } from "./release-prepare.mjs";
 
 loadEnv({ path: fileURLToPath(new URL("../.env.test", import.meta.url)), quiet: true });
+
+// O diretório do app hospeda estado de sessão de agentes (.hermes/, .claude/,
+// comments.md…) que nunca entra numa release e fica permanentemente sujo na
+// máquina de operação. Tratá-lo como sujeira travava o release:prepare para
+// sempre: nenhuma versão nova era registrada e o changelog congelava.
+test("estado de sessão de agentes não bloqueia a release; código sujo bloqueia", () => {
+  assert.deepEqual(blockingStatusEntries([
+    " M comments.md",
+    "?? .hermes/plans/algo.md",
+    "?? .claude/skills/x/SKILL.md",
+    "?? .agents/skills/y/SKILL.md",
+    " M .codex/hooks.json",
+    " M skills-lock.json",
+    " D .hermes/state/progress.md"
+  ].join("\n")), []);
+
+  // O git reporta caminhos relativos à raiz do worktree compartilhado, não ao
+  // app: foi exatamente esse prefixo que fez a primeira versão do gate falhar.
+  assert.deepEqual(blockingStatusEntries([
+    "?? apps/atendon/.hermes/state/progress.md",
+    " M apps/atendon/comments.md",
+    " M apps/atendon/skills-lock.json"
+  ].join("\n")), []);
+
+  assert.deepEqual(
+    blockingStatusEntries(" M apps/backend/src/index.ts\n?? .hermes/x.md\n"),
+    ["M apps/backend/src/index.ts"]
+  );
+  // Renomeação: quem manda é o destino.
+  assert.deepEqual(blockingStatusEntries("R  .hermes/a.md -> apps/panel/app/page.tsx"), [
+    "R  .hermes/a.md -> apps/panel/app/page.tsx"
+  ]);
+});
 
 const root = new URL("..", import.meta.url);
 const sourceRoot = root.pathname;

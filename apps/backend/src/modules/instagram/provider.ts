@@ -50,6 +50,9 @@ export type MetaProviderOptions = {
   fetchImpl?: FetchLike;
   requestImpl?: HttpsRequestLike;
   lookup?: Parameters<typeof resolvePublicHttpsUrl>[1];
+  /** Observabilidade da degradação em `exchangeLongLivedToken`: a conexão
+   * continua com o token de curta duração, mas o operador precisa saber. */
+  onTokenExchangeRejected?: (error: Error) => void;
 };
 
 class MetaRejectedError extends Error {
@@ -273,6 +276,52 @@ export class MetaInstagramProvider implements InstagramProvider {
     }
   }
 
+  // A Meta rejeita esta troca com `IGApiException 100 "Unsupported request -
+  // method type: get"` para contas legítimas e corretamente autorizadas
+  // (falha reproduzível por conta, com o token curto válido no debug_token).
+  // Duas defesas, nesta ordem:
+  //  1) tentar POST form-urlencoded além do GET documentado, porque o
+  //     endpoint aceita os dois e a rejeição alterna entre eles;
+  //  2) se ambos forem rejeitados, seguir com o token de curta duração em vez
+  //     de abortar a conexão inteira — ele autentica /me, o webhook e os
+  //     envios normalmente, e o job de refresh promove a credencial para 60
+  //     dias na próxima janela. Perder a conexão por causa deste passo é pior
+  //     que operar com validade menor.
+  private async exchangeLongLivedToken(shortAccessToken: string): Promise<TokenResult | null> {
+    const params = new URLSearchParams({
+      grant_type: "ig_exchange_token",
+      client_secret: this.options.appSecret,
+      access_token: shortAccessToken
+    });
+    const url = new URL("https://graph.instagram.com/access_token");
+    url.search = params.toString();
+
+    const attempts: Array<() => Promise<Record<string, unknown>>> = [
+      () => this.requestJson(url.toString()),
+      () => this.requestJson("https://graph.instagram.com/access_token", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: params.toString()
+      })
+    ];
+
+    let lastRejection: MetaRejectedError | undefined;
+    for (const attempt of attempts) {
+      try {
+        const data = await attempt();
+        return {
+          accessToken: requiredString(data.access_token, "access_token"),
+          expiresAt: tokenExpiry(data.expires_in)
+        };
+      } catch (error) {
+        if (!(error instanceof MetaRejectedError)) throw error;
+        lastRejection = error;
+      }
+    }
+    this.options.onTokenExchangeRejected?.(lastRejection!);
+    return null;
+  }
+
   async exchangeOAuthCode(input: { code: string; redirectUri: string }): Promise<OAuthIdentity> {
     const body = new FormData();
     body.set("client_id", this.options.appId);
@@ -290,19 +339,16 @@ export class MetaInstagramProvider implements InstagramProvider {
     const shortUserId = requiredString(shortToken.user_id, "user_id");
     const scopes = oauthPermissions(shortToken.permissions);
 
-    const longTokenUrl = new URL("https://graph.instagram.com/access_token");
-    longTokenUrl.search = new URLSearchParams({
-      grant_type: "ig_exchange_token",
-      client_secret: this.options.appSecret,
-      access_token: shortAccessToken
-    }).toString();
-    const longToken = await this.requestJson(longTokenUrl.toString());
-    const longAccessToken = requiredString(longToken.access_token, "access_token");
+    const longLived = await this.exchangeLongLivedToken(shortAccessToken);
+    const accessToken = longLived?.accessToken ?? shortAccessToken;
+    // Token de curta duração vale 1h; a data serve para o job de refresh
+    // reprogramar a promoção o quanto antes.
+    const tokenExpiresAt = longLived?.expiresAt ?? new Date(Date.now() + 60 * 60_000);
 
     const identityUrl = new URL(`${this.versionedBaseUrl}/me`);
     identityUrl.search = new URLSearchParams({
       fields: "user_id,username",
-      access_token: longAccessToken
+      access_token: accessToken
     }).toString();
     const identity = await this.requestJsonPreservingUserIds(identityUrl.toString());
     // Na API de Instagram Login a troca de token devolve o ID app-scoped do
@@ -316,8 +362,8 @@ export class MetaInstagramProvider implements InstagramProvider {
     return {
       accountId,
       username: typeof identity.username === "string" ? identity.username : null,
-      accessToken: longAccessToken,
-      tokenExpiresAt: tokenExpiry(longToken.expires_in),
+      accessToken,
+      tokenExpiresAt,
       scopes
     };
   }
