@@ -26,6 +26,7 @@ const enqueued: SessionMessage[] = [];
 const provider: InstagramProvider = {
   exchangeOAuthCode: vi.fn(), refreshAccessToken: vi.fn(), subscribeWebhook: vi.fn(),
   sendText: vi.fn(), sendMedia: vi.fn(),
+  fetchUserProfile: vi.fn().mockResolvedValue({ username: null, name: null, profilePictureUrl: null }),
   fetchMedia: vi.fn().mockResolvedValue({
     bytes: Buffer.from("video-bytes"), contentType: "video/mp4", sizeBytes: 11,
     finalUrl: "https://lookaside.instagram.test/video.mp4"
@@ -149,5 +150,103 @@ describe("durable Instagram inbox dispatch", () => {
       .not.toBe(inboundJobId({ ...base, externalId: "same-mid", contactPhone: "ig:other-contact", instagramContactId: "other-contact" }));
     expect(inboundJobId({ ...base, externalId: "same-mid" }))
       .not.toBe(inboundJobId({ ...base, externalId: "same-mid", channel: "whatsapp", contactPhone: "+5511999999999" }));
+  });
+
+  // Regressão: o webhook de mensagem só entrega o IGSID numérico do
+  // remetente; sem consultar a Graph API, instagram_username/contact_name/
+  // contact_avatar_url ficavam NULL para sempre e o painel caía no fallback
+  // "Identidade do Instagram indisponível".
+  it("enriches an unknown contact with username, name and avatar from the provider profile", async () => {
+    const instagramRepository = new InstagramRepository(pool, key);
+    const profileTenantId = (await pool.query<{ id: string }>(
+      "INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id",
+      [`Instagram profile enrichment ${randomUUID()}`]
+    )).rows[0].id;
+    const connection = await instagramRepository.saveConnection({
+      tenantId: profileTenantId, label: "Instagram", accountId: `account-${randomUUID()}`,
+      accessToken: "profile-token", expiresAt: new Date(Date.now() + 3_600_000)
+    });
+    const profileContactId = `igsid-${randomUUID()}`;
+    const mid = `message:${randomUUID()}`;
+    const seeded = await instagramRepository.persistEvent(profileTenantId, connection.id, {
+      kind: "message", eventId: mid, accountId: connection.provider_account_id,
+      providerUserId: profileContactId, timestamp: new Date(), text: "Oi", isEcho: false,
+      raw: {
+        sender: { id: profileContactId }, recipient: { id: connection.provider_account_id },
+        timestamp: Date.now(), message: { mid, text: "Oi" }
+      }
+    }, Buffer.from("{}"));
+
+    const profileProvider: InstagramProvider = {
+      ...provider,
+      fetchUserProfile: vi.fn().mockResolvedValue({
+        username: "cliente_novo", name: "Cliente Novo", profilePictureUrl: "https://lookaside.instagram.test/pic.jpg"
+      })
+    };
+    const service = new InstagramService(instagramRepository, profileProvider);
+    const messageRepository = new MessageRepository(pool, config, { followUp: async () => "enqueued" });
+    const enrichedMessages: SessionMessage[] = [];
+    const dispatch = createInstagramInboxDispatcher({
+      database: pool,
+      instagram: { repository: instagramRepository, provider: profileProvider },
+      messages: messageRepository,
+      enqueueInbound: async (message) => { enrichedMessages.push(message); }
+    });
+    await drainInstagramInboxTenant(service, profileTenantId, dispatch);
+
+    expect(profileProvider.fetchUserProfile).toHaveBeenCalledWith({
+      instagramScopedUserId: profileContactId, accessToken: "profile-token"
+    });
+    expect(enrichedMessages[0]).toMatchObject({
+      instagramUsername: "cliente_novo",
+      contactName: "Cliente Novo"
+    });
+    const stored = (await pool.query<{
+      instagram_username: string | null; contact_name: string | null; contact_avatar_url: string | null;
+    }>(
+      "SELECT instagram_username,contact_name,contact_avatar_url FROM conversations WHERE id=$1",
+      [seeded.conversationId]
+    )).rows[0];
+    // A conversa só recebe username/contact_name ao chegar a próxima mensagem
+    // via recordInboundAndLoadContext (COALESCE já testado em
+    // instagram-ai.integration.test.ts); aqui garantimos que o dispatcher
+    // já grava a foto diretamente e propaga a identidade no SessionMessage.
+    expect(stored?.contact_avatar_url).toBe("https://lookaside.instagram.test/pic.jpg");
+
+    await pool.query("DELETE FROM tenants WHERE id=$1", [profileTenantId]);
+  });
+
+  // Regressão inversa: quando a identidade já é conhecida e a foto está
+  // recente, não deve gastar uma chamada de Graph por mensagem.
+  it("does not re-fetch the profile when identity is known and the avatar is fresh", async () => {
+    const instagramRepository = new InstagramRepository(pool, key);
+    const knownContactId = `igsid-${randomUUID()}`;
+    const knownMid = `message:${randomUUID()}`;
+    const seeded = await instagramRepository.persistEvent(tenantId, sessionId, {
+      kind: "message", eventId: knownMid, accountId,
+      providerUserId: knownContactId, timestamp: new Date(), text: "Oi de novo", isEcho: false,
+      raw: {
+        sender: { id: knownContactId }, recipient: { id: accountId },
+        timestamp: Date.now(), message: { mid: knownMid, text: "Oi de novo" }
+      }
+    }, Buffer.from("{}"));
+    await pool.query(
+      `UPDATE conversations SET instagram_username='ja_conhecido', contact_avatar_updated_at=now()
+       WHERE id=$1`,
+      [seeded.conversationId]
+    );
+
+    const freshProvider: InstagramProvider = { ...provider, fetchUserProfile: vi.fn() };
+    const service = new InstagramService(instagramRepository, freshProvider);
+    const messageRepository = new MessageRepository(pool, config, { followUp: async () => "enqueued" });
+    const dispatch = createInstagramInboxDispatcher({
+      database: pool,
+      instagram: { repository: instagramRepository, provider: freshProvider },
+      messages: messageRepository,
+      enqueueInbound: async () => undefined
+    });
+    await drainInstagramInboxTenant(service, tenantId, dispatch);
+
+    expect(freshProvider.fetchUserProfile).not.toHaveBeenCalled();
   });
 });

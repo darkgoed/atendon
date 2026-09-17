@@ -73,6 +73,17 @@ export type InstagramProvider = {
     url: string;
     accessToken: string;
   }): Promise<DownloadedMedia>;
+  /**
+   * Perfil público do contato (IGSID), usado para preencher nome/@/foto que o
+   * webhook de mensagem não entrega. Best effort: campos ausentes ou a chamada
+   * inteira podem falhar (janela de mensageria fechada, permissão, conta
+   * apagada) sem que isso derrube o processamento da mensagem — trate como
+   * enriquecimento opcional, nunca como dependência obrigatória.
+   */
+  fetchUserProfile(input: {
+    instagramScopedUserId: string;
+    accessToken: string;
+  }): Promise<{ username: string | null; name: string | null; profilePictureUrl: string | null }>;
 };
 
 export type InstagramRuntime = {

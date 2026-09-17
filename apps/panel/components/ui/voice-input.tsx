@@ -8,6 +8,7 @@ import {
   formatAudioDuration,
   sampleAudioWaveform
 } from "@/lib/audio-waveform";
+import { createAudioContext, decodeAudioDataCompat } from "@/lib/compat";
 
 const EMPTY_WAVEFORM = Array.from({ length: AUDIO_WAVEFORM_BAR_COUNT }, (_, index) =>
   0.16 + ((index * 7) % 5) * 0.035
@@ -40,8 +41,9 @@ export function LiveAudioWaveform({ stream }: { stream: MediaStream | null }) {
   const barsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!stream || typeof AudioContext === "undefined") return;
-    const context = new AudioContext();
+    if (!stream) return;
+    const context = createAudioContext();
+    if (!context) return;
     const analyser = context.createAnalyser();
     const source = context.createMediaStreamSource(stream);
     const history = Array.from({ length: 34 }, () => 0.08);
@@ -70,13 +72,14 @@ export function LiveAudioWaveform({ stream }: { stream: MediaStream | null }) {
       animationFrame = requestAnimationFrame(draw);
     };
 
-    void context.resume().then(draw, draw);
+    // resume() antigo (webkitAudioContext) pode não devolver Promise.
+    void Promise.resolve(context.resume?.()).then(draw, draw);
     return () => {
       cancelled = true;
       cancelAnimationFrame(animationFrame);
       source.disconnect();
       analyser.disconnect();
-      void context.close();
+      void context.close?.();
     };
   }, [stream]);
 
@@ -184,12 +187,15 @@ export function VoiceMessagePlayer({ src, label = "mensagem de áudio" }: { src:
     void (async () => {
       let context: AudioContext | null = null;
       try {
-        if (typeof AudioContext === "undefined") throw new Error("Web Audio API indisponível");
+        // Cria o contexto antes do fetch: sem Web Audio (ou em navegadores
+        // antigos) nem sequer baixamos o áudio, como no comportamento anterior.
+        context = createAudioContext();
+        if (!context) throw new Error("Web Audio API indisponível");
         const response = await fetch(src, { credentials: "include", signal: controller.signal });
         if (!response.ok) throw new Error(`Falha ao carregar áudio (${response.status})`);
         const encodedAudio = await response.arrayBuffer();
-        context = new AudioContext();
-        const decodedAudio = await context.decodeAudioData(encodedAudio.slice(0));
+        // Safari < 14.1 só cumpre decodeAudioData no formato com callbacks.
+        const decodedAudio = await decodeAudioDataCompat(context, encodedAudio.slice(0));
         if (cancelled) return;
         const channels = Array.from({ length: decodedAudio.numberOfChannels }, (_, index) => decodedAudio.getChannelData(index));
         setAmplitudes(sampleAudioWaveform(channels));

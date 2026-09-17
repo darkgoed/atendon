@@ -233,12 +233,13 @@ export function Shell({
       setHasMoreNavItems(nav.scrollTop + nav.clientHeight < nav.scrollHeight - 1);
     };
     const frame = requestAnimationFrame(updateOverflow);
-    const observer = new ResizeObserver(updateOverflow);
-    observer.observe(nav);
+    // Safari 12–13.0 não tem ResizeObserver: segue só com o evento scroll.
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(updateOverflow) : null;
+    if (observer) observer.observe(nav);
     nav.addEventListener("scroll", updateOverflow, { passive: true });
     return () => {
       cancelAnimationFrame(frame);
-      observer.disconnect();
+      observer?.disconnect();
       nav.removeEventListener("scroll", updateOverflow);
     };
   }, [collapsed, visibleGroups]);
@@ -439,7 +440,9 @@ export function Shell({
               ROOT
             </Link>
           ) : null}
-          <span className="mono topbar__version">v{versionData?.version ?? "1.0.0"}</span>
+          <Link className="mono topbar__version" href="/changelog" title="Ver changelog público">
+            AtendON v{versionData?.version ?? "—"}{versionData?.buildNumber ? ` · Build ${versionData.buildNumber}` : ""}
+          </Link>
           <button type="button" className="topbar__changelog" onClick={() => setVersionBannerOpen(true)} title="Ver o que há de novo nesta versão">
             <CheckCircle size={13} weight="regular" aria-hidden="true" />
             Novidades

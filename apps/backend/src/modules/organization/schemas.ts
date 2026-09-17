@@ -139,6 +139,10 @@ export const moveLeadStageSchema = z.object({
   commercial: commercialTransitionPayloadSchema.optional()
 }).strict();
 
+export const pipelineSettingsSchema = z.object({
+  enforce_transitions: z.boolean()
+}).strict();
+
 const bulkItems = z.array(z.object({
   id: organizationUuid,
   expected_updated_at: z.string().datetime({ offset: true }).optional()

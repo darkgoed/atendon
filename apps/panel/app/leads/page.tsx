@@ -41,7 +41,9 @@ type Lead = {
 };
 
 const statuses = ["", "novo", "em_atendimento", "aguardando_resposta", "qualificado", "agendado", "em_negociacao", "proposta_enviada", "follow_up", "fechado", "perdido"];
-type LeadsResponse = { leads: Lead[]; timezone?: string };
+type LeadsPage = { limit: number; has_more: boolean; next_cursor: string | null };
+type LeadsResponse = { leads: Lead[]; timezone?: string; total?: number; page?: LeadsPage };
+const LEADS_PAGE_SIZE = 50;
 const fetcher = <T,>(url: string) => api<T>(url);
 
 export default function LeadsPage() {
@@ -88,10 +90,34 @@ export default function LeadsPage() {
   }, [filters.busca]);
 
   const query = useMemo(() => buildLeadFilterQuery({ ...filters, busca: debouncedSearch }), [debouncedSearch, filters]);
-  const { data, error: swrError, mutate } = useSWR<LeadsResponse>(`/scheduling/leads?${query}`, fetcher, {
+  const listQuery = query ? `${query}&limit=${LEADS_PAGE_SIZE}` : `limit=${LEADS_PAGE_SIZE}`;
+  // Server-side keyset pagination: the SWR key always fetches the first page
+  // (what the 15s poll refreshes); "Carregar mais" appends older pages by
+  // cursor. Once extra pages exist, the poll must not overwrite the anchor
+  // cursor (it would make the next page duplicate already-loaded rows).
+  const [olderLeads, setOlderLeads] = useState<Lead[]>([]);
+  const [pageState, setPageState] = useState<{ cursor: string | null; hasMore: boolean; fetchedPages: number }>({ cursor: null, hasMore: false, fetchedPages: 0 });
+  const [loadingMore, setLoadingMore] = useState(false);
+  useEffect(() => {
+    setOlderLeads([]);
+    setPageState({ cursor: null, hasMore: false, fetchedPages: 0 });
+    setLoadingMore(false);
+  }, [listQuery]);
+  const { data, error: swrError, mutate } = useSWR<LeadsResponse>(`/scheduling/leads?${listQuery}`, fetcher, {
     refreshInterval: 15_000, revalidateOnFocus: false, dedupingInterval: 5_000
   });
-  const leads = useMemo(() => data?.leads ?? [], [data?.leads]);
+  useEffect(() => {
+    const page = data?.page;
+    if (!page || pageState.fetchedPages > 0) return;
+    setPageState((current) => current.fetchedPages > 0 ? current : { cursor: page.next_cursor, hasMore: page.has_more, fetchedPages: 0 });
+  }, [data?.page, pageState.fetchedPages]);
+  const leads = useMemo(() => {
+    const fresh = data?.leads ?? [];
+    if (olderLeads.length === 0) return fresh;
+    const seen = new Set(fresh.map((lead) => lead.id));
+    return [...fresh, ...olderLeads.filter((lead) => !seen.has(lead.id))];
+  }, [data?.leads, olderLeads]);
+  const total = data?.total ?? leads.length;
   const timezone = data?.timezone ?? "UTC";
   const loading = !data && !swrError;
   const selectedItems = useMemo(() => leads.filter((lead) => selectedIds.has(lead.id)).map((lead) => ({ id: lead.id, expected_updated_at: lead.atualizado_em })), [leads, selectedIds]);
@@ -133,6 +159,29 @@ export default function LeadsPage() {
     }
   }
 
+  async function loadMoreLeads() {
+    if (!pageState.cursor || loadingMore) return;
+    setLoadingMore(true);
+    setError("");
+    try {
+      const cursorQuery = `cursor=${encodeURIComponent(pageState.cursor)}&limit=${LEADS_PAGE_SIZE}`;
+      const response = await api<LeadsResponse>(`/scheduling/leads?${listQuery}&${cursorQuery}`);
+      setOlderLeads((current) => {
+        const seen = new Set(current.map((lead) => lead.id));
+        return [...current, ...response.leads.filter((lead) => !seen.has(lead.id))];
+      });
+      setPageState((current) => ({
+        cursor: response.page?.next_cursor ?? null,
+        hasMore: Boolean(response.page?.has_more),
+        fetchedPages: current.fetchedPages + 1
+      }));
+    } catch (paginationError) {
+      setError(paginationError instanceof Error ? paginationError.message : "Falha ao carregar mais leads");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
   const activeFilterCount = Object.entries(filters).filter(([key, value]) => key !== "busca" ? Boolean(value) : Boolean(value.trim())).length;
   const clearFilters = () => setFilters({ status: "", unidade_id: "", categoria_id: "", parceiro_id: "", busca: "", estrelas: "", fila_humana: "" });
   return <Shell fitViewport>
@@ -144,7 +193,7 @@ export default function LeadsPage() {
         <Button aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>Filtros{activeFilterCount ? ` (${activeFilterCount})` : ""}</Button>
         <TagCatalogSettings />
         <BulkLeadActions selected={selectedItems} onClear={() => setSelectedIds(new Set())} onChanged={mutate} />
-        <span className="crm-meta mono" role="status" aria-live="polite">{loading ? "carregando…" : `${leads.length} resultado(s)`}</span>
+        <span className="crm-meta mono" role="status" aria-live="polite">{loading ? "carregando…" : `${total} resultado(s)`}</span>
       </div>
     </header>
     {filtersOpen ? <section className="leads-filters" aria-label="Filtros de leads">
@@ -191,6 +240,7 @@ export default function LeadsPage() {
               </td>
             </tr>)}</tbody>
           </table>}
+        {!loading && pageState.hasMore ? <div className="flex justify-center p-3"><Button onClick={() => void loadMoreLeads()} disabled={loadingMore}>{loadingMore ? "Carregando…" : "Carregar mais leads"}</Button></div> : null}
     </section>
     </div>
   </Shell>;

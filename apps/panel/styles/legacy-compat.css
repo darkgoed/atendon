@@ -1,0 +1,59 @@
+/* Fallbacks de viewport dinâmica (dvh) para navegadores sem suporte:
+   Safari < 15.4 (macOS antigos), Chrome < 108, Firefox < 101.
+   O bloco só é aplicado quando `height: 100dvh` é inválido; navegadores
+   modernos ignoram tudo daqui. Espelha APENAS as declarações dvh dos arquivos
+   donos (shell/components/domains) — ao alterar um deles, espelhe o mesmo
+   seletor. Este arquivo é o último @import de app/globals.css. */
+@supports not (height: 100dvh) {
+  .shell { height: 100vh; }
+  .sidebar { height: 100vh; }
+  .content { height: calc(100vh - var(--topbar-height)); }
+  .shell-loading { min-height: 100vh; }
+  .public-state-page { min-height: 100vh; }
+  .meet-room { min-height: 100vh; }
+
+  @media (max-width: 700px) {
+    .shell { min-height: 100vh; }
+    .shell--flush, .shell--fit { height: 100vh; }
+    .shell[data-mobile-nav="open"] .mobile-nav-panel { max-height: 75vh; }
+  }
+
+  .popover, .menu { max-height: min(60vh, calc(100vh - var(--space-12))); }
+  .dialog { max-height: min(88vh, calc(100vh - var(--space-8))); }
+
+  @media (max-width: 700px) {
+    .dialog { max-height: calc(100vh - var(--space-6)); }
+  }
+
+  .invitation-page { min-height: 100vh; }
+  .login-page { min-height: 100vh; }
+  .denied-page { min-height: 100vh; }
+
+  .cmdk-overlay { padding: 12vh var(--space-4) var(--space-4); }
+  .action-dialog { max-height: min(88vh, calc(100vh - var(--space-8))); }
+  .cmdk { max-height: min(70vh, calc(100vh - var(--space-8))); }
+
+  @media (max-width: 700px) {
+    .action-dialog { max-height: min(92vh, calc(100vh - var(--space-4))); }
+    .cmdk { max-height: min(80vh, calc(100vh - var(--space-6))); }
+  }
+
+  .agenda-slot-dialog, .agenda-time-block-dialog, .agenda-create-dialog, .agenda-detail-dialog {
+    max-height: min(88vh, calc(100vh - var(--space-8)));
+  }
+  .agenda-lead-combobox__results { max-height: min(50vh, calc(100vh - var(--space-12))); }
+
+  @media (max-width: 700px) {
+    .agenda-time-block-dialog, .agenda-create-dialog, .agenda-detail-dialog {
+      max-height: min(92vh, calc(100vh - var(--space-4)));
+    }
+  }
+
+  .leads-page { --leads-filter-viewport-height: 40vh; }
+
+  .pipeline-dialog { max-height: min(90vh, calc(100vh - var(--space-8))); }
+
+  @media (max-width: 700px) {
+    .pipeline-filters__panel { max-height: 60vh; }
+  }
+}

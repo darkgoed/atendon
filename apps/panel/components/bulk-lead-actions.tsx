@@ -4,6 +4,7 @@ import { ArrowCounterClockwise, CheckSquare, X } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
+import { randomUUID } from "@/lib/compat";
 import { useCaseOrganizationEnabled } from "@/lib/organization";
 import { usePermission } from "@/lib/use-permission";
 import { Button } from "@/components/ui";
@@ -84,7 +85,7 @@ export function BulkLeadActions({ selected, onClear, onChanged }: { selected: Bu
     try {
       const result = await api<Preview>("/organization/bulk/preview", { method: "POST", body: JSON.stringify(payload) });
       setPreview(result);
-      setApplyKey(result.valid ? crypto.randomUUID() : null);
+      setApplyKey(result.valid ? randomUUID() : null);
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao validar lote"); }
     finally { setPending(false); }

@@ -13,6 +13,7 @@ export interface SessionWorkspace {
   status: string;
   role: string;
   timezone?: string;
+  logo_data?: string | null;
 }
 
 export interface PanelSession {
@@ -82,7 +83,10 @@ export function hasWorkspaceWideCaseScope(
   session: Pick<PanelSession, "activeWorkspace" | "user">
 ) {
   if (session.user.isRoot) return true;
-  const role = session.activeWorkspace?.role.trim().toUpperCase();
+  // O backend tipa role como string, mas um payload inesperado (cache SWR de
+  // outra versão, rota nova) pode trazê-lo nulo — e .trim() em null derruba o
+  // Shell inteiro (a função roda para cada item do menu em todas as páginas).
+  const role = (session.activeWorkspace?.role ?? "").trim().toUpperCase();
   return Boolean(role && WORKSPACE_CASE_MANAGER_ROLES.has(role));
 }
 

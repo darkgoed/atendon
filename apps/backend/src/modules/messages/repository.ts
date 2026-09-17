@@ -61,6 +61,18 @@ export interface ConversationContext {
   messageId: string;
   agentConfigVersionId: string;
   aiActive: boolean;
+  /**
+   * Valor cru de `conversations.ai_active`, sem combinar com o switch global
+   * do agente (`agent_configs.is_active`) nem com `commercialStateBlocksAiAutomation`.
+   * `aiActive` já é o efetivo (usado para decidir se a IA responde); esta
+   * coluna serve só para MessageProcessor detectar quando `aiActive` é false
+   * por desativação do agente/regra comercial enquanto a conversa ainda está
+   * marcada como pertencente à IA no banco, e então persistir a transição
+   * visível ao atendimento humano. Opcional para não quebrar fixtures de
+   * teste antigas que não precisam desse detalhe; ausência é tratada como
+   * "não transicionar" (comportamento seguro/anterior).
+   */
+  aiActiveColumn?: boolean;
   model: string;
   provider?: string;
   systemPrompt: string;
@@ -546,6 +558,7 @@ export class MessageRepository {
       messageId: transaction.messageId,
       agentConfigVersionId: row.agent_config_version_id ?? "",
       aiActive: Boolean(row.ai_active && row.agent_is_active && row.agent_config_version_id),
+      aiActiveColumn: row.ai_active,
       model: row.ai_model ?? "",
       provider: row.openrouter_provider ?? undefined,
       systemPrompt: row.system_prompt ?? "",
@@ -924,6 +937,7 @@ export class MessageRepository {
         messageId: row.message_id,
         agentConfigVersionId: "",
         aiActive: false,
+        aiActiveColumn: row.ai_active,
         model: "",
         systemPrompt: "",
         offersGroupLink: this.config?.TRIPZ_OFFERS_GROUP_LINK,
@@ -977,6 +991,7 @@ export class MessageRepository {
         unresolvedAppointment: Boolean(row.active_appointment),
         overrideActive: row.commercial_override_active
       }),
+      aiActiveColumn: row.ai_active,
       model: settings.ai_model,
       provider: settings.openrouter_provider ?? undefined,
       systemPrompt: settings.system_prompt,
@@ -1549,6 +1564,26 @@ export class MessageRepository {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * Sinaliza para o painel que esta conversa parou de receber resposta
+   * automática porque o agente está desativado (globalmente ou por regra
+   * comercial), sem que isso tenha sido uma pausa manual nem um pedido do
+   * contato. Diferente de `pauseForHandoff`, não exige telefone de atendente
+   * configurado nem dispara notificação: é só a transição de estado que
+   * torna a conversa visível no filtro humano ("Abertas") em vez de ficar
+   * presa como se ainda pertencesse à IA. Condicional em `ai_active=true`
+   * para nunca sobrescrever um handoff mais específico já registrado por
+   * outro caminho concorrente (pedido do contato, pausa manual, etc.).
+   */
+  async markAiUnavailable(tenantId: string, conversationId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE conversations
+       SET ai_active=false, handoff_reason='agent_disabled'
+       WHERE id=$1 AND tenant_id=$2 AND ai_active=true`,
+      [conversationId, tenantId]
+    );
   }
 
   async getPendingHandoffNotification(id: string): Promise<HandoffNotification | null> {

@@ -72,9 +72,61 @@ export interface ChangelogItem {
 export interface VersionInfo {
   version: string;
   deployVersion: string;
+  buildNumber: number | null;
   changelog: ChangelogItem[];
 }
 
 export async function fetchVersion(): Promise<VersionInfo> {
   return api<VersionInfo>("/panel/version");
+}
+
+export interface PublicRelease {
+  buildNumber: number;
+  version: string;
+  publicTitle: string | null;
+  publicSummary: string | null;
+  publicChanges: Array<{ text: string; tenant_slugs: string[] }>;
+  publishedAt: string | null;
+  createdAt: string;
+}
+
+export interface RootRelease {
+  id: string;
+  buildNumber: number;
+  version: string;
+  classification: "PATCH" | "DROP" | "RELEASE";
+  classificationReason: string;
+  bumpSource: string;
+  commitSha: string;
+  branch: string;
+  additions: number;
+  deletions: number;
+  filesChanged: Array<{ path: string; status: string; additions: number; deletions: number }>;
+  modulesAffected: string[];
+  scope: "GLOBAL" | "TENANT";
+  tenantSlugsDetected: string[];
+  commitMessages: string[];
+  diffExcerpt: string;
+  technicalChangelog: string;
+  publicTitle: string | null;
+  publicSummary: string | null;
+  publicChanges: Array<{ text: string; tenant_slugs: string[] }>;
+  aiStatus: "pending" | "generating" | "generated" | "failed";
+  aiError: string | null;
+  aiModelUsed: string | null;
+  published: boolean;
+  publishedAt: string | null;
+  manualOverride: boolean;
+  isLegacyImport: boolean;
+  createdAt: string;
+}
+
+export interface ChangelogAiSettings {
+  hasApiKey: boolean;
+  apiKeyHint: string | null;
+  primaryModel: string;
+  fallbackModel: string | null;
+  autoGenerateEnabled: boolean;
+  autoPublishEnabled: boolean;
+  updatedAt: string;
 }

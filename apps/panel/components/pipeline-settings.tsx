@@ -42,12 +42,16 @@ export function PipelineSettings({
   stages,
   transitions,
   followUpConfig,
-  onChanged
+  enforceTransitions,
+  onChanged,
+  onToggleFreeMovement
 }: {
   stages: ConfigurablePipelineStage[];
   transitions: ConfigurablePipelineTransition[];
   followUpConfig?: PipelineFollowUpConfig;
+  enforceTransitions?: boolean;
   onChanged: () => unknown | Promise<unknown>;
+  onToggleFreeMovement?: (value: boolean) => void;
 }) {
   const canManage = usePermission("pipeline.manage");
   const organizationEnabled = useCaseOrganizationEnabled();
@@ -58,6 +62,7 @@ export function PipelineSettings({
   const [capacity, setCapacity] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const freeMovement = enforceTransitions !== true;
 
   if (!canManage || organizationEnabled !== true) return null;
 
@@ -87,6 +92,24 @@ export function PipelineSettings({
     }
   }
 
+  async function toggleFreeMovement(value: boolean) {
+    if (!onToggleFreeMovement || pending) return;
+    setPending(true);
+    setError("");
+    try {
+      await api("/organization/pipeline/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ enforce_transitions: value })
+      });
+      onToggleFreeMovement(value);
+      await onChanged();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Falha ao salvar movimentação");
+    } finally {
+      setPending(false);
+    }
+  }
+
   return <>
     <Button onClick={() => setOpen(true)}><SlidersHorizontal size={15} aria-hidden="true" />Configurar</Button>
     {open ? (
@@ -106,6 +129,24 @@ export function PipelineSettings({
               <PhoneCall className="mt-0.5 shrink-0 text-[var(--primary-text)]" size={18} aria-hidden="true" />
               <p className="text-xs leading-relaxed text-[var(--text-secondary)]"><strong className="block text-sm">Fluxo automático visível no quadro</strong>As {followUpConfig.max_count} tentativa(s) configuradas na IA aparecem como Follow-up 1 a {followUpConfig.max_count}; ao final, o lead segue para Ligação. Essas colunas são sincronizadas automaticamente e não precisam ser criadas aqui.</p>
             </aside>
+          ) : null}
+
+          {onToggleFreeMovement ? (
+            <section className={styles.dialogSection} aria-labelledby="pipeline-movement-title">
+              <h3 id="pipeline-movement-title" className="text-sm font-semibold">Movimentação</h3>
+              <label className="mt-2 flex items-start gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={freeMovement}
+                  disabled={pending}
+                  onChange={(event) => void toggleFreeMovement(!event.target.checked)}
+                />
+                <span>
+                  <strong className="block">Movimentação livre entre qualquer etapa</strong>
+                  <span className="text-[var(--text-secondary)]">Permite mover leads para qualquer etapa do quadro, mesmo sem transição configurada. As etapas automatizadas da IA continuam não-droppáveis.</span>
+                </span>
+              </label>
+            </section>
           ) : null}
 
           <section className={styles.dialogSection} aria-labelledby="pipeline-active-stages-title">

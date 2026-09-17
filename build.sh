@@ -233,11 +233,11 @@ initialize_deploy_version() {
 
 run_versioning() {
   if [[ "${ATENDON_BUMP_VERSION:-0}" == "1" ]]; then
-    echo "==> Atualizando changelog e versão por solicitação explícita"
+    echo "==> Registrando release (legado/emergencial; o fluxo oficial é Coolify + release:prepare)"
     if [[ -f "${ROOT_DIR}/.env" ]]; then
-      node --env-file="${ROOT_DIR}/.env" "${ROOT_DIR}/scripts/changelog-bump.mjs"
+      node --env-file="${ROOT_DIR}/.env" "${ROOT_DIR}/scripts/release-record.mjs"
     else
-      node "${ROOT_DIR}/scripts/changelog-bump.mjs"
+      node "${ROOT_DIR}/scripts/release-record.mjs"
     fi
     npm run version:sync-lock
   fi

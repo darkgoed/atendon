@@ -335,6 +335,33 @@ export class MetaInstagramProvider implements InstagramProvider {
     };
   }
 
+  // Best effort: o webhook de mensagem só entrega o IGSID numérico do
+  // remetente, nunca nome/@/foto. Esta consulta busca esses campos sob
+  // demanda; qualquer falha (janela de mensageria fechada, permissão
+  // insuficiente, conta removida) devolve null nos três campos em vez de
+  // propagar erro, porque o processamento da mensagem nunca pode depender
+  // deste enriquecimento.
+  async fetchUserProfile(input: {
+    instagramScopedUserId: string;
+    accessToken: string;
+  }): Promise<{ username: string | null; name: string | null; profilePictureUrl: string | null }> {
+    const url = new URL(`${this.versionedBaseUrl}/${encodeURIComponent(input.instagramScopedUserId)}`);
+    url.search = new URLSearchParams({
+      fields: "name,username,profile_pic",
+      access_token: input.accessToken
+    }).toString();
+    try {
+      const data = await this.requestJson(url.toString());
+      return {
+        username: typeof data.username === "string" && data.username.length > 0 ? data.username : null,
+        name: typeof data.name === "string" && data.name.length > 0 ? data.name : null,
+        profilePictureUrl: typeof data.profile_pic === "string" && data.profile_pic.length > 0 ? data.profile_pic : null
+      };
+    } catch {
+      return { username: null, name: null, profilePictureUrl: null };
+    }
+  }
+
   async subscribeWebhook(input: {
     instagramAccountId: string;
     accessToken: string;

@@ -38,6 +38,7 @@ function providerFor(identity: OAuthIdentity): InstagramProvider {
     subscribeWebhook: vi.fn(async () => undefined),
     sendText: vi.fn(async () => ({ outcome: "accepted" as const, externalId: "message" })),
     sendMedia: vi.fn(async () => ({ outcome: "accepted" as const, externalId: "message" })),
+    fetchUserProfile: vi.fn(async () => ({ username: null, name: null, profilePictureUrl: null })),
     fetchMedia: vi.fn(async () => ({
       bytes: Buffer.from("media"),
       contentType: "image/jpeg",

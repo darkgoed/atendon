@@ -33,19 +33,40 @@ export const KpiCard = forwardRef<HTMLDivElement, KpiCardProps>(function KpiCard
       <dt className="kpi-card__label">{label}</dt>
       {icon ? <span className={cn("kpi-card__icon", tone !== "neutral" && `kpi-card__icon--${tone}`)} aria-hidden="true">{icon}</span> : null}
       <dd className="kpi-card__dd">
-        <div className="kpi-card__body">
-          <span className={cn("kpi-card__value", tone !== "neutral" && `kpi-card__value--${tone}`)}>{value}</span>
-          {delta ? (
-            <span
-              className={cn("kpi-card__delta", delta.value >= 0 ? "kpi-card__delta--up" : "kpi-card__delta--down")}
-              title={delta.label}
-            >
-              {delta.value >= 0 ? "\u2191" : "\u2193"} {Math.abs(delta.value).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%
-            </span>
-          ) : null}
-        </div>
-        {hint ? <p className="kpi-card__hint">{hint}</p> : null}
-        {spark ? <div className="kpi-card__spark">{spark}</div> : null}
+        {spark ? (
+          <div className="flex items-end justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="kpi-card__body">
+                <span className={cn("kpi-card__value", tone !== "neutral" && `kpi-card__value--${tone}`)}>{value}</span>
+                {delta ? (
+                  <span
+                    className={cn("kpi-card__delta", delta.value >= 0 ? "kpi-card__delta--up" : "kpi-card__delta--down")}
+                    title={delta.label}
+                  >
+                    {delta.value >= 0 ? "\u2191" : "\u2193"} {Math.abs(delta.value).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%
+                  </span>
+                ) : null}
+              </div>
+              {hint ? <p className="kpi-card__hint">{hint}</p> : null}
+            </div>
+            <div className="h-14 w-2/5 max-w-40 shrink-0 self-end">{spark}</div>
+          </div>
+        ) : (
+          <>
+            <div className="kpi-card__body">
+              <span className={cn("kpi-card__value", tone !== "neutral" && `kpi-card__value--${tone}`)}>{value}</span>
+              {delta ? (
+                <span
+                  className={cn("kpi-card__delta", delta.value >= 0 ? "kpi-card__delta--up" : "kpi-card__delta--down")}
+                  title={delta.label}
+                >
+                  {delta.value >= 0 ? "\u2191" : "\u2193"} {Math.abs(delta.value).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%
+                </span>
+              ) : null}
+            </div>
+            {hint ? <p className="kpi-card__hint">{hint}</p> : null}
+          </>
+        )}
       </dd>
     </div>
   );

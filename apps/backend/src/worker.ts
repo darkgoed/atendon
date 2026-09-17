@@ -54,6 +54,7 @@ import {
 import { MEETING_CONFIRMATION_QUEUE, enqueueMeetingConfirmation, type MeetingConfirmationJob } from "./queue/meeting-confirmation-queue.js";
 import { MeetingConfirmationProcessor, MeetingConfirmationRepository } from "./modules/scheduling/meeting-confirmation.js";
 import { isFeatureFlagEnabled } from "./modules/operations/feature-flags.js";
+import { reconcileChangelogAiGeneration } from "./modules/release/reconciler.js";
 import {
   AppointmentStatusReactionProcessor,
   AppointmentStatusReactionRepository
@@ -607,6 +608,11 @@ const oauthTokenRenewalTimer = setInterval(() => {
     .catch((error) => logger.error({ error }, "Mercado Pago OAuth token renewal batch failed"));
 }, Number(process.env.OAUTH_TOKEN_RENEWAL_INTERVAL_MS ?? OAUTH_TOKEN_RENEWAL_INTERVAL_MS));
 oauthTokenRenewalTimer.unref();
+const changelogAiTimer = setInterval(() => {
+  void reconcileChangelogAiGeneration()
+    .catch((error) => logger.error({ error }, "Changelog AI reconciliation failed"));
+}, Number(process.env.CHANGELOG_AI_RECONCILIATION_INTERVAL_MS ?? 120_000));
+changelogAiTimer.unref();
 const recordHeartbeat = async (): Promise<void> => {
   const redis = await worker.client;
   const value = String(Date.now());
@@ -620,6 +626,7 @@ const heartbeatTimer = setInterval(() => {
   void recordHeartbeat().catch((error) => logger.error({ error }, "Worker heartbeat failed"));
 }, 10_000);
 void recordHeartbeat().catch((error) => logger.error({ error }, "Initial worker heartbeat failed"));
+void reconcileChangelogAiGeneration().catch((error) => logger.error({ error }, "Initial changelog AI reconciliation failed"));
 void reconcileHandoffNotifications().catch((error) => logger.error({ error }, "Initial handoff outbox reconciliation failed"));
 void reconcileAiFollowUps().catch((error) => logger.error({ error }, "Initial AI follow-up reconciliation failed"));
 void reconcileSchedulingNotifications()

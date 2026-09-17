@@ -15,7 +15,7 @@ import {
   X,
   type Icon
 } from "@phosphor-icons/react";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { Sparkline } from "@/components/commercial-dashboard-charts";
 import { DashboardMetricWidget, DashboardTeamWidget, type DashboardMetricData, type DashboardTeamData } from "@/components/dashboard-metric-widget";
@@ -174,7 +174,7 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
                 tone={kpi.tone}
                 icon={<kpi.icon size={16} weight="duotone" aria-hidden="true" />}
                 delta={delta !== null ? { value: delta, label: "Segunda metade do período comparada à primeira" } : null}
-                spark={kpi.spark ? <Sparkline values={series.map((item) => item[kpi.spark as SparkKey])} tone={`var(--${kpi.tone})`} className="h-8 w-full" /> : null}
+                spark={kpi.spark ? <Sparkline values={series.map((item) => item[kpi.spark as SparkKey])} tone={`var(--${kpi.tone})`} className="h-14 w-full" /> : null}
               />
             );
           })}
@@ -359,6 +359,16 @@ export function DashboardWidgets() {
   };
   const availableDraft = draft.filter((item) => widgetAvailable(item.key));
   const visible = availableDraft.filter((item) => item.visible).sort((a, b) => a.order - b.order);
+  // Cabeçalho de grupo no board: inserido quando o grupo muda em relação ao
+  // widget visível anterior — grupos fora de ordem (layout salvo antigo) não quebram.
+  let lastBoardGroup: string | undefined;
+  const boardItems = visible.map((item) => {
+    const definition = definitions.get(item.key);
+    const group = definition?.group ?? "outros";
+    const showGroupHeader = Boolean(definition) && group !== lastBoardGroup;
+    if (definition) lastBoardGroup = group;
+    return { item, definition, group, showGroupHeader };
+  });
   const groupedDraft = useMemo(() => {
     const groups = new Map<string, LayoutItem[]>();
     [...availableDraft].sort((a, b) => a.order - b.order).forEach((item) => {
@@ -445,7 +455,7 @@ export function DashboardWidgets() {
           <div className="divide-y divide-[var(--border)]">{groupedDraft.map(([group, items]) => <section key={group} aria-labelledby={`dashboard-group-${group}`}><h3 id={`dashboard-group-${group}`} className="pt-4 text-xs font-semibold uppercase tracking-[.1em] text-[var(--text-muted)]">{groupTitle(group)}</h3>{items.map((item) => { const definition = definitions.get(item.key); if (!definition) return null; return <div key={item.key} className="grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center"><label className="flex min-w-0 items-start gap-3"><input type="checkbox" checked={item.visible} onChange={(event) => patchItem(item.key, { visible: event.target.checked })} className="mt-1" /><span><strong className="block text-sm">{definition.label}</strong><span className="block text-xs sub">{definition.description}</span></span></label><label className="flex items-center gap-2 text-sm"><span>Tamanho</span><select className="input w-auto" value={item.size} onChange={(event) => patchItem(item.key, { size: event.target.value as WidgetSize })}>{definition.sizes.map((size) => <option key={size} value={size}>{sizeLabels[size]}</option>)}</select></label><div className="flex gap-1"><button className="btn secondary min-h-11 min-w-11 px-2" disabled={item.order === 0} aria-label={`Mover ${definition.label} para cima`} title="Mover para cima" onClick={() => move(item.key, -1)}><CaretUp size={17} /></button><button className="btn secondary min-h-11 min-w-11 px-2" disabled={item.order === availableDraft.length - 1} aria-label={`Mover ${definition.label} para baixo`} title="Mover para baixo" onClick={() => move(item.key, 1)}><CaretDown size={17} /></button></div></div>; })}</section>)}</div>
         </section> : null}
 
-        {catalogError || layoutError ? <div className="card" role="alert"><p className="error">Não foi possível carregar a configuração do dashboard.</p></div> : !catalog || !layout ? <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><div className="card metric-empty-minheight"><WidgetSkeleton /></div><div className="card metric-empty-minheight"><WidgetSkeleton /></div><div className="card metric-empty-minheight"><WidgetSkeleton /></div><div className="card metric-empty-minheight"><WidgetSkeleton /></div></div> : !visible.length ? <div className="card"><EmptyWidget message="Nenhum widget está visível. Abra Personalizar para escolher o que acompanhar." /></div> : <section className={`${styles.widgets} grid grid-cols-12 gap-4`} aria-label="Widgets do dashboard">{visible.map((item) => { const definition = definitions.get(item.key); return definition ? <WidgetCard key={item.key} item={item} definition={definition} periodQuery={periodQuery} /> : null; })}</section>}
+        {catalogError || layoutError ? <div className="card" role="alert"><p className="error">Não foi possível carregar a configuração do dashboard.</p></div> : !catalog || !layout ? <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><div className="card metric-empty-minheight"><WidgetSkeleton /></div><div className="card metric-empty-minheight"><WidgetSkeleton /></div><div className="card metric-empty-minheight"><WidgetSkeleton /></div><div className="card metric-empty-minheight"><WidgetSkeleton /></div></div> : !visible.length ? <div className="card"><EmptyWidget message="Nenhum widget está visível. Abra Personalizar para escolher o que acompanhar." /></div> : <section className={`${styles.widgets} grid grid-cols-12 gap-4`} aria-label="Widgets do dashboard">{boardItems.map(({ item, definition, group, showGroupHeader }) => definition ? <Fragment key={item.key}>{showGroupHeader ? <h2 className="col-span-12 pt-2 text-xs font-semibold uppercase tracking-[.1em] text-[var(--text-muted)]">{groupTitle(group)}</h2> : null}<WidgetCard item={item} definition={definition} periodQuery={periodQuery} /></Fragment> : null)}</section>}
       </div>
     </Shell>
   );

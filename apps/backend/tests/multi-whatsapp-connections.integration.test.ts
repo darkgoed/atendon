@@ -3,6 +3,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { createSessionToken } from "../src/auth/session.js";
+import { assertLimitWithinTransaction } from "../src/billing/limits.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
 import { EvolutionClient } from "../src/modules/whatsapp/evolution-client.js";
@@ -164,12 +165,52 @@ describe("API de múltiplas conexões WhatsApp", () => {
 
   it("serializa criações concorrentes no limite do plano", async () => {
     // Este teste tem de falhar se a checagem de limite sair de dentro da
-    // transação que insere (TOCTOU). Dois `app.inject` soltos em Promise.all
-    // não bastam: a primeira requisição termina antes de a segunda começar a
-    // contar, então o teste passaria mesmo com o bug.
-    // Para forçar sobreposição real, seguramos a linha de tenant_subscriptions
-    // com FOR UPDATE: as duas requisições empacam no mesmo ponto e são
-    // liberadas juntas quando o COMMIT solta o lock.
+    // transação que insere (TOCTOU) ou se o lock FOR UPDATE de
+    // tenant_subscriptions (limits.ts) deixar de serializar.
+    // Duas transações reais são abertas em DUAS conexões pg distintas; a
+    // checagem roda nas DUAS antes de qualquer COMMIT: a segunda só consegue
+    // contar depois que o COMMIT da primeira libera o lock, e então enxerga a
+    // vaga ocupada e recusa.
+    const context = await fixture();
+    const first = await pool.connect();
+    const second = await pool.connect();
+    try {
+      await first.query("BEGIN");
+      await second.query("BEGIN");
+
+      // Primeira transação: dentro do limite (1 usada de 2) e reserva a vaga.
+      await assertLimitWithinTransaction(first, context.tenantId, "MAX_WHATSAPP_CONNECTIONS");
+      await first.query(
+        `INSERT INTO whatsapp_sessions(tenant_id,label,is_primary,channel)
+         VALUES($1,'Concorrência',false,'whatsapp')`,
+        [context.tenantId]
+      );
+
+      // Segunda transação: bloqueia no SELECT ... FOR UPDATE de
+      // tenant_subscriptions até o COMMIT da primeira. A espera abaixo garante
+      // que o SELECT da segunda chegou ao banco ANTES do COMMIT — sem ela,
+      // sem o lock, a contagem poderia correr depois do COMMIT e o teste
+      // deixaria de reprovar a ausência de serialização.
+      const secondAssert = assertLimitWithinTransaction(second, context.tenantId, "MAX_WHATSAPP_CONNECTIONS");
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      await first.query("COMMIT");
+      await expect(secondAssert).rejects.toMatchObject({ code: "PLAN_LIMIT_REACHED" });
+    } finally {
+      await first.query("ROLLBACK").catch(() => undefined);
+      await second.query("ROLLBACK").catch(() => undefined);
+      first.release();
+      second.release();
+    }
+  });
+
+  it("serializa requisições sobrepostas no limite do plano", async () => {
+    // Cobertura de rota para o mesmo TOCTOU: seguramos a linha de
+    // tenant_subscriptions com FOR UPDATE para que as duas requisições
+    // empacam no mesmo ponto e sejam liberadas juntas quando o COMMIT solta o
+    // lock. Com a checagem dentro da transação da rota, quem pega o lock
+    // primeiro insere e só solta no commit; o segundo então enxerga a conexão
+    // nova e é recusado. Com a checagem fora, os dois contam antes de
+    // qualquer insert e passam.
     const context = await fixture();
     const gate = await pool.connect();
     let responses: Array<{ statusCode: number }>;
@@ -191,10 +232,6 @@ describe("API de múltiplas conexões WhatsApp", () => {
       await gate.query("ROLLBACK").catch(() => undefined);
       gate.release();
     }
-
-    // Com a checagem dentro da transação, quem pega o lock primeiro insere e só
-    // solta no commit; o segundo então enxerga a conexão nova e é recusado.
-    // Com a checagem fora, os dois contam antes de qualquer insert e passam.
     expect(responses.map((response) => response.statusCode).sort()).toEqual([201, 409]);
     const count = (await pool.query<{ count: number }>(
       "SELECT count(*)::int count FROM whatsapp_sessions WHERE tenant_id=$1 AND archived_at IS NULL",

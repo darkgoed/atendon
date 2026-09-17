@@ -98,7 +98,7 @@ describe("case organization UI contracts", () => {
 
   it("previews before applying, reuses one idempotency key, and offers timed undo", () => {
     expect(bulkActions).toContain('"/organization/bulk/preview"');
-    expect(bulkActions).toContain("setApplyKey(result.valid ? crypto.randomUUID() : null)");
+    expect(bulkActions).toContain("setApplyKey(result.valid ? randomUUID() : null)");
     expect(bulkActions).toContain("idempotency_key: applyKey");
     expect(bulkActions).toContain("Prévia validada para {preview.count} lead(s).");
     expect(bulkActions).toContain("`/organization/bulk/${applied.operation.id}/undo`");

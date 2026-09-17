@@ -24,6 +24,7 @@ import {
   currentPipelineStageId,
   EMPTY_PIPELINE_FILTERS,
   isOperationalPipelineStageId,
+  pipelineBoardStageId,
   pipelineFiltersForSavedView,
   pipelineStatusLabel,
   pipelineTransitionRequirement,
@@ -42,10 +43,22 @@ import { usePipelinePreferences } from "@/lib/use-pipeline-preferences";
 import { Button } from "@/components/ui";
 import { readPipelineViewPreference, writePipelineViewPreference } from "@/lib/pipeline-view";
 
-type PipelineResponse = { leads: PipelineLead[]; timezone?: string };
+type PipelinePageMeta = { limit: number; has_more: boolean; next_cursor: string | null };
+type PipelineResponse = { leads: PipelineLead[]; timezone?: string; total?: number; page?: PipelinePageMeta };
 type PipelineConfigResponse = { stages: PipelineStage[]; transitions: PipelineTransition[]; follow_up_config: PipelineFollowUpConfig; enforce_transitions?: boolean };
 type MembersResponse = { members: PipelineMember[] };
 type TransitionIntent = { lead: PipelineLead; target?: PipelineStage };
+type StagePageState = { leads: PipelineLead[]; cursor: string | null; hasMore: boolean; loading: boolean };
+
+const PIPELINE_PAGE_SIZE = 150;
+const STAGE_PAGE_SIZE = 50;
+
+// Mirrors the backend lead cursor: {v, updated_at, id} base64url (unpadded,
+// url-safe — the server rejects non-canonical cursors).
+function encodeLeadPageCursor(lead: { id: string; atualizado_em: string }): string {
+  const json = JSON.stringify({ v: 1, updated_at: new Date(lead.atualizado_em).toISOString(), id: lead.id });
+  return btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
 
 const fetcher = <T,>(url: string) => api<T>(url);
 const fallbackStatusTransitions: Record<string, readonly string[]> = {
@@ -105,24 +118,63 @@ export default function PipelinePage() {
       ? ""
       : filters.pipeline_stage_id
   }), [debouncedSearch, filters, organizationEnabled]);
-  const leadsKey = `/scheduling/leads?${buildPipelineFilterQuery(queryFilters)}`;
+  const leadsKey = `/scheduling/leads?${[buildPipelineFilterQuery(queryFilters), `limit=${PIPELINE_PAGE_SIZE}`].filter(Boolean).join("&")}`;
+  // Server-side keyset pagination: the SWR key fetches the first page (what
+  // the 15s poll refreshes). List view appends older pages by cursor; kanban
+  // loads more per column (anchored on that column's oldest loaded lead). The
+  // poll never overwrites the anchor cursors once extra pages exist.
+  const [extraLeads, setExtraLeads] = useState<PipelineLead[]>([]);
+  const [pageState, setPageState] = useState<{ cursor: string | null; hasMore: boolean; fetchedPages: number }>({ cursor: null, hasMore: false, fetchedPages: 0 });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [stagePages, setStagePages] = useState<Record<string, StagePageState>>({});
+  useEffect(() => {
+    setExtraLeads([]);
+    setPageState({ cursor: null, hasMore: false, fetchedPages: 0 });
+    setLoadingMore(false);
+    setStagePages({});
+  }, [leadsKey]);
   const { data, error: leadsError, mutate } = useSWR<PipelineResponse>(leadsKey, fetcher, {
     refreshInterval: 15_000,
     revalidateOnFocus: false,
     dedupingInterval: 5_000
   });
+  useEffect(() => {
+    const page = data?.page;
+    if (!page || pageState.fetchedPages > 0) return;
+    setPageState((current) => current.fetchedPages > 0 ? current : { cursor: page.next_cursor, hasMore: page.has_more, fetchedPages: 0 });
+  }, [data?.page, pageState.fetchedPages]);
   const { data: pipelineData, error: pipelineError, mutate: mutatePipeline } = useSWR<PipelineConfigResponse>(
     organizationEnabled === true ? "/organization/pipeline" : null,
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 10_000 }
   );
+  function handleToggleFreeMovement(value: boolean) {
+    // O PATCH já foi persistido pelo PipelineSettings; revalida para o quadro
+    // refletir imediatamente o novo modo (livre/governado).
+    void mutatePipeline();
+    return value;
+  }
   const { data: membersData } = useSWR<MembersResponse>(canReadMembers ? "/workspaces/current/members" : null, fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
     shouldRetryOnError: false
   });
 
-  const leads = useMemo(() => data?.leads ?? [], [data?.leads]);
+  const leads = useMemo(() => {
+    const fresh = data?.leads ?? [];
+    const extras = [...extraLeads, ...Object.values(stagePages).flatMap((page) => page.leads)];
+    if (extras.length === 0) return fresh;
+    const seen = new Set(fresh.map((lead) => lead.id));
+    const merged = [...fresh];
+    for (const lead of extras) {
+      if (!seen.has(lead.id)) {
+        seen.add(lead.id);
+        merged.push(lead);
+      }
+    }
+    return merged;
+  }, [data?.leads, extraLeads, stagePages]);
+  const total = data?.total ?? leads.length;
   const configuredStages = useMemo(() => organizationEnabled === false
     ? fallbackStages
     : (pipelineData?.stages ?? []).filter((stage) => !stage.archived_at).sort((left, right) => left.position - right.position), [organizationEnabled, pipelineData?.stages]);
@@ -183,6 +235,91 @@ export default function PipelinePage() {
       return next;
     });
   }
+
+  async function loadMoreLeads() {
+    if (!pageState.cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const response = await api<PipelineResponse>(`${leadsKey}&cursor=${encodeURIComponent(pageState.cursor)}`);
+      setExtraLeads((current) => {
+        const seen = new Set(current.map((lead) => lead.id));
+        return [...current, ...response.leads.filter((lead) => !seen.has(lead.id))];
+      });
+      setPageState((current) => ({
+        cursor: response.page?.next_cursor ?? null,
+        hasMore: Boolean(response.page?.has_more),
+        fetchedPages: current.fetchedPages + 1
+      }));
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Falha ao carregar mais leads");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  async function loadMoreForStage(stage: PipelineStage) {
+    const state = stagePages[stage.id];
+    if (state?.loading) return;
+    // Anchor: the column's own keyset cursor once extras exist; otherwise the
+    // oldest lead already loaded in that column (the global page-1 stream
+    // interleaves stages, so the column defines its own page chain).
+    const anchor = state?.cursor ?? (() => {
+      const columnLeads = leads.filter((lead) => pipelineBoardStageId(lead, stages, showAllStages) === stage.id);
+      const last = columnLeads.at(-1);
+      return last ? encodeLeadPageCursor(last) : null;
+    })();
+    if (!anchor && (state?.leads.length ?? 0) > 0) return;
+    setStagePages((current) => ({
+      ...current,
+      [stage.id]: { leads: current[stage.id]?.leads ?? [], cursor: anchor, hasMore: current[stage.id]?.hasMore ?? false, loading: true }
+    }));
+    try {
+      const params = new URLSearchParams(buildPipelineFilterQuery(queryFilters));
+      params.delete("pipeline_stage_id");
+      if (organizationEnabled === false) params.set("status", stage.technical_status);
+      else params.set("pipeline_stage_id", stage.operational_source_stage_id ?? stage.id);
+      params.set("limit", String(STAGE_PAGE_SIZE));
+      if (anchor) params.set("cursor", anchor);
+      const response = await api<PipelineResponse>(`/scheduling/leads?${params.toString()}`);
+      setStagePages((current) => {
+        const existing = current[stage.id];
+        const seen = new Set((existing?.leads ?? []).map((lead) => lead.id));
+        return {
+          ...current,
+          [stage.id]: {
+            leads: [...(existing?.leads ?? []), ...response.leads.filter((lead) => !seen.has(lead.id))],
+            cursor: response.page?.next_cursor ?? null,
+            hasMore: Boolean(response.page?.has_more),
+            loading: false
+          }
+        };
+      });
+    } catch (cause) {
+      setStagePages((current) => ({
+        ...current,
+        [stage.id]: { leads: current[stage.id]?.leads ?? [], cursor: current[stage.id]?.cursor ?? null, hasMore: current[stage.id]?.hasMore ?? false, loading: false }
+      }));
+      setActionError(cause instanceof Error ? cause.message : "Falha ao carregar mais leads da etapa");
+    }
+  }
+
+  const columnLoadMore = useMemo(() => {
+    const map = new Map<string, { remaining: number | null; loading: boolean; visible: boolean }>();
+    for (const stage of stages) {
+      const state = stagePages[stage.id];
+      const loaded = leads.filter((lead) => pipelineBoardStageId(lead, stages, showAllStages) === stage.id).length;
+      const serverCount = organizationEnabled === true
+        ? pipelineData?.stages.find((candidate) => candidate.id === (stage.operational_source_stage_id ?? stage.id))?.lead_count
+        : undefined;
+      const remaining = typeof serverCount === "number" ? Math.max(0, serverCount - loaded) : null;
+      // An exhausted column (a fetch that returned has_more=false) stays hidden
+      // even if the server count drifted — retrying would re-fetch the same rows.
+      const exhausted = state != null && !state.hasMore;
+      const visible = !exhausted && (Boolean(state?.hasMore) || (remaining != null && remaining > 0));
+      map.set(stage.id, { remaining, loading: Boolean(state?.loading), visible });
+    }
+    return map;
+  }, [leads, organizationEnabled, pipelineData?.stages, showAllStages, stagePages, stages]);
 
   function targetsForLead(lead: PipelineLead): PipelineStage[] {
     const sourceId = organizationEnabled === false ? `fallback:${lead.status}` : lead.pipeline_stage_id;
@@ -272,13 +409,13 @@ export default function PipelinePage() {
             <Button type="button" aria-pressed={viewMode === "kanban"} onClick={() => changeView("kanban")}>Kanban</Button>
             <Button type="button" aria-pressed={viewMode === "list"} onClick={() => changeView("list")}>Lista</Button>
           </div>
-          <span className="mono pipeline-page__count" role="status" aria-live="polite">{loading ? "carregando…" : `${leads.length} lead(s)`}</span>
+          <span className="mono pipeline-page__count" role="status" aria-live="polite">{loading ? "carregando…" : `${total} lead(s)`}</span>
         </div>
         <div className="pipeline-page__actions">
           <SavedViewsControl resource="pipeline" filters={pipelineFiltersForSavedView(filters)} onApply={(saved) => setFilters(applyPipelineSavedView(saved))} />
           <Button type="button" className="pipeline-page__stage-toggle" aria-pressed={showAllStages} onClick={() => setShowAllStages((current) => !current)}>Mostrar todas as etapas</Button>
           <PipelineViewPreferences value={preferences} onChange={setPreferences} />
-          <PipelineSettings stages={pipelineData?.stages ?? []} transitions={pipelineData?.transitions ?? []} followUpConfig={pipelineData?.follow_up_config} onChanged={mutatePipeline} />
+          <PipelineSettings stages={pipelineData?.stages ?? []} transitions={pipelineData?.transitions ?? []} followUpConfig={pipelineData?.follow_up_config} enforceTransitions={pipelineData?.enforce_transitions} onChanged={mutatePipeline} onToggleFreeMovement={handleToggleFreeMovement} />
         </div>
       </header>
 
@@ -322,10 +459,17 @@ export default function PipelinePage() {
           pendingLeadIds={pendingLeadIds}
           preferences={preferences}
           timezone={data?.timezone ?? session?.activeWorkspace?.timezone}
+          columnLoadMore={columnLoadMore}
+          onColumnLoadMore={loadMoreForStage}
           onToggleSelected={toggleSelected}
           onMoveRequest={requestMove}
           onRetry={retry}
         />}
+        {viewMode === "list" && !loading && pageState.hasMore ? (
+          <div className="flex justify-center p-3">
+            <Button type="button" onClick={() => void loadMoreLeads()} disabled={loadingMore}>{loadingMore ? "Carregando…" : "Carregar mais leads"}</Button>
+          </div>
+        ) : null}
       </div>
 
       {intent && dialogTargets.length ? (

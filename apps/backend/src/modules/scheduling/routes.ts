@@ -92,6 +92,48 @@ function leadReadScopeCondition(scope: CaseScope, alias: string, memberParameter
   return `(${alias}.assigned_member_id=${memberParameter} OR ${alias}.sdr_member_id=${memberParameter} OR ${alias}.closer_member_id=${memberParameter} OR ${alias}.recovery_member_id=${memberParameter})`;
 }
 
+// Keyset cursor for paginated lead listing: {v, updated_at, id} base64url.
+// The (updated_at, id) pair is unique per lead, so pages never skip or repeat
+// rows even when two leads share the same updated_at timestamp.
+const leadPageCursorPayloadSchema = z.object({
+  v: z.literal(1),
+  updated_at: z.string().datetime({ offset: true }),
+  id: z.string().uuid()
+}).strict();
+const leadPageCursorSchema = z.string().trim().min(1).max(512).transform((value, context) => {
+  try {
+    if (!/^[A-Za-z0-9_-]+$/.test(value) || Buffer.from(value, "base64url").toString("base64url") !== value) {
+      throw new Error("non-canonical cursor");
+    }
+    const decoded = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    const parsed = leadPageCursorPayloadSchema.safeParse(decoded);
+    if (!parsed.success) throw new Error("invalid cursor payload");
+    return parsed.data;
+  } catch {
+    context.addIssue({ code: "custom", message: "Cursor de leads inválido" });
+    return z.NEVER;
+  }
+});
+
+function encodeLeadPageCursor(row: { id: unknown; updated_at: unknown }): string {
+  return Buffer.from(JSON.stringify({
+    v: 1,
+    updated_at: typeof row.updated_at === "string" ? row.updated_at : new Date(String(row.updated_at)).toISOString(),
+    id: row.id
+  })).toString("base64url");
+}
+
+// Columns consumed by leadMapper/panelLeadMapper/qualificationMapper. Selecting
+// them explicitly (instead of l.*) keeps the payload narrow as the table grows.
+const LEAD_LIST_COLUMNS = `l.id,l.tenant_id,l.phone,l.name,l.interest_category_id,l.unit_id,l.partner_id,
+              l.status,l.source,l.campaign,l.created_at,l.updated_at,l.assigned_member_id,
+              l.next_action,l.next_action_at,l.qualification_stars,l.qualification_answers,
+              l.qualification_summary,l.qualification_reason,l.qualification_evaluated_at,
+              l.requires_human_decision,l.facebook_attribution,l.pipeline_stage_id,
+              l.sdr_member_id,l.closer_member_id,l.recovery_required,l.recovery_member_id,
+              l.handoff_at,l.handoff_by_user_id,l.commercial_outcome,l.sale_value,l.loss_reason,
+              l.commercial_updated_at,l.commercial_updated_by_user_id,l.loss_reason_note,l.outcome_metadata`;
+
 async function canAccessAppointment(session: WorkspaceSession, scope: CaseScope, appointmentId: string): Promise<boolean> {
   const result = await db.query(
     `SELECT 1 FROM scheduling_appointments appointment
@@ -214,7 +256,9 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
       action_bucket: z.enum(["result_pending","recovery","overdue_follow_up","today"]).optional(),
       fila_humana: z.enum(["true"]).optional(),
       faturamento: z.string().trim().min(1).max(200).optional(), resultado: z.string().trim().min(1).max(200).optional(),
-      investimento: z.string().trim().min(1).max(200).optional(), formulario: z.string().trim().min(1).max(200).optional()
+      investimento: z.string().trim().min(1).max(200).optional(), formulario: z.string().trim().min(1).max(200).optional(),
+      limit: z.coerce.number().int().min(1).max(200).default(50),
+      cursor: leadPageCursorSchema.optional()
     }).parse(request.query);
     const appointmentsEnabled = await isCapabilityEnabled(db, tenantId, "appointments_v1");
     if (!appointmentsEnabled && (query.appointment_status || query.action_bucket === "result_pending"
@@ -250,8 +294,35 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
     if (query.period_start) { params.push(query.period_start); conditions.push(`l.created_at >= ($${params.length}::date::timestamp AT TIME ZONE tenant.timezone)`); }
     if (query.period_end) { params.push(query.period_end); conditions.push(`l.created_at < (($${params.length}::date + 1)::timestamp AT TIME ZONE tenant.timezone)`); }
     if (query.busca) { params.push(`%${query.busca}%`); conditions.push(`(l.phone ILIKE $${params.length} OR l.name ILIKE $${params.length})`); }
+    // Total matching rows for pagination. Runs against the same filters but
+    // without the page cursor and without the per-row payload laterals that
+    // the count never needs (tags, avatar, awaiting_reply, ai_follow_up).
+    const needsAppointmentLateral = Boolean(query.appointment_status)
+      || query.action_bucket === "result_pending" || query.action_bucket === "today";
+    const needsQualificationJoin = Boolean(query.faturamento || query.resultado || query.investimento || query.formulario);
+    const countResult = await db.query<{ total: number }>(
+      `SELECT count(*)::int total
+       FROM scheduling_leads l
+       JOIN tenants tenant ON tenant.id=l.tenant_id
+       ${needsAppointmentLateral ? `LEFT JOIN LATERAL (
+         SELECT appointment.id,appointment.status,appointment.start_at,appointment.end_at,appointment.result_pending_at
+         FROM scheduling_appointments appointment
+         WHERE appointment.tenant_id=l.tenant_id AND appointment.lead_id=l.id
+         ORDER BY appointment.start_at DESC,appointment.id DESC
+         LIMIT 1
+       ) latest_appointment ON true` : ""}
+       ${needsQualificationJoin ? "LEFT JOIN lead_qualifications q ON q.tenant_id=l.tenant_id AND q.lead_id=l.id" : ""}
+       WHERE ${conditions.join(" AND ")}`,
+      params
+    );
+    // Keyset page: (updated_at, id) < cursor, matching ORDER BY below.
+    if (query.cursor) {
+      params.push(query.cursor.updated_at, query.cursor.id);
+      conditions.push(`(l.updated_at,l.id)<($${params.length - 1}::timestamptz,$${params.length}::uuid)`);
+    }
+    params.push(query.limit + 1);
     const result = await db.query(
-      `SELECT l.*,c.name category_name,u.name unit_name,p.name partner_name,
+      `SELECT ${LEAD_LIST_COLUMNS},c.name category_name,u.name unit_name,p.name partner_name,
               avatar.contact_avatar_url avatar_url,
               assigned_user.email assigned_user_email,pool.availability_status assigned_availability_status,
               sdr_user.email sdr_user_email,closer_user.email closer_user_email,
@@ -340,15 +411,24 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
          LIMIT 1
        ) avatar ON true
        LEFT JOIN lead_qualifications q ON q.tenant_id=l.tenant_id AND q.lead_id=l.id
-       WHERE ${conditions.join(" AND ")} ORDER BY l.updated_at DESC LIMIT 500`, params
+       WHERE ${conditions.join(" AND ")} ORDER BY l.updated_at DESC,l.id DESC LIMIT $${params.length}`, params
     );
+    const hasMore = result.rows.length > query.limit;
+    const pageRows = hasMore ? result.rows.slice(0, query.limit) : result.rows;
+    const lastRow = pageRows.at(-1) as { id: string; updated_at: Date | string } | undefined;
     const baseMapper = canReadFollowUp ? panelLeadMapper : leadMapper;
     return {
-      leads: result.rows.map((row) => {
+      leads: pageRows.map((row) => {
         const mapped = { ...baseMapper(row), qualificacao: qualificationMapper(row) };
         if (!appointmentsEnabled) delete (mapped as { latest_appointment?: unknown }).latest_appointment;
         return mapped;
       }),
+      total: Number(countResult.rows[0]?.total ?? 0),
+      page: {
+        limit: query.limit,
+        has_more: hasMore,
+        next_cursor: hasMore && lastRow ? encodeLeadPageCursor(lastRow) : null
+      },
       ...(canReadFollowUp ? { timezone: await loadWorkspaceTimeZone(tenantId) } : {})
     };
   });

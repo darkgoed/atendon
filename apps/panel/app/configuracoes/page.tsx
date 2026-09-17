@@ -28,6 +28,7 @@ import { usePermission } from "@/lib/use-permission";
 import type { PanelNotificationPreferencesResponse } from "@/lib/message-notifications";
 import { WebPushSettings } from "@/components/web-push-settings";
 import { ConversationQueueManager } from "@/components/conversation-queue-manager";
+import { WorkspaceLogoSection } from "@/components/workspace-logo";
 import { SETTINGS_COLOR_DEFAULTS } from "@/components/settings-colors";
 import { Button, Field as UiField, Input } from "@/components/ui";
 import styles from "@/components/settings-panels.module.css";
@@ -277,7 +278,7 @@ export default function ConfigPage() {
       </nav> : null}
 
       {resource === "workspace" ? (
-        <WorkspaceSettingsPanel />
+        <WorkspaceSettingsPanel canManageLogo={canUpdateWorkspace} />
       ) : resource === "attendants" ? (
         <AttendantSettingsPanel canManage={canManageAttendants} />
       ) : resource === "conversation-queues" ? (
@@ -361,7 +362,7 @@ export default function ConfigPage() {
   );
 }
 
-function WorkspaceSettingsPanel() {
+function WorkspaceSettingsPanel({ canManageLogo }: { canManageLogo: boolean }) {
   const { data, error, isLoading, mutate } = useSWR<WorkspaceTimezoneResponse>(
     "/workspaces/current/timezone",
     fetchWorkspaceTimezone<WorkspaceTimezoneResponse>,
@@ -417,11 +418,12 @@ function WorkspaceSettingsPanel() {
   }
 
   return (
-    <form className="max-w-2xl border-t border-[var(--border)] pt-6" onSubmit={submit}>
-      <div className="grid gap-5 sm:grid-cols-[40px_minmax(0,1fr)]">
-        <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--primary-text)]">
-          <GlobeHemisphereWest size={19} aria-hidden="true" />
-        </span>
+    <>
+      <form className="max-w-2xl border-t border-[var(--border)] pt-6" onSubmit={submit}>
+        <div className="grid gap-5 sm:grid-cols-[40px_minmax(0,1fr)]">
+          <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--primary-text)]">
+            <GlobeHemisphereWest size={19} aria-hidden="true" />
+          </span>
         <div className="grid gap-5">
           <div>
             <h2 className="m-0 text-base font-semibold text-[var(--text)]">Fuso horário</h2>
@@ -487,7 +489,9 @@ function WorkspaceSettingsPanel() {
           </div>
         </div>
       </div>
-    </form>
+      </form>
+      <WorkspaceLogoSection canManage={canManageLogo} />
+    </>
   );
 }
 

@@ -243,11 +243,18 @@ export function TripzComposer({
     }
   }, [clearAfterSend, conversationId, disabled, onSent, processing, submitting, text, uploadItem]);
 
+  const compositionActiveRef = useRef(false);
+  const compositionJustEndedRef = useRef(false);
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    const compositionJustEnded = compositionJustEndedRef.current;
+    compositionJustEndedRef.current = false;
     if (!shouldSubmitTripzComposer({
       key: event.key,
       shiftKey: event.shiftKey,
-      isComposing: event.nativeEvent.isComposing
+      isComposing: event.nativeEvent.isComposing,
+      keyCode: event.nativeEvent.keyCode,
+      compositionActive: compositionActiveRef.current,
+      compositionJustEnded
     })) return;
     event.preventDefault();
     void submit();
@@ -316,6 +323,13 @@ export function TripzComposer({
             placeholder={processing ? "Aguarde a análise atual…" : "Envie informações da viagem…"}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={handleKeyDown}
+            onCompositionStart={() => { compositionActiveRef.current = true; }}
+            onCompositionEnd={() => {
+              compositionActiveRef.current = false;
+              // Safari: o keydown que confirma a composição vem depois deste
+              // evento, com isComposing=false — não pode enviar.
+              compositionJustEndedRef.current = true;
+            }}
             onPaste={handlePaste}
             aria-describedby="tripz-composer-help tripz-composer-error"
           />

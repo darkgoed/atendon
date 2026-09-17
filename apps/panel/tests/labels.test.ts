@@ -65,4 +65,13 @@ describe("interface labels", () => {
     ]);
     expect(readableDetails(null)).toEqual([]);
   });
+
+  it("never crashes on null or undefined status values from the API", () => {
+    // Regressão: "Cannot read properties of null (reading 'trim')".
+    expect(leadStatusLabel(null)).toBe("Não informado");
+    expect(leadStatusLabel(undefined)).toBe("Não informado");
+    expect(accessStatusLabel(null)).toBe("Não informado");
+    expect(auditActionLabel(null)).toBe("Não informado");
+    expect(actorScopeLabel(undefined)).toBe("Não informado");
+  });
 });

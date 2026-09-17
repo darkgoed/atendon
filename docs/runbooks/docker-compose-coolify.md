@@ -70,13 +70,16 @@ Se a troca ou os healthchecks falharem, o script retagueia os IDs das imagens an
 
 ### Release de versão e changelog
 
-O changelog é um artefato versionado. O fluxo único é **commit do código → prepare → revisar → commit da release → push → Coolify**:
-primeiro faça commit do código em checkout limpo; então execute `npm run release:prepare` (Node 22 carrega `.env` se existir,
-sem imprimir valores), revise `package.json`, `package-lock.json` e `changelog.json`,
-faça commit e push, e só então inicie o deployment no Coolify. O comando falha
-fechado se a IA configurada não responder; sem chave, só aceita o fallback genérico
-quando `RELEASE_ALLOW_GENERIC_FALLBACK=true` for opt-in explícito. Nenhuma geração ou
-Git ocorre dentro de Dockerfiles/Coolify.
+**Fluxo atual (detalhado em `docs/RELEASE_FLOW.md`)**: fonte primária é a tabela
+`releases` no banco; `package.json.version` é derivado e `changelog.json` é legado.
+O único comando é **commit do código → `npm run release:prepare` (host ops, com
+`DATABASE_URL` do alvo) → revisar → commit `chore: release vX.Y.Z` → push → Coolify**.
+O script grava build/classificação (PATCH/DROP/RELEASE por impacto, não por tamanho
+de diff) e **não chama IA**: o worker gera o changelog público depois, fora do
+caminho crítico do deploy, com a chave OpenRouter criptografada no banco
+(editável em ROOT > /root/versions). Falha de IA registra status/erro visíveis e
+permite retry; nunca bloqueia o deploy. Nenhuma geração ou Git ocorre dentro de
+Dockerfiles/Coolify.
 
 No painel do Coolify, defina para a aplicação Compose (Environment Variables):
 

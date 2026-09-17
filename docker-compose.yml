@@ -32,8 +32,8 @@ x-atendon-runtime-environment: &atendon-runtime-environment
   OPENROUTER_APP_URL: ${OPENROUTER_APP_URL:-${PANEL_PUBLIC_URL:?Configure PANEL_PUBLIC_URL com HTTPS}}
   OPENROUTER_APP_NAME: ${OPENROUTER_APP_NAME:-AtendON}
   OPENROUTER_MANAGEMENT_API_KEY: ${OPENROUTER_MANAGEMENT_API_KEY:-}
-  CHANGELOG_OPENROUTER_API_KEY: ${CHANGELOG_OPENROUTER_API_KEY:-}
-  CHANGELOG_OPENROUTER_MODEL: ${CHANGELOG_OPENROUTER_MODEL:-google/gemma-4-26b-a4b-it:free}
+  # A configuração de IA de changelog (API key criptografada, modelos, toggles)
+  # vive no banco, em changelog_ai_settings, editável em /root/versions no painel.
   DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-openai/gpt-oss-20b:free}
   AI_EVALUATOR_ENABLED: ${AI_EVALUATOR_ENABLED:-true}
   WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-true}

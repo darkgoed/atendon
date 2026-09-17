@@ -3,6 +3,7 @@ import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowsLeftRight, BellRinging, Bel
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { ConversationComposer } from "@/components/conversation-composer";
+import { copyTextToClipboard } from "@/lib/compat";
 import { ContactAvatar } from "@/components/contact-avatar";
 import { ConversationMessageMedia } from "@/components/conversation-message-media";
 import { ConversationContactPanel, type ContactPanelMessage } from "@/components/conversation-contact-panel";
@@ -150,7 +151,8 @@ type Message = {
   reply_to_content?: string | null;
   reply_to_sender?: "contact" | "agent" | "human" | null;
 };
-type ConversationsResponse = { conversations: Conversation[] };
+type ConversationsPage = { limit: number; has_more: boolean; next_cursor: string | null };
+type ConversationsResponse = { conversations: Conversation[]; page?: ConversationsPage };
 type ConversationThreadResponse = {
   conversation: Conversation;
   messages: Message[];
@@ -354,7 +356,7 @@ function MessageItem({
           align="end"
           reactionEmoji={message.reaction_emoji}
           onReply={() => onReply(message)}
-          onCopy={() => { void navigator.clipboard?.writeText(message.content); }}
+          onCopy={() => { void copyTextToClipboard(message.content); }}
           onReact={(emoji) => onReact(message.id, emoji)}
           onEdit={isOwn && !message.media_type ? () => setEditing(true) : undefined}
           onDelete={(forEveryone) => onDelete(message.id, forEveryone)}
@@ -428,7 +430,7 @@ function MessageItem({
           align="start"
           reactionEmoji={message.reaction_emoji}
           onReply={() => onReply(message)}
-          onCopy={() => { void navigator.clipboard?.writeText(message.content); }}
+          onCopy={() => { void copyTextToClipboard(message.content); }}
           onReact={(emoji) => onReact(message.id, emoji)}
           onDelete={(forEveryone) => onDelete(message.id, forEveryone)}
           allowReactions={actionCapabilities?.reactions}
@@ -578,6 +580,43 @@ export default function Conversations() {
     revalidateOnFocus: false,
     dedupingInterval: 5_000
   });
+  // Server-side keyset pagination for the conversation list: the SWR key
+  // always fetches the first page (what the 10s poll refreshes); "Carregar
+  // mais" appends older pages by cursor. Once extra pages exist the poll must
+  // not overwrite the anchor cursor (it would duplicate already-loaded rows).
+  const [olderConversations, setOlderConversations] = useState<Conversation[]>([]);
+  const [listPageState, setListPageState] = useState<{ cursor: string | null; hasMore: boolean; fetchedPages: number }>({ cursor: null, hasMore: false, fetchedPages: 0 });
+  const [loadingOlderList, setLoadingOlderList] = useState(false);
+  useEffect(() => {
+    setOlderConversations([]);
+    setListPageState({ cursor: null, hasMore: false, fetchedPages: 0 });
+    setLoadingOlderList(false);
+  }, [listKey]);
+  useEffect(() => {
+    const page = listData?.page;
+    if (!page || listPageState.fetchedPages > 0) return;
+    setListPageState((current) => current.fetchedPages > 0 ? current : { cursor: page.next_cursor, hasMore: page.has_more, fetchedPages: 0 });
+  }, [listData?.page, listPageState.fetchedPages]);
+  async function loadOlderConversations() {
+    if (!listPageState.cursor || loadingOlderList) return;
+    setLoadingOlderList(true);
+    try {
+      const response = await api<ConversationsResponse>(`${listKey}&before=${encodeURIComponent(listPageState.cursor)}&limit=50`);
+      setOlderConversations((current) => {
+        const seen = new Set(current.map((item) => item.id));
+        return [...current, ...response.conversations.filter((item) => !seen.has(item.id))];
+      });
+      setListPageState((current) => ({
+        cursor: response.page?.next_cursor ?? null,
+        hasMore: Boolean(response.page?.has_more),
+        fetchedPages: current.fetchedPages + 1
+      }));
+    } catch {
+      // O botão permanece; o usuário pode tentar de novo.
+    } finally {
+      setLoadingOlderList(false);
+    }
+  }
   const threadPath = selected ? conversationMessagesPath(selected, deltaEnabled) : null;
   const { data: threadData, error: threadError, mutate: mutateThread } = useSWR<ConversationThreadResponse>(
     threadPath,
@@ -603,7 +642,12 @@ export default function Conversations() {
   const connections = useMemo(() => connectionsData?.connections ?? [], [connectionsData?.connections]);
   const { data: queueData, mutate: mutateQueues } = useSWR<{ queues: Array<{ id: string; name: string; color: string; is_resolved: boolean; conversation_count: number; archived_at: string | null }> }>(session ? "/conversation-queues" : null, fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
   const showConnectionFilter = shouldShowConversationConnectionFilter(connections);
-  const allItems = useMemo(() => listData?.conversations ?? [], [listData?.conversations]);
+  const allItems = useMemo(() => {
+    const fresh = listData?.conversations ?? [];
+    if (olderConversations.length === 0) return fresh;
+    const seen = new Set(fresh.map((item) => item.id));
+    return [...fresh, ...olderConversations.filter((item) => !seen.has(item.id))];
+  }, [listData?.conversations, olderConversations]);
   const items = allItems;
   const thread = { conversation: threadConversation, messages };
   const threadConnectionLabel = conversationLabelForSession(
@@ -1477,6 +1521,18 @@ export default function Conversations() {
                 {items.map((item: Conversation) => (
                   <ConversationItem key={item.id} item={item} selected={selected} showLeadTags={leadsEnabled} onClick={selectConversation} />
                 ))}
+                {listPageState.hasMore ? (
+                  <div className="pt-1.5 text-center">
+                    <button
+                      type="button"
+                      className="btn px-3 py-1.5 text-xs"
+                      onClick={() => void loadOlderConversations()}
+                      disabled={loadingOlderList}
+                    >
+                      {loadingOlderList ? "Carregando…" : "Carregar conversas anteriores"}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>

@@ -24,6 +24,7 @@ import { registerSchedulingRoutes } from "./modules/scheduling/routes.js";
 import { registerMeetRoutes } from "./modules/meet/routes.js";
 import { registerWorkspaceRoutes } from "./modules/workspaces/routes.js";
 import { registerRootRoutes } from "./modules/root/routes.js";
+import { registerReleaseRoutes } from "./modules/release/routes.js";
 import { registerSaasRoutes } from "./modules/saas/routes.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
 import { getVersionInfo } from "./modules/root/version.js";
@@ -158,14 +159,6 @@ function whatsappChannelError(channel: "whatsapp" | "instagram" | null | undefin
   return channel === "instagram" ? WHATSAPP_CHANNEL_ERROR : null;
 }
 const messageDeleteSchema = z.object({ forEveryone: z.boolean().default(false) });
-const conversationsQuerySchema = z.object({
-  filter: z.enum(["all", "human", "ai", "mine", "unassigned", "scheduled", "resolved"]).catch("all"),
-  q: z.string().trim().max(120).optional().transform((value) => value || undefined),
-  queue_id: z.string().uuid().optional(),
-  session_id: z.string().uuid().optional(),
-  unread: z.enum(["true", "false"]).optional(),
-  pending_action: z.enum(["true", "false"]).optional()
-});
 const messageCursorPayloadSchema = z.object({
   v: z.literal(1),
   createdAt: z.string().datetime({ offset: true }),
@@ -184,6 +177,16 @@ const messageCursorSchema = z.string().trim().min(1).max(512).transform((value, 
     context.addIssue({ code: "custom", message: "Cursor de mensagens inválido" });
     return z.NEVER;
   }
+});
+const conversationsQuerySchema = z.object({
+  filter: z.enum(["all", "human", "ai", "mine", "unassigned", "scheduled", "resolved"]).catch("all"),
+  q: z.string().trim().max(120).optional().transform((value) => value || undefined),
+  queue_id: z.string().uuid().optional(),
+  session_id: z.string().uuid().optional(),
+  unread: z.enum(["true", "false"]).optional(),
+  pending_action: z.enum(["true", "false"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  before: messageCursorSchema.optional()
 });
 const conversationAssetsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -230,6 +233,18 @@ function encodeMessageCursor(row: { created_at: Date | string; id: string }): st
     id: row.id
   })).toString("base64url");
 }
+
+// unread-counts scans every conversation in the tenant scope and is polled by
+// every open panel tab every ~10s. A short shared TTL collapses concurrent
+// polls (multiple tabs/windows) into one query without delaying updates: any
+// state change is still pushed via realtime signals, which callers use to
+// revalidate immediately.
+const UNREAD_COUNTS_CACHE_TTL_MS = 3_000;
+type UnreadCountsPayload = { human: number; ai: number; scheduled: number; resolved: number } | { mine: number };
+const unreadCountsCache = new Map<string, {
+  expiresAt: number;
+  promise: Promise<UnreadCountsPayload>;
+}>();
 const humanizerSchema = z.object({
   readDelay: rangeSchema, readingPause: rangeSchema,
   composing: z.object({ wpm: z.number().positive().max(1000), jitterMs: z.number().int().min(0).max(60_000), minMs: z.number().int().min(0).max(300_000), maxMs: z.number().int().min(0).max(300_000), resendIntervalMs: z.number().int().min(500).max(60_000) }).refine((value) => value.maxMs >= value.minMs, "maxMs deve ser maior ou igual a minMs"),
@@ -1518,7 +1533,7 @@ export function buildApp(options: {
   app.get("/conversations", async (request) => {
     const session = await requirePermission(request, "conversations.read");
     const scope = await resolveCaseScope(db, session);
-    const { filter, q, queue_id, session_id, unread, pending_action } = conversationsQuerySchema.parse(request.query);
+    const { filter, q, queue_id, session_id, unread, pending_action, limit, before } = conversationsQuerySchema.parse(request.query);
     const condition = filter === "human" ? "AND c.status='open' AND c.ai_active=false"
       : filter === "ai" ? "AND c.status='open' AND c.ai_active=true"
         : filter === "mine" ? "AND c.status='open' AND c.assigned_user_id=$3"
@@ -1545,7 +1560,18 @@ export function buildApp(options: {
       OR strpos(COALESCE(c.contact_phone,''),$2) > 0
       OR strpos(lower(COALESCE(c.instagram_username,'')),lower(replace($2,'@',''))) > 0
       OR strpos(COALESCE(c.instagram_contact_id,''),$2) > 0)`;
-    const values = [session.tenantId, q ?? "", session.userId, queue_id ?? null, session_id ?? null];
+    const values: unknown[] = [session.tenantId, q ?? "", session.userId, queue_id ?? null, session_id ?? null];
+    // Keyset page: (last_message_at, id) < before-cursor, matching ORDER BY.
+    if (before) {
+      values.push(before.createdAt, before.id);
+      const createdAtParam = values.length - 1;
+      const idParam = values.length;
+      values.push(`AND (c.last_message_at,c.id)<($${createdAtParam}::timestamptz,$${idParam}::uuid)`);
+    } else {
+      values.push("");
+    }
+    const cursorCondition = values.pop() as string;
+    values.push(limit + 1);
     const result = await db.query(`SELECT c.id, c.session_id, c.lead_id, c.contact_phone, c.contact_name,
       c.instagram_contact_id,c.instagram_username,c.messaging_window_expires_at,
       CASE WHEN c.instagram_contact_id IS NOT NULL
@@ -1605,15 +1631,26 @@ export function buildApp(options: {
       WHERE c.tenant_id=$1
         AND (${conversationScopeCondition(scope, "c", "$3")})
         ${condition} ${filterConditions} ${search}
-      ORDER BY c.last_message_at DESC LIMIT 50`, values);
-    for (const conversation of result.rows.slice(0, 20)) {
+        ${cursorCondition}
+      ORDER BY c.last_message_at DESC,c.id DESC LIMIT $${values.length}`, values);
+    const hasMore = result.rows.length > limit;
+    const pageRows = hasMore ? result.rows.slice(0, limit) : result.rows;
+    const lastRow = pageRows.at(-1) as { id: string; last_message_at: Date | string } | undefined;
+    for (const conversation of pageRows.slice(0, 20)) {
       if (!conversation.avatar_url && conversation.session_id && conversation.contact_phone) {
         void whatsapp.refreshContactAvatar(conversation.session_id, conversation.contact_phone).catch((error) => {
           app.log.debug({ err: error, conversationId: conversation.id }, "Could not refresh contact avatar from conversation list");
         });
       }
     }
-    return { conversations: result.rows };
+    return {
+      conversations: pageRows,
+      page: {
+        limit,
+        has_more: hasMore,
+        next_cursor: hasMore && lastRow ? encodeMessageCursor({ created_at: lastRow.last_message_at, id: lastRow.id }) : null
+      }
+    };
   });
   app.get("/conversations/pending-actions", async (request) => {
     const session = await requirePermission(request, "conversations.read");
@@ -1676,8 +1713,16 @@ export function buildApp(options: {
     const session = await requirePermission(request, "conversations.read");
     const scope = await resolveCaseScope(db, session);
     const hasWorkspaceScope = scope.type === "workspace";
+    const cacheKey = `${session.tenantId}:${scope.type}:${scope.memberId ?? "-"}`;
+    const now = Date.now();
+    const cached = unreadCountsCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) return await cached.promise;
+    for (const [key, entry] of unreadCountsCache) {
+      if (entry.expiresAt <= now) unreadCountsCache.delete(key);
+    }
     const values = [session.tenantId, scope.userId];
-    const result = await db.query<{ human: number; ai: number; scheduled: number; resolved: number; mine: number }>(`
+    const promise = (async (): Promise<UnreadCountsPayload> => {
+      const result = await db.query<{ human: number; ai: number; scheduled: number; resolved: number; mine: number }>(`
       SELECT
         COALESCE(SUM(unread) FILTER (WHERE status='open' AND ai_active=false),0)::int human,
         COALESCE(SUM(unread) FILTER (WHERE status='open' AND ai_active=true),0)::int ai,
@@ -1699,10 +1744,17 @@ export function buildApp(options: {
         FROM conversations c
         WHERE c.tenant_id=$1 AND (${conversationScopeCondition(scope, "c", "$2")})
       ) c`, values);
-    const row = result.rows[0] ?? { human: 0, ai: 0, scheduled: 0, resolved: 0, mine: 0 };
-    return hasWorkspaceScope
-      ? { human: row.human, ai: row.ai, scheduled: row.scheduled, resolved: row.resolved }
-      : { mine: row.mine };
+      const row = result.rows[0] ?? { human: 0, ai: 0, scheduled: 0, resolved: 0, mine: 0 };
+      return hasWorkspaceScope
+        ? { human: row.human, ai: row.ai, scheduled: row.scheduled, resolved: row.resolved }
+        : { mine: row.mine };
+    })();
+    unreadCountsCache.set(cacheKey, { expiresAt: now + UNREAD_COUNTS_CACHE_TTL_MS, promise });
+    void promise.catch(() => {
+      const entry = unreadCountsCache.get(cacheKey);
+      if (entry?.promise === promise) unreadCountsCache.delete(cacheKey);
+    });
+    return await promise;
   });
   app.get("/conversations/:id/channel-capabilities", async (request, reply) => {
     const session = await requirePermission(request, "conversations.read");
@@ -2731,6 +2783,7 @@ export function buildApp(options: {
 
   void app.register(registerWorkspaceRoutes);
   void app.register(registerRootRoutes);
+  void app.register(registerReleaseRoutes);
   void app.register(registerSaasRoutes);
   void app.register(registerBillingRoutes, options.billingOAuth ?? {});
   void app.register(registerOperationsRoutes);

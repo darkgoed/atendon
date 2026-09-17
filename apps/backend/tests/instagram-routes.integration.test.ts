@@ -36,6 +36,7 @@ beforeAll(async () => {
     subscribeWebhook: vi.fn(),
     sendText: vi.fn(),
     sendMedia: vi.fn(),
+    fetchUserProfile: vi.fn(),
     fetchMedia: vi.fn()
   };
   repository = new InstagramRepository(pool, key);

@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "version:bump": "node scripts/changelog-bump.mjs",
+    "version:bump": "node scripts/release-record.mjs",
     "release:prepare": "node scripts/release-prepare.mjs",
     "version:sync-lock": "node scripts/sync-package-lock-version.mjs",
     "dev": "concurrently --kill-others --names api,panel,worker --prefix-colors blue,green,yellow \"npm run dev:api\" \"npm run dev:panel\" \"npm run dev:worker\"",
@@ -16,8 +16,7 @@
     "dev:panel": "npm run dev -w @atendon/panel",
     "dev:worker": "npm run worker -w @atendon/backend",
     "lint": "eslint apps/backend apps/panel --max-warnings=0",
-    "test": "npm run test:changelog && npm run test:deploy && npm run test --workspaces --if-present",
-    "test:changelog": "node --test scripts/changelog-bump.test.mjs scripts/release-prepare.test.mjs",
+    "test": "npm run test:deploy && npm run test --workspaces --if-present",
     "test:deploy": "node --test scripts/deploy-safety.test.mjs",
     "test:release-prepare": "node --test scripts/release-prepare.test.mjs",
     "test:e2e": "npm run test:e2e -w @atendon/panel",

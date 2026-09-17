@@ -1009,13 +1009,23 @@ export class MessageProcessor {
       attempt: processingAttempt,
       reason: "inbound_message"
     }, "AI message processing started");
-    if (message.channel !== "instagram") {
-      void this.gateway.refreshContactAvatar?.(message.sessionId, message.contactPhone).catch(() => undefined);
-    }
+    void this.gateway.refreshContactAvatar?.(message.sessionId, message.contactPhone).catch(() => undefined);
     let context = initialContext;
     try {
     if (!context.aiActive) {
       logger.info({ externalId: message.externalId, conversationId: context.conversationId, reason: "ai_inactive" }, "Inbound message ignored");
+      // A conversa ainda está marcada como "pertence à IA" no banco
+      // (ai_active=true) mas o agente está desativado globalmente ou
+      // bloqueado por regra comercial: sem esta transição, a conversa nunca
+      // aparece no filtro humano ("Abertas") e o lead fica em limbo, sem
+      // resposta da IA e sem visibilidade para atendimento humano.
+      if (context.aiActiveColumn) {
+        await this.repository.markAiUnavailable(message.tenantId, context.conversationId)
+          .catch((error) => logger.error(
+            { err: error, conversationId: context.conversationId },
+            "Falha ao sinalizar conversa como indisponível para a IA"
+          ));
+      }
       await this.repository.markInboundProcessed(message);
       return "ignored";
     }

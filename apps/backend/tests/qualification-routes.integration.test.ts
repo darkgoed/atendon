@@ -167,9 +167,15 @@ describe("API de configuração Newave",()=>{
     const whatsappConversation=(await pool.query<{id:string}>(
       "INSERT INTO conversations(tenant_id,session_id,contact_phone) VALUES($1,$2,$3) RETURNING id",[tenantId,sessionId,phone]
     )).rows[0].id;
+    // 0158: conversa Instagram tem identidade própria e NUNCA telefone
+    // (conversations_channel_identity_check) — lead com phone NULL, como no
+    // fixture canônico de connection-channel.integration.test.ts.
+    const instagramLeadId=(await pool.query<{id:string}>(
+      "INSERT INTO scheduling_leads(tenant_id,phone,name,source,instagram_contact_id,instagram_session_id) VALUES($1,NULL,'Instagram','instagram',$2,$3) RETURNING id",[tenantId,`ig-${phone}`,instagram])
+    ).rows[0].id;
     const instagramConversation=(await pool.query<{id:string}>(
-      "INSERT INTO conversations(tenant_id,session_id,contact_phone) VALUES($1,$2,$3) RETURNING id",[tenantId,instagram,phone]
-    )).rows[0].id;
+      "INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name,instagram_contact_id,instagram_username,lead_id) VALUES($1,$2,NULL,'Instagram',$3,'contato',$4) RETURNING id",[tenantId,instagram,`ig-${phone}`,instagramLeadId])
+    ).rows[0].id;
     try {
       const whatsapp=await service.handleInbound({tenantId,sessionId,contactPhone:phone,text:"Anúncio",externalId:`wa-${randomUUID()}`,referral:{sourceType:"ad",sourceId:"wa"}});
       expect(whatsapp).not.toBeNull();
@@ -182,6 +188,7 @@ describe("API de configuração Newave",()=>{
       expect((await pool.query("SELECT ai_active FROM conversations WHERE id=$1",[instagramConversation])).rows[0].ai_active).toBe(true);
     } finally {
       await pool.query("DELETE FROM conversations WHERE id IN ($1,$2)",[whatsappConversation,instagramConversation]);
+      await pool.query("DELETE FROM scheduling_leads WHERE id=$1",[instagramLeadId]);
       await pool.query("DELETE FROM whatsapp_sessions WHERE id=$1",[instagram]);
     }
   });

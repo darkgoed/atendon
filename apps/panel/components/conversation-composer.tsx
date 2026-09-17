@@ -1,12 +1,13 @@
 "use client";
 
 import { ArrowBendUpLeft, File, Microphone, Paperclip, PaperPlaneRight, X } from "@phosphor-icons/react";
-import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { VoiceInput, VoiceMessagePlayer } from "@/components/ui/voice-input";
 import { Button, Input, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
 import { audioDisplayName } from "@/lib/audio-waveform";
 import { confirmedFailedSend, definitiveProviderRejection } from "@/lib/conversation-send";
+import { randomUUID, shouldSubmitOnEnter, submitForm } from "@/lib/compat";
 
 type MediaType = "audio" | "image" | "video" | "document";
 type Attachment = { file: globalThis.File; mediaType: MediaType };
@@ -92,6 +93,8 @@ export function ConversationComposer({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const formRef = useRef<HTMLFormElement>(null);
+  const compositionActiveRef = useRef(false);
+  const compositionJustEndedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -172,6 +175,17 @@ export function ConversationComposer({
     if (mediaType === "audio") setDraft("");
   }
 
+  // Colar imagem (CTRL+V) entra no mesmo fluxo do anexo por seleção:
+  // validação → prévia → confirmação no Enviar. Nunca envia direto no paste.
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    if (!canSend) return;
+    const file = Array.from(event.clipboardData?.files ?? []).find((candidate) => candidate.type.startsWith("image/"));
+    if (!file) return;
+    event.preventDefault();
+    if (!supports("image")) return onError("Imagem não é suportada por este canal");
+    selectFile(file);
+  }
+
   async function startRecording() {
     if (!supports("audio")) return onError("Áudio não é suportado por este canal");
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
@@ -226,7 +240,7 @@ export function ConversationComposer({
     if (text && !canSendText) return onError("Texto não é suportado por este canal");
     const signature = `${conversationId}:${text}:${attachment?.mediaType ?? "text"}:${attachment?.file.name ?? ""}:${attachment?.file.size ?? 0}:${attachment?.file.lastModified ?? 0}:${replyTo?.id ?? ""}`;
     const previous = sendAttemptRef.current;
-    let attempt = previous?.signature === signature ? previous : { signature, key: globalThis.crypto.randomUUID() };
+    let attempt = previous?.signature === signature ? previous : { signature, key: randomUUID() };
     sendAttemptRef.current = attempt;
     setSending(true);
     onError("");
@@ -248,7 +262,7 @@ export function ConversationComposer({
         await post(attempt.key);
       } catch (error) {
         if (!confirmedFailedSend(error)) throw error;
-        attempt = { signature, key: globalThis.crypto.randomUUID() };
+        attempt = { signature, key: randomUUID() };
         sendAttemptRef.current = attempt;
         await post(attempt.key);
       }
@@ -266,10 +280,20 @@ export function ConversationComposer({
   }
 
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-      event.preventDefault();
-      formRef.current?.requestSubmit();
-    }
+    const compositionJustEnded = compositionJustEndedRef.current;
+    compositionJustEndedRef.current = false;
+    if (!shouldSubmitOnEnter({
+      key: event.key,
+      shiftKey: event.shiftKey,
+      isComposing: event.nativeEvent.isComposing,
+      keyCode: event.nativeEvent.keyCode,
+      compositionActive: compositionActiveRef.current,
+      compositionJustEnded
+    })) return;
+    event.preventDefault();
+    // Safari < 16 não tem requestSubmit ("a.requestSubmit is not a function"):
+    // submitForm cobre o caminho nativo e o fallback legado.
+    submitForm(formRef.current);
   }
 
   return (
@@ -355,6 +379,14 @@ export function ConversationComposer({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={handleComposerKeyDown}
+            onPaste={handlePaste}
+            onCompositionStart={() => { compositionActiveRef.current = true; }}
+            onCompositionEnd={() => {
+              compositionActiveRef.current = false;
+              // Safari: o keydown do Enter que confirma a composição vem DEPOIS
+              // deste evento, com isComposing=false — não pode enviar.
+              compositionJustEndedRef.current = true;
+            }}
             className="conversation-composer__textarea input min-h-11 max-h-32 resize-y py-3 leading-5"
             placeholder={attachment?.mediaType === "audio" ? "Áudio pronto para enviar" : attachment ? "Adicionar uma legenda" : channel === "instagram" ? "Responder pelo Instagram" : "Responder pelo WhatsApp conectado"}
             autoComplete="off"

@@ -15,6 +15,24 @@ function initials(name: string) {
   return name.trim().charAt(0).toLocaleUpperCase("pt-BR") || "?";
 }
 
+// Logo do tenant no seletor: quando o workspace tem logo_data, ela substitui a
+// inicial (mesmo tamanho, via classe própria + avatar base). Sem logo, o avatar
+// com a inicial fica exatamente como antes.
+function WorkspaceAvatar({ workspace }: { workspace: SessionWorkspace }) {
+  if (workspace.logo_data) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={workspace.logo_data}
+        alt=""
+        aria-hidden="true"
+        className="workspace-switcher__avatar workspace-switcher__avatar-logo"
+      />
+    );
+  }
+  return <span className="workspace-switcher__avatar" aria-hidden="true">{initials(workspace.name)}</span>;
+}
+
 export function WorkspaceSwitcher({ activeWorkspaceId, disabled = false, onChange, workspaces }: WorkspaceSwitcherProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -48,7 +66,7 @@ export function WorkspaceSwitcher({ activeWorkspaceId, disabled = false, onChang
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="workspace-switcher__avatar" aria-hidden="true">{initials(active.name)}</span>
+        <WorkspaceAvatar workspace={active} />
         <span className="workspace-switcher__identity">
           <strong>{active.name}</strong>
           <small>{active.role}</small>
@@ -69,6 +87,7 @@ export function WorkspaceSwitcher({ activeWorkspaceId, disabled = false, onChang
                 if (workspace.id !== active.id) onChange(workspace.id);
               }}
             >
+              <WorkspaceAvatar workspace={workspace} />
               <span>{workspace.name}</span>
               <small>{workspace.role}</small>
             </button>

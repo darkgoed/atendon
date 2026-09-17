@@ -14,6 +14,7 @@ import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react"
 import { ContactAvatar } from "./contact-avatar";
 import { Button, Input } from "@/components/ui";
 import { instagramDisplayIdentity, instagramDisplayName } from "@/lib/channel-identity";
+import { shouldSubmitOnEnter } from "@/lib/compat";
 
 export type ContactPanelMessage = {
   id: string;
@@ -86,6 +87,8 @@ export function ConversationContactPanel({
   const panelRef = useRef<HTMLElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const compositionActiveRef = useRef(false);
+  const compositionJustEndedRef = useRef(false);
   const title = conversation.channel === "instagram"
     ? instagramDisplayName(conversation.contact_name, conversation.instagram_username, conversation.contact_identifier, conversation.contact_phone)
     : conversation.contact_name?.trim() || conversation.contact_phone || "Contato sem identificação";
@@ -187,7 +190,26 @@ export function ConversationContactPanel({
                   className="input min-w-0 py-1.5 text-center text-sm"
                   value={draftName}
                   onChange={(event) => setDraftName(event.target.value)}
-                  onKeyDown={(event) => { if (event.key === "Enter") void saveName(); }}
+                  onCompositionStart={() => { compositionActiveRef.current = true; }}
+                  onCompositionEnd={() => {
+                    compositionActiveRef.current = false;
+                    // Safari: o keydown do Enter que confirma a composição vem
+                    // depois deste evento, com isComposing=false — não salva.
+                    compositionJustEndedRef.current = true;
+                  }}
+                  onKeyDown={(event) => {
+                    const compositionJustEnded = compositionJustEndedRef.current;
+                    compositionJustEndedRef.current = false;
+                    if (!shouldSubmitOnEnter({
+                      key: event.key,
+                      shiftKey: event.shiftKey,
+                      isComposing: event.nativeEvent.isComposing,
+                      keyCode: event.nativeEvent.keyCode,
+                      compositionActive: compositionActiveRef.current,
+                      compositionJustEnded
+                    })) return;
+                    void saveName();
+                  }}
                   disabled={savingName}
                   autoFocus
                 />

@@ -155,6 +155,7 @@ describe("Instagram foundation under the real runtime PostgreSQL role shape", ()
       })),
       sendText: vi.fn(),
       sendMedia: vi.fn(),
+      fetchUserProfile: vi.fn(),
       fetchMedia: vi.fn()
     };
     const service = new InstagramService(repository, provider);

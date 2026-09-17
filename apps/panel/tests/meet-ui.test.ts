@@ -15,7 +15,7 @@ describe("AtendON Meet panel integration", () => {
     expect(meetRoom).toContain("jwt: access.token");
     expect(meetRoom).toContain("roomName: access.room_name");
     expect(meetRoom).toContain("instance?.dispose()");
-    expect(meetRoom).toContain("parentNode?.replaceChildren()");
+    expect(meetRoom).toContain("clearElement(parentNode)");
     expect(authenticatedPage).toContain("/meet/rooms/${encodeURIComponent(roomId)}/token");
     expect(publicPage).toContain("/meet/join/${encodeURIComponent(code)}");
     expect(accessGuard).toContain('"/reuniao"');

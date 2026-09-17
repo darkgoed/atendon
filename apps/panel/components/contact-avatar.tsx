@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 
 type ContactAvatarProps = {
-  name: string;
+  name?: string | null;
   src?: string | null;
   className?: string;
 };
 
 export function ContactAvatar({ name, src, className = "" }: ContactAvatarProps) {
   const [failed, setFailed] = useState(false);
-  const initial = name.trim().slice(0, 1).toUpperCase() || "?";
+  const initial = (name ?? "").trim().slice(0, 1).toUpperCase() || "?";
 
   useEffect(() => setFailed(false), [src]);
 

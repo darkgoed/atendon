@@ -1,3 +1,6 @@
+// Polyfills e feature detection para navegadores antigos (ver lib/compat.ts)
+// rodam antes de todo o resto do painel.
+import "@/lib/compat";
 import type { Metadata } from "next";
 import { ErrorToasts } from "@/components/error-toasts";
 import { PanelAccessGuard } from "@/components/panel-access-guard";

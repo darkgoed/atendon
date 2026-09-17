@@ -2,6 +2,7 @@
 
 import { Empty } from "@/components/page-state";
 import { Button, TableScroll } from "@/components/ui";
+import { pipelineStageAutomationLabel } from "@/components/pipeline-board";
 import { currentPipelineStageId, formatPipelineAge, pipelineStatusLabel, type PipelineLead, type PipelineMember, type PipelineStage } from "@/lib/pipeline";
 
 export function PipelineList({ leads, stages, members, legacy, loading, canMove, canSelect, selectedIds, pendingLeadIds, onToggleSelected, onMoveRequest }: {
@@ -28,7 +29,7 @@ export function PipelineList({ leads, stages, members, legacy, loading, canMove,
         return <tr key={lead.id}>
           {canSelect ? <td data-label="Selecionar"><input type="checkbox" aria-label={`Selecionar ${lead.nome ?? lead.telefone}`} checked={selectedIds.has(lead.id)} onChange={() => onToggleSelected(lead.id)} /></td> : null}
           <td data-label="Lead"><strong>{lead.nome ?? "Sem nome"}</strong><span className="block text-xs text-[var(--text-secondary)]">{lead.telefone}</span></td>
-          <td data-label="Estágio atual">{stage?.name ?? pipelineStatusLabel(lead.status)}</td>
+          <td data-label="Estágio atual">{stage?.name ?? pipelineStatusLabel(lead.status)}{stage ? <>{" "}<span className="rounded bg-[var(--surface-active)] px-1.5 py-0.5 type-caption leading-none text-[var(--text-secondary)]" data-stage-kind={stage.operational_kind ?? "manual"}>{pipelineStageAutomationLabel(stage)}</span></> : null}</td>
           <td data-label="Responsável">{memberName(lead)}</td>
           <td data-label="Idade no estágio">{formatPipelineAge(lead.atualizado_em)}</td>
           <td data-label="Próximo follow-up">{lead.proxima_acao_em ? new Date(lead.proxima_acao_em).toLocaleString("pt-BR") : lead.proxima_acao ?? "—"}</td>

@@ -18,6 +18,7 @@ import {
   moveLeadStageSchema,
   organizationIdParams,
   parseSavedViewFilters,
+  pipelineSettingsSchema,
   savedViewCreateSchema,
   savedViewListQuerySchema,
   savedViewUpdateSchema,
@@ -49,6 +50,7 @@ import {
   replaceStageTransitions,
   setLeadTag,
   undoBulkOperation,
+  updatePipelineSettings,
   updatePipelineStage,
   updateSavedView,
   updateTag,
@@ -260,6 +262,13 @@ export async function registerOrganizationRoutes(app: FastifyInstance) {
     const { stageId } = stageParams.parse(request.params);
     const { to_stage_ids } = stageTransitionsSchema.parse(request.body);
     return { transitions: await replaceStageTransitions(session.tenantId,stageId,to_stage_ids,actor(request,session)) };
+  });
+
+  app.patch("/organization/pipeline/settings", async (request) => {
+    const session = await requirePermission(request,"pipeline.manage");
+    if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
+    const { enforce_transitions } = await updatePipelineSettings(session.tenantId,actor(request,session),pipelineSettingsSchema.parse(request.body));
+    return { enforce_transitions };
   });
 
   app.patch("/organization/leads/:leadId/stage", async (request) => {

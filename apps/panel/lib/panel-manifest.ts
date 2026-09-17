@@ -76,10 +76,12 @@ export const panelManifest: readonly PanelManifestItem[] = [
   { href: "/uso", label: "Uso e cobrança", group: "Administração", Icon: CreditCard, requiredPermissions: ["usage.read"], menu: true, match: startsAt("/uso") },
   { href: "/configuracoes", label: "Configurações", group: "Administração", Icon: GearSix, capability: "workspace_admin_v1", menu: true, match: (path) => administrationPaths.some((base) => startsAt(base)(path)) },
   { href: "/root/workspaces", label: "Empresas", group: "ROOT", Icon: Vault, rootOnly: true, menu: true, match: startsAt("/root/workspaces") },
+  { href: "/root/versions", label: "Versões e changelogs", group: "ROOT", Icon: Sparkle, rootOnly: true, menu: true, match: startsAt("/root/versions") },
   { href: "/root/saas/planos", label: "Planos e cobrança", group: "ROOT", Icon: CreditCard, rootOnly: true, menu: true, match: startsAt("/root/saas/planos") },
   { href: "/root/saas/gateways", label: "Gateways", group: "ROOT", Icon: CreditCard, rootOnly: true, menu: true, match: startsAt("/root/saas/gateways") },
   { href: "/root/saas/metricas", label: "Métricas SaaS", group: "ROOT", Icon: Gauge, rootOnly: true, menu: true, match: startsAt("/root/saas/metricas") },
   { href: "/root/audit", label: "Auditoria ROOT", group: "ROOT", Icon: Watch, rootOnly: true, menu: true, match: startsAt("/root/audit") },
+  { href: "/changelog", label: "Changelog", group: "Administração", Icon: Sparkle, menu: false, match: startsAt("/changelog") },
   { href: "/perfil", label: "Perfil", group: "Administração", Icon: GearSix, match: startsAt("/perfil") },
   { href: "/alterar-senha", label: "Alterar senha", group: "Administração", Icon: GearSix, match: startsAt("/alterar-senha") }
 ] as const;

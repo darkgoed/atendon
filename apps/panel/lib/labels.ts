@@ -24,7 +24,8 @@ const handoffReasons: Record<string, string> = {
   technical_failure: "Falha técnica da IA",
   commercial_handoff: "Em processo comercial",
   agent_requested: "Transferido pela IA",
-  rate_limited: "Limite de mensagens atingido"
+  rate_limited: "Limite de mensagens atingido",
+  agent_disabled: "IA desativada pela empresa"
 };
 
 const accessStatuses: Record<string, string> = {
@@ -193,8 +194,10 @@ const detailFields: Record<string, string> = {
 
 const protectedFieldPattern = /(api.?key|authorization|cookie|password|secret|token)/i;
 
-function readableFallback(value: string): string {
-  const normalized = value
+// Valores vêm de colunas da API que hoje são NOT NULL, mas o painel não deve
+// quebrar se algum payload trouxer null/undefined no lugar de string.
+function readableFallback(value?: string | null): string {
+  const normalized = (value ?? "")
     .trim()
     .replace(/([a-z\d])([A-Z])/g, "$1 $2")
     .replace(/[._-]+/g, " ")
@@ -255,8 +258,8 @@ export function commercialPreparationAnswers(answers?: Record<string, string> | 
   const selected = commercialPreparationKeys as readonly string[];
   return readableQualificationAnswers(answers).filter((answer) => selected.includes(answer.key));
 }
-export function leadStatusLabel(value: string): string {
-  return leadStatuses[value] ?? readableFallback(value);
+export function leadStatusLabel(value?: string | null): string {
+  return (value ? leadStatuses[value] : undefined) ?? readableFallback(value);
 }
 
 export function handoffReasonLabel(value?: string | null): string {
@@ -264,46 +267,46 @@ export function handoffReasonLabel(value?: string | null): string {
   return handoffReasons[value] ?? "Transferido para atendimento humano";
 }
 
-export function accessStatusLabel(value: string): string {
-  return accessStatuses[value] ?? readableFallback(value);
+export function accessStatusLabel(value?: string | null): string {
+  return (value ? accessStatuses[value] : undefined) ?? readableFallback(value);
 }
 
-export function leadEventLabel(value: string): string {
-  return eventLabels[value] ?? readableFallback(value);
+export function leadEventLabel(value?: string | null): string {
+  return (value ? eventLabels[value] : undefined) ?? readableFallback(value);
 }
 
-export function qualificationStatusLabel(value: string): string {
-  return qualificationStatuses[value] ?? readableFallback(value);
+export function qualificationStatusLabel(value?: string | null): string {
+  return (value ? qualificationStatuses[value] : undefined) ?? readableFallback(value);
 }
 
-export function qualificationResultLabel(value: string): string {
-  return qualificationResults[value] ?? readableFallback(value);
+export function qualificationResultLabel(value?: string | null): string {
+  return (value ? qualificationResults[value] : undefined) ?? readableFallback(value);
 }
 
-export function qualificationClassLabel(value: string): string {
-  return qualificationClasses[value] ?? readableFallback(value);
+export function qualificationClassLabel(value?: string | null): string {
+  return (value ? qualificationClasses[value] : undefined) ?? readableFallback(value);
 }
 
-export function qualificationStepLabel(value: string): string {
-  return qualificationSteps[value] ?? readableFallback(value);
+export function qualificationStepLabel(value?: string | null): string {
+  return (value ? qualificationSteps[value] : undefined) ?? readableFallback(value);
 }
 
-export function auditActionLabel(value: string): string {
-  return auditActions[value] ?? readableFallback(value);
+export function auditActionLabel(value?: string | null): string {
+  return (value ? auditActions[value] : undefined) ?? readableFallback(value);
 }
 
-export function auditResourceLabel(value: string): string {
-  return auditResources[value] ?? readableFallback(value);
+export function auditResourceLabel(value?: string | null): string {
+  return (value ? auditResources[value] : undefined) ?? readableFallback(value);
 }
 
-export function actorScopeLabel(value: string): string {
+export function actorScopeLabel(value?: string | null): string {
   if (value === "root") return "ROOT";
   if (value === "workspace") return "Workspace";
   return readableFallback(value);
 }
 
-export function detailFieldLabel(value: string): string {
-  return detailFields[value] ?? readableFallback(value);
+export function detailFieldLabel(value?: string | null): string {
+  return (value ? detailFields[value] : undefined) ?? readableFallback(value);
 }
 
 function displayScalar(value: unknown, depth: number): string {

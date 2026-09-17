@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { BrandMark } from "@/components/brand-mark";
 import { api } from "@/lib/api";
 import { apiContentUrl, normalizeMeetOrigin, type MeetAccessResponse } from "@/lib/meet";
+import { clearElement } from "@/lib/compat";
 
 type JitsiExternalApi = {
   addListener(event: string, listener: (payload?: unknown) => void): void;
@@ -162,14 +163,14 @@ export function MeetRoom({ endpoint, publicAccess = false }: { endpoint: string;
       active = false;
       instance?.dispose();
       if (apiRef.current === instance) apiRef.current = null;
-      parentNode?.replaceChildren();
+      clearElement(parentNode);
     };
   }, [attempt, endpoint, publicAccess]);
 
   function retry() {
     apiRef.current?.dispose();
     apiRef.current = null;
-    parentRef.current?.replaceChildren();
+    clearElement(parentRef.current);
     setAttempt((current) => current + 1);
   }
 

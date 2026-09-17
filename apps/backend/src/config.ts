@@ -112,7 +112,6 @@ const schema = z.object({
     (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
     z.string().trim().min(1).optional()
   ),
-  CHANGELOG_PATH: z.string().trim().min(1).default(fileURLToPath(new URL("../../../changelog.json", import.meta.url))),
   DEPLOY_VERSION: z.preprocess(
     (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
     z.string().trim().min(1).max(128)
@@ -155,11 +154,6 @@ const schema = z.object({
     (value) => value === "" ? undefined : value,
     z.string().min(16).optional()
   ),
-  CHANGELOG_OPENROUTER_API_KEY: z.preprocess(
-    (value) => value === "" ? undefined : value,
-    z.string().min(16).optional()
-  ),
-  CHANGELOG_OPENROUTER_MODEL: z.string().trim().min(1).default("google/gemma-4-26b-a4b-it:free"),
   DEFAULT_AI_MODEL: z.string().min(1).default("openai/gpt-oss-20b:free"),
   // Optional Tripz/Zulu-only configuration. An empty value keeps the feature
   // disabled/configuration-independent for tenants that do not use Tripz.

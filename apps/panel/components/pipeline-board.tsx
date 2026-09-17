@@ -14,6 +14,12 @@ function pipelineColumnWidth(width: PipelinePreferences["columnWidth"]): number 
   return width === 280 ? 272 : width;
 }
 
+export function pipelineStageAutomationLabel(stage: Pick<PipelineStage, "operational_kind">): string {
+  if (stage.operational_kind === "ai_follow_up") return "IA";
+  if (stage.operational_kind === "call") return "Ligação";
+  return "Manual";
+}
+
 function stageTone(stage: PipelineStage): string {
   if (stage.operational_kind === "ai_follow_up") return "var(--info)";
   if (stage.operational_kind === "call") return "var(--danger)";
@@ -64,6 +70,8 @@ export function PipelineBoard({
   pendingLeadIds,
   preferences,
   timezone,
+  columnLoadMore,
+  onColumnLoadMore,
   onToggleSelected,
   onMoveRequest,
   onRetry
@@ -82,6 +90,8 @@ export function PipelineBoard({
   pendingLeadIds: Set<string>;
   preferences: PipelinePreferences;
   timezone?: string;
+  columnLoadMore?: Map<string, { remaining: number | null; loading: boolean; visible: boolean }>;
+  onColumnLoadMore?: (stage: PipelineStage) => void;
   onToggleSelected: (leadId: string) => void;
   onMoveRequest: (lead: PipelineLead, target?: PipelineStage) => void;
   onRetry: () => void;
@@ -165,6 +175,8 @@ export function PipelineBoard({
                 dragging={dragging}
                 droppable={droppable}
                 dropActive={dropStageId === stage.id}
+                loadMore={columnLoadMore?.get(stage.id)}
+                onLoadMore={onColumnLoadMore ? () => onColumnLoadMore(stage) : undefined}
                 onDragStart={startDrag}
                 onDragEnd={finishDrag}
                 onDragEnter={() => {
@@ -208,6 +220,8 @@ export function PipelineColumn({
   dragging,
   droppable,
   dropActive,
+  loadMore,
+  onLoadMore,
   onDragStart,
   onDragEnd,
   onDragEnter,
@@ -228,6 +242,8 @@ export function PipelineColumn({
   dragging: PipelineLead | null;
   droppable: boolean;
   dropActive: boolean;
+  loadMore?: { remaining: number | null; loading: boolean; visible: boolean };
+  onLoadMore?: () => void;
   onDragStart: (event: DragEvent<HTMLElement>, lead: PipelineLead) => void;
   onDragEnd: () => void;
   onDragEnter: () => void;
@@ -254,6 +270,7 @@ export function PipelineColumn({
         <div className="flex min-w-0 items-center gap-2">
           <span className="pipeline-column__dot" style={{ backgroundColor: tone }} aria-hidden="true" />
           <span className="pipeline-column__stage-name">{stage.name}</span>
+          <span className="rounded bg-[var(--surface-active)] px-1.5 py-0.5 type-caption leading-none text-[var(--text-secondary)]" data-stage-kind={stage.operational_kind ?? "manual"}>{pipelineStageAutomationLabel(stage)}</span>
           <span className="pipeline-column__count">{leads.length}{stage.capacity_target ? `/${stage.capacity_target}` : ""}</span>
           <span className="pipeline-column__menu" aria-hidden="true"><DotsThree size={15} weight="bold" /></span>
         </div>
@@ -283,6 +300,18 @@ export function PipelineColumn({
           />
         ))}
         {!loading && leads.length === 0 && !dropActive ? <p className="pipeline-column__empty">Nenhum lead nesta etapa</p> : null}
+        {!loading && loadMore?.visible && onLoadMore ? (
+          <button
+            type="button"
+            className="btn pipeline-column__load-more px-2 py-1.5 text-xs"
+            onClick={onLoadMore}
+            disabled={loadMore.loading}
+          >
+            {loadMore.loading
+              ? "Carregando…"
+              : `Carregar mais${loadMore.remaining != null && loadMore.remaining > 0 ? ` (${loadMore.remaining})` : ""}`}
+          </button>
+        ) : null}
         {!loading ? <span className="pipeline-column__add" aria-hidden="true">+ Adicionar lead</span> : null}
       </div>
     </section>

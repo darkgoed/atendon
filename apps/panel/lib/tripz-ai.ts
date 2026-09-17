@@ -1,4 +1,5 @@
 import { ApiError, api } from "./api";
+import { shouldSubmitOnEnter } from "./compat";
 
 export const TRIPZ_AI_BASE_PATH = "/tripz-ai";
 export const TRIPZ_AI_ACCEPT = "image/jpeg,image/png,image/webp,application/pdf";
@@ -379,8 +380,11 @@ export function shouldSubmitTripzComposer(input: {
   key: string;
   shiftKey: boolean;
   isComposing: boolean;
+  keyCode?: number;
+  compositionActive?: boolean;
+  compositionJustEnded?: boolean;
 }): boolean {
-  return input.key === "Enter" && !input.shiftKey && !input.isComposing;
+  return shouldSubmitOnEnter(input);
 }
 
 export function createTripzIdempotencyKey(prefix = "tripz"): string {

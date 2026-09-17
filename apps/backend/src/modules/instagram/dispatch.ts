@@ -99,6 +99,64 @@ async function conversationIdFor(
   return result.rows[0].id;
 }
 
+const AVATAR_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1_000;
+
+/**
+ * O webhook de mensagem só entrega o IGSID numérico do remetente: sem esta
+ * busca, `conversations.instagram_username`/`contact_name`/`contact_avatar_url`
+ * ficam NULL para sempre e o painel cai no fallback "Identidade do Instagram
+ * indisponível". Consulta a Graph API sob demanda apenas quando ainda falta
+ * identidade OU a foto está velha (mesma janela de 6h usada pelo WhatsApp em
+ * session-manager.ts), para não gastar uma chamada de Graph por mensagem.
+ * Nunca lança: qualquer falha aqui é enriquecimento perdido, não motivo para
+ * derrubar o processamento da mensagem.
+ */
+async function enrichInstagramContact(
+  options: InstagramInboxDispatcherOptions,
+  row: InstagramInboxRow,
+  instagramContactId: string
+): Promise<{ instagramUsername?: string; contactName?: string }> {
+  const current = await options.database.query<{
+    instagram_username: string | null;
+    contact_name: string | null;
+    contact_avatar_updated_at: Date | string | null;
+  }>(
+    `SELECT instagram_username, contact_name, contact_avatar_updated_at
+     FROM conversations
+     WHERE tenant_id=$1 AND session_id=$2 AND instagram_contact_id=$3`,
+    [row.tenant_id, row.session_id, instagramContactId]
+  );
+  const conversation = current.rows[0];
+  const identityKnown = Boolean(conversation?.instagram_username || conversation?.contact_name);
+  const avatarUpdatedAt = conversation?.contact_avatar_updated_at
+    ? new Date(conversation.contact_avatar_updated_at).getTime()
+    : 0;
+  const avatarStale = Date.now() - avatarUpdatedAt > AVATAR_REFRESH_INTERVAL_MS;
+  if (identityKnown && !avatarStale) return {};
+
+  try {
+    const token = await options.instagram.repository.getToken(row.tenant_id, row.session_id);
+    const profile = await options.instagram.provider.fetchUserProfile({
+      instagramScopedUserId: instagramContactId,
+      accessToken: token
+    });
+    // Sempre grava contact_avatar_updated_at (mesmo sem foto nova) para não
+    // reconsultar a Graph a cada mensagem quando ela não tem a foto ainda.
+    await options.database.query(
+      `UPDATE conversations
+       SET contact_avatar_url=COALESCE($4,contact_avatar_url), contact_avatar_updated_at=now()
+       WHERE tenant_id=$1 AND session_id=$2 AND instagram_contact_id=$3`,
+      [row.tenant_id, row.session_id, instagramContactId, profile.profilePictureUrl]
+    );
+    return {
+      instagramUsername: !conversation?.instagram_username && profile.username ? profile.username : undefined,
+      contactName: !conversation?.contact_name && profile.name ? profile.name : undefined
+    };
+  } catch {
+    return {};
+  }
+}
+
 export function createInstagramInboxDispatcher(options: InstagramInboxDispatcherOptions): InstagramInboxDispatcher {
   return async (untypedRow) => {
     const row = typedRow(untypedRow);
@@ -165,6 +223,7 @@ export function createInstagramInboxDispatcher(options: InstagramInboxDispatcher
       }
       const text = typeof message.text === "string" ? message.text : "";
       if (!text && !inboundMedia.mediaType) throw new Error("Instagram inbox message has no supported content");
+      const enrichment = await enrichInstagramContact(options, row, instagramContactId);
       await options.enqueueInbound({
         channel: "instagram",
         externalId,
@@ -172,6 +231,7 @@ export function createInstagramInboxDispatcher(options: InstagramInboxDispatcher
         sessionId: row.session_id,
         contactPhone: `ig:${instagramContactId}`,
         instagramContactId,
+        ...enrichment,
         text,
         ...inboundMedia
       });

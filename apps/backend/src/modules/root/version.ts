@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import type { Pool } from "pg";
 import { config } from "../../config.js";
+import { db } from "../../db/client.js";
 
 export interface ChangelogItem {
   version: string;
@@ -9,45 +11,61 @@ export interface ChangelogItem {
 }
 
 type ScopedChange = { text: string; tenant_slugs: string[] };
-type StoredChangelogItem = Omit<ChangelogItem, "changes"> & { changes: Array<string | ScopedChange> };
 
-export function filterChangelogHistory(history: StoredChangelogItem[], tenantSlug?: string): ChangelogItem[] {
-  return history.map((item) => ({
-    version: item.version,
-    date: item.date,
-    changes: (Array.isArray(item.changes) ? item.changes : []).flatMap((change) => {
-      const text = typeof change === "string" ? change.trim() : typeof change?.text === "string" ? change.text.trim() : "";
+export interface VersionInfo {
+  version: string;
+  deployVersion: string;
+  buildNumber: number | null;
+  changelog: ChangelogItem[];
+}
+
+interface PublishedReleaseRow {
+  version: string;
+  created_at: Date | string;
+  public_changes: ScopedChange[] | null;
+}
+
+/** Same visibility rule the legacy changelog.json used: an item with no
+ * tenant_slugs is global and shown to everyone; otherwise only to the tenants
+ * it names. ROOT-only row-level GLOBAL/TENANT scoping (releases.scope) is a
+ * separate concern for the /versions admin module, not this public payload. */
+export function filterPublishedReleases(rows: PublishedReleaseRow[], tenantSlug?: string): ChangelogItem[] {
+  return rows.map((row) => ({
+    version: row.version,
+    date: new Date(row.created_at).toISOString().slice(0, 10),
+    changes: (row.public_changes ?? []).flatMap((change) => {
+      const text = change?.text?.trim();
       if (!text) return [];
-      const declaredScopes = typeof change === "object" && Array.isArray(change.tenant_slugs)
-        ? change.tenant_slugs
-        : [];
-      // O escopo é dado explícito do changelog, nunca inferido pelo nome de uma
-      // empresa no texto. Inferência por regex exigia editar código a cada
-      // tenant novo e transformava marca em lógica de produto.
+      const declaredScopes = Array.isArray(change.tenant_slugs) ? change.tenant_slugs : [];
       return declaredScopes.length === 0 || (tenantSlug && declaredScopes.includes(tenantSlug)) ? [text] : [];
     })
   })).filter((item) => item.changes.length > 0);
 }
 
-export interface VersionInfo {
-  version: string;
-  deployVersion: string;
-  changelog: ChangelogItem[];
-}
-
-export async function getVersionInfo(tenantSlug?: string): Promise<VersionInfo> {
-  let changelogCurrent: string | undefined;
+export async function getVersionInfo(
+  tenantSlug?: string,
+  database: Pick<Pool, "query"> = db
+): Promise<VersionInfo> {
+  let releasesCurrent: string | undefined;
+  let buildNumber: number | null = null;
   let changelog: ChangelogItem[] = [];
 
   try {
-    const raw = await readFile(config.CHANGELOG_PATH, "utf-8");
-    const parsed = JSON.parse(raw) as { current?: string; history?: StoredChangelogItem[] };
-    changelogCurrent = typeof parsed.current === "string" && parsed.current.trim() ? parsed.current.trim() : undefined;
-    if (Array.isArray(parsed.history)) {
-      changelog = filterChangelogHistory(parsed.history, tenantSlug);
-    }
+    const latest = await database.query<{ version: string; build_number: string }>(
+      "SELECT version,build_number FROM releases ORDER BY build_number DESC LIMIT 1"
+    );
+    releasesCurrent = latest.rows[0]?.version;
+    if (latest.rows[0]?.build_number) buildNumber = Number(latest.rows[0].build_number);
+
+    const published = await database.query<PublishedReleaseRow>(
+      `SELECT version,created_at,public_changes FROM releases
+       WHERE published=true
+       ORDER BY build_number DESC
+       LIMIT 20`
+    );
+    changelog = filterPublishedReleases(published.rows, tenantSlug);
   } catch (error) {
-    console.warn("Não foi possível ler changelog.json; usando fallback de versão", error);
+    console.warn("Não foi possível ler o histórico de releases; usando fallback de versão", error);
   }
 
   let packageVersion = "0.0.0";
@@ -58,11 +76,12 @@ export async function getVersionInfo(tenantSlug?: string): Promise<VersionInfo> 
   } catch (error) {
     console.warn("Não foi possível ler package.json para fallback de versão", error);
   }
-  const currentVersion = config.APP_VERSION?.trim() || changelogCurrent || packageVersion;
+  const currentVersion = config.APP_VERSION?.trim() || releasesCurrent || packageVersion;
 
   return {
     version: currentVersion,
     deployVersion: config.DEPLOY_VERSION,
+    buildNumber,
     changelog
   };
 }

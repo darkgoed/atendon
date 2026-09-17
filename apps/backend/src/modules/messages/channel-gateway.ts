@@ -372,7 +372,41 @@ export class ChannelGatewayRouter implements MessageGateway {
 
   async refreshContactAvatar(sessionId: string, contactPhone: string): Promise<void> {
     const route = await this.route(sessionId);
-    if (route.channel === "whatsapp") await this.whatsappGateway.refreshContactAvatar?.(sessionId, contactPhone);
+    if (route.channel === "whatsapp") {
+      await this.whatsappGateway.refreshContactAvatar?.(sessionId, contactPhone);
+      return;
+    }
+    // O mesmo throttle de 6h do WhatsApp (session-manager.ts) evita gastar
+    // uma chamada de Graph por mensagem; instagram/dispatch.ts já cobre o
+    // caminho de inbound novo, então este branch cobre outras origens que
+    // chamem refreshContactAvatar diretamente para o mesmo contato.
+    const recipientId = instagramRecipient(contactPhone);
+    const claimed = await withTenantTransaction(this.database, route.tenantId, async (client) => client.query<{ id: string }>(
+      `UPDATE conversations
+       SET contact_avatar_updated_at=now()
+       WHERE tenant_id=$1 AND session_id=$2 AND instagram_contact_id=$3
+         AND (contact_avatar_updated_at IS NULL OR contact_avatar_updated_at < now() - interval '6 hours')
+       RETURNING id`,
+      [route.tenantId, sessionId, recipientId]
+    ));
+    if (!claimed.rows[0]) return;
+    try {
+      const accessToken = await this.instagramRuntime.repository.getToken(route.tenantId, sessionId);
+      const profile = await this.instagramRuntime.provider.fetchUserProfile({
+        instagramScopedUserId: recipientId,
+        accessToken
+      });
+      if (!profile.profilePictureUrl) return;
+      await this.database.query(
+        `UPDATE conversations SET contact_avatar_url=$4
+         WHERE tenant_id=$1 AND session_id=$2 AND instagram_contact_id=$3`,
+        [route.tenantId, sessionId, recipientId, profile.profilePictureUrl]
+      );
+    } catch {
+      // Best effort: falha na Graph API não pode derrubar o fluxo do
+      // chamador; a foto simplesmente permanece desatualizada até a
+      // próxima janela de 6h.
+    }
   }
 
   async sendReaction(sessionId: string, contactPhone: string, receipt: ReadReceipt, emoji: string): Promise<void> {

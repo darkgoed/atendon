@@ -343,6 +343,29 @@ export async function loadPipeline(tenantId: string, includeArchived = false) {
   };
 }
 
+export async function updatePipelineSettings(
+  tenantId: string,
+  actor: OrganizationActor,
+  input: { enforce_transitions: boolean }
+) {
+  return withTransaction(async (client) => {
+    const current = await client.query<{ pipeline_enforce_transitions: boolean | null }>(
+      "SELECT pipeline_enforce_transitions FROM tenants WHERE id=$1 FOR UPDATE",
+      [tenantId]
+    );
+    if (!current.rows[0]) throw httpError(404,"Tenant não encontrado");
+    await client.query(
+      "UPDATE tenants SET pipeline_enforce_transitions=$2 WHERE id=$1",
+      [tenantId,input.enforce_transitions]
+    );
+    await insertAudit(client,tenantId,actor,"pipeline.settings.updated","tenant",tenantId,{
+      enforce_transitions: input.enforce_transitions,
+      previous_enforce_transitions: current.rows[0].pipeline_enforce_transitions
+    });
+    return { enforce_transitions: input.enforce_transitions };
+  });
+}
+
 async function setDefaultStage(client: PoolClient, tenantId: string, stage: StageRow) {
   await client.query(
     `UPDATE pipeline_stages SET is_default=false,updated_at=now()

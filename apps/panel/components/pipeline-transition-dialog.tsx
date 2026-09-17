@@ -3,6 +3,7 @@
 import { ArrowRight, X } from "@phosphor-icons/react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { ModalDialog } from "@/components/modal-dialog";
+import { pipelineStageAutomationLabel } from "@/components/pipeline-board";
 import { instantFromLocalMinute } from "@/lib/timezone";
 import { lossReasonRequiresNote, useLossReasons } from "@/lib/loss-reasons";
 import {
@@ -132,7 +133,7 @@ export function PipelineTransitionDialog({
         <label className="field">
           <span className="label">Etapa de destino</span>
           <select className="input" value={targetId} onChange={(event) => { setTargetId(event.target.value); setValidationError(""); }} data-autofocus disabled={pending}>
-            {targets.map((stage) => <option key={stage.id} value={stage.id}>{stage.name} · {pipelineStatusLabel(stage.technical_status)}</option>)}
+            {targets.map((stage) => <option key={stage.id} value={stage.id}>{stage.name} · {pipelineStatusLabel(stage.technical_status)} · {pipelineStageAutomationLabel(stage)}</option>)}
           </select>
         </label>
 

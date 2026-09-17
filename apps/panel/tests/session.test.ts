@@ -183,6 +183,22 @@ describe("hasWorkspaceWideCaseScope", () => {
       activeWorkspace: null
     }))).toBe(true);
   });
+
+  it.each([null, undefined])("does not crash when the active workspace role is %s", (role) => {
+    // Regressão: payload com role nulo estourava "Cannot read properties of
+    // null (reading 'trim')" e derrubava o Shell em todas as páginas.
+    const session = buildSession({
+      activeWorkspace: {
+        id: "workspace-1",
+        name: "Workspace",
+        slug: "workspace",
+        status: "active",
+        role: role as unknown as string
+      }
+    }) as unknown as Parameters<typeof hasWorkspaceWideCaseScope>[0];
+    expect(hasWorkspaceWideCaseScope(session)).toBe(false);
+    expect(canLeaveCaseUnassigned(session)).toBe(false);
+  });
 });
 
 describe("case transfer UI scope", () => {

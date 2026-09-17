@@ -23,27 +23,28 @@ function toneColor(tokens: ChartTokens, tone: FunnelStage["tone"]) {
 }
 
 /**
- * Funil real em SVG: cada estágio é um trapézio cuja largura é proporcional
- * ao volume, com afunilamento suave entre estágios — não caixas empilhadas
- * do mesmo tamanho fingindo ser um funil. Rótulo, valor e taxa de conversão
- * são desenhados como texto SVG para permanecerem alinhados ao formato em
- * qualquer viewport, sem depender de uma grade CSS paralela.
+ * Funil real em SVG: silhueta centralizada no meio do gráfico, cada estágio
+ * com largura proporcional ao volume e afunilamento suave entre estágios.
+ * Rótulo e valor ficam dentro do estágio quando couberem (silhueta larga) e
+ * ao lado quando o estágio é estreito demais; a taxa de conversão aparece
+ * entre estágios, sempre legível. Texto em SVG permanece alinhado ao formato
+ * em qualquer viewport (viewBox escala) sem cortar.
  */
 export function Funnel({ stages, height = 240, ariaLabel }: { stages: FunnelStage[]; height?: number; ariaLabel: string }) {
   const tokens = useChartTokens();
-  const gradientId = useId();
+  const gradientId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   if (!stages.length) return <ChartEmptyState />;
 
   const width = 640;
   const top = 6;
   const bottom = 6;
-  const stageGap = 4;
+  const stageGap = 20;
   const plotHeight = height - top - bottom;
   const stageHeight = (plotHeight - stageGap * (stages.length - 1)) / stages.length;
   const maxValue = Math.max(...stages.map((s) => s.value), 1);
-  const minRatio = 0.32;
-  const shapeHalfWidth = width * 0.34;
-  const cx = width * 0.38;
+  const minRatio = 0.28;
+  const shapeHalfWidth = width * 0.42;
+  const cx = width / 2;
 
   const widthFor = (value: number) => (minRatio + (1 - minRatio) * (value / maxValue)) * shapeHalfWidth;
 
@@ -74,21 +75,35 @@ export function Funnel({ stages, height = 240, ariaLabel }: { stages: FunnelStag
             `${cx - nextHalf},${y + stageHeight}`
           ].join(" ");
           const midY = y + stageHeight / 2;
-          const textX = cx + shapeHalfWidth + 20;
+          // Dentro da silhueta quando a largura comporta o rótulo; ao lado quando não couber.
+          const inside = currentHalf * 2 >= 190;
+          const labelSize = Math.min(12, Math.max(10, stageHeight * 0.28));
+          const valueSize = Math.min(15, Math.max(12, stageHeight * 0.38));
+          const textX = inside ? cx : cx + currentHalf + 10;
+          const anchor = inside ? "middle" : "start";
+          const twoLines = stageHeight >= 30;
           return (
             <g key={stage.label}>
               <polygon points={points} fill={`url(#${gradientId}-${index})`} stroke={color} strokeWidth={1.25} strokeOpacity={0.6} />
               {index > 0 && stage.conversionLabel ? (
-                <text x={cx} y={y - stageGap / 2 + 3} textAnchor="middle" fontSize="10" fill={tokens.textMuted} fontFamily={tokens.fontMono}>
+                <text x={cx} y={y - stageGap / 2 + 3} textAnchor="middle" fontSize="10.5" fill={tokens.textMuted} fontFamily={tokens.fontMono}>
                   {stage.conversionLabel}
                 </text>
               ) : null}
-              <text x={textX} y={midY - 4} fontSize="12" fill={tokens.text} fontFamily={tokens.fontSans}>
-                {stage.label}
-              </text>
-              <text x={textX} y={midY + 14} fontSize="15" fontWeight={600} fill={color} fontFamily={tokens.fontMono}>
-                {stage.value.toLocaleString("pt-BR")}
-              </text>
+              {twoLines ? (
+                <>
+                  <text x={textX} y={midY - 3} textAnchor={anchor} fontSize={labelSize} fill={tokens.textSecondary} fontFamily={tokens.fontSans}>
+                    {stage.label}
+                  </text>
+                  <text x={textX} y={midY + 13} textAnchor={anchor} fontSize={valueSize} fontWeight={600} fill={color} fontFamily={tokens.fontMono}>
+                    {stage.value.toLocaleString("pt-BR")}
+                  </text>
+                </>
+              ) : (
+                <text x={textX} y={midY + valueSize / 3} textAnchor={anchor} fontSize={valueSize} fontWeight={600} fill={color} fontFamily={tokens.fontMono}>
+                  {stage.label} · {stage.value.toLocaleString("pt-BR")}
+                </text>
+              )}
             </g>
           );
         })}

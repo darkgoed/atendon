@@ -3,6 +3,7 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
+import { deepClone } from "@/lib/compat";
 import { usePermission } from "@/lib/use-permission";
 import { Button, PageHeader } from "@/components/ui";
 import styles from "@/components/settings-panels.module.css";
@@ -98,7 +99,7 @@ export default function HumanizacaoPage() {
     setSaved(false);
     setValue((current) => {
       if (!current) return current;
-      const copy = structuredClone(current);
+      const copy = deepClone(current);
       let node: Json = copy;
       for (const key of path.slice(0, -1)) node = node[key] as Json;
       node[path.at(-1)!] = next;

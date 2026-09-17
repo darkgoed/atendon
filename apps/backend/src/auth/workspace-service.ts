@@ -10,6 +10,7 @@ export interface WorkspaceSummary {
   status: string;
   role: string;
   timezone: string;
+  logo_data: string | null;
 }
 
 export interface UserIdentity {
@@ -21,13 +22,13 @@ export interface UserIdentity {
 export async function listWorkspacesForUser(pool: Pool, userId: string, isRoot: boolean): Promise<WorkspaceSummary[]> {
   if (isRoot) {
     const result = await pool.query<WorkspaceSummary>(
-      `SELECT id,name,COALESCE(slug,id::text) slug,status,'ROOT' role,timezone
+      `SELECT id,name,COALESCE(slug,id::text) slug,status,'ROOT' role,timezone,logo_data
        FROM tenants WHERE status <> 'suspended' ORDER BY name`
     );
     return result.rows;
   }
   const result = await pool.query<WorkspaceSummary>(
-    `SELECT t.id,t.name,COALESCE(t.slug,t.id::text) slug,t.status,r.name role,t.timezone
+    `SELECT t.id,t.name,COALESCE(t.slug,t.id::text) slug,t.status,r.name role,t.timezone,t.logo_data
      FROM workspace_members m
      JOIN tenants t ON t.id=m.workspace_id
      JOIN workspace_roles r ON r.id=m.role_id
@@ -56,8 +57,8 @@ export async function buildMePayload(session: {
     : session.permissions;
   const [workspaces, active, user] = await Promise.all([
     listWorkspacesForUser(db, session.userId, session.isRoot),
-    db.query<{ id: string; name: string; slug: string; status: string; timezone: string }>(
-      "SELECT id,name,COALESCE(slug,id::text) slug,status,timezone FROM tenants WHERE id=$1",
+    db.query<{ id: string; name: string; slug: string; status: string; timezone: string; logo_data: string | null }>(
+      "SELECT id,name,COALESCE(slug,id::text) slug,status,timezone,logo_data FROM tenants WHERE id=$1",
       [session.tenantId]
     ),
     db.query<{ name: string | null; must_change_password: boolean }>(

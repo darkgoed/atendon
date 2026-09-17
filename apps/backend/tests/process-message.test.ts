@@ -147,7 +147,8 @@ function setup(contextOverrides = {}, aiTurnProgress?: ConstructorParameters<typ
     markContactMessagesRead: vi.fn().mockResolvedValue(undefined),
     listAiStickerCatalog: vi.fn().mockResolvedValue([]),
     findEnabledAiSticker: vi.fn().mockResolvedValue(null),
-    recordAiStickerSend: vi.fn().mockResolvedValue(undefined)
+    recordAiStickerSend: vi.fn().mockResolvedValue(undefined),
+    markAiUnavailable: vi.fn().mockResolvedValue(undefined)
   };
   const gateway = {
     sendText: vi.fn().mockResolvedValue({ externalId: "sent-1" }),
@@ -3417,6 +3418,27 @@ Full name: Renan de Carvalho`;
     await expect(processor.process(message)).resolves.toBe("ignored");
     expect(ai.complete).not.toHaveBeenCalled();
     expect(gateway.sendText).not.toHaveBeenCalled();
+  });
+
+  // Regressão: quando a IA está desativada globalmente (ou bloqueada por
+  // regra comercial) mas conversations.ai_active ainda é true no banco, a
+  // conversa nunca virava visível para o atendimento humano — o lead ficava
+  // sem resposta e sem aparecer na aba "Abertas". markAiUnavailable persiste
+  // essa transição na primeira mensagem ignorada por esse motivo.
+  it("marks the conversation unavailable for AI when the column was still true", async () => {
+    const { processor, repository, gateway, ai } = setup({ aiActive: false, aiActiveColumn: true });
+    await expect(processor.process(message)).resolves.toBe("ignored");
+    expect(ai.complete).not.toHaveBeenCalled();
+    expect(gateway.sendText).not.toHaveBeenCalled();
+    expect(repository.markAiUnavailable).toHaveBeenCalledWith(message.tenantId, "conversation-1");
+  });
+
+  it("does not touch conversation state when a manual pause already marked ai_active=false", async () => {
+    const { processor, repository, gateway, ai } = setup({ aiActive: false, aiActiveColumn: false });
+    await expect(processor.process(message)).resolves.toBe("ignored");
+    expect(ai.complete).not.toHaveBeenCalled();
+    expect(gateway.sendText).not.toHaveBeenCalled();
+    expect(repository.markAiUnavailable).not.toHaveBeenCalled();
   });
 
   it("does not process a duplicate external message", async () => {

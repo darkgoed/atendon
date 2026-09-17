@@ -241,6 +241,13 @@ describe("Tripz composer guards", () => {
     expect(shouldSubmitTripzComposer({ key: "Enter", shiftKey: false, isComposing: false })).toBe(true);
     expect(shouldSubmitTripzComposer({ key: "Enter", shiftKey: true, isComposing: false })).toBe(false);
     expect(shouldSubmitTripzComposer({ key: "Enter", shiftKey: false, isComposing: true })).toBe(false);
+    // Safari dispara compositionend ANTES do keydown que confirma a composição:
+    // sem o rastro, isComposing já é false e o texto intermediário seria enviado.
+    expect(shouldSubmitTripzComposer({ key: "Enter", shiftKey: false, isComposing: false, compositionJustEnded: true })).toBe(false);
+    expect(shouldSubmitTripzComposer({ key: "Enter", shiftKey: false, isComposing: false, compositionActive: true })).toBe(false);
+    // IMEs que marcam o keydown como "Process" (keyCode 229) não enviam.
+    expect(shouldSubmitTripzComposer({ key: "Enter", shiftKey: false, isComposing: false, keyCode: 229 })).toBe(false);
+    expect(shouldSubmitTripzComposer({ key: "Enter", shiftKey: false, isComposing: false, keyCode: 13 })).toBe(true);
   });
 
   it("creates printable idempotency keys accepted by the backend contract", () => {

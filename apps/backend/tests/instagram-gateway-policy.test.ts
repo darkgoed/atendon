@@ -16,6 +16,7 @@ function providerDouble() {
     exchangeOAuthCode: vi.fn(),
     refreshAccessToken: vi.fn(),
     subscribeWebhook: vi.fn(),
+    fetchUserProfile: vi.fn().mockResolvedValue({ username: null, name: null, profilePictureUrl: null }),
     sendText,
     sendMedia,
     fetchMedia: vi.fn()

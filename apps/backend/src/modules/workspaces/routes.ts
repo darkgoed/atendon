@@ -59,6 +59,18 @@ const timezoneBody = z.object({
   { message: "O início do horário comercial deve ser antes do fim", path: ["business_hours_end"] }
 );
 const invitationPassword = z.string().min(8).max(200);
+const LOGO_DATA_MAX_LENGTH = 150_000;
+const logoBody = z.object({
+  logo_data: z.string({
+    required_error: "Informe a logo como data URL",
+    invalid_type_error: "A logo deve ser uma string (data URL)"
+  })
+    .max(LOGO_DATA_MAX_LENGTH, `A logo excede o limite de ${LOGO_DATA_MAX_LENGTH} caracteres`)
+    .refine(
+      (value) => /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value) && (value.length - value.indexOf(",") - 1) % 4 === 0,
+      "Logo inválida: use um data URL base64 de imagem PNG, JPEG ou WEBP"
+    )
+});
 const acceptInvitationBody = z.object({
   token: z.string().trim().min(32).max(200),
   currentPassword: invitationPassword.optional(),
@@ -189,6 +201,40 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
       metadata: { timezone: body.timezone, business_hours_start: body.business_hours_start, business_hours_end: body.business_hours_end }
     });
     return { workspace: result.rows[0], queue_adjustment: queueAdjustment };
+  });
+
+  app.patch("/workspaces/current/logo", async (request) => {
+    const session = await requirePermission(request, "workspace.update");
+    const body = logoBody.parse(request.body);
+    const result = await db.query<{ id: string; name: string; logo_data: string | null }>(
+      `UPDATE tenants SET logo_data=$2,updated_at=now()
+       WHERE id=$1 RETURNING id,name,logo_data`,
+      [session.tenantId, body.logo_data]
+    );
+    if (!result.rows[0]) throw httpError(404, "Workspace não encontrado");
+    await audit(request, {
+      action: "workspace.logo.update",
+      resourceType: "workspace",
+      resourceId: session.tenantId,
+      metadata: { logo_data_length: body.logo_data.length }
+    });
+    return { workspace: result.rows[0] };
+  });
+
+  app.delete("/workspaces/current/logo", async (request) => {
+    const session = await requirePermission(request, "workspace.update");
+    const result = await db.query<{ id: string; name: string; logo_data: string | null }>(
+      `UPDATE tenants SET logo_data=NULL,updated_at=now()
+       WHERE id=$1 RETURNING id,name,logo_data`,
+      [session.tenantId]
+    );
+    if (!result.rows[0]) throw httpError(404, "Workspace não encontrado");
+    await audit(request, {
+      action: "workspace.logo.delete",
+      resourceType: "workspace",
+      resourceId: session.tenantId
+    });
+    return { workspace: result.rows[0] };
   });
 
   app.get("/workspaces/current/members", async (request) => {
