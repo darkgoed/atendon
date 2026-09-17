@@ -191,7 +191,7 @@ export function CommercialDashboard({
         <div className={styles.actions}>
           <div className={styles.periodControl} aria-label="Período do dashboard">
             {periodOptions.map((option) => (
-              <Button
+              <button
                 key={option.key}
                 type="button"
                 className={selectedPeriod === option.key ? styles.periodSelected : styles.periodOption}
@@ -199,21 +199,20 @@ export function CommercialDashboard({
                 onClick={() => onPeriodChange(option.key)}
               >
                 {option.label}
-              </Button>
+              </button>
             ))}
-            <Button
+            <button
               type="button"
               className={selectedPeriod === "custom" ? styles.periodSelected : styles.periodOption}
               aria-pressed={selectedPeriod === "custom"}
               onClick={() => onPeriodChange("custom")}
             >
               Período
-            </Button>
+            </button>
           </div>
-          <button type="button" className="btn" onClick={() => exportDashboard(data)}>
-            <ArrowLineDown size={16} aria-hidden="true" />
+          <Button tone="quiet" icon={<ArrowLineDown size={16} aria-hidden="true" />} onClick={() => exportDashboard(data)}>
             Exportar
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -266,7 +265,7 @@ export function CommercialDashboard({
               ["1º atendimento", data.sdr_metrics.average_first_response_minutes == null ? "—" : `${data.sdr_metrics.average_first_response_minutes} min`],
               ["Follow-ups atrasados", data.sdr_metrics.overdue_follow_ups],
               ["No-shows recuperados", data.sdr_metrics.recovered_no_shows]
-            ].map(([label, value]) => <div key={String(label)} className="rounded border border-[var(--border)] p-2"><dt className="type-caption text-[var(--text-muted)]">{label}</dt><dd className="mono mt-1 text-lg font-semibold">{value}</dd></div>)}
+            ].map(([label, value]) => <div key={String(label)}><dt>{label}</dt><dd>{value}</dd></div>)}
           </dl>
         </Card>
 
@@ -289,7 +288,7 @@ export function CommercialDashboard({
               ["Ticket médio", formatMoney(data.commercial_metrics.average_ticket)],
               ["Reagendadas", data.commercial_metrics.rescheduled],
               ["Follow-ups atrasados", data.commercial_metrics.overdue_follow_ups]
-            ].map(([label, value]) => <div key={String(label)} className="rounded border border-[var(--border)] p-2"><dt className="type-caption text-[var(--text-muted)]">{label}</dt><dd className="mono mt-1 text-lg font-semibold">{value}</dd></div>)}
+            ].map(([label, value]) => <div key={String(label)}><dt>{label}</dt><dd>{value}</dd></div>)}
           </dl>
         </Card>
 
@@ -319,7 +318,7 @@ export function CommercialDashboard({
                 const status = statusLabel(appointment.status, overdue);
                 return (
                   <div key={appointment.id} className="grid gap-3 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
-                    <time className="mono rounded-sm bg-[var(--surface-active)] px-2 py-1 text-xs font-semibold text-[var(--primary)]">
+                    <time className={styles.agendaTime}>
                       {new Intl.DateTimeFormat("pt-BR", { timeZone: data.period.timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(appointment.start_at))}
                     </time>
                     <div className="min-w-0">
@@ -331,7 +330,7 @@ export function CommercialDashboard({
                           : "Sem responsável"}
                       </span>
                     </div>
-                    <span className={`w-fit rounded-full border px-2 py-1 type-caption font-medium ${statusTone(appointment.status, overdue)}`}>{status}</span>
+                    <span className={`${styles.statusBadge} ${statusTone(appointment.status, overdue)}`}>{status}</span>
                   </div>
                 );
               })}
@@ -365,10 +364,10 @@ export function CommercialDashboard({
             {data.team.length ? (
               <TableScroll tabIndex={0} aria-label="Distribuição detalhada do time">
               <table className={styles.widgetTable}>
-                  <thead className="border-b border-[var(--border)] type-caption uppercase tracking-[.08em] text-[var(--text-muted)]">
-                    <tr><th className="pb-2 font-medium">Atendente</th><th className="pb-2 text-right font-medium">Ativas</th><th className="pb-2 text-right font-medium">Período</th><th className="pb-2 text-right font-medium">Compareceu</th><th className="pb-2 text-right font-medium">Não comp.</th></tr>
+                  <thead>
+                    <tr><th>Atendente</th><th className={styles.numeric}>Ativas</th><th className={styles.numeric}>Período</th><th className={styles.numeric}>Compareceu</th><th className={styles.numeric}>Não comp.</th></tr>
                   </thead>
-                  <tbody className="divide-y divide-[var(--border)]">
+                  <tbody>
                     {data.team.map((member) => (
                       <tr key={member.member_id}>
                         <td className="py-3">
@@ -383,10 +382,10 @@ export function CommercialDashboard({
                             </span>
                           </div>
                         </td>
-                        <td className="mono py-3 text-right font-semibold">{member.active}</td>
-                        <td className="mono py-3 text-right">{member.period}</td>
-                        <td className="mono py-3 text-right text-[var(--success-text)]">{member.completed}</td>
-                        <td className="mono py-3 text-right text-[var(--warning-text)]">{member.no_show}</td>
+                        <td className={styles.numeric} style={{ fontWeight: "var(--weight-semibold)" }}>{member.active}</td>
+                        <td className={styles.numeric}>{member.period}</td>
+                        <td className={styles.numeric} style={{ color: "var(--success-text)" }}>{member.completed}</td>
+                        <td className={styles.numeric} style={{ color: "var(--warning-text)" }}>{member.no_show}</td>
                       </tr>
                     ))}
                   </tbody>

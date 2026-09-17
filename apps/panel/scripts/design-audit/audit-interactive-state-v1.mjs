@@ -49,7 +49,7 @@ const cases = [
     const drawer = page.getByRole("complementary", { name: "Dados do contato", exact: true }); await one(drawer, "contact drawer complementary");
     await page.keyboard.press("Escape"); await expectHidden(drawer, "contact drawer close");
   }},
-  { id: "pipeline-preferences", route: "/leads/pipeline", scenarios: ["owner"], viewports: ["desktop"], run: async (page) => {
+  { id: "pipeline-preferences", route: "/pipeline", scenarios: ["owner"], viewports: ["desktop"], run: async (page) => {
     const button = page.getByRole("button", { name: "Exibição", exact: true }); await one(button, "pipeline preferences trigger"); await button.click();
     await one(page.getByText("Exibição do quadro", { exact: true }), "pipeline preferences panel");
     const compact = page.getByRole("button", { name: "Compacta", exact: true }); await one(compact, "pipeline compact density"); await compact.click();

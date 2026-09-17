@@ -25,7 +25,7 @@ vi.mock("@/components/pipeline-transition-dialog", () => ({ PipelineTransitionDi
 vi.mock("@/components/page-state", () => ({ Empty: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock("@/components/phosphor-icons", () => ({}));
 
-import PipelinePage from "../app/leads/pipeline/page";
+import PipelinePage from "../app/pipeline/page";
 import { buildPipelineTransitionPayload } from "../lib/pipeline";
 
 describe("pipeline view interactions", () => {

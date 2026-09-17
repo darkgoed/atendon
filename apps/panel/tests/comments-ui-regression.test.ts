@@ -38,7 +38,7 @@ beforeAll(async () => {
     readFile(new URL("../app/conversas/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/leads/[id]/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/leads/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/leads/pipeline/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/pipeline/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/pipeline-board.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/pipeline-card.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/shell.tsx", import.meta.url), "utf8"),

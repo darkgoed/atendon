@@ -71,7 +71,7 @@ test("authorized panel routes remain responsive at all acceptance widths", async
   const visibleRoutes = new Set(await navigationLinks.evaluateAll((links) =>
     links.map((link) => new URL((link as HTMLAnchorElement).href).pathname)
   ));
-  const routes = ["/", "/conversas", "/leads", "/leads/pipeline", "/agenda", "/conexao", "/configuracoes", "/workspace/members", "/workspace/audit"]
+  const routes = ["/", "/conversas", "/leads", "/pipeline", "/agenda", "/conexao", "/configuracoes", "/workspace/members", "/workspace/audit"]
     .filter((route) => visibleRoutes.has(route));
 
   expect(routes.length).toBeGreaterThan(3);
@@ -81,7 +81,7 @@ test("authorized panel routes remain responsive at all acceptance widths", async
       await page.goto(route, { waitUntil: "domcontentloaded" });
       await expect(page.locator("main").first()).toBeVisible();
       await expectNoDocumentOverflow(page);
-      if (["/", "/conversas", "/leads", "/leads/pipeline", "/agenda"].includes(route)) await expectNoAxeViolations(page);
+      if (["/", "/conversas", "/leads", "/pipeline", "/agenda"].includes(route)) await expectNoAxeViolations(page);
     }
   }
 });

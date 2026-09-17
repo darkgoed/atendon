@@ -218,7 +218,7 @@ describe("case transfer UI scope", () => {
     expect(losesCaseAccessAfterTransfer(operator, operator.user.id)).toBe(false);
     expect(caseScopedNavigationLabel(operator, "/conversas", "Conversas")).toBe("Minhas conversas");
     expect(caseScopedNavigationLabel(operator, "/leads", "Leads")).toBe("Meus leads");
-    expect(caseScopedNavigationLabel(operator, "/leads/pipeline", "Pipeline")).toBe("Meu pipeline");
+    expect(caseScopedNavigationLabel(operator, "/pipeline", "Pipeline")).toBe("Meu pipeline");
     expect(caseScopedNavigationLabel(operator, "/agenda", "Agenda")).toBe("Minha agenda");
   });
 

@@ -782,8 +782,6 @@ th[aria-sort="descending"]::after { content: " ↓"; }
 .media-preview-download-min-width { min-width: min(18rem, 72vw); }
 .tag-dialog-width { width: min(580px, calc(100vw - var(--space-8))); }
 .conversation-control-minheight { min-height: var(--control-min); }
-.metrics-table-minwidth { min-width: 620px; }
-.metric-empty-minheight { min-height: 220px; }
 .settings-table-minwidth { min-width: 760px; }
 
 /* ======================================================= 10. RESPONSIVO ==
@@ -906,20 +904,6 @@ th[aria-sort="descending"]::after { content: " ↓"; }
 
 .funnel-chart { min-width: 0; }
 .funnel-chart__svg { width: 100%; height: auto; }
-
-/* Barra de filtros de um dashboard: um único toolbar, nunca linhas empilhadas. */
-.dashboard-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding-bottom: var(--space-4);
-  margin-bottom: var(--space-5);
-  border-bottom: 1px solid var(--border);
-}
-.dashboard-toolbar__title { min-width: 0; }
-.dashboard-toolbar__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 
 /* Cabeçalho de painel de gráfico: título + legenda na mesma linha. */
 .chart-panel__head {

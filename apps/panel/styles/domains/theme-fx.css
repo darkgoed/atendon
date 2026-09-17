@@ -1,0 +1,177 @@
+/* ============================================================================
+   Domínio: troca de tema (theme-fx)
+   ----------------------------------------------------------------------------
+   Trocar `data-theme` no `<html>` repinta a tela inteira em um frame. Em vez de
+   esconder isso com um crossfade genérico, a troca vira uma ONDA: um disco com
+   a cor do tema de DESTINO cresce a partir do botão clicado até cobrir a
+   viewport. O tema só é comitado quando a tela está coberta — o repaint
+   acontece invisível — e então o véu se dissolve revelando o tema novo.
+
+   Três camadas, todas no mesmo overlay (uma única promoção a layer de
+   composição, nada de repaint por camada):
+     __core  — o disco sólido na cor do tema de destino; é ele que esconde.
+     __ring  — a borda luminosa da frente da onda, acompanha o disco à frente.
+     __veil  — um brilho radial suave que dá volume; some primeiro.
+
+   Restrições:
+   - Cobre TUDO (`--z-theme-fx` > toast/dialog): a onda não pode passar por trás
+     de um toast e revelar o repaint.
+   - `pointer-events: none` e `aria-hidden` no nó: é decoração; o clique
+     seguinte cai no botão, não no véu.
+   - Sem `clip-path`: `.theme-fx--fade` degrada para crossfade da cor de destino
+     (Safari < 13.1), o que continua escondendo o repaint.
+   - `prefers-reduced-motion`: o overlay NÃO é criado (decidido no JS); as regras
+     abaixo também zeram a animação como segunda barreira.
+   ========================================================================= */
+
+.theme-fx {
+  position: fixed;
+  z-index: var(--z-theme-fx);
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+/* Cores do tema de destino. Ficam no nó da transição (data-theme-fx), não em
+   :root: durante a onda o `<html>` ainda está no tema ANTIGO. */
+.theme-fx[data-theme-fx="dark"] {
+  --theme-fx-bg: var(--theme-fx-dark-bg);
+  --theme-fx-accent: var(--theme-fx-dark-accent);
+  --theme-fx-glow: var(--theme-fx-dark-glow);
+}
+.theme-fx[data-theme-fx="light"] {
+  --theme-fx-bg: var(--theme-fx-light-bg);
+  --theme-fx-accent: var(--theme-fx-light-accent);
+  --theme-fx-glow: var(--theme-fx-light-glow);
+}
+
+.theme-fx__core,
+.theme-fx__ring,
+.theme-fx__veil {
+  position: absolute;
+  inset: 0;
+  display: block;
+  will-change: clip-path, opacity;
+}
+
+/* O disco sólido: cresce de 0 até cobrir o canto mais distante da viewport. */
+.theme-fx__core {
+  background: var(--theme-fx-bg);
+  clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y));
+  -webkit-clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y));
+  animation: theme-fx-sweep var(--theme-fx-sweep) var(--ease-out) forwards;
+}
+
+/* A frente da onda. O anel é um disco SÓLIDO que corre alguns pixels à frente
+   do core; como o core é pintado depois (ordem no DOM: veil → ring → core), o
+   que sobra visível é exatamente a coroa entre os dois raios — a crista.
+   Um radial-gradient NÃO serve aqui: o `100%` dele é a extensão do elemento,
+   não o raio animado do clip, então a borda só apareceria no último frame. */
+.theme-fx__ring {
+  background: var(--theme-fx-accent);
+  opacity: 0;
+  clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y));
+  -webkit-clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y));
+  animation:
+    theme-fx-ring var(--theme-fx-sweep) var(--ease-out) forwards,
+    theme-fx-ring-fade var(--theme-fx-sweep) linear forwards;
+}
+
+/* Brilho de volume: um halo macio ancorado na origem, que dá profundidade ao
+   impulso inicial e some antes do disco fechar. O raio é fixo (não segue a
+   onda) de propósito — é luz do PONTO de origem, não da frente da onda. */
+.theme-fx__veil {
+  background: radial-gradient(
+    circle calc(var(--theme-fx-r) * 0.55) at var(--theme-fx-x) var(--theme-fx-y),
+    var(--theme-fx-glow) 0%,
+    transparent 72%
+  );
+  opacity: 0;
+  animation: theme-fx-veil var(--theme-fx-sweep) var(--ease) forwards;
+}
+
+/* Estado após o commit: o tema novo já está pintado por baixo; o véu sai. */
+.theme-fx--settle .theme-fx__core,
+.theme-fx--settle .theme-fx__ring,
+.theme-fx--settle .theme-fx__veil {
+  animation: none;
+  clip-path: none;
+  -webkit-clip-path: none;
+  opacity: 1;
+  transition: opacity var(--theme-fx-settle) var(--ease);
+}
+.theme-fx--settle .theme-fx__core { opacity: 0; }
+.theme-fx--settle .theme-fx__ring,
+.theme-fx--settle .theme-fx__veil { opacity: 0; }
+
+/* Sem clip-path (Safari < 13.1): crossfade da cor de destino cobrindo a tela.
+   Mais discreto, mas cumpre a mesma função — o repaint fica escondido. */
+.theme-fx--fade .theme-fx__core {
+  clip-path: none;
+  -webkit-clip-path: none;
+  opacity: 0;
+  animation: theme-fx-cover var(--theme-fx-sweep) var(--ease) forwards;
+}
+.theme-fx--fade .theme-fx__ring { display: none; }
+
+@keyframes theme-fx-sweep {
+  from { clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y)); -webkit-clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y)); }
+  to { clip-path: circle(var(--theme-fx-r) at var(--theme-fx-x) var(--theme-fx-y)); -webkit-clip-path: circle(var(--theme-fx-r) at var(--theme-fx-x) var(--theme-fx-y)); }
+}
+
+/* O anel corre à frente do core por uma margem que abre até ~22px: essa
+   defasagem É a crista. Mesma duração e mesmo easing do core, só o raio final
+   difere — assim os dois nunca se cruzam nem se descolam. */
+@keyframes theme-fx-ring {
+  from { clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y)); -webkit-clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y)); }
+  to { clip-path: circle(calc(var(--theme-fx-r) + 22px) at var(--theme-fx-x) var(--theme-fx-y)); -webkit-clip-path: circle(calc(var(--theme-fx-r) + 22px) at var(--theme-fx-x) var(--theme-fx-y)); }
+}
+
+/* A crista acende cedo e apaga antes do fim: no último terço a onda já é só
+   superfície do tema novo, sem um anel de cor parado na borda da tela. */
+@keyframes theme-fx-ring-fade {
+  0% { opacity: 0; }
+  14% { opacity: 0.75; }
+  62% { opacity: 0.5; }
+  100% { opacity: 0; }
+}
+
+@keyframes theme-fx-veil {
+  0% { opacity: 0; }
+  30% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes theme-fx-cover {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---- Botão de tema -------------------------------------------------------
+   O ícone participa da troca: gira e troca de escala no clique, então a origem
+   da onda tem um gesto próprio em vez de um ícone que pisca. */
+.theme-toggle__icon {
+  display: grid;
+  place-items: center;
+  transition:
+    transform var(--duration-normal) var(--ease-out),
+    opacity var(--duration-fast) var(--ease);
+}
+.theme-toggle:hover .theme-toggle__icon { transform: rotate(-18deg); }
+.theme-toggle:active .theme-toggle__icon { transform: scale(0.88) rotate(-32deg); }
+.theme-toggle[data-swapping="true"] .theme-toggle__icon {
+  animation: theme-toggle-spin var(--theme-fx-sweep) var(--ease-out);
+}
+
+@keyframes theme-toggle-spin {
+  0% { transform: rotate(0) scale(1); opacity: 1; }
+  45% { transform: rotate(-150deg) scale(0.55); opacity: 0.35; }
+  100% { transform: rotate(-360deg) scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-fx { display: none; }
+  .theme-toggle:hover .theme-toggle__icon,
+  .theme-toggle:active .theme-toggle__icon { transform: none; }
+}

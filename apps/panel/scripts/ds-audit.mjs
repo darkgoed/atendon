@@ -29,7 +29,7 @@ for (const p of [
 if (!chromium) { console.error("playwright não encontrado"); process.exit(2); }
 
 const base = (process.argv[2] || "http://127.0.0.1:3200").replace(/\/$/, "");
-const routes = (process.argv[3] || "/,/conversas,/leads,/leads/pipeline,/agenda,/follow-ups,/uso,/configuracoes,/pos-venda,/root/workspaces,/login")
+const routes = (process.argv[3] || "/,/conversas,/leads,/pipeline,/agenda,/follow-ups,/uso,/configuracoes,/pos-venda,/root/workspaces,/login")
   .split(",").map((r) => r.trim()).filter(Boolean);
 const viewports = [
   { name: "desktop", width: 1440, height: 900 },

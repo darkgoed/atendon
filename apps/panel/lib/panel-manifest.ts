@@ -63,7 +63,7 @@ const startsAt = (base: string) => (path: string) => path === base || path.start
 export const panelManifest: readonly PanelManifestItem[] = [
   { href: "/", label: "Visão geral", group: "Atendimento", Icon: Gauge, requiredPermissions: ["dashboard.read"], capability: "dashboard_v1", menu: true, match: (path) => path === "/" },
   { href: "/conversas", label: "Conversas", group: "Atendimento", Icon: ChatsCircle, requiredPermissions: ["conversations.read"], menu: true, match: startsAt("/conversas") },
-  { href: "/leads/pipeline", label: "Pipeline", group: "Atendimento", Icon: Kanban, requiredPermissions: ["leads.read"], capability: "pipeline_v1", menu: true, match: startsAt("/leads/pipeline") },
+  { href: "/pipeline", label: "Pipeline", group: "Atendimento", Icon: Kanban, requiredPermissions: ["leads.read"], capability: "pipeline_v1", menu: true, match: startsAt("/pipeline") },
   { href: "/leads", label: "Leads", group: "Atendimento", Icon: UsersThree, requiredPermissions: ["leads.read"], capability: "leads_v1", menu: true, match: startsAt("/leads") },
   { href: "/agenda", label: "Agenda", group: "Atendimento", Icon: CalendarDots, requiredPermissions: ["appointments.read"], capability: "appointments_v1", menu: true, match: startsAt("/agenda") },
   { href: "/pos-venda", label: "Carteira", group: "Pós-venda", Icon: HandHeart, requiredPermissions: ["post_sales.use"], capability: "post_sales_v1", menu: true, match: (path) => path === "/pos-venda" || path.startsWith("/pos-venda/cobranca") },

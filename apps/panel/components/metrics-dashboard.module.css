@@ -1,277 +1,452 @@
-.dashboard {
-  --metrics-gap: var(--space-4);
-  display: grid;
-  gap: var(--space-5);
-  margin-block-end: var(--space-8);
+/* ============================================================================
+   Dashboard de métricas — linguagem visual
+   ----------------------------------------------------------------------------
+   Referência: os dashboards que envelheceram bem (Linear, Vercel, Stripe,
+   Sentry). O que eles têm em comum e que este arquivo adota:
+
+   1. A MOLDURA DESAPARECE, o dado aparece. Borda de 1px quase invisível
+      (--border-subtle) em vez de caixa marcada; a hierarquia vem de spacing,
+      peso tipográfico e uma escada de luminância entre superfícies.
+   2. BORDA COMO SOMBRA (Vercel): `0 0 0 1px` + uma camada macia de elevação.
+      Duas camadas no mesmo box-shadow, nada de borda grossa.
+   3. UM ACENTO, NUNCA DECORATIVO (Linear). A cor só entra como fio de 1px no
+      topo do card, codificando o GRUPO do widget — e só acende no hover.
+   4. NÚMERO COMO PROTAGONISTA: tabular, tracking negativo, sem competir com
+      rótulo. O rótulo vira overline micro, não um título.
+   5. MOVIMENTO CURTO E ÚNICO: entrada escalonada de 1 frame por card, hover de
+      1px. Nada pulsa, nada gira.
+
+   Tudo aqui é CSS module (escopo local). O que precisa ser global mora em
+   styles/ — este arquivo nunca redefine primitives.
+   ========================================================================= */
+
+/* ===================================================== 1. QUADRO DA PÁGINA */
+
+.pageFrame {
+  width: 100%;
+  max-width: 87.5rem;
+  margin-inline: auto;
 }
 
-.dashboardHeader,
-.widgetsHeader {
+/* Toolbar: título + período + ações em UMA linha que gruda no topo ao rolar.
+   O fundo translúcido mantém o conteúdo visível por baixo sem "flutuar". */
+.toolbar {
+  position: sticky;
+  z-index: var(--z-sticky);
+  top: calc(var(--space-6) * -1);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-block-end: var(--space-5);
+  padding-block: var(--space-3);
+  background: var(--bg);
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+/* Safari antigo ignora backdrop-filter sem prefixo; o fundo sólido acima já é
+   o fallback, então a regra só enriquece quando há suporte. */
+@supports ((backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px))) {
+  .toolbar {
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+    backdrop-filter: saturate(180%) blur(12px);
+  }
+}
+
+.toolbarTitle { display: grid; min-width: 0; gap: 2px; }
+.toolbarTitle h1 {
+  color: var(--text);
+  font-size: var(--text-page-title);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-title);
+}
+.toolbarPeriod {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+.toolbarActions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.toolbarDates { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.toolbarDates input { inline-size: 9.5rem; }
+
+/* ============================================================ 2. O BOARD == */
+
+.widgets {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--space-4);
+  /* stretch, não start: cards da mesma linha terminam na mesma altura. Com
+     `start` a grade fica serrilhada — o card com lista puxa a linha e os
+     vizinhos ficam pendurados no topo. */
+  align-items: stretch;
+}
+
+/* Card do widget. A borda é sombra (Vercel) e a elevação é um único degrau —
+   cards de dashboard que "flutuam" alto transformam a grade em pilha de caixas. */
+.widgetCard {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-block-size: 8.5rem;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow: hidden;
+  padding: var(--space-4) var(--pad-panel-lg);
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1px var(--border-subtle),
+    0 1px 2px -1px rgb(16 24 40 / 0.06);
+  transition:
+    box-shadow var(--duration-normal) var(--ease),
+    transform var(--duration-normal) var(--ease-out),
+    background-color var(--duration-normal) var(--ease);
+  /* Entrada escalonada: --dash-index vem do JSX (ordem no board). */
+  animation: dashRise var(--duration-normal) var(--ease-out) backwards;
+  animation-delay: calc(var(--dash-index, 0) * 26ms);
+}
+
+/* O fio de acento: 1px no topo, na cor do GRUPO do widget. Apagado em repouso,
+   acende no hover — é a única cor de chrome do board. */
+.widgetCard::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--dash-accent, var(--primary)) 18%,
+    var(--dash-accent, var(--primary)) 82%,
+    transparent
+  );
+  opacity: 0;
+  transition: opacity var(--duration-normal) var(--ease);
+}
+
+.widgetCard:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 6px 16px -10px rgb(16 24 40 / 0.22);
+}
+.widgetCard:hover::before { opacity: 0.9; }
+.widgetCard:focus-within { box-shadow: 0 0 0 1px var(--primary-border), var(--focus-ring); }
+
+/* Cabeçalho: SÓ o rótulo, em overline. A descrição saiu da superfície (virou
+   `title`): num board de 20 cards, 20 parágrafos explicativos são ruído, não
+   ajuda — o rótulo e o número já dizem o que a métrica é. */
+.widgetHeader {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.widgetTitle {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-overline);
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.widgetDot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--dash-accent, var(--primary));
+  opacity: 0.55;
+}
+.widgetBody { display: flex; min-width: 0; flex: 1; flex-direction: column; justify-content: center; }
+.widgetContent { min-width: 0; }
+
+/* Widgets largos (gráfico, funil, tabela) respiram: o conteúdo manda na altura
+   e o corpo não centraliza verticalmente. */
+.widgetCard[data-wide="true"] .widgetBody { justify-content: flex-start; }
+
+/* =================================================== 3. NÚMERO DA MÉTRICA == */
+
+.metricValue {
+  color: var(--text);
+  font-size: var(--text-metric-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-flat);
+  letter-spacing: var(--tracking-title);
+  font-variant-numeric: tabular-nums;
+}
+.metricValue[data-tone="success"] { color: var(--success-text); }
+.metricValue[data-tone="warning"] { color: var(--warning-text); }
+.metricValue[data-tone="primary"] { color: var(--primary-text); }
+.metricCaption { margin-block-start: var(--space-2); color: var(--text-muted); font-size: var(--text-meta); }
+.metricCaption strong { color: var(--text-secondary); font-weight: var(--weight-semibold); }
+
+/* Estado de conexão: ponto + texto, sem pintar o card inteiro. */
+.statusLine { display: flex; align-items: center; gap: var(--space-2); }
+.statusPip {
+  position: relative;
+  width: var(--space-2);
+  height: var(--space-2);
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--success);
+}
+.statusPip[data-state="off"] { background: var(--warning); }
+/* O halo só existe no estado saudável — um alerta não deve pulsar em loop. */
+.statusPip[data-state="on"]::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 1px solid var(--success);
+  border-radius: inherit;
+  opacity: 0.35;
+}
+.statusText { font-size: var(--text-body-lg); font-weight: var(--weight-semibold); }
+
+/* ===================================================== 4. GRADES INTERNAS == */
+
+/* Régua de números divididos por 1px dentro do MESMO card (nunca cards dentro
+   de card). O fundo é a própria borda: o gap de 1px vira a divisória. */
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--border-subtle);
+}
+.statTile {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3);
+  background: var(--surface);
+}
+.statLabel {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.statValue {
+  color: var(--text);
+  font-size: var(--text-control);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Listas (fila, agenda, alertas, equipe): linhas divididas, sem blocos. */
+.rows { display: grid; min-width: 0; }
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding-block: var(--space-2);
+}
+.row + .row { border-block-start: 1px solid var(--border-subtle); }
+.rowLabel { min-width: 0; overflow: hidden; font-size: var(--text-control); text-overflow: ellipsis; white-space: nowrap; }
+.rowValue { flex: none; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--text-meta); font-variant-numeric: tabular-nums; }
+
+/* Agenda: hora em chip monoespaçado + nome. */
+.agendaRow { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-3); padding-block: var(--space-2); }
+.agendaRow + .agendaRow { border-block-start: 1px solid var(--border-subtle); }
+.agendaTime {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--primary-subtle);
+  color: var(--primary-text);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Barras (pipeline, ranking de vendedor): trilho fino, preenchimento animado
+   a partir da esquerda — transform, nunca width (não força layout). */
+.barRow { display: grid; gap: var(--space-2); padding-block: var(--space-2); }
+.barHead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); min-width: 0; }
+.barName { min-width: 0; overflow: hidden; font-size: var(--text-control); text-overflow: ellipsis; white-space: nowrap; }
+.barValue { flex: none; font-family: var(--font-mono); font-size: var(--text-meta); font-variant-numeric: tabular-nums; }
+.barTrack { height: 4px; overflow: hidden; border-radius: var(--radius-pill); background: var(--surface-sunken); }
+.barFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  transform-origin: left center;
+  transition: transform var(--duration-normal) var(--ease-out);
+}
+
+/* Tabela de performance: cabeçalho overline, números tabulares, zebra por
+   hover (nunca por cor de fundo fixa). */
+.tableWrap { min-width: 0; overflow-x: auto; }
+.widgetTable { width: 100%; min-width: 38rem; text-align: left; font-size: var(--text-body); border-collapse: collapse; }
+.widgetTable thead th {
+  padding-block-end: var(--space-2);
+  border-block-end: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-overline);
+  text-transform: uppercase;
+}
+.widgetTable tbody tr { transition: background-color var(--duration-fast) var(--ease); }
+.widgetTable tbody tr:hover { background: var(--surface-hover); }
+.widgetTable td { padding-block: var(--space-3); border-block-end: 1px solid var(--border-subtle); }
+.widgetTable tbody tr:last-child td { border-block-end: 0; }
+.numeric { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ======================================================== 5. GRÁFICO/FUNIL */
+
+.chartHead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); margin-block-end: var(--space-3); }
+.chartLegend { display: flex; flex-wrap: wrap; gap: var(--space-3); color: var(--text-muted); font-size: var(--text-meta); }
+.legendItem { display: inline-flex; align-items: center; gap: var(--space-2); }
+.legendDot { width: var(--space-2); height: var(--space-2); flex: none; border-radius: var(--radius-pill); }
+.widgetChart { padding-block-start: var(--space-4); margin-block-start: var(--space-1); border-block-start: 1px solid var(--border-subtle); }
+.funnelLayout { display: grid; grid-template-columns: minmax(0, 1fr) 15rem; gap: var(--space-5); align-items: center; }
+.funnelSide { display: grid; gap: var(--space-3); align-content: start; }
+.funnelStat { display: grid; gap: var(--space-1); padding: var(--space-3); border-radius: var(--radius-md); background: var(--surface-sunken); }
+.funnelStatLabel { color: var(--text-muted); font-size: var(--text-meta); }
+.funnelStatValue { color: var(--primary-text); font-size: var(--text-metric); font-weight: var(--weight-semibold); line-height: var(--leading-flat); letter-spacing: var(--tracking-title); font-variant-numeric: tabular-nums; }
+.funnelStatValue[data-tone="warning"] { color: var(--warning-text); }
+.funnelStatHint { color: var(--text-muted); font-size: var(--text-micro); }
+
+/* ============================================ 6. ESTADOS (load/erro/vazio) */
+
+.widgetLoading { display: grid; gap: var(--space-3); padding-block: var(--space-2); }
+.widgetLoading > span {
+  display: block;
+  height: var(--space-3);
+  border-radius: var(--radius-xs);
+  background: linear-gradient(90deg, var(--surface-sunken), var(--surface-hover), var(--surface-sunken));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+.widgetLoadingValue { width: 7rem; height: var(--control-height) !important; border-radius: var(--radius-sm) !important; }
+.widgetLoadingLine { width: 75%; }
+.widgetLoadingLineShort { width: 45%; }
+.widgetError { display: grid; justify-items: start; gap: var(--space-2); }
+.widgetEmpty { padding-block: var(--space-5); color: var(--text-muted); font-size: var(--text-meta); }
+
+/* ============================================== 7. BIBLIOTECA DE WIDGETS == */
+
+.widgetLibrary {
+  margin-block-end: var(--space-5);
+  padding: var(--pad-panel-lg);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--border-subtle), 0 8px 24px -18px rgb(16 24 40 / 0.35);
+  animation: dashRise var(--duration-normal) var(--ease-out);
+}
+.libraryHead { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: var(--space-3); margin-block-end: var(--space-4); }
+.libraryPresets { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-block-end: var(--space-4); }
+.libraryGroups { display: grid; }
+.libraryGroups > section + section { border-block-start: 1px solid var(--border-subtle); }
+.libraryGroupTitle {
+  padding-block-start: var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-overline);
+  text-transform: uppercase;
+}
+.libraryItem { display: grid; gap: var(--space-3); padding-block: var(--space-4); }
+.libraryItemLabel { display: flex; min-width: 0; align-items: start; gap: var(--space-3); }
+.libraryItemName { display: block; font-size: var(--text-control); font-weight: var(--weight-semibold); }
+.libraryItemHint { display: block; color: var(--text-muted); font-size: var(--text-meta); }
+.libraryItemSize { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-control); }
+.libraryItemMove { display: flex; gap: var(--space-1); }
+
+@keyframes dashRise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ==================================== 8. DASHBOARD DE REUNIÕES (legado) ==
+   Superfície antiga, servida quando dashboard_widgets_v1 está desligado.
+   Mantida com a MESMA linguagem para os dois caminhos não divergirem. */
+
+.dashboard { display: grid; gap: var(--space-5); margin-block-end: var(--space-8); }
+.dashboardHeader {
   display: flex;
   align-items: end;
   justify-content: space-between;
   gap: var(--space-4);
   padding-block-end: var(--space-4);
-  border-block-end: 1px solid var(--border);
+  border-block-end: 1px solid var(--border-subtle);
 }
-
-.dashboardHeader h2,
-.widgetsHeader h1 {
+.dashboardHeader h2 {
   margin-block: var(--space-1) 0;
   color: var(--text);
   font-size: var(--text-page-title);
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-title);
 }
-
-.dashboardHeader p,
-.widgetsHeader p {
-  max-inline-size: 62ch;
-  margin-block-start: var(--space-1);
-}
-
-.actions,
-.periodControl,
-.presetBar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.periodControl {
-  padding: var(--space-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-}
-
-.periodControl button {
-  min-block-size: var(--control-height-md);
+.dashboardHeader p { max-inline-size: 62ch; margin-block-start: var(--space-1); }
+.actions, .periodControl { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.periodControl { padding: var(--space-1); border-radius: var(--radius-md); background: var(--surface-sunken); box-shadow: 0 0 0 1px var(--border-subtle); }
+.periodOption, .periodSelected {
+  min-block-size: var(--control-height-sm);
   padding-inline: var(--space-3);
-  border-radius: var(--radius-xs);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--text-secondary);
-  font-size: var(--text-meta);
-  font-weight: var(--weight-semibold);
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
 }
-
-.periodControl button[aria-pressed="true"] {
-  background: var(--surface-active);
-  color: var(--text);
-}
-
+.periodSelected { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+.periodOption:hover { color: var(--text); }
 .customDates {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 14rem));
   gap: var(--space-3);
   padding-block-end: var(--space-4);
-  border-block-end: 1px solid var(--border);
+  border-block-end: 1px solid var(--border-subtle);
 }
-
-.kpiGrid {
-  display: grid;
-  grid-template-columns: minmax(12rem, 1fr) minmax(18rem, 2fr) minmax(16rem, 1.5fr);
-  gap: var(--metrics-gap);
-}
-
-.kpiGrid > article:first-child { grid-row: span 2; }
-.kpiGrid > article { min-block-size: 8.5rem; }
-
-.metricStrip {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: var(--space-3);
-}
-
-.metricStrip > div,
-.compactMetric {
-  min-width: 0;
-  padding: var(--space-2) 0;
-}
-
-.metricStrip dt,
-.compactMetric dt,
-.sdrGrid dt,
-.closerGrid dt {
-  color: var(--text-muted);
-  font-size: var(--text-meta);
-  line-height: 1.25;
-}
-
-.metricStrip dd,
-.compactMetric dd { margin-block-start: var(--space-1); }
-
-.sdrGrid,
-.closerGrid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-3);
-}
-
-.compactMetric {
-  border-block-end: 1px solid var(--border);
-}
-
-.agendaChartGrid {
-  display: grid;
-  grid-template-columns: minmax(16rem, 0.9fr) minmax(24rem, 1.35fr);
-  gap: var(--metrics-gap);
-}
-
-.teamFunnelGrid {
-  display: grid;
-  grid-template-columns: minmax(22rem, 1.4fr) minmax(16rem, 1fr);
-  gap: var(--metrics-gap);
-}
-
-.sectionTitle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-block-end: var(--space-4);
-}
-
-.sectionTitle h3 {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  font-size: var(--text-control);
-}
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  color: var(--text-muted);
-  font-size: var(--text-meta);
-}
-
-.tableSurface { overflow-x: auto; }
-.tableSurface table { min-inline-size: 38rem; }
-
-.widgets {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: var(--metrics-gap);
-}
-
-.widgetCard {
-  min-width: 0;
-  min-block-size: 10rem;
-  transition: border-color var(--duration-fast) var(--ease), background-color var(--duration-fast) var(--ease);
-}
-
-.widgetCard h2 { margin: 0; font-size: var(--text-control); }
-.widgetDescription { margin-block-start: var(--space-1); color: var(--text-secondary); font-size: var(--text-meta); }
-
-.widgetLibrary {
-  padding: var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-}
-
-.widgetLibraryHeader {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin-block-end: var(--space-4);
-}
-
-.realtimeBand { padding-block-end: var(--space-3); border-block-end: 1px solid var(--border); }
-.handoffItem { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--warning-border); border-radius: var(--radius-sm); background: var(--warning-subtle); }
-.handoffAvatar { flex: none; }
-.handoffMeta { flex: 1; min-width: 0; }
-.handoffNote { margin-block-start: var(--space-4); padding-block-start: var(--space-4); border-block-start: 1px solid var(--border); }
-.metricCell { min-width: 0; padding: var(--space-2) 0; }
-.metricLabel { color: var(--text-muted); font-size: var(--text-meta); line-height: 1.25; }
-.metricValue { margin-block-start: var(--space-1); font-size: var(--text-control); }
-.statusIcon { color: var(--primary); }
-.agendaTime { padding: var(--space-1) var(--space-2); border-radius: var(--radius-xs); background: var(--surface-active); color: var(--primary); }
-.statusBadge { width: fit-content; padding: var(--space-1) var(--space-2); border: 1px solid currentColor; border-radius: var(--radius-pill); font-size: var(--text-meta); }
+.agendaChartGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: var(--space-4); }
+.sdrGrid, .closerGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 1px; overflow: hidden; border-radius: var(--radius-md); background: var(--border-subtle); }
+.sdrGrid > div, .closerGrid > div { display: grid; align-content: start; gap: var(--space-1); min-width: 0; padding: var(--space-3); background: var(--surface); }
+.sdrGrid dt, .closerGrid dt { color: var(--text-muted); font-size: var(--text-meta); line-height: 1.25; }
+.sdrGrid dd, .closerGrid dd { margin: 0; color: var(--text); font-size: var(--text-control); font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums; }
+.statusBadge { width: fit-content; padding: 2px var(--space-2); border: 1px solid currentColor; border-radius: var(--radius-pill); font-size: var(--text-meta); font-weight: var(--weight-medium); }
 .statusDone { border-color: var(--success-border); background: var(--success-subtle); color: var(--success-text); }
 .statusWarning { border-color: var(--warning-border); background: var(--warning-subtle); color: var(--warning-text); }
 .statusAccent { border-color: var(--primary-border); background: var(--primary-subtle); color: var(--primary-text); }
-.periodOption,
-.periodSelected { min-block-size: var(--control-height-md); padding-inline: var(--space-3); border-radius: var(--radius-xs); color: var(--text-secondary); font-size: var(--text-meta); font-weight: var(--weight-semibold); }
-.periodSelected { background: var(--surface-active); color: var(--text); }
-.periodOption:hover { color: var(--text); }
-.chartLegend { display: flex; flex-wrap: wrap; gap: var(--space-3); color: var(--text-muted); font-size: var(--text-meta); }
-.legendDot { width: var(--space-2); height: var(--space-2); border-radius: var(--radius-pill); }
-.teamAvatar { display: grid; place-items: center; width: var(--control-height); height: var(--control-height); flex: none; border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface-active); font-size: var(--text-meta); font-weight: var(--weight-semibold); }
-.funnelTrack { height: var(--space-1); overflow: hidden; border-radius: var(--radius-pill); background: var(--surface-active); }
-.funnelBar { height: 100%; border-radius: inherit; }
-.qualitySummary { margin-block-start: var(--space-5); padding-block-start: var(--space-4); border-block-start: 1px solid var(--border); }
-.widgetLoading { display: grid; gap: var(--space-3); }
-.widgetLoadingValue { width: 6rem; height: var(--control-height); border-radius: var(--radius-sm); background: var(--surface-sunken); }
-.widgetLoadingLine { width: 75%; height: var(--space-3); border-radius: var(--radius-xs); background: var(--surface-sunken); }
-.widgetLoadingLineShort { width: 50%; height: var(--space-3); border-radius: var(--radius-xs); background: var(--surface-sunken); }
-.widgetError { padding: var(--space-4); border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent); border-radius: var(--radius-md); }
-.widgetHeader { display: flex; align-items: start; justify-content: space-between; gap: var(--space-3); margin-block-end: var(--space-4); }
-.widgetHeaderDescription { margin-block-start: var(--space-1); color: var(--text-secondary); font-size: var(--text-meta); }
-.widgetContent { min-width: 0; }
-.widgetMetricGrid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--border); }
-.widgetMetricTile { display: flex; flex-direction: column; justify-content: space-between; gap: var(--space-3); padding: var(--space-4); background: var(--surface); }
-.widgetMetricLabel { color: var(--text-muted); font-size: var(--text-meta); text-transform: uppercase; letter-spacing: var(--tracking-overline); }
-.widgetMetricValue { font-size: var(--text-metric); font-weight: var(--weight-semibold); line-height: var(--leading-flat); letter-spacing: var(--tracking-title); }
-.widgetChart { padding-block-start: var(--space-4); border-block-start: 1px solid var(--border-subtle); }
-.funnelLayout { display: grid; grid-template-columns: minmax(0, 1fr) 15rem; gap: var(--space-6); }
-.funnelStage { display: grid; gap: var(--space-2); }
-.funnelStageBar { margin-inline: auto; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent); border-radius: var(--radius-md); background: color-mix(in srgb, var(--primary) 8%, transparent); }
-.widgetStatList { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
-.widgetStatRow { padding: var(--space-3); border-block-end: 1px solid var(--border-subtle); }
-.widgetStatValue { margin-block-start: var(--space-1); font-size: var(--text-control); font-weight: var(--weight-semibold); }
-.widgetTable { width: 100%; min-width: 38rem; text-align: left; font-size: var(--text-body); }
-.widgetTableBar { display: block; width: 6rem; height: var(--space-1); margin-block-start: var(--space-1); margin-inline-start: auto; overflow: hidden; border-radius: var(--radius-pill); background: var(--surface-sunken); }
-.widgetTableBarFill { display: block; height: 100%; border-radius: inherit; background: var(--success); }
-.widgetAlertRow { padding-block: var(--space-3); border-block-end: 1px solid var(--border); }
-.widgetAgendaRow { display: grid; grid-template-columns: 5rem minmax(0, 1fr); gap: var(--space-3); padding-block: var(--space-3); }
-.widgetAgendaTime { color: var(--primary); }
-.groupHeading { padding-block-start: var(--space-4); color: var(--text-muted); font-size: var(--text-meta); font-weight: var(--weight-semibold); text-transform: uppercase; letter-spacing: var(--tracking-overline); }
-.libraryItem { display: grid; gap: var(--space-3); padding-block: var(--space-4); }
-.libraryItemLabel { display: flex; align-items: start; gap: var(--space-3); }
-.libraryItemControls { display: flex; align-items: center; gap: var(--space-2); }
-.pageFrame { width: 100%; max-width: 87.5rem; margin-inline: auto; }
-.ringProgress { will-change: stroke-dasharray; }
-.chartSvg { min-inline-size: 38.75rem; }
-.widgetSmall { grid-column: span 12; }
-.widgetMedium { grid-column: span 12; }
-.widgetWide { grid-column: span 12; }
-.widgetFull { grid-column: span 12; }
+
+/* ============================================================ 9. RESPONSIVO */
 
 @media (max-width: 70rem) {
-  .kpiGrid,
-  .agendaChartGrid,
-  .teamFunnelGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .kpiGrid > article:first-child { grid-row: auto; }
-}
-
-@media (min-width: 48.0625rem) {
-  .widgetSmall { grid-column: span 6; }
-  .widgetMedium { grid-column: span 6; }
-}
-
-@media (min-width: 70.0625rem) {
-  .widgetSmall { grid-column: span 3; }
-  .widgetMedium { grid-column: span 4; }
-  .widgetWide { grid-column: span 8; }
+  .funnelLayout { grid-template-columns: minmax(0, 1fr); }
+  .funnelSide { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
 }
 
 @media (max-width: 48rem) {
-  .dashboardHeader,
-  .widgetsHeader,
-  .widgetLibraryHeader { align-items: stretch; flex-direction: column; }
-  .actions > *, .widgetsHeader select, .widgetsHeader input { flex: 1 1 10rem; }
-  .customDates,
-  .kpiGrid,
-  .agendaChartGrid,
-  .teamFunnelGrid { grid-template-columns: minmax(0, 1fr); }
-  .metricStrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .sdrGrid,
-  .closerGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .periodControl { inline-size: 100%; }
-  .periodControl button { flex: 1 1 auto; }
+  .toolbar { align-items: stretch; flex-direction: column; top: calc(var(--space-5) * -1); }
+  /* No mobile as ações viram linhas cheias: um botão solto centralizado entre
+     o seletor de período e a grade fica órfão. */
+  .toolbarActions { align-items: stretch; flex-direction: column; }
+  .toolbarActions > * { width: 100%; }
+  .toolbarActions > :global(.segmented) { display: flex; }
+  .toolbarActions > :global(.segmented) > button { flex: 1 1 0; justify-content: center; }
+  .toolbarDates { flex-direction: row; }
+  .toolbarDates input { flex: 1 1 8rem; inline-size: auto; }
+  .widgets { gap: var(--space-3); }
+  .widgetCard { min-block-size: 0; padding: var(--space-4); }
+  .customDates, .agendaChartGrid { grid-template-columns: minmax(0, 1fr); }
+  .dashboardHeader { align-items: stretch; flex-direction: column; }
+  .libraryHead { flex-direction: column; }
 }

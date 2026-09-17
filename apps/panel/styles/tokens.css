@@ -138,12 +138,30 @@
   --z-popover: 60;
   --z-dialog: 80;
   --z-toast: 100;
+  /* A onda de troca de tema cobre TUDO, inclusive toast e dialog: é ela que
+     esconde o repaint do tema. Nunca colocar UI acima desta camada. */
+  --z-theme-fx: 120;
 
   /* ---- 1.8 Breakpoints (referência; media queries não aceitam var) ----- */
   --bp-xs: 480px;
   --bp-sm: 700px;
   --bp-md: 960px;
   --bp-lg: 1200px;
+
+  /* ---- 1.9 Troca de tema ------------------------------------------------
+     Estes valores NÃO são semânticos de tema: descrevem a cor do tema de
+     DESTINO durante a transição, então ficam em foundations e não são
+     redeclarados em dark/light. Espelham o --bg de cada tema.
+     As durações são espelhadas em lib/theme-transition.ts (THEME_SWEEP_MS /
+     THEME_SETTLE_MS) — mudar uma exige mudar a outra. */
+  --theme-fx-sweep: 460ms;
+  --theme-fx-settle: 300ms;
+  --theme-fx-dark-bg: #0F1115;
+  --theme-fx-dark-accent: #5B8CFF;
+  --theme-fx-dark-glow: rgb(91 140 255 / 0.22);
+  --theme-fx-light-bg: #F7F8FA;
+  --theme-fx-light-accent: #2563EB;
+  --theme-fx-light-glow: rgb(37 99 235 / 0.16);
 
   /* ==================================================== 2. SEMANTIC — LIGHT
      Paleta do brief. Os valores de TEXTO são derivados para cumprir WCAG AA

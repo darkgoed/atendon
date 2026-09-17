@@ -65,7 +65,10 @@ describe("personalizable dashboard UI", () => {
   it("applies one period filter — including a custom range — to every widget", () => {
     expect(component).toContain('period === "custom"');
     expect(component).toContain("period=custom&start=");
-    expect(component).toContain('<option value="custom">');
+    // O seletor de período é um Segmented (botões aria-pressed), não um <select>:
+    // o contrato é que "Período" personalizado continue sendo uma das opções.
+    expect(component).toContain('["custom", "Período"]');
+    expect(component).toContain('aria-pressed={period === key}');
   });
 
   it("renders connected totals for multiple WhatsApp connections and preserves singular wording", () => {

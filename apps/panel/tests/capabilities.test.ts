@@ -67,7 +67,7 @@ describe("panel capability manifest", () => {
   });
 
   it("matches direct and nested URLs without slug-based decisions", () => {
-    expect(findPanelManifestItem("/leads/pipeline")?.capability).toBe("pipeline_v1");
+    expect(findPanelManifestItem("/pipeline")?.capability).toBe("pipeline_v1");
     expect(findPanelManifestItem("/leads/lead-7")?.capability).toBe("leads_v1");
     expect(findPanelManifestItem("/pos-venda/configurar")?.capability).toBe("post_sales_v1");
     const removedAgentRoute = ["/agente/", "melhorias"].join("");

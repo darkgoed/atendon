@@ -84,7 +84,7 @@ describe("pipeline free movement UI (R3/R4/R5)", () => {
   afterEach(cleanup);
 
   it("page.tsx keeps free pairs when enforce_transitions === false and passes the flag to settings", () => {
-    const page = source("app/leads/pipeline/page.tsx");
+    const page = source("app/pipeline/page.tsx");
     expect(page.includes("enforce_transitions === false")).toBe(true);
     // Free mode: every ordered pair of configured stages is allowed.
     expect(page.includes("flatMap((source)")).toBe(true);

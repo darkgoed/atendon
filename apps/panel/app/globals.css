@@ -18,5 +18,6 @@
 @import "../styles/domains/agenda-calendar.css";
 @import "../styles/domains/post-sales.css";
 @import "../styles/domains/admin.css";
+@import "../styles/domains/theme-fx.css";
 /* Fallbacks para navegadores sem dvh (Safari < 15.4) — deve ser o último. */
 @import "../styles/legacy-compat.css";

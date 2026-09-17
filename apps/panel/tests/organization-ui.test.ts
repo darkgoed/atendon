@@ -16,7 +16,7 @@ beforeAll(async () => {
   [bulkActions, leadTagPicker, pipelinePage, pipelineBoard, pipelineCard, pipelineDialog, pipelineSettings, savedViews] = await Promise.all([
     readFile(new URL("../components/bulk-lead-actions.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/lead-tag-picker.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/leads/pipeline/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/pipeline/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/pipeline-board.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/pipeline-card.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/pipeline-transition-dialog.tsx", import.meta.url), "utf8"),

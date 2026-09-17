@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowClockwise, CaretDown, CaretLineLeft, CaretLineRight, CheckCircle, List, MagnifyingGlass, Moon, Prohibit, SignOut, Sun, UserCircle, X } from "@phosphor-icons/react";
+import { ArrowClockwise, CaretDown, CaretLineLeft, CaretLineRight, CheckCircle, List, MagnifyingGlass, Prohibit, SignOut, UserCircle, X } from "@phosphor-icons/react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -9,6 +9,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { CommandPalette, type PaletteItem } from "@/components/command-palette";
 import { MessageNotifications } from "@/components/message-notifications";
 import { NotificationCenter } from "@/components/notification-center";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { VersionBanner } from "@/components/version-banner";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { Button } from "@/components/ui";
@@ -97,28 +98,19 @@ export function Shell({
   const [changingAvailability, setChangingAvailability] = useState(false);
   const [availabilityError, setAvailabilityError] = useState("");
   const navRef = useRef<HTMLElement>(null);
-  // O CSS reage a data-theme/data-sidebar no <html> (setados pré-hidratação); o estado só controla os ícones dos toggles.
+  // O CSS reage a data-theme/data-sidebar no <html> (setados pré-hidratação); o
+  // estado só controla o ícone do toggle da sidebar. O tema vive inteiro em
+  // <ThemeToggle> (components/theme-toggle.tsx) com a própria animação.
   const [collapsed, setCollapsed] = useState(false);
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [paletteOpen, setPaletteOpen] = useState(false);
   useEffect(() => {
-    const root = document.documentElement;
-    setCollapsed(root.dataset.sidebar === "collapsed");
-    setTheme(root.dataset.theme === "light" ? "light" : "dark");
+    setCollapsed(document.documentElement.dataset.sidebar === "collapsed");
   }, []);
   const toggleSidebar = useCallback(() => {
     setCollapsed((prev) => {
       const next = !prev;
       document.documentElement.dataset.sidebar = next ? "collapsed" : "expanded";
       try { localStorage.setItem("atendon-sidebar", next ? "collapsed" : "expanded"); } catch { /* sem storage, sem persistência */ }
-      return next;
-    });
-  }, []);
-  const toggleTheme = useCallback(() => {
-    setTheme((prev) => {
-      const next = prev === "dark" ? "light" : "dark";
-      document.documentElement.dataset.theme = next;
-      try { localStorage.setItem("atendon-theme", next); } catch { /* sem storage, sem persistência */ }
       return next;
     });
   }, []);
@@ -376,7 +368,7 @@ export function Shell({
             </button>
           ) : null}
           <Link href="/perfil" aria-label="Abrir perfil" aria-current={matchesPath(path, "/perfil") ? "page" : undefined} className={matchesPath(path, "/perfil") ? "active" : ""}><UserCircle size={20} aria-hidden="true" /></Link>
-          <button type="button" onClick={toggleTheme} aria-label="Alternar tema">{theme === "dark" ? <Sun size={20} aria-hidden="true" /> : <Moon size={20} aria-hidden="true" />}</button>
+          <ThemeToggle iconSize={20} />
           <button type="button" onClick={() => void logout()} aria-label="Sair"><SignOut size={20} aria-hidden="true" /></button>
         </div>
         </div>
@@ -416,9 +408,7 @@ export function Shell({
                 </span>
               </Link>
               <div className="account-card__actions">
-                <button type="button" className="account-card__action" onClick={toggleTheme} aria-label="Alternar tema" title={theme === "dark" ? "Tema claro" : "Tema escuro"}>
-                  {theme === "dark" ? <Sun size={15} weight="regular" aria-hidden="true" /> : <Moon size={15} weight="regular" aria-hidden="true" />}
-                </button>
+                <ThemeToggle className="account-card__action" iconSize={15} />
                 <button type="button" className="account-card__action" onClick={() => void logout()} aria-label="Sair" title="Sair">
                   <SignOut size={15} weight="regular" aria-hidden="true" />
                 </button>

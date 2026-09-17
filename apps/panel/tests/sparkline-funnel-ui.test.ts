@@ -111,8 +111,15 @@ describe("source assertions — call sites do dashboard", () => {
     }
   });
 
-  it("insere cabeçalhos de grupo no board usando GROUP_LABELS", () => {
-    expect(source).toContain("showGroupHeader");
+  it("codifica o grupo do widget na cor do acento, sem faixa de título no board", () => {
+    // O board é um fluxo contínuo de cards: o grupo se lê na cor do fio de
+    // acento, não numa linha de texto entre blocos (que quebrava a grade e
+    // empurrava o dado para baixo da dobra).
+    expect(source).not.toContain("showGroupHeader");
+    expect(source).toContain("GROUP_ACCENTS");
+    expect(source).toContain("groupAccent(definition.group)");
+    expect(source).toContain('"--dash-accent": accent');
+    // GROUP_LABELS continua governando a biblioteca de widgets (Personalizar).
     expect(source).toContain("groupTitle(group)");
     expect(source).toContain("col-span-12");
   });

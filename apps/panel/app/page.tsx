@@ -7,7 +7,7 @@ import useSWR from "swr";
 import { ContactAvatar } from "@/components/contact-avatar";
 import { Empty, LoadingCards } from "@/components/page-state";
 import { Shell } from "@/components/shell";
-import { Button, Dot, PageHeader, Panel, PanelBody, PanelFooter, PanelHeader, Section } from "@/components/ui";
+import { Button, Dot, PageHeader, Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui";
 import { CommercialDashboard, type CommercialDashboardData } from "@/components/commercial-dashboard";
 import { DashboardWidgets } from "@/components/dashboard-widgets";
 import { api } from "@/lib/api";
@@ -125,8 +125,11 @@ export default function Overview() {
 
         {/* Indicadores de tempo real: UMA superfície com divisores, não quatro
             cards. Quatro caixas emolduradas lado a lado para quatro números é
-            exatamente a densidade errada — os números competem com a moldura. */}
-        <Section title="Atendimento em tempo real" className="overview-realtime">
+            exatamente a densidade errada — os números competem com a moldura.
+            Sem título de seção: cada coluna já se identifica no próprio
+            overline, e um "Atendimento em tempo real" acima seria um rótulo
+            sobre rótulos. */}
+        <div className="overview-realtime">
           <Panel>
             <dl className="overview-metrics">
               <div className="overview-metrics__item">
@@ -158,7 +161,7 @@ export default function Overview() {
               </div>
             </dl>
           </Panel>
-        </Section>
+        </div>
 
         <section className="grid-main">
           {/* Fila de handoff: uma LISTA de linhas divididas. Antes cada item era

@@ -15,21 +15,19 @@ import {
   X,
   type Icon
 } from "@phosphor-icons/react";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { Sparkline } from "@/components/commercial-dashboard-charts";
 import { DashboardMetricWidget, DashboardTeamWidget, type DashboardMetricData, type DashboardTeamData } from "@/components/dashboard-metric-widget";
 import { Shell } from "@/components/shell";
 import {
   Button,
-  Card,
   Funnel,
   Input,
   KpiCard,
   KpiGrid,
   LineAreaChart,
-  PageHeader,
-  Select,
+  Segmented,
   type FunnelStage
 } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -86,15 +84,15 @@ function closerName(member: Record<string, unknown>) {
 function WidgetSkeleton() {
   return (
     <div className={styles.widgetLoading} role="status" aria-label="Carregando widget">
-      <div className={styles.widgetLoadingValue} />
-      <div className={styles.widgetLoadingLine} />
-      <div className={styles.widgetLoadingLineShort} />
+      <span className={styles.widgetLoadingValue} />
+      <span className={styles.widgetLoadingLine} />
+      <span className={styles.widgetLoadingLineShort} />
     </div>
   );
 }
 
 function EmptyWidget({ message }: { message: string }) {
-  return <p className="py-6 text-sm sub">{message}</p>;
+  return <p className={styles.widgetEmpty}>{message}</p>;
 }
 
 type SparkKey = "scheduled" | "completed" | "no_show";
@@ -108,10 +106,26 @@ const GROUP_LABELS: Record<string, string> = {
   origem_das_vendas: "Origem das vendas",
   equipe: "Equipe"
 };
+/* Cada grupo tem um token categórico. Essa é a ÚNICA cor de chrome do board:
+   entra como fio de 1px no topo do card, não como fundo nem como badge. */
+const GROUP_ACCENTS: Record<string, string> = {
+  atendimento: "var(--cat-1)",
+  origem: "var(--cat-5)",
+  agendamento: "var(--cat-3)",
+  vendas: "var(--cat-2)",
+  origem_das_vendas: "var(--cat-4)",
+  equipe: "var(--cat-3)"
+};
 const PERCENTAGE_WIDGET_KEYS = new Set(["attendance_rate", "conversion_rate", "conversion_by_seller"]);
+/* Widgets cujo conteúdo (gráfico, funil, tabela) define a própria altura. */
+const WIDE_WIDGET_KEYS = new Set(["commercial_metrics", "conversion_funnel", "team_load", "operations_summary", "pipeline", "today_agenda"]);
 
 function groupTitle(group: string | undefined) {
   return GROUP_LABELS[group ?? ""] ?? group ?? "Outros";
+}
+
+function groupAccent(group: string | undefined) {
+  return GROUP_ACCENTS[group ?? ""] ?? "var(--primary)";
 }
 
 function metricData(data: Record<string, unknown>): DashboardMetricData | null {
@@ -139,13 +153,21 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
     const connected = total > 0 && connectedCount === total;
     const statusLabel = total > 1 ? `${connectedCount} de ${total} conectados` : total === 1 ? (connected ? "Conectado" : "Desconectado") : "Desconectado";
     const aggregateStatus = total > 1 ? (connected ? "todas conectadas" : connectedCount > 0 ? "parcial" : "nenhuma conectada") : (connected ? "connected" : "disconnected");
-    return <div><p className={connected ? "metric accent" : "metric warning"}>{statusLabel}</p><p className="sub mono">status: {aggregateStatus}</p></div>;
+    return (
+      <div>
+        <p className={styles.statusLine}>
+          <span className={styles.statusPip} data-state={connected ? "on" : "off"} aria-hidden="true" />
+          <span className={styles.statusText} style={{ color: connected ? "var(--success-text)" : "var(--warning-text)" }}>{statusLabel}</span>
+        </p>
+        <p className={`${styles.metricCaption} mono`}>status: {aggregateStatus}</p>
+      </div>
+    );
   }
   if (widgetKey === "open_conversations") {
-    return <div><p className="metric">{metric(data.open)}</p><p className="sub">{metric(data.ai_open)} com IA · {metric(data.resolved_today)} resolvidas hoje</p></div>;
+    return <div><p className={styles.metricValue}>{metric(data.open)}</p><p className={styles.metricCaption}><strong>{metric(data.ai_open)}</strong> com IA · <strong>{metric(data.resolved_today)}</strong> resolvidas hoje</p></div>;
   }
   if (widgetKey === "messages_today") {
-    return <div><p className="metric">{metric(data.today)}</p><p className="sub">mensagens recebidas e enviadas</p></div>;
+    return <div><p className={styles.metricValue}>{metric(data.today)}</p><p className={styles.metricCaption}>recebidas e enviadas</p></div>;
   }
   if (widgetKey === "commercial_metrics") {
     const result = (data.result ?? {}) as Record<string, unknown>;
@@ -181,13 +203,10 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
         </KpiGrid>
         {series.length > 1 ? (
           <section className={styles.widgetChart} aria-label="Evolução no período">
-            <div className="chart-panel__head">
-              <h3 className="chart-panel__title">Evolução no período</h3>
-              <div className={styles.chartLegend}>
-                {legend.map(([label, tone]) => (
-                  <span key={label} className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full" style={{ backgroundColor: `var(--${tone})` }} aria-hidden="true" />{label}</span>
-                ))}
-              </div>
+            <div className={styles.chartLegend}>
+              {legend.map(([label, tone]) => (
+                <span key={label} className={styles.legendItem}><span className={styles.legendDot} style={{ backgroundColor: `var(--${tone})` }} aria-hidden="true" />{label}</span>
+              ))}
             </div>
             <LineAreaChart
               ariaLabel="Evolução de reuniões marcadas, realizadas e não comparecidas"
@@ -218,16 +237,16 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
     return (
       <div className={styles.funnelLayout}>
         <Funnel stages={stages} height={220} ariaLabel="Funil de conversão: contatos, agendamentos, calls e vendas" />
-        <dl className="grid grid-cols-1 gap-3 self-start sm:grid-cols-2 xl:grid-cols-1">
-          <div className="kpi-card">
-            <dt className="kpi-card__label">Lead → Venda</dt>
-            <dd className="kpi-card__value kpi-card__value--primary">{percent(funnel.lead_to_sale ?? 0)}</dd>
-            <p className="kpi-card__hint">conversão ponta a ponta do período</p>
+        <dl className={styles.funnelSide}>
+          <div className={styles.funnelStat}>
+            <dt className={styles.funnelStatLabel}>Lead → Venda</dt>
+            <dd className={styles.funnelStatValue}>{percent(funnel.lead_to_sale ?? 0)}</dd>
+            <p className={styles.funnelStatHint}>conversão ponta a ponta do período</p>
           </div>
-          <div className="kpi-card">
-            <dt className="kpi-card__label">Taxa de no-show</dt>
-            <dd className="kpi-card__value kpi-card__value--warning">{percent(funnel.no_show_rate ?? 0)}</dd>
-            <p className="kpi-card__hint">sobre {metric(due)} reunião(ões) já vencida(s)</p>
+          <div className={styles.funnelStat}>
+            <dt className={styles.funnelStatLabel}>Taxa de no-show</dt>
+            <dd className={styles.funnelStatValue} data-tone="warning">{percent(funnel.no_show_rate ?? 0)}</dd>
+            <p className={styles.funnelStatHint}>sobre {metric(due)} reunião(ões) já vencida(s)</p>
           </div>
         </dl>
       </div>
@@ -245,11 +264,11 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
       ...(leadsEnabled ? [["Leads sem responsável", metric(operations.unassigned_leads)] as [string, string]] : [])
     ];
     return (
-      <dl className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <dl className={styles.statGrid}>
         {entries.map(([label, value]) => (
-          <div key={label} className="rounded-xl bg-[var(--surface-elevated)] px-3 py-2.5">
-            <dt className="type-caption leading-snug text-[var(--text-muted)]">{label}</dt>
-            <dd className="mono mt-1.5 text-lg font-semibold tabular-nums text-[var(--text-secondary)]">{value}</dd>
+          <div key={label} className={styles.statTile}>
+            <dt className={styles.statLabel}>{label}</dt>
+            <dd className={styles.statValue}>{value}</dd>
           </div>
         ))}
       </dl>
@@ -258,14 +277,35 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
   if (widgetKey === "handoffs") {
     const items = Array.isArray(data.items) ? data.items as Array<Record<string, unknown>> : [];
     if (!items.length) return <EmptyWidget message="Nenhum handoff aguardando agora." />;
-    return <div className="space-y-3"><p className="font-mono text-2xl font-semibold text-[var(--warning-text)]">{metric(data.total)}</p>{items.slice(0, 4).map((item) => <div key={String(item.id)} className="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-3 text-sm"><span className="truncate">{String(item.contact_name ?? item.contact_phone ?? "Contato")}</span><span className="mono sub">{metric(item.waiting_minutes)} min</span></div>)}</div>;
+    return (
+      <div>
+        <p className={styles.metricValue} data-tone="warning">{metric(data.total)}</p>
+        <div className={styles.rows}>
+          {items.slice(0, 4).map((item) => (
+            <div key={String(item.id)} className={styles.row}>
+              <span className={styles.rowLabel}>{String(item.contact_name ?? item.contact_phone ?? "Contato")}</span>
+              <span className={styles.rowValue}>{metric(item.waiting_minutes)} min</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
   if (widgetKey === "today_agenda") {
     const items = Array.isArray(data.items) ? data.items as Array<Record<string, unknown>> : [];
     const period = (data.period ?? {}) as Record<string, unknown>;
     const timezone = typeof period.timezone === "string" ? period.timezone : undefined;
     if (!items.length) return <EmptyWidget message="Nenhum compromisso para hoje." />;
-    return <div className="divide-y divide-[var(--border)]">{items.slice(0, 6).map((item) => <div key={String(item.id)} className="grid grid-cols-[5rem_1fr] gap-3 py-3 text-sm"><time className="mono text-[var(--primary)]">{new Date(String(item.start_at)).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", ...(timezone ? { timeZone: timezone } : {}) })}</time><span className="truncate">{String(item.lead_name ?? item.lead_phone ?? "Contato")}</span></div>)}</div>;
+    return (
+      <div className={styles.rows}>
+        {items.slice(0, 6).map((item) => (
+          <div key={String(item.id)} className={styles.agendaRow}>
+            <time className={styles.agendaTime}>{new Date(String(item.start_at)).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", ...(timezone ? { timeZone: timezone } : {}) })}</time>
+            <span className={styles.rowLabel}>{String(item.lead_name ?? item.lead_phone ?? "Contato")}</span>
+          </div>
+        ))}
+      </div>
+    );
   }
   if (widgetKey === "team_load") {
     const members = Array.isArray(data.members) ? data.members as Array<Record<string, unknown>> : [];
@@ -273,33 +313,33 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
     const ranked = [...members].sort((a, b) => Number(b.sold_value ?? 0) - Number(a.sold_value ?? 0));
     const topSold = Math.max(...ranked.map((member) => Number(member.sold_value ?? 0)), 1);
     return (
-      <div className="overflow-x-auto" tabIndex={0} aria-label="Performance por closer">
-        <table className="w-full metrics-table-minwidth text-left text-sm">
-          <thead className="border-b border-[var(--border)] type-caption uppercase tracking-[.08em] text-[var(--text-muted)]">
+      <div className={styles.tableWrap} tabIndex={0} aria-label="Performance por closer">
+        <table className={styles.widgetTable}>
+          <thead>
             <tr>
-              <th className="pb-2 font-medium">Closer</th>
-              <th className="pb-2 text-right font-medium">Calls</th>
-              <th className="pb-2 text-right font-medium">No-shows</th>
-              <th className="pb-2 text-right font-medium">Vendas</th>
-              <th className="pb-2 text-right font-medium">Call → Venda</th>
-              <th className="pb-2 text-right font-medium">Valor vendido</th>
+              <th>Closer</th>
+              <th className={styles.numeric}>Calls</th>
+              <th className={styles.numeric}>No-shows</th>
+              <th className={styles.numeric}>Vendas</th>
+              <th className={styles.numeric}>Call → Venda</th>
+              <th className={styles.numeric}>Valor vendido</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[var(--border)]">
+          <tbody>
             {ranked.map((member) => (
               <tr key={String(member.member_id)}>
-                <td className="py-3">
+                <td>
                   <strong className="block max-w-56 truncate font-medium">{closerName(member)}</strong>
-                  <span className="type-caption text-[var(--text-muted)]">{member.availability_status === "available" ? "Disponível" : "Indisponível"}</span>
+                  <span className={styles.statLabel}>{member.availability_status === "available" ? "Disponível" : "Indisponível"}</span>
                 </td>
-                <td className="mono py-3 text-right tabular-nums text-[var(--success-text)]">{metric(member.completed)}</td>
-                <td className="mono py-3 text-right tabular-nums text-[var(--warning-text)]">{metric(member.no_show)}</td>
-                <td className="mono py-3 text-right tabular-nums">{metric(member.sales)}</td>
-                <td className="mono py-3 text-right tabular-nums">{percent(member.closing_rate)}</td>
-                <td className="py-3 text-right">
-                  <span className="mono block font-semibold tabular-nums">{money(member.sold_value)}</span>
-                  <span className="mt-1.5 ml-auto block h-1 w-24 overflow-hidden rounded-full bg-[var(--surface-elevated)]">
-                    <span className="block h-full rounded-full bg-[var(--success)] transition-[width] duration-500" style={{ width: `${(Number(member.sold_value ?? 0) / topSold) * 100}%` }} />
+                <td className={styles.numeric} style={{ color: "var(--success-text)" }}>{metric(member.completed)}</td>
+                <td className={styles.numeric} style={{ color: "var(--warning-text)" }}>{metric(member.no_show)}</td>
+                <td className={styles.numeric}>{metric(member.sales)}</td>
+                <td className={styles.numeric}>{percent(member.closing_rate)}</td>
+                <td className={styles.numeric}>
+                  <span className="block font-semibold">{money(member.sold_value)}</span>
+                  <span className={styles.barTrack} style={{ width: "6rem", marginInlineStart: "auto", marginBlockStart: "var(--space-1)" }}>
+                    <span className={styles.barFill} style={{ display: "block", background: "var(--success)", transform: `scaleX(${Number(member.sold_value ?? 0) / topSold})` }} />
                   </span>
                 </td>
               </tr>
@@ -313,26 +353,73 @@ function WidgetContent({ widgetKey, data }: { widgetKey: WidgetKey; data: Record
     const stages = Array.isArray(data.stages) ? data.stages as Array<Record<string, unknown>> : [];
     if (!stages.length) return <EmptyWidget message="Nenhum lead no Pipeline." />;
     const total = stages.reduce((sum, stage) => sum + Number(stage.count ?? 0), 0);
-    return <div className="space-y-3">{stages.map((stage) => { const count = Number(stage.count ?? 0); const capacity = typeof stage.capacity_target === "number" ? stage.capacity_target : null; return <div key={String(stage.id ?? stage.status)}><div className="mb-1 flex justify-between gap-4 text-sm"><span>{String(stage.name ?? stage.status)}</span><span className="mono">{count}{capacity ? ` / ${capacity}` : ""}</span></div><div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-elevated)]"><div className="h-full origin-left transition-transform duration-300" style={{ backgroundColor: String(stage.color ?? "var(--primary)"), transform: `scaleX(${capacity ? Math.min(count / capacity, 1) : total ? count / total : 0})` }} /></div></div>; })}</div>;
+    return (
+      <div>
+        {stages.map((stage) => {
+          const count = Number(stage.count ?? 0);
+          const capacity = typeof stage.capacity_target === "number" ? stage.capacity_target : null;
+          return (
+            <div key={String(stage.id ?? stage.status)} className={styles.barRow}>
+              <div className={styles.barHead}>
+                <span className={styles.barName}>{String(stage.name ?? stage.status)}</span>
+                <span className={styles.barValue}>{count}{capacity ? ` / ${capacity}` : ""}</span>
+              </div>
+              <div className={styles.barTrack}>
+                <div className={styles.barFill} style={{ backgroundColor: String(stage.color ?? "var(--primary)"), transform: `scaleX(${capacity ? Math.min(count / capacity, 1) : total ? count / total : 0})` }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   }
   const alerts = Array.isArray(data.items) ? data.items as Array<Record<string, unknown>> : [];
   if (!alerts.length) return <EmptyWidget message="Nenhum alerta recente." />;
-  return <div className="divide-y divide-[var(--border)]">{alerts.map((alert) => <div key={String(alert.id)} className="py-3 text-sm"><p>{String(alert.message)}</p><time className="mono text-xs sub">{new Date(String(alert.created_at)).toLocaleString("pt-BR")}</time></div>)}</div>;
+  return (
+    <div className={styles.rows}>
+      {alerts.map((alert) => (
+        <div key={String(alert.id)} className={styles.row} style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
+          <p className={styles.rowLabel} style={{ whiteSpace: "normal" }}>{String(alert.message)}</p>
+          <time className={`${styles.rowValue} block`}>{new Date(String(alert.created_at)).toLocaleString("pt-BR")}</time>
+        </div>
+      ))}
+    </div>
+  );
 }
 
-function WidgetCard({ item, definition, periodQuery }: { item: LayoutItem; definition: WidgetDefinition; periodQuery: string }) {
+function WidgetCard({ item, definition, periodQuery, index }: { item: LayoutItem; definition: WidgetDefinition; periodQuery: string; index: number }) {
   const { data, error, mutate, isLoading } = useSWR<WidgetResponse>(
     `/dashboard/widgets/${item.key}?${periodQuery}`,
     fetcher,
     { refreshInterval: 15_000, revalidateOnFocus: true }
   );
+  const accent = groupAccent(definition.group);
   return (
-    <Card className={`${sizeClasses[item.size]} ${styles.widgetCard}`} aria-busy={isLoading}>
-      <div className={styles.widgetHeader}><div><h2>{definition.label}</h2><p className={styles.widgetHeaderDescription}>{definition.description}</p></div></div>
-      {error ? <div role="alert" className={styles.widgetError}><p className="error">Este widget não pôde carregar.</p><Button tone="quiet" className="mt-3" onClick={() => void mutate()}>Tentar novamente</Button></div> : !data ? <WidgetSkeleton /> : <WidgetContent widgetKey={item.key} data={data.data} />}
-    </Card>
+    <section
+      className={`${sizeClasses[item.size]} ${styles.widgetCard}`}
+      aria-busy={isLoading}
+      data-wide={WIDE_WIDGET_KEYS.has(item.key) ? "true" : "false"}
+      // A descrição saiu da superfície: continua acessível como tooltip nativo.
+      title={definition.description}
+      style={{ "--dash-accent": accent, "--dash-index": index } as CSSProperties}
+    >
+      <div className={styles.widgetHeader}>
+        <h2 className={styles.widgetTitle}>{definition.label}</h2>
+        <span className={styles.widgetDot} aria-hidden="true" />
+      </div>
+      <div className={styles.widgetBody}>
+        {error ? (
+          <div role="alert" className={styles.widgetError}>
+            <p className="error">Este widget não pôde carregar.</p>
+            <Button tone="quiet" size="sm" onClick={() => void mutate()}>Tentar novamente</Button>
+          </div>
+        ) : !data ? <WidgetSkeleton /> : <WidgetContent widgetKey={item.key} data={data.data} />}
+      </div>
+    </section>
   );
 }
+
+const PERIOD_OPTIONS: Array<[string, string]> = [["today", "Hoje"], ["week", "Semana"], ["month", "Mês"], ["custom", "Período"]];
 
 export function DashboardWidgets() {
   const { isEnabled } = useCapabilities();
@@ -359,16 +446,11 @@ export function DashboardWidgets() {
   };
   const availableDraft = draft.filter((item) => widgetAvailable(item.key));
   const visible = availableDraft.filter((item) => item.visible).sort((a, b) => a.order - b.order);
-  // Cabeçalho de grupo no board: inserido quando o grupo muda em relação ao
-  // widget visível anterior — grupos fora de ordem (layout salvo antigo) não quebram.
-  let lastBoardGroup: string | undefined;
-  const boardItems = visible.map((item) => {
-    const definition = definitions.get(item.key);
-    const group = definition?.group ?? "outros";
-    const showGroupHeader = Boolean(definition) && group !== lastBoardGroup;
-    if (definition) lastBoardGroup = group;
-    return { item, definition, group, showGroupHeader };
-  });
+  // O board é um fluxo contínuo de cards: os grupos continuam ordenando o
+  // layout, mas não viram faixas de título. Uma linha de texto entre cada
+  // bloco quebrava a grade em pedaços e empurrava o dado para baixo da dobra —
+  // o grupo já se lê na cor do fio de acento e no rótulo de cada card.
+  const boardItems = visible.map((item) => ({ item, definition: definitions.get(item.key) }));
   const groupedDraft = useMemo(() => {
     const groups = new Map<string, LayoutItem[]>();
     [...availableDraft].sort((a, b) => a.order - b.order).forEach((item) => {
@@ -383,6 +465,9 @@ export function DashboardWidgets() {
   const periodQuery = period === "custom"
     ? `period=custom&start=${encodeURIComponent(customStart)}&end=${encodeURIComponent(customEnd)}`
     : `period=${period}`;
+  const periodSummary = period === "custom"
+    ? `${new Date(`${customStart}T12:00:00.000Z`).toLocaleDateString("pt-BR", { timeZone: "UTC" })} — ${new Date(`${customEnd}T12:00:00.000Z`).toLocaleDateString("pt-BR", { timeZone: "UTC" })}`
+    : PERIOD_OPTIONS.find(([key]) => key === period)?.[1] ?? "Hoje";
 
   useRealtimeSignals({
     onCatchUp: () => { if (document.visibilityState === "visible") void mutateCache((key) => typeof key === "string" && key.startsWith("/dashboard/widgets/")); },
@@ -434,28 +519,51 @@ export function DashboardWidgets() {
   return (
     <Shell>
       <div className={styles.pageFrame}>
-        <PageHeader title="Visão geral" description="Quantos leads entraram, quantos agendaram, quantos compareceram e quanto vendemos." actions={<div className="cluster">
-            <label className="sr-only" htmlFor="dashboard-period">Período</label>
-            <Select id="dashboard-period" value={period} onChange={(event) => setPeriod(event.target.value)}><option value="today">Hoje</option><option value="week">Semana</option><option value="month">Mês</option><option value="custom">Período personalizado</option></Select>
-            {period === "custom" ? <>
-              <label className="sr-only" htmlFor="dashboard-start">Data inicial</label>
-              <Input id="dashboard-start" type="date" value={customStart} max={customEnd} onChange={(event) => { setCustomStart(event.target.value); if (customEnd < event.target.value) setCustomEnd(event.target.value); }} />
-              <label className="sr-only" htmlFor="dashboard-end">Data final</label>
-              <Input id="dashboard-end" type="date" value={customEnd} min={customStart} onChange={(event) => setCustomEnd(event.target.value)} />
-            </> : null}
-            <Button tone="quiet" icon={editing ? <X size={18} /> : <SlidersHorizontal size={18} />} onClick={() => setEditing((value) => !value)}>{editing ? "Fechar" : "Personalizar"}</Button>
-          </div>} />
+        {/* Toolbar única: título, período e ações na mesma linha, grudada no
+            topo ao rolar. Antes eram um PageHeader alto com descrição + uma
+            fileira de controles — duas linhas de chrome antes do primeiro dado. */}
+        <header className={styles.toolbar}>
+          <div className={styles.toolbarTitle}>
+            <h1>Visão geral</h1>
+            <span className={styles.toolbarPeriod}>{periodSummary}</span>
+          </div>
+          <div className={styles.toolbarActions}>
+            <Segmented aria-label="Período">
+              {PERIOD_OPTIONS.map(([key, label]) => (
+                <button key={key} type="button" aria-pressed={period === key} onClick={() => setPeriod(key)}>{label}</button>
+              ))}
+            </Segmented>
+            {period === "custom" ? (
+              <div className={styles.toolbarDates}>
+                <label className="sr-only" htmlFor="dashboard-start">Data inicial</label>
+                <Input id="dashboard-start" type="date" value={customStart} max={customEnd} onChange={(event) => { setCustomStart(event.target.value); if (customEnd < event.target.value) setCustomEnd(event.target.value); }} />
+                <label className="sr-only" htmlFor="dashboard-end">Data final</label>
+                <Input id="dashboard-end" type="date" value={customEnd} min={customStart} onChange={(event) => setCustomEnd(event.target.value)} />
+              </div>
+            ) : null}
+            <Button tone="quiet" icon={editing ? <X size={17} /> : <SlidersHorizontal size={17} />} onClick={() => setEditing((value) => !value)}>{editing ? "Fechar" : "Personalizar"}</Button>
+          </div>
+        </header>
 
         {editing && catalog ? <section className={styles.widgetLibrary} aria-label="Configurar dashboard">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Biblioteca de widgets</h2><p className="text-sm sub">A ordem e o tamanho se adaptam automaticamente em telas menores — um widget &ldquo;Amplo&rdquo; também vira coluna única no celular.</p></div><div className="flex gap-2"><button className="btn secondary active:scale-[0.98]" disabled={saving} onClick={() => void reset()}><ArrowCounterClockwise size={18} />Restaurar padrão</button><button className="btn active:scale-[0.98]" disabled={saving} onClick={() => void save()}><Check size={18} />{saving ? "Salvando" : "Salvar"}</button></div></div>
-          <div className="mb-4 flex flex-wrap gap-2" aria-label="Presets do dashboard">
+          <div className={styles.libraryHead}>
+            <div>
+              <h2 className="type-section-title">Biblioteca de widgets</h2>
+              <p className="sub">A ordem e o tamanho se adaptam automaticamente em telas menores — um widget &ldquo;Amplo&rdquo; também vira coluna única no celular.</p>
+            </div>
+            <div className="cluster">
+              <Button tone="quiet" icon={<ArrowCounterClockwise size={17} />} disabled={saving} onClick={() => void reset()}>Restaurar padrão</Button>
+              <Button tone="primary" icon={<Check size={17} />} disabled={saving} onClick={() => void save()}>{saving ? "Salvando" : "Salvar"}</Button>
+            </div>
+          </div>
+          <div className={styles.libraryPresets} aria-label="Presets do dashboard">
             {([["essencial", "Essencial"], ["comercial", "Comercial"], ["gestao_completa", "Gestão completa"]] as const).map(([key, label]) => <button key={key} className="btn secondary active:scale-[0.98]" disabled={saving} onClick={() => void applyPreset(key)}>{label}</button>)}
             <button className="btn secondary active:scale-[0.98]" disabled={saving} onClick={() => setEditing(true)}>Personalizado</button>
           </div>
-          <div className="divide-y divide-[var(--border)]">{groupedDraft.map(([group, items]) => <section key={group} aria-labelledby={`dashboard-group-${group}`}><h3 id={`dashboard-group-${group}`} className="pt-4 text-xs font-semibold uppercase tracking-[.1em] text-[var(--text-muted)]">{groupTitle(group)}</h3>{items.map((item) => { const definition = definitions.get(item.key); if (!definition) return null; return <div key={item.key} className="grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center"><label className="flex min-w-0 items-start gap-3"><input type="checkbox" checked={item.visible} onChange={(event) => patchItem(item.key, { visible: event.target.checked })} className="mt-1" /><span><strong className="block text-sm">{definition.label}</strong><span className="block text-xs sub">{definition.description}</span></span></label><label className="flex items-center gap-2 text-sm"><span>Tamanho</span><select className="input w-auto" value={item.size} onChange={(event) => patchItem(item.key, { size: event.target.value as WidgetSize })}>{definition.sizes.map((size) => <option key={size} value={size}>{sizeLabels[size]}</option>)}</select></label><div className="flex gap-1"><button className="btn secondary min-h-11 min-w-11 px-2" disabled={item.order === 0} aria-label={`Mover ${definition.label} para cima`} title="Mover para cima" onClick={() => move(item.key, -1)}><CaretUp size={17} /></button><button className="btn secondary min-h-11 min-w-11 px-2" disabled={item.order === availableDraft.length - 1} aria-label={`Mover ${definition.label} para baixo`} title="Mover para baixo" onClick={() => move(item.key, 1)}><CaretDown size={17} /></button></div></div>; })}</section>)}</div>
+          <div className={styles.libraryGroups}>{groupedDraft.map(([group, items]) => <section key={group} aria-labelledby={`dashboard-group-${group}`}><h3 id={`dashboard-group-${group}`} className={styles.libraryGroupTitle}>{groupTitle(group)}</h3>{items.map((item) => { const definition = definitions.get(item.key); if (!definition) return null; return <div key={item.key} className={`${styles.libraryItem} md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center`}><label className={styles.libraryItemLabel}><input type="checkbox" checked={item.visible} onChange={(event) => patchItem(item.key, { visible: event.target.checked })} className="mt-1" /><span><strong className={styles.libraryItemName}>{definition.label}</strong><span className={styles.libraryItemHint}>{definition.description}</span></span></label><label className={styles.libraryItemSize}><span>Tamanho</span><select className="input w-auto" value={item.size} onChange={(event) => patchItem(item.key, { size: event.target.value as WidgetSize })}>{definition.sizes.map((size) => <option key={size} value={size}>{sizeLabels[size]}</option>)}</select></label><div className={styles.libraryItemMove}><Button tone="quiet" className="min-h-11 min-w-11 px-2" disabled={item.order === 0} aria-label={`Mover ${definition.label} para cima`} title="Mover para cima" onClick={() => move(item.key, -1)}><CaretUp size={17} /></Button><Button tone="quiet" className="min-h-11 min-w-11 px-2" disabled={item.order === availableDraft.length - 1} aria-label={`Mover ${definition.label} para baixo`} title="Mover para baixo" onClick={() => move(item.key, 1)}><CaretDown size={17} /></Button></div></div>; })}</section>)}</div>
         </section> : null}
 
-        {catalogError || layoutError ? <div className="card" role="alert"><p className="error">Não foi possível carregar a configuração do dashboard.</p></div> : !catalog || !layout ? <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><div className="card metric-empty-minheight"><WidgetSkeleton /></div><div className="card metric-empty-minheight"><WidgetSkeleton /></div><div className="card metric-empty-minheight"><WidgetSkeleton /></div><div className="card metric-empty-minheight"><WidgetSkeleton /></div></div> : !visible.length ? <div className="card"><EmptyWidget message="Nenhum widget está visível. Abra Personalizar para escolher o que acompanhar." /></div> : <section className={`${styles.widgets} grid grid-cols-12 gap-4`} aria-label="Widgets do dashboard">{boardItems.map(({ item, definition, group, showGroupHeader }) => definition ? <Fragment key={item.key}>{showGroupHeader ? <h2 className="col-span-12 pt-2 text-xs font-semibold uppercase tracking-[.1em] text-[var(--text-muted)]">{groupTitle(group)}</h2> : null}<WidgetCard item={item} definition={definition} periodQuery={periodQuery} /></Fragment> : null)}</section>}
+        {catalogError || layoutError ? <div className="card" role="alert"><p className="error">Não foi possível carregar a configuração do dashboard.</p></div> : !catalog || !layout ? <div className={`${styles.widgets} grid grid-cols-12 gap-4`}>{[0, 1, 2, 3].map((index) => <div key={index} className={`${sizeClasses.small} ${styles.widgetCard}`} style={{ "--dash-index": index } as CSSProperties}><WidgetSkeleton /></div>)}</div> : !visible.length ? <div className="card"><EmptyWidget message="Nenhum widget está visível. Abra Personalizar para escolher o que acompanhar." /></div> : <section className={`${styles.widgets} grid grid-cols-12 gap-4`} aria-label="Widgets do dashboard">{boardItems.map(({ item, definition }, index) => definition ? <WidgetCard key={item.key} item={item} definition={definition} periodQuery={periodQuery} index={index} /> : null)}</section>}
       </div>
     </Shell>
   );

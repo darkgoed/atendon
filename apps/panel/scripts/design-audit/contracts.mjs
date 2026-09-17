@@ -4,7 +4,7 @@ const entitySelectors = {
   "/conversas": "main [aria-label='Lista de conversas'], main [aria-label^='Histórico da conversa com']",
   "/leads": "main .leads-table tbody tr",
   "/leads/[id]": "main [aria-labelledby='internal-notes-title'], main [aria-labelledby='qualification-title']",
-  "/leads/pipeline": "main [aria-label='Quadro de pipeline']",
+  "/pipeline": "main [aria-label='Quadro de pipeline']",
   "/configuracoes": "main [aria-label*='configuração' i], main [aria-label*='configuração' i]",
   "/agenda": "main [aria-label*='agenda' i], main [data-testid*='agenda' i]"
 };
@@ -21,7 +21,7 @@ export const ROUTE_CONTRACTS = {
   "/humanizacao": populated("Humanização", "professional|Timing", "/humanizacao"),
   "/leads": populated("Leads", "Cliente QA com nome comercial deliberadamente longo", "/leads"),
   "/leads/[id]": { expectedPath: null, heading: "Cliente QA com nome comercial deliberadamente longo", headingRole: "heading", marker: "qa-note", entitySelector: "[aria-labelledby='internal-notes-title']", state: "populated" },
-  "/leads/pipeline": populated("Pipeline", "Cliente QA com nome comercial deliberadamente longo", "/leads/pipeline"),
+  "/pipeline": populated("Pipeline", "Cliente QA com nome comercial deliberadamente longo", "/pipeline"),
   "/pos-venda": populated("Carteira de pós-venda", "Marina QA · Cliente de implantação empresarial|Confirmar treinamento de implantação", "/pos-venda"),
   "/pos-venda/cobranca": populated("Cobranças de crediário", "Cliente QA|qa-debt", "/pos-venda/cobranca"),
   "/pos-venda/configurar": populated("Configurar checklist", "Confirmar cadastro|Agendar treinamento", "/pos-venda/configurar"),
