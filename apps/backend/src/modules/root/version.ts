@@ -76,7 +76,14 @@ export async function getVersionInfo(
   } catch (error) {
     console.warn("Não foi possível ler package.json para fallback de versão", error);
   }
-  const currentVersion = config.APP_VERSION?.trim() || releasesCurrent || packageVersion;
+  // A tabela `releases` é o registro autoritativo de versão: o pipeline de
+  // release grava cada build nela. APP_VERSION é um override legado de quando
+  // esse registro não existia — mantê-lo na frente fazia uma variável de
+  // ambiente esquecida no Coolify (APP_VERSION=1.22.0) congelar o número
+  // exibido no painel e, pior, impedir o modal de novidades de aparecer, já
+  // que ele dispara na MUDANÇA dessa string. Agora ele só vale como fallback
+  // quando a tabela não respondeu.
+  const currentVersion = releasesCurrent || config.APP_VERSION?.trim() || packageVersion;
 
   return {
     version: currentVersion,

@@ -67,9 +67,24 @@ describe("version service", () => {
     }
   });
 
-  it("prefers an explicitly defined APP_VERSION", async () => {
+  // A tabela `releases` é o registro autoritativo. Um APP_VERSION esquecido no
+  // ambiente (foi o que aconteceu em produção: 1.22.0) não pode congelar o
+  // número exibido nem impedir o modal de novidades, que dispara na mudança
+  // dessa string.
+  it("prefers the releases table over a stale APP_VERSION", async () => {
     const original = config.APP_VERSION;
-    const database = fakeDb([{ version: "1.21.0", created_at: "2026-01-01T00:00:00Z", public_changes: [] }]);
+    const database = fakeDb([{ version: "2.0.2", created_at: "2026-09-17T00:00:00Z", public_changes: [] }]);
+    try {
+      (config as { APP_VERSION?: string }).APP_VERSION = "1.22.0";
+      expect((await getVersionInfo(undefined, database)).version).toBe("2.0.2");
+    } finally {
+      (config as { APP_VERSION?: string }).APP_VERSION = original;
+    }
+  });
+
+  it("falls back to APP_VERSION when the releases table has no row", async () => {
+    const original = config.APP_VERSION;
+    const database = fakeDb([]);
     try {
       (config as { APP_VERSION?: string }).APP_VERSION = "9.8.7";
       expect((await getVersionInfo(undefined, database)).version).toBe("9.8.7");
