@@ -482,9 +482,18 @@ export class MetaInstagramProvider implements InstagramProvider {
             rejectUnauthorized: true,
             servername: url.hostname,
             signal: timeoutSignal,
-            headers: url.hostname === "graph.instagram.com"
-              ? { authorization: `Bearer ${accessToken}` }
-              : {}
+            // A CDN da Meta (lookaside.fbsbx.com) redireciona requisições
+            // sem User-Agent para facebook.com/unsupportedbrowser (HTML) em
+            // vez de servir a mídia — sem este header, TODO download de
+            // mídia do Instagram falhava com "Unsupported media type" mesmo
+            // com token e URL corretos, mascarado atrás do bug separado do
+            // publicHttpsAgent.
+            headers: {
+              "user-agent": "AtendON/1.0 (+https://atendon.alpdash.com.br)",
+              ...(url.hostname === "graph.instagram.com"
+                ? { authorization: `Bearer ${accessToken}` }
+                : {})
+            }
           },
           (response) => {
             if (settled) {

@@ -210,6 +210,32 @@ describe("MetaInstagramProvider secure media download", () => {
     expect(transport.calls[0]?.options.servername).toBe("media.example");
   });
 
+  // Regressão: a CDN da Meta (lookaside.fbsbx.com) redireciona requisições
+  // sem User-Agent para facebook.com/unsupportedbrowser (HTML) em vez de
+  // servir a mídia real — sem este header, todo download de áudio/imagem/
+  // vídeo do Instagram falhava com "Unsupported media type" mesmo com token
+  // e URL corretos.
+  it("always sends a User-Agent header, including for non-graph media hosts", async () => {
+    const png = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from("payload")
+    ]);
+    const transport = requestSequence([{
+      headers: { "content-type": "image/png" },
+      chunks: [png]
+    }]);
+    const provider = providerWithRequest(transport.requestImpl);
+
+    await provider.fetchMedia({
+      url: "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1",
+      accessToken: "access-token"
+    });
+
+    const userAgent = requestHeader(transport.calls[0]?.options ?? {}, "user-agent");
+    expect(userAgent).toBeTruthy();
+    expect(userAgent).not.toBeNull();
+  });
+
   it("validates every redirect hop and strips the bearer token outside graph.instagram.com", async () => {
     const png = Buffer.concat([
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
