@@ -34,7 +34,7 @@ export const ROUTE_CONTRACTS = {
   "/root/saas/billing": populated("Operações de billing", "qa-invoice|Tenant ID", "/root/saas/billing"),
   "/root/saas/gateways": populated("Gateways", "Stripe Test|sandbox", "/root/saas/gateways"),
   "/root/saas/metricas": populated("Métricas SaaS", "Receita|Transações|Tenant ID", "/root/saas/metricas"),
-  "/root/versions": populated("Versões e changelogs", "2\\.1\\.0|qa-release|RELEASE", "/root/versions"),
+  "/root/versions": { expectedPath: null, heading: "Versões e changelogs", headingRole: "heading", marker: "v2\\.1\\.0|qa-release|Release \\(major\\)", entitySelector: "table tbody tr", state: "populated" },
   "/changelog": { expectedPath: "/changelog", heading: "Changelog público", headingRole: "heading", marker: "Changelog público|AtendON 2\\.1\\.0", entitySelector: "main .card", state: "public" },
   "/privacidade": { expectedPath: "/privacidade", heading: "Política de privacidade", headingRole: "heading", marker: "privacidade|dados", entitySelector: "main", state: "public" },
   "/termos": { expectedPath: "/termos", heading: "Termos de uso", headingRole: "heading", marker: "termos|usuário", entitySelector: "main", state: "public" },
