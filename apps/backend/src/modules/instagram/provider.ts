@@ -67,6 +67,27 @@ class MetaAmbiguousError extends Error {
   }
 }
 
+// `IGApiException` code 100 com "Unsupported request - method type: <verbo>"
+// NÃO é um erro de método HTTP: a Meta devolve essa mensagem genérica para
+// TODA chamada feita em nome de um usuário que o app ainda não tem permissão
+// de atender. Quando ela aparece já no /me — depois de a autorização ter
+// devolvido código e token válidos — a causa é acesso do app, não do usuário:
+// a conta não é testadora do app e o app ainda não tem Acesso Avançado
+// aprovado (ou o negócio não passou pela verificação de tech provider).
+// Reautorizar quantas vezes for não resolve, então o erro precisa dizer isso.
+function isAppAccessRejection(error: unknown): boolean {
+  if (!(error instanceof MetaRejectedError) || !error.detail) return false;
+  return /"code"\s*:\s*100/.test(error.detail)
+    && /Unsupported request - method type/i.test(error.detail);
+}
+
+function appAccessError(cause: MetaRejectedError): Error {
+  return Object.assign(
+    new Error("Instagram app lacks permission to act for this account", { cause }),
+    { statusCode: 403, code: "INSTAGRAM_APP_ACCESS_NOT_GRANTED" }
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -350,7 +371,14 @@ export class MetaInstagramProvider implements InstagramProvider {
       fields: "user_id,username",
       access_token: accessToken
     }).toString();
-    const identity = await this.requestJsonPreservingUserIds(identityUrl.toString());
+    // Se a Meta recusa o /me logo após uma autorização bem-sucedida, o app não
+    // tem acesso para atender esta conta (ver isAppAccessRejection). É o único
+    // ponto do fluxo que distingue isso de um erro de permissão do usuário.
+    const identity = await this.requestJsonPreservingUserIds(identityUrl.toString())
+      .catch((error: unknown) => {
+        if (isAppAccessRejection(error)) throw appAccessError(error as MetaRejectedError);
+        throw error;
+      });
     // Na API de Instagram Login a troca de token devolve o ID app-scoped do
     // usuário e /me devolve o ID da conta profissional (o mesmo usado no
     // entry.id dos webhooks). São namespaces diferentes: a identidade canônica

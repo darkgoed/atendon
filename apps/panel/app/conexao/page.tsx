@@ -188,6 +188,8 @@ export default function Connection() {
       setActionError(
         reason === "INSTAGRAM_ACCOUNT_ALREADY_CONNECTED"
           ? "Esta conta do Instagram já está conectada em outro workspace do AtendON. Desconecte-a lá antes de conectar aqui."
+          : reason === "INSTAGRAM_APP_ACCESS_NOT_GRANTED"
+          ? "A Meta recusou o acesso do AtendON a esta conta. A autorização funcionou, mas o app ainda não tem permissão para atendê-la: adicione a conta como testadora do app no painel da Meta ou conclua a aprovação de Acesso Avançado. Reautorizar não resolve enquanto isso."
           : reason === "INSTAGRAM_REQUIRED_SCOPE_MISSING"
           ? "A autorização do Instagram não concedeu todas as permissões necessárias. Ao autorizar, marque todas as opções solicitadas e tente novamente."
           : "Não foi possível concluir a autorização do Instagram. Verifique as permissões e tente novamente."

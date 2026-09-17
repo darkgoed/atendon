@@ -251,6 +251,73 @@ describe("MetaInstagramProvider HTTP contract", () => {
     expect(exchange.calls[3]?.url).toContain("access_token=short-token");
   });
 
+  // Reproduz o caso real de produção: a autorização devolve código e token
+  // válidos, mas TODA chamada em nome do usuário é recusada com o mesmo
+  // code 100 genérico porque o app não tem acesso àquela conta. Sem esta
+  // classificação o painel mandava o usuário "verificar as permissões" e
+  // reautorizar em loop, o que nunca resolve.
+  it("classifies Meta's generic code 100 rejection on /me as missing app access", async () => {
+    const rejection = () => Response.json(
+      { error: { message: "Unsupported request - method type: get", type: "IGApiException", code: 100 } },
+      { status: 400 }
+    );
+    const exchange = sequenceFetch([
+      Response.json({
+        access_token: "short-token",
+        user_id: "account-1",
+        permissions: "instagram_business_basic,instagram_business_manage_messages"
+      }),
+      rejection(),
+      rejection(),
+      rejection()
+    ]);
+    const provider = new MetaInstagramProvider({
+      appId: "app-id",
+      appSecret: "app-secret",
+      graphVersion: "v26.0",
+      fetchImpl: exchange.fetchImpl
+    });
+
+    const error = await provider.exchangeOAuthCode({
+      code: "one-time-code",
+      redirectUri: "https://app.example/callback"
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toMatchObject({ code: "INSTAGRAM_APP_ACCESS_NOT_GRANTED", statusCode: 403 });
+  });
+
+  // Uma recusa do /me por outro motivo não pode ser rotulada como falta de
+  // acesso do app: a orientação ao usuário seria errada.
+  it("leaves unrelated /me rejections unclassified", async () => {
+    const exchange = sequenceFetch([
+      Response.json({
+        access_token: "short-token",
+        user_id: "account-1",
+        permissions: "instagram_business_basic,instagram_business_manage_messages"
+      }),
+      Response.json({ access_token: "long-token", expires_in: 5_184_000 }),
+      Response.json(
+        { error: { message: "Invalid OAuth access token", type: "OAuthException", code: 190 } },
+        { status: 400 }
+      )
+    ]);
+    const provider = new MetaInstagramProvider({
+      appId: "app-id",
+      appSecret: "app-secret",
+      graphVersion: "v26.0",
+      fetchImpl: exchange.fetchImpl
+    });
+
+    const error = await provider.exchangeOAuthCode({
+      code: "one-time-code",
+      redirectUri: "https://app.example/callback"
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as { code?: string }).code).toBeUndefined();
+  });
+
   it.each([
     [
       "comma-separated strings",
