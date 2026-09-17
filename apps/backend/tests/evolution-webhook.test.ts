@@ -2,7 +2,7 @@ import type { FastifyBaseLogger, FastifyReply, FastifyRequest } from "fastify";
 import { describe, expect, it, vi } from "vitest";
 import { config } from "../src/config.js";
 import { normalizedFacebookAttribution } from "../src/modules/messages/repository.js";
-import { evolutionContactUpdates, evolutionMessage, evolutionMessageStatusUpdates, evolutionPresenceUpdates, evolutionStickerMessage, parseEvolutionEvent } from "../src/modules/whatsapp/evolution-webhook.js";
+import { evolutionContactUpdates, evolutionMessage, evolutionMessageStatusUpdates, evolutionPresenceUpdates, evolutionStickerMessage, evolutionUnrecognizedMessageContentKeys, parseEvolutionEvent } from "../src/modules/whatsapp/evolution-webhook.js";
 import { handleEvolutionWebhook } from "../src/modules/whatsapp/webhook-handler.js";
 import type { WhatsAppSessionManager } from "../src/modules/whatsapp/session-manager.js";
 import { enqueueInbound } from "../src/queue/message-queue.js";
@@ -42,6 +42,27 @@ describe("Evolution webhook adapter", () => {
       message: { extendedTextMessage: { text: "Resposta pelo celular" } }
     }, identity);
     expect(message).toEqual(expect.objectContaining({ kind: "human", text: "Resposta pelo celular" }));
+  });
+
+  it("captures video messages, including GIF playback, from the contact and the linked phone", () => {
+    for (const fromMe of [false, true]) {
+      const message = evolutionMessage({
+        key: { id: `wamid-video-${fromMe}`, remoteJid: "5511888888888@s.whatsapp.net", fromMe },
+        message: { videoMessage: { caption: "Segue o vídeo", mimetype: "video/mp4", fileLength: 40960 } }
+      }, identity);
+      expect(message).toEqual(expect.objectContaining({
+        kind: fromMe ? "human" : "contact",
+        text: "Segue o vídeo",
+        mediaType: "video",
+        mediaMimeType: "video/mp4",
+        mediaSizeBytes: 40960
+      }));
+    }
+    const gif = evolutionMessage({
+      key: { id: "wamid-gif", remoteJid: "5511888888888@s.whatsapp.net", fromMe: false },
+      message: { videoMessage: { mimetype: "video/mp4", fileLength: 8192, gifPlayback: true } }
+    }, identity);
+    expect(gif).toEqual(expect.objectContaining({ kind: "contact", mediaType: "video", text: "" }));
   });
 
   it("captures metadata needed to render inbound media", () => {
@@ -201,6 +222,71 @@ Há quanto tempo está no mercado?: 3 anos`)).toMatchObject({
     expect(evolutionMessage({ key: { id: "1", remoteJid: "status@broadcast" }, message: { conversation: "x" } }, identity)).toBeNull();
     expect(evolutionMessage({ key: { id: "2", remoteJid: "123@g.us" }, message: { conversation: "x" } }, identity)).toBeNull();
     expect(parseEvolutionEvent({ event: "messages.upsert", data: {} })).toBeNull();
+  });
+
+  it("surfaces the content keys of a message type AtendON does not yet recognize, for operational visibility", () => {
+    expect(evolutionUnrecognizedMessageContentKeys({
+      key: { id: "wamid-poll", remoteJid: "5511888888888@s.whatsapp.net", fromMe: false },
+      message: { pollCreationMessage: { name: "Qual horário prefere?", options: [] } }
+    })).toEqual(["pollCreationMessage"]);
+  });
+
+  it("does not flag recognized content, groups, broadcasts or empty messages as unrecognized", () => {
+    expect(evolutionUnrecognizedMessageContentKeys({
+      key: { id: "wamid-ok", remoteJid: "5511888888888@s.whatsapp.net", fromMe: false },
+      message: { conversation: "Olá" }
+    })).toEqual([]);
+    expect(evolutionUnrecognizedMessageContentKeys({
+      key: { id: "wamid-group", remoteJid: "123@g.us" }, message: { pollCreationMessage: {} }
+    })).toEqual([]);
+    expect(evolutionUnrecognizedMessageContentKeys({
+      key: { id: "wamid-ack", remoteJid: "5511888888888@s.whatsapp.net" }
+    })).toEqual([]);
+  });
+
+  it("extracts a shared contact card (contactMessage) as readable text instead of discarding it", () => {
+    const message = evolutionMessage({
+      key: { id: "wamid-contact", remoteJid: "5511888888888@s.whatsapp.net", fromMe: false },
+      message: { contactMessage: {
+        displayName: "João Silva",
+        vcard: "BEGIN:VCARD\nVERSION:3.0\nN:;João Silva;;;\nFN:João Silva\nTEL;type=CELL;type=VOICE;waid=5511999998888:+55 11 99999-8888\nEND:VCARD"
+      } }
+    }, identity);
+    expect(message).not.toBeNull();
+    expect(message).toEqual(expect.objectContaining({ kind: "contact" }));
+    expect((message as { text: string }).text).toContain("João Silva");
+    expect((message as { text: string }).text).toContain("+55 11 99999-8888");
+    expect(message).not.toHaveProperty("mediaType");
+  });
+
+  it("extracts multiple shared contacts (contactsArrayMessage) as a listed text", () => {
+    const message = evolutionMessage({
+      key: { id: "wamid-contacts", remoteJid: "5511888888888@s.whatsapp.net", fromMe: false },
+      message: { contactsArrayMessage: { displayName: "2 contatos", contacts: [
+        { displayName: "Ana", vcard: "BEGIN:VCARD\nFN:Ana Souza\nTEL:+5511911112222\nEND:VCARD" },
+        { displayName: "Beto", vcard: "BEGIN:VCARD\nFN:Beto Lima\nTEL:+5511933334444\nEND:VCARD" }
+      ] } }
+    }, identity);
+    expect(message).not.toBeNull();
+    const text = (message as { text: string }).text;
+    expect(text).toContain("Ana Souza");
+    expect(text).toContain("+5511911112222");
+    expect(text).toContain("Beto Lima");
+    expect(text).toContain("+5511933334444");
+  });
+
+  it("falls back to display name when the vcard cannot be parsed, and to a generic label with neither", () => {
+    const withNameOnly = evolutionMessage({
+      key: { id: "wamid-contact-noname", remoteJid: "5511888888888@s.whatsapp.net", fromMe: false },
+      message: { contactMessage: { displayName: "Carla" } }
+    }, identity);
+    expect((withNameOnly as { text: string }).text).toContain("Carla");
+
+    const withNothing = evolutionMessage({
+      key: { id: "wamid-contact-empty", remoteJid: "5511888888888@s.whatsapp.net", fromMe: false },
+      message: { contactMessage: {} }
+    }, identity);
+    expect((withNothing as { text: string }).text).toContain("Contato compartilhado");
   });
 });
 

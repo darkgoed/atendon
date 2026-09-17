@@ -249,4 +249,134 @@ describe("durable Instagram inbox dispatch", () => {
 
     expect(freshProvider.fetchUserProfile).not.toHaveBeenCalled();
   });
+
+  // Regressão: um attachment ig_reel (reel encaminhado pelo contato) tem
+  // payload.url de vídeo real, mas o `type` declarado no webhook não é
+  // "video" — a classificação deve vir do Content-Type real do download.
+  it("downloads an ig_reel attachment and classifies it by the real content type", async () => {
+    const instagramRepository = new InstagramRepository(pool, key);
+    const reelContactId = `igsid-${randomUUID()}`;
+    const reelMid = `message:${randomUUID()}`;
+    const reelProvider: InstagramProvider = {
+      ...provider,
+      fetchUserProfile: vi.fn().mockResolvedValue({ username: null, name: null, profilePictureUrl: null }),
+      fetchMedia: vi.fn().mockResolvedValue({
+        bytes: Buffer.from("reel-bytes"), contentType: "video/mp4", sizeBytes: 10,
+        finalUrl: "https://lookaside.instagram.test/reel.mp4"
+      })
+    };
+    await instagramRepository.persistEvent(tenantId, sessionId, {
+      kind: "message", eventId: `message:${reelMid}`, accountId, providerUserId: reelContactId,
+      timestamp: new Date(), text: "", isEcho: false,
+      raw: {
+        sender: { id: reelContactId }, recipient: { id: accountId }, timestamp: Date.now(),
+        message: { mid: reelMid, attachments: [{ type: "ig_reel", payload: { url: "https://lookaside.instagram.test/reel-cdn", title: "Reel legal" } }] }
+      }
+    }, Buffer.from("{}"));
+
+    const service = new InstagramService(instagramRepository, reelProvider);
+    const messageRepository = new MessageRepository(pool, config, { followUp: async () => "enqueued" });
+    const reelEnqueued: SessionMessage[] = [];
+    const dispatch = createInstagramInboxDispatcher({
+      database: pool,
+      instagram: { repository: instagramRepository, provider: reelProvider },
+      messages: messageRepository,
+      enqueueInbound: async (message) => { reelEnqueued.push(message); }
+    });
+    const drained = await drainInstagramInboxTenant(service, tenantId, dispatch);
+    expect(drained).toBe(1);
+    expect(reelProvider.fetchMedia).toHaveBeenCalledWith({
+      url: "https://lookaside.instagram.test/reel-cdn", accessToken: "provider-token"
+    });
+    expect(reelEnqueued[0]).toMatchObject({ mediaType: "video", mediaMimeType: "video/mp4" });
+  });
+
+  // Regressão: attachment `template` (sem payload.url, comum em
+  // reencaminhamentos de automações tipo ManyChat) e mensagens
+  // `is_unsupported` não podem mais lançar exceção fatal — isso travava o
+  // evento em retry infinito (visto attempts>9000 em produção) e, por
+  // acontecer antes do enriquecimento de contato, também deixava a conversa
+  // sem username/nome para sempre.
+  it("falls back to a readable text for unsupported attachments instead of retrying forever", async () => {
+    const instagramRepository = new InstagramRepository(pool, key);
+    const templateContactId = `igsid-${randomUUID()}`;
+    const templateMid = `message:${randomUUID()}`;
+    const templateProvider: InstagramProvider = {
+      ...provider,
+      fetchUserProfile: vi.fn().mockResolvedValue({ username: "sem_url", name: "Sem URL", profilePictureUrl: null })
+    };
+    await instagramRepository.persistEvent(tenantId, sessionId, {
+      kind: "message", eventId: `message:${templateMid}`, accountId, providerUserId: templateContactId,
+      timestamp: new Date(), text: "", isEcho: false,
+      raw: {
+        sender: { id: templateContactId }, recipient: { id: accountId }, timestamp: Date.now(),
+        message: { mid: templateMid, attachments: [{ type: "template", payload: { generic: { elements: [{ title: "Clique aqui" }] } } }] }
+      }
+    }, Buffer.from("{}"));
+
+    const service = new InstagramService(instagramRepository, templateProvider);
+    const messageRepository = new MessageRepository(pool, config, { followUp: async () => "enqueued" });
+    const templateEnqueued: SessionMessage[] = [];
+    const dispatch = createInstagramInboxDispatcher({
+      database: pool,
+      instagram: { repository: instagramRepository, provider: templateProvider },
+      messages: messageRepository,
+      enqueueInbound: async (message) => { templateEnqueued.push(message); }
+    });
+    const drained = await drainInstagramInboxTenant(service, tenantId, dispatch);
+    expect(drained).toBe(1);
+    expect(templateEnqueued[0]).toMatchObject({ text: "Clique aqui", instagramUsername: "sem_url", contactName: "Sem URL" });
+    const pending = await pool.query<{ last_error: string | null }>(
+      `SELECT last_error FROM instagram_webhook_inbox WHERE tenant_id=$1 AND provider_event_id=$2`,
+      [tenantId, `message:${templateMid}`]
+    );
+    expect(pending.rows[0].last_error).toBeNull();
+  });
+
+  // Regressão central do bug "contato chega sem nome e @": o enriquecimento
+  // de identidade deve acontecer mesmo quando o processamento de mídia
+  // falha de verdade (erro transitório real, não payload conhecido).
+  it("still enriches contact identity even when real media processing fails", async () => {
+    const instagramRepository = new InstagramRepository(pool, key);
+    const failingContactId = `igsid-${randomUUID()}`;
+    const failingMid = `message:${randomUUID()}`;
+    const failingProvider: InstagramProvider = {
+      ...provider,
+      fetchUserProfile: vi.fn().mockResolvedValue({ username: "identidade_apesar_do_erro", name: "Ainda Assim", profilePictureUrl: null }),
+      fetchMedia: vi.fn().mockRejectedValue(new Error("transient network failure"))
+    };
+    await instagramRepository.persistEvent(tenantId, sessionId, {
+      kind: "message", eventId: `message:${failingMid}`, accountId, providerUserId: failingContactId,
+      timestamp: new Date(), text: "", isEcho: false,
+      raw: {
+        sender: { id: failingContactId }, recipient: { id: accountId }, timestamp: Date.now(),
+        message: { mid: failingMid, attachments: [{ type: "audio", payload: { url: "https://lookaside.instagram.test/audio-that-fails" } }] }
+      }
+    }, Buffer.from("{}"));
+
+    const service = new InstagramService(instagramRepository, failingProvider);
+    const messageRepository = new MessageRepository(pool, config, { followUp: async () => "enqueued" });
+    const dispatch = createInstagramInboxDispatcher({
+      database: pool,
+      instagram: { repository: instagramRepository, provider: failingProvider },
+      messages: messageRepository,
+      enqueueInbound: async () => undefined
+    });
+    // A mensagem em si deve continuar falhando/retryando (erro transitório
+    // real de download): o enriquecimento por si só só persiste o avatar
+    // diretamente (username/nome são gravados depois, downstream, quando a
+    // mensagem é processada da fila via recordInboundAndLoadContext) — a
+    // prova real de que a ordem foi corrigida é que fetchUserProfile FOI
+    // chamado antes da falha de mídia interromper o processamento, e que o
+    // evento ficou marcado para retry (não foi silenciosamente descartado).
+    await drainInstagramInboxTenant(service, tenantId, dispatch);
+    expect(failingProvider.fetchUserProfile).toHaveBeenCalledWith({
+      instagramScopedUserId: failingContactId, accessToken: "provider-token"
+    });
+    const pending = await pool.query<{ last_error: string | null }>(
+      `SELECT last_error FROM instagram_webhook_inbox WHERE tenant_id=$1 AND provider_event_id=$2`,
+      [tenantId, `message:${failingMid}`]
+    );
+    expect(pending.rows[0].last_error).toBeTruthy();
+  });
 });

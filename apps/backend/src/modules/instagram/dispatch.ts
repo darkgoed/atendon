@@ -74,10 +74,49 @@ export function instagramInboundExternalId(tenantId: string, sessionId: string, 
   return `ig_${digest}`;
 }
 
-function mediaType(value: unknown): MediaType | null {
-  if (value === "image" || value === "audio" || value === "video") return value;
-  if (value === "file") return "document";
+// A Meta não garante que `attachments[].type` declarado no JSON do webhook
+// (image/audio/video/file/share/story_mention/ig_reel/reel/...) corresponda
+// 1:1 a um MediaType interno estável — reels/shares/story mentions também
+// carregam vídeo real, por exemplo. Por isso classificamos pelo Content-Type
+// REAL detectado no download (já validado por assinatura mágica em
+// provider.ts::matchesMimeMagic), não pelo `type` declarado pelo webhook.
+function mediaTypeFromContentType(contentType: string): MediaType | null {
+  if (contentType.startsWith("image/")) return "image";
+  if (contentType.startsWith("audio/")) return "audio";
+  if (contentType.startsWith("video/")) return "video";
+  if (contentType === "application/pdf") return "document";
   return null;
+}
+
+// Tipos de attachment que a Meta documenta como carregando `payload.url` de
+// mídia real baixável. `sticker`/`ephemeral` são deliberadamente excluídos:
+// a Meta não gera webhook para GIF/sticker normal, e mídia efêmera
+// (view-once) chega como `{"type":"ephemeral"}` sem URL — nenhum dos dois é
+// um erro nosso, é limitação/contrato da própria plataforma.
+const DOWNLOADABLE_ATTACHMENT_TYPES = new Set([
+  "image", "audio", "video", "file", "share", "story_mention", "ig_reel", "reel"
+]);
+
+function attachmentUrl(attachment: Record<string, unknown>): string | null {
+  if (!DOWNLOADABLE_ATTACHMENT_TYPES.has(String(attachment.type))) return null;
+  const url = record(attachment.payload)?.url;
+  return typeof url === "string" && url.length > 0 ? url : null;
+}
+
+// Melhor esforço para não perder o conteúdo de attachments sem URL baixável
+// (ex.: `template` reencaminhado por automações tipo ManyChat) ou mensagens
+// marcadas `is_unsupported`. Nunca deve lançar: vira apenas o texto da
+// mensagem, preservando a conversa/identidade em vez de derrubar o evento em
+// retry infinito por um formato de payload conhecido-mas-não-suportado.
+function unsupportedContentFallbackText(attachment: Record<string, unknown> | null): string {
+  if (attachment?.type === "template") {
+    const generic = record(record(attachment.payload)?.generic);
+    const elements = Array.isArray(generic?.elements) ? generic!.elements : [];
+    const first = record(elements[0]);
+    const title = typeof first?.title === "string" ? first.title.trim() : "";
+    if (title) return title;
+  }
+  return "[Conteúdo não suportado recebido pelo Instagram]";
 }
 
 function mediaFileName(type: MediaType, contentType: string): string {
@@ -109,7 +148,9 @@ const AVATAR_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1_000;
  * identidade OU a foto está velha (mesma janela de 6h usada pelo WhatsApp em
  * session-manager.ts), para não gastar uma chamada de Graph por mensagem.
  * Nunca lança: qualquer falha aqui é enriquecimento perdido, não motivo para
- * derrubar o processamento da mensagem.
+ * derrubar o processamento da mensagem. Chamada ANTES do processamento de
+ * mídia (ver createInstagramInboxDispatcher) para que uma falha ao baixar um
+ * anexo nunca impeça a identidade do contato de ser gravada.
  */
 async function enrichInstagramContact(
   options: InstagramInboxDispatcherOptions,
@@ -191,18 +232,30 @@ export function createInstagramInboxDispatcher(options: InstagramInboxDispatcher
         return "human_echo_recorded";
       }
 
+      // Enriquecimento de identidade roda ANTES do processamento de mídia e
+      // de forma independente dele: enrichInstagramContact é best-effort
+      // (nunca lança), mas se ficasse depois do bloco de mídia, uma falha ao
+      // baixar um anexo (ex.: attachment sem URL suportada) impediria para
+      // sempre que a conversa recebesse username/nome/foto — era exatamente
+      // o que causava contatos chegando "sem nome e @" em produção.
+      const enrichment = await enrichInstagramContact(options, row, instagramContactId);
+
       const externalId = instagramInboundExternalId(row.tenant_id, row.session_id, rawMid);
       let inboundMedia: Pick<SessionMessage, "mediaType" | "mediaMimeType" | "mediaFileName" | "mediaSizeBytes"> = {};
-      const attachments = Array.isArray(message.attachments) ? message.attachments : [];
-      const firstAttachment = attachments.map(record).find((attachment) => attachment !== null);
-      if (firstAttachment) {
-        const type = mediaType(firstAttachment.type);
-        const url = record(firstAttachment.payload)?.url;
-        if (!type || typeof url !== "string" || url.length === 0) {
-          throw new Error("Instagram inbox media attachment is unsupported");
-        }
+      const attachments = Array.isArray(message.attachments)
+        ? message.attachments.map(record).filter((attachment): attachment is Record<string, unknown> => attachment !== null)
+        : [];
+      // Prefere o primeiro attachment com URL baixável; se nenhum tiver URL
+      // (ex.: só veio um `template`), cai no fallback de texto mais abaixo.
+      const downloadableAttachment = attachments.find((attachment) => attachmentUrl(attachment) !== null);
+      const firstAttachment = attachments[0] ?? null;
+
+      if (downloadableAttachment) {
+        const url = attachmentUrl(downloadableAttachment)!;
         const token = await options.instagram.repository.getToken(row.tenant_id, row.session_id);
         const downloaded = await options.instagram.provider.fetchMedia({ url, accessToken: token });
+        const type = mediaTypeFromContentType(downloaded.contentType);
+        if (!type) throw new Error("Instagram inbox media attachment has an unsupported content type");
         const conversationId = await conversationIdFor(options.database, row, instagramContactId);
         await options.instagram.repository.savePublicMedia({
           tenantId: row.tenant_id,
@@ -221,9 +274,20 @@ export function createInstagramInboxDispatcher(options: InstagramInboxDispatcher
           mediaSizeBytes: downloaded.sizeBytes
         };
       }
-      const text = typeof message.text === "string" ? message.text : "";
-      if (!text && !inboundMedia.mediaType) throw new Error("Instagram inbox message has no supported content");
-      const enrichment = await enrichInstagramContact(options, row, instagramContactId);
+
+      let text = typeof message.text === "string" ? message.text : "";
+      // Attachment presente mas sem URL baixável (ex.: `template`), ou
+      // mensagem explicitamente marcada como não suportada pela Meta: nunca
+      // derruba o processamento — vira texto de fallback para preservar a
+      // conversa/identidade em vez de ficar em retry infinito para sempre
+      // (instagram_webhook_inbox não tem backoff/DLQ).
+      if (!text && !inboundMedia.mediaType) {
+        if (firstAttachment || message.is_unsupported === true) {
+          text = unsupportedContentFallbackText(firstAttachment);
+        } else {
+          throw new Error("Instagram inbox message has no supported content");
+        }
+      }
       await options.enqueueInbound({
         channel: "instagram",
         externalId,

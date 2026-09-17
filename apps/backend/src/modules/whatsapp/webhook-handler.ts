@@ -3,7 +3,7 @@ import type { FastifyBaseLogger, FastifyReply, FastifyRequest } from "fastify";
 import { config } from "../../config.js";
 import { db as defaultDb } from "../../db/client.js";
 import { SessionRepository } from "./session-repository.js";
-import { parseEvolutionEvent, evolutionContactUpdates, evolutionMessage, evolutionMessageStatusUpdates, evolutionPresenceUpdates, evolutionStickerMessage } from "./evolution-webhook.js";
+import { parseEvolutionEvent, evolutionContactUpdates, evolutionMessage, evolutionMessageStatusUpdates, evolutionPresenceUpdates, evolutionStickerMessage, evolutionUnrecognizedMessageContentKeys } from "./evolution-webhook.js";
 import { MessageRepository } from "../messages/repository.js";
 import { AiFollowUpRepository } from "../messages/ai-follow-up.js";
 import { enqueueInbound } from "../../queue/message-queue.js";
@@ -49,7 +49,21 @@ export async function handleEvolutionWebhook(request: FastifyRequest, reply: Fas
         }
       }
       const message = evolutionMessage(event.data, { tenantId: identity.tenantId, sessionId: identity.id });
-      if (message) {
+      if (!message) {
+        // Só loga quando havia conteúdo real (não eco/duplicata sem message):
+        // torna visível qualquer tipo de mensagem WhatsApp ainda não mapeado
+        // (localização, enquete, botões, lista, etc.) em vez de a mensagem
+        // desaparecer em silêncio como acontecia com contactMessage/
+        // videoMessage antes desta correção. Nunca loga o conteúdo, só os
+        // nomes das chaves presentes no payload `message`.
+        const contentKeys = evolutionUnrecognizedMessageContentKeys(event.data);
+        if (contentKeys.length) {
+          deps.log.warn(
+            { tenantId: identity.tenantId, sessionId: identity.id, contentKeys },
+            "Evolution message content type not recognized by AtendON; message was dropped"
+          );
+        }
+      } else {
         await new AiFollowUpRepository(deps.db ?? defaultDb).cancelForContact(
           message.tenantId,
           message.contactPhone,

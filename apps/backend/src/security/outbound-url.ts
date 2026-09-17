@@ -54,11 +54,28 @@ export async function resolvePublicHttpsUrl(raw: string, lookup: LookupAll = sys
   return url;
 }
 
+// Node's Happy Eyeballs (autoSelectFamily, default on since Node 20) calls a
+// custom `lookup` with options.all===true and, in that mode, expects the
+// callback's 2nd argument to BE the array of resolved addresses
+// (dns.LookupAddress[]) rather than a single address string. Answering with a
+// single address while all===true corrupts net's internal connect state and
+// blows up downstream with `TypeError [ERR_INVALID_IP_ADDRESS]: Invalid IP
+// address: undefined` — every https.request() built on this agent (Instagram
+// media downloads, web-push, the scheduling transfer webhook) failed this way
+// on every call. Support both call shapes: array mode when options.all is
+// true, single-address mode otherwise (legacy/manual invocation) — both
+// independently enforce the same public-IP-only policy.
 export function publicHttpsAgent(lookup: LookupAll = systemLookup): https.Agent {
-  const controlled: LookupFunction = (hostname, _options, callback) => {
+  const controlled: LookupFunction = (hostname, options, callback) => {
+    const wantsAll = typeof options === "object" && options !== null && (options as { all?: boolean }).all === true;
     lookup(hostname, { all: true }).then((addresses) => {
       if (!addresses.length || addresses.some(({ address }) => !publicIp(address))) {
         (callback as unknown as (error: Error) => void)(new OutboundUrlError("Endpoint must resolve publicly"));
+        return;
+      }
+      if (wantsAll) {
+        const resolved = addresses.map(({ address, family }) => ({ address, family }));
+        (callback as unknown as (error: null, addresses: Array<{ address: string; family: number }>) => void)(null, resolved);
         return;
       }
       const address = addresses[0];

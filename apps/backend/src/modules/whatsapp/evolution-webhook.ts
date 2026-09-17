@@ -241,6 +241,70 @@ export function parseEvolutionEvent(payload: unknown): EvolutionEvent | null {
   return { event, instanceName, data: object(root.data) };
 }
 
+// Extrai só nome (FN:) e telefone(s) (TEL...:) de um vCard bruto — nunca o
+// vCard inteiro, que pode carregar outros dados pessoais de terceiros além
+// de nome/telefone.
+function vcardContactLine(vcard: string): string {
+  const lines = vcard.split(/\r\n|\r|\n/);
+  let name = "";
+  const phones: string[] = [];
+  for (const line of lines) {
+    if (/^FN:/i.test(line)) name = clean(line.slice(3), 180) ?? "";
+    else if (/^TEL/i.test(line)) {
+      const separator = line.indexOf(":");
+      const value = separator === -1 ? "" : clean(line.slice(separator + 1), 60);
+      if (value) phones.push(value);
+    }
+  }
+  const phoneLabel = phones[0];
+  if (name && phoneLabel) return `${name} — ${phoneLabel}`;
+  return name || phoneLabel || "";
+}
+
+// WhatsApp entrega contato compartilhado (recurso "Compartilhar contato")
+// como content.contactMessage (um contato) ou content.contactsArrayMessage
+// (vários) — sem isto a mensagem inteira era descartada em silêncio porque
+// nem `text` nem `mediaType` eram preenchidos (ver `else if (!text) return
+// null` abaixo), e o encaminhamento de contato desaparecia sem deixar
+// rastro no AtendON.
+function contactShareText(content: Json): string | undefined {
+  if (content.contactMessage !== undefined && content.contactMessage !== null) {
+    const single = object(content.contactMessage);
+    const vcard = typeof single.vcard === "string" ? vcardContactLine(single.vcard) : "";
+    const label = vcard || clean(single.displayName, 180) || "Contato compartilhado";
+    return `📇 Contato compartilhado: ${label}`;
+  }
+  const group = object(content.contactsArrayMessage);
+  const contacts = Array.isArray(group.contacts) ? group.contacts : [];
+  if (contacts.length) {
+    const lines = contacts.slice(0, 5).map((rawContact) => {
+      const contact = object(rawContact);
+      const vcard = typeof contact.vcard === "string" ? vcardContactLine(contact.vcard) : "";
+      return vcard || clean(contact.displayName, 180) || "Contato";
+    });
+    const extra = contacts.length > 5 ? ` (+${contacts.length - 5} contatos)` : "";
+    return `📇 Contatos compartilhados:\n${lines.join("\n")}${extra}`;
+  }
+  return undefined;
+}
+
+// Melhor esforço para dar VISIBILIDADE operacional (logs) sobre um tipo de
+// mensagem WhatsApp que evolutionMessage() não soube extrair — em vez de a
+// mensagem simplesmente desaparecer sem rastro (era exatamente o sintoma do
+// bug de vCard/vídeo corrigido nesta mesma rodada). Devolve só os NOMES das
+// chaves de `message`, nunca conteúdo. Vazio/groups/broadcast/mensagens sem
+// `message` (acks, etc.) não contam como "não reconhecido".
+export function evolutionUnrecognizedMessageContentKeys(data: Json): string[] {
+  const key = object(data.key);
+  const remoteJid = String(key.remoteJid ?? data.remoteJid ?? "");
+  if (!remoteJid || remoteJid === "status@broadcast" || remoteJid.endsWith("@g.us")) return [];
+  const content = object(data.message);
+  const keys = Object.keys(content);
+  if (!keys.length) return [];
+  if (evolutionMessage(data, { tenantId: "probe", sessionId: "probe" }) !== null) return [];
+  return keys;
+}
+
 export function evolutionMessage(data: Json, identity: { tenantId: string; sessionId: string }): SessionMessage | null {
   const key = object(data.key);
   const remoteJid = String(key.remoteJid ?? data.remoteJid ?? "");
@@ -251,17 +315,20 @@ export function evolutionMessage(data: Json, identity: { tenantId: string; sessi
   const image = object(content.imageMessage);
   const document = object(content.documentMessage);
   const sticker = object(content.stickerMessage);
-  const text = String(content.conversation ?? extended.text ?? image.caption ?? document.caption ?? "");
+  const video = object(content.videoMessage);
+  const text = String(content.conversation ?? extended.text ?? image.caption ?? document.caption ?? video.caption ?? "") || contactShareText(content) || "";
   let mediaType: MediaType | undefined;
   if (content.audioMessage) mediaType = "audio";
   else if (content.imageMessage) mediaType = "image";
   else if (content.documentMessage) mediaType = "document";
   else if (content.stickerMessage) mediaType = "image";
+  else if (content.videoMessage) mediaType = "video";
   else if (!text) return null;
   const fromMe = Boolean(key.fromMe ?? data.fromMe);
   const mediaContent = mediaType === "audio" ? object(content.audioMessage)
     : mediaType === "image" ? (content.stickerMessage ? sticker : image)
-      : mediaType === "document" ? document : {};
+      : mediaType === "document" ? document
+        : mediaType === "video" ? video : {};
   const mediaMimeType = clean(mediaContent.mimetype, 200);
   const mediaFileName = clean(mediaContent.fileName ?? mediaContent.title, 180);
   const rawSize = mediaContent.fileLength ?? mediaContent.fileSize;
