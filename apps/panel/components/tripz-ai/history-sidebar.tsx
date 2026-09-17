@@ -167,7 +167,7 @@ export function TripzHistorySidebar({
       <div className="px-3 py-3">
         <button
           type="button"
-          className="flex min-h-11 w-full items-center justify-between gap-3 border border-[var(--primary)] bg-[var(--primary)] px-3 py-2 text-left text-xs font-bold text-[var(--primary-foreground)] transition-[transform,opacity] hover:opacity-90 active:translate-y-px disabled:opacity-50"
+          className={`flex min-h-11 w-full items-center justify-between gap-3 border border-[var(--primary)] bg-[var(--primary)] px-3 py-2 text-left text-xs font-bold transition-[transform,opacity] hover:opacity-90 active:translate-y-px disabled:opacity-50 ${styles.primaryAction}`}
           disabled={creating}
           onClick={onCreate}
         >

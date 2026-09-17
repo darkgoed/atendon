@@ -110,4 +110,8 @@
   .channelsAiPage :global(.channels-ai-section),
   .channelsAiPage :global(.channels-ai-attempt) { padding: var(--space-4); }
   .channelsAiPage :global(.channels-ai-actions > .btn) { flex: 1 1 12rem; }
+  /* Min-heights de desktop (editor 32.5rem, prompt 24rem) engolem a viewport
+     de um celular: no mobile o textarea cresce por flex, não por mínimo fixo. */
+  .channelsAiPage :global(.channels-ai-agent-editor) { min-block-size: 14rem; }
+  .channelsAiPage :global(.channels-ai-prompt) { min-block-size: 11rem; }
 }

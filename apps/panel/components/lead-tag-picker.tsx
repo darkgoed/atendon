@@ -18,25 +18,14 @@ export type LeadTag = {
 type TagsResponse = { tags: LeadTag[] };
 const fetcher = <T,>(url: string) => api<T>(url);
 
-export function LeadTagChips({ tags, compact = false }: { tags?: LeadTag[]; compact?: boolean }) {
-  if (!tags?.length) return null;
-  return (
-    <span className="flex min-w-0 flex-wrap items-center gap-1" role="group" aria-label="Etiquetas do lead">
-      {tags.map((tag) => (
-        <span
-          key={tag.id}
-          className={`lead-tag-chip ${compact ? "lead-tag-chip--compact" : ""}`}
-          style={{ "--tag-color": tag.color } as CSSProperties}
-          title={tag.name}
-        >
-          {tag.name}
-        </span>
-      ))}
-    </span>
-  );
-}
+const tagItemClassName = "flex min-h-9 items-center gap-2 rounded px-2 text-left text-xs transition-colors hover:bg-[var(--surface-active)] active:scale-[.98] disabled:opacity-50";
 
-export function LeadTagPicker({
+/**
+ * Conteúdo do seletor de etiquetas (lista de alternância). Exportado para que
+ * outras superfícies — como o menu de 3 pontos da linha da tabela de leads —
+ * reutilizem a mesma lista sem empilhar um popover dentro de outro.
+ */
+export function LeadTagMenuItems({
   leadId,
   assigned,
   onChanged
@@ -73,37 +62,72 @@ export function LeadTagPicker({
   if (!canApply || organizationEnabled !== true) return null;
 
   return (
+    <>
+      {isLoading ? <div className="grid gap-1.5" role="status" aria-label="Carregando etiquetas">{[1, 2, 3].map((item) => <span key={item} className="skeleton h-8" />)}</div> : null}
+      {error ? <p className="error p-2" role="alert">{error.message}</p> : null}
+      {!isLoading && !error && !data?.tags.length ? <p className="p-2 text-xs text-[var(--text-secondary)]">Nenhuma etiqueta disponível.</p> : null}
+      {data?.tags.filter((tag) => !tag.archived_at).map((tag) => {
+        const active = assignedIds.has(tag.id);
+        return (
+          <button
+            key={tag.id}
+            type="button"
+            className={tagItemClassName}
+            onClick={() => void toggle(tag)}
+            disabled={pendingId != null}
+            aria-pressed={active}
+          >
+            <span className="lead-tag-picker__color" style={{ "--tag-color": tag.color } as CSSProperties} aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate">{tag.name}</span>
+            {active ? <Check size={14} weight="bold" aria-label="Aplicada" /> : null}
+          </button>
+        );
+      })}
+      {actionError ? <p className="error px-2 py-1" role="alert">{actionError}</p> : null}
+    </>
+  );
+}
+
+export function LeadTagChips({ tags, compact = false }: { tags?: LeadTag[]; compact?: boolean }) {
+  if (!tags?.length) return null;
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-1" role="group" aria-label="Etiquetas do lead">
+      {tags.map((tag) => (
+        <span
+          key={tag.id}
+          className={`lead-tag-chip ${compact ? "lead-tag-chip--compact" : ""}`}
+          style={{ "--tag-color": tag.color } as CSSProperties}
+          title={tag.name}
+        >
+          {tag.name}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+export function LeadTagPicker({
+  leadId,
+  assigned,
+  onChanged
+}: {
+  leadId: string;
+  assigned?: LeadTag[];
+  onChanged?: () => unknown | Promise<unknown>;
+}) {
+  const canApply = usePermission("tags.apply");
+  const organizationEnabled = useCaseOrganizationEnabled();
+
+  if (!canApply || organizationEnabled !== true) return null;
+
+  return (
     <PopoverMenu
       buttonClassName="btn crm-compact-button"
       icon={<TagIcon size={13} aria-hidden="true" />}
       label="Etiquetas"
       panelClassName="pipeline-popover pipeline-popover--tags grid gap-1"
     >
-      {() => (
-        <>
-          {isLoading ? <div className="grid gap-1.5" role="status" aria-label="Carregando etiquetas">{[1, 2, 3].map((item) => <span key={item} className="skeleton h-8" />)}</div> : null}
-          {error ? <p className="error p-2" role="alert">{error.message}</p> : null}
-          {!isLoading && !error && !data?.tags.length ? <p className="p-2 text-xs text-[var(--text-secondary)]">Nenhuma etiqueta disponível.</p> : null}
-          {data?.tags.filter((tag) => !tag.archived_at).map((tag) => {
-            const active = assignedIds.has(tag.id);
-            return (
-              <button
-                key={tag.id}
-                type="button"
-                className="flex min-h-9 items-center gap-2 rounded px-2 text-left text-xs transition-colors hover:bg-[var(--surface-active)] active:scale-[.98] disabled:opacity-50"
-                onClick={() => void toggle(tag)}
-                disabled={pendingId != null}
-                aria-pressed={active}
-              >
-                <span className="lead-tag-picker__color" style={{ "--tag-color": tag.color } as CSSProperties} aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate">{tag.name}</span>
-                {active ? <Check size={14} weight="bold" aria-label="Aplicada" /> : null}
-              </button>
-            );
-          })}
-          {actionError ? <p className="error px-2 py-1" role="alert">{actionError}</p> : null}
-        </>
-      )}
+      {() => <LeadTagMenuItems leadId={leadId} assigned={assigned} onChanged={onChanged} />}
     </PopoverMenu>
   );
 }

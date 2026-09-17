@@ -20,7 +20,7 @@
   --leads-stage-column: 9rem;
   --leads-context-column: 18rem;
   --leads-updated-column: 9rem;
-  --leads-actions-column: 17rem;
+  --leads-actions-column: 11.5rem; /* ação principal + menu de 3 pontos (antes: 3 botões = 17rem) */
   --leads-filter-height: 15rem;
   --leads-filter-viewport-height: 40dvh;
   --leads-mobile-actions-width: 62vw;
@@ -693,6 +693,14 @@
 @media (max-width: 900px) {
   .content:has(> .leads-page) {
     padding: 0;
+  }
+
+  /* admin.css zera o scroll do .responsive-table-wrap em telas estreitas
+     (páginas admin rolam no documento). A lista de leads usa shell--fit —
+     o .content não rola — então o próprio surface precisa continuar
+     sendo o scroller, senão as linhas abaixo do fold ficam inacessíveis. */
+  .leads-page .leads-table-surface {
+    overflow-y: auto;
   }
 
   .leads-page__header p {

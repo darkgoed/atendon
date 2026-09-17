@@ -1,13 +1,14 @@
 "use client";
 
-import { MagicWand, MagnifyingGlass } from "@phosphor-icons/react";
+import { DotsThreeVertical, MagicWand, MagnifyingGlass } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { BulkLeadActions } from "@/components/bulk-lead-actions";
 import { ContactAvatar } from "@/components/contact-avatar";
 import { Empty } from "@/components/page-state";
-import { LeadTagChips, LeadTagPicker, type LeadTag } from "@/components/lead-tag-picker";
+import { LeadTagChips, LeadTagMenuItems, type LeadTag } from "@/components/lead-tag-picker";
+import { PopoverMenu } from "@/components/popover-menu";
 import { SavedViewsControl } from "@/components/saved-views-control";
 import { TagCatalogSettings } from "@/components/tag-catalog-settings";
 import { Shell } from "@/components/shell";
@@ -222,20 +223,31 @@ export default function LeadsPage() {
               {canReadFollowUp ? <td data-label="Acompanhamento"><div className="leads-table__follow-up"><strong>{lead.proxima_acao ?? "Nenhuma ação"}</strong>{lead.proxima_acao_em ? <time className="mono">{new Date(lead.proxima_acao_em).toLocaleString("pt-BR", { timeZone: timezone })}</time> : null}<span>{lead.responsavel_email ?? "Não atribuído"}</span><small>{lead.responsavel_disponibilidade === "available" ? "Disponível" : lead.responsavel_disponibilidade === "unavailable" ? "Indisponível" : "Fora do pool"}</small></div></td> : null}
               <td data-label="Atualizado" className="mono leads-table__updated">{new Date(lead.atualizado_em).toLocaleString("pt-BR")}</td>
               <td data-label="Ações">
-                <div className="leads-table__actions flex flex-nowrap">
-                  <LeadTagPicker leadId={lead.id} assigned={lead.tags} onChanged={mutate} />
-                  {!lead.qualificacao && canQualifyLeads ? (
-                    <button
-                      type="button"
-                      className="btn primary crm-compact-button"
-                      onClick={() => void qualifyLead(lead)}
-                      disabled={qualifyingLeadId !== null}
-                    >
-                      <MagicWand size={16} aria-hidden="true" />
-                      {qualifyingLeadId === lead.id ? "Qualificando…" : "Qualificar com IA"}
-                    </button>
-                  ) : null}
-                  <Link className="btn crm-compact-button" href={`/leads/${lead.id}`}>Ver detalhes</Link>
+                <div className="leads-table__actions">
+                  <Link className="btn primary crm-compact-button" href={`/leads/${lead.id}`}>Ver detalhes</Link>
+                  <PopoverMenu
+                    buttonClassName="btn crm-compact-button"
+                    icon={<DotsThreeVertical size={14} weight="bold" aria-hidden="true" />}
+                    ariaLabel={`Mais ações de ${lead.nome ?? lead.telefone}`}
+                    title="Mais ações"
+                    align="end"
+                    panelClassName="pipeline-popover pipeline-popover--tags grid gap-1"
+                  >
+                    {(close) => (<>
+                      {!lead.qualificacao && canQualifyLeads ? (
+                        <button
+                          type="button"
+                          className="flex min-h-9 items-center gap-2 rounded px-2 text-left text-xs transition-colors hover:bg-[var(--surface-active)] active:scale-[.98] disabled:opacity-50"
+                          onClick={() => { void qualifyLead(lead); close(); }}
+                          disabled={qualifyingLeadId !== null}
+                        >
+                          <MagicWand size={14} aria-hidden="true" />
+                          {qualifyingLeadId === lead.id ? "Qualificando…" : "Qualificar com IA"}
+                        </button>
+                      ) : null}
+                      <LeadTagMenuItems leadId={lead.id} assigned={lead.tags} onChanged={mutate} />
+                    </>)}
+                  </PopoverMenu>
                 </div>
               </td>
             </tr>)}</tbody>

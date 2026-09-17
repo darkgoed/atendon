@@ -62,7 +62,8 @@ describe("root SaaS gateways", () => {
   it("disconnects only after confirmation with confirm true", async () => {
     setup();
     const user = userEvent.setup();
-    await user.click((await screen.findAllByRole("button", { name: "Desconectar" }))[0]);
+    await user.click((await screen.findAllByRole("button", { name: /Mais ações de Mercado Pago/ }))[0]);
+    await user.click(await screen.findByRole("button", { name: "Desconectar" }));
     await waitFor(() => expect(api).toHaveBeenCalledWith("/root/billing/providers/mercadopago/sandbox/disconnect", {
       method: "POST", body: JSON.stringify({ confirm: true }),
     }));
@@ -73,7 +74,8 @@ describe("root SaaS gateways", () => {
   it("starts OAuth and redirects to the returned authorization URL", async () => {
     setup();
     const user = userEvent.setup();
-    await user.click((await screen.findAllByRole("button", { name: "Conectar via OAuth" }))[0]);
+    await user.click((await screen.findAllByRole("button", { name: /Mais ações de Mercado Pago/ }))[0]);
+    await user.click(await screen.findByRole("button", { name: "Conectar via OAuth" }));
     await waitFor(() => expect(api).toHaveBeenCalledWith("/root/billing/providers/sandbox/oauth/begin", {
       method: "POST", body: JSON.stringify({ redirectUri: "http://localhost/billing/providers/mercadopago/oauth/callback" }),
     }));
@@ -89,14 +91,16 @@ describe("root SaaS gateways", () => {
   it("tests the connection using the exact backend route", async () => {
     setup();
     const user = userEvent.setup();
-    await user.click((await screen.findAllByRole("button", { name: "Testar conexão" }))[0]);
+    await user.click((await screen.findAllByRole("button", { name: /Mais ações de Mercado Pago/ }))[0]);
+    await user.click(await screen.findByRole("button", { name: "Testar conexão" }));
     await waitFor(() => expect(api).toHaveBeenCalledWith("/root/billing/providers/sandbox/test-connection", { method: "POST" }));
   });
 
   it("enables a connected gateway using the exact backend route", async () => {
     setup();
     const user = userEvent.setup();
-    await user.click((await screen.findAllByRole("button", { name: "Habilitar" }))[0]);
+    await user.click((await screen.findAllByRole("button", { name: /Mais ações de Mercado Pago/ }))[0]);
+    await user.click(await screen.findByRole("button", { name: "Habilitar gateway" }));
     await waitFor(() => expect(api).toHaveBeenCalledWith("/root/billing/providers/mercadopago/sandbox/enabled", {
       method: "POST", body: JSON.stringify({ enabled: true }),
     }));
@@ -110,7 +114,8 @@ describe("root SaaS gateways", () => {
     });
     render(<SWRConfig value={{ provider: () => new Map() }}><GatewaysPage /></SWRConfig>);
     const user = userEvent.setup();
-    await user.click((await screen.findAllByRole("button", { name: "Desabilitar" }))[0]);
+    await user.click((await screen.findAllByRole("button", { name: /Mais ações de Mercado Pago/ }))[0]);
+    await user.click(await screen.findByRole("button", { name: "Desabilitar gateway" }));
     await waitFor(() => expect(api).toHaveBeenCalledWith("/root/billing/providers/mercadopago/sandbox/enabled", {
       method: "POST", body: JSON.stringify({ enabled: false }),
     }));

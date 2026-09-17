@@ -188,9 +188,9 @@
 
   /* texto em papéis */
   --text: #181B20;
-  --text-secondary: #667085;      /* brief --muted;  AA 4.31 no pior caso */
-  --text-muted: #667085;
-  --text-subtle: #7E8AA0;         /* brief --muted-2 corrigido p/ >=3:1   */
+  --text-secondary: #5A6678;      /* AA 4.73+ em todos os fundos do tema claro (inclui --surface-active) */
+  --text-muted: #5A6678;
+  --text-subtle: #5A6472;         /* AA 4.88+ em todos os fundos do tema claro */
   --text-disabled: #7E8AA0;
   --text-inverse: #FFFFFF;
 
@@ -269,7 +269,7 @@
   --text: #F2F4F7;
   --text-secondary: #A6ADB8;      /* AA 6.81 no pior caso  */
   --text-muted: #A6ADB8;
-  --text-subtle: #747D8A;         /* >=3:1 (ornamento)     */
+  --text-subtle: #8B94A2;         /* AA 5.03+ em todos os fundos do tema escuro */
   --text-disabled: #747D8A;
   --text-inverse: #08111F;
 

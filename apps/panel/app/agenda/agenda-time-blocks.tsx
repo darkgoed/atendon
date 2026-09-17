@@ -108,7 +108,7 @@ export function AgendaTimeBlockList({ blocks, timezone, deletingId, onDelete }: 
         {blocks.map((block) => (
           <div key={block.id} className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-xs">
             <span>{new Date(block.start).toLocaleString("pt-BR", { timeZone: timezone, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} — {new Date(block.end).toLocaleString("pt-BR", { timeZone: timezone, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}{block.reason ? ` · ${block.reason}` : ""}</span>
-            <button type="button" className="grid size-7 place-items-center rounded border border-[var(--border)]" onClick={() => void onDelete(block.id)} disabled={deletingId === block.id} aria-label="Remover bloqueio"><Trash size={13} aria-hidden="true" /></button>
+            <button type="button" className="grid size-7 place-items-center rounded border border-[var(--border)]" onClick={() => { if (confirm("Remover este bloqueio de horário?")) void onDelete(block.id); }} disabled={deletingId === block.id} aria-label="Remover bloqueio"><Trash size={13} aria-hidden="true" /></button>
           </div>
         ))}
       </div>

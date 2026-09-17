@@ -31,6 +31,11 @@ const routePath = (url) => new URL(url).pathname.replace(/^\/(?:api|backend)/, "
 const json = (intercept, body, status = 200) => intercept.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 const ROOT_WORKSPACE_ROUTES = new Set(["/alertas", "/follow-ups", "/agente/figurinhas"]);
 const EXPECTED_PROVIDER_FAILURES = new Set(["/meet/rooms/qa-room/token", "/meet/join/qa-code"]);
+const publicRelease = { buildNumber: 3501, version: "2.1.0", publicTitle: "Central de mensagens refinada", publicSummary: "Ajustes de densidade, ações agrupadas e correções visuais.", publicChanges: [{ text: "Ações secundárias agrupadas em menus de três pontos", tenant_slugs: [] }], publishedAt: "2026-09-01T12:00:00.000Z", createdAt: "2026-09-01T12:00:00.000Z" };
+const rootRelease = { id: "qa-release-0001", buildNumber: 3501, version: "2.1.0", classification: "RELEASE", classificationReason: "release QA", bumpSource: "qa", commitSha: "deadbeef", branch: "main", additions: 120, deletions: 40, filesChanged: [{ path: "apps/panel/app/leads/page.tsx", status: "modified", additions: 28, deletions: 16 }], modulesAffected: ["panel"], scope: "GLOBAL", tenantSlugsDetected: [], commitMessages: ["qa fixture"], diffExcerpt: "", technicalChangelog: "", publicTitle: publicRelease.publicTitle, publicSummary: publicRelease.publicSummary, publicChanges: publicRelease.publicChanges, aiStatus: "generated", aiError: null, aiModelUsed: "openai/gpt-4o-mini", published: true, publishedAt: "2026-09-01T12:00:00.000Z", manualOverride: false, isLegacyImport: false, createdAt: "2026-09-01T12:00:00.000Z" };
+const changelogAiSettings = { hasApiKey: false, apiKeyHint: null, primaryModel: "openai/gpt-4o-mini", fallbackModel: null, autoGenerateEnabled: false, autoPublishEnabled: false, updatedAt: "2026-09-01T12:00:00.000Z" };
+const channelCapabilities = { channel: "whatsapp", can_send: true, reason: null, window_expires_at: null, text: true, image: true, audio: true, video: true, document: true, reactions: true, edit: true, delete: true, stickers: true };
+const instagramStatus = { configured: true, missing: [], graph_version: "v21.0", max_connections: 3 };
 function payload(path, method, useRoot, route) {
   if (method === "OPTIONS") return { status: 204 };
   if (method === "PATCH" && (path === "/me/notification-preferences" || path === `/conversations/${IDS.conversation}/read` || path.startsWith("/alerts/") && path.endsWith("/read"))) return { status: 204 };
@@ -39,6 +44,11 @@ function payload(path, method, useRoot, route) {
   if (path === "/me") return { body: ROOT_WORKSPACE_ROUTES.has(route) ? rootWorkspaceSession : (useRoot ? rootSession : session) };
   if (path === "/feature-flags") return { body: { flags: Object.fromEntries(FEATURE_FLAG_KEYS.map((key) => [key, false])), featureFlags: CAPABILITY_CATALOG } };
   if (path === "/panel/version") return { body: { version: process.env.AUDIT_BUILD_MARKER ?? "baseline3499", changelog: [] } };
+  if (path === "/panel/versions") return { body: { releases: [publicRelease] } };
+  if (path.startsWith("/root/versions")) return { body: { releases: [rootRelease] } };
+  if (path === "/root/settings/changelog-ai") return { body: { settings: changelogAiSettings } };
+  if (/^\/conversations\/[^/]+\/channel-capabilities$/.test(path)) return { body: channelCapabilities };
+  if (path === "/instagram/status") return { body: instagramStatus };
   if (path === "/events") return { status: 204 };
   if (path === "/capabilities") return { body: { capabilities: CAPABILITY_CATALOG } };
   if (path === "/billing/my-plan") return { body: ENTITLEMENTS };

@@ -199,7 +199,9 @@ describe("comments.md UI regressions", () => {
     expect(leadsSource).toContain('data-label="Resumo"');
     expect(leadsSource).toContain('className="block truncate" title=');
     expect(leadsSource).toContain("whitespace-nowrap");
-    expect(leadsSource).toContain("flex flex-nowrap");
+    // O nowrap vive na toolbar do header (flex-nowrap); a célula de ações por
+    // linha é flex via .leads-table__actions do CSS do domínio (leads.css).
+    expect(leadsSource).toContain("flex-nowrap");
     expect(leadsSource).toContain("min-h-8");
   });
 

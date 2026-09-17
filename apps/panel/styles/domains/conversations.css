@@ -647,3 +647,21 @@
   .conversation-thread__pause p { display: none; }
   .conversation-composer > p:last-child { display: none; }
 }
+
+/* Botão flutuante "ir para a mensagem mais recente": pill circular compacto
+   sobre a thread (o .btn padrão era retangular e pesado nessa posição). */
+.conversation-thread__jump-latest {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height-md, 2.25rem);
+  height: var(--control-height-md, 2.25rem);
+  min-height: 0;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow-popover);
+}
+.conversation-thread__jump-latest:hover { background: var(--surface-hover); }

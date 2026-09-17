@@ -1389,7 +1389,7 @@ export default function Conversations() {
   return (
     <Shell flush activeConversationId={selected} onOpenConversation={setSelected}>
       <div className="conversation-screen flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-        <header className="conversation-screen__header flex shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--surface-sunken)] px-4">
+        <header className="conversation-screen__header flex shrink-0 items-center gap-3 border-b border-[var(--border)] px-4">
           <h1>{hasWorkspaceScope ? "Conversas" : "Minhas conversas"}</h1>
           <span className="conversation-screen__summary mono">{items.length} na fila</span>
 
@@ -1411,7 +1411,7 @@ export default function Conversations() {
                 {items.length}
               </span>
             </div>
-            <label className="conversation-list__search search-field mb-2.5">
+            <label className="conversation-list__search search-field">
               <MagnifyingGlass className="shrink-0 text-[var(--text-muted)]" size={16} aria-hidden="true" />
               <span className="sr-only">Buscar conversa</span>
               <input
@@ -1429,7 +1429,7 @@ export default function Conversations() {
             </label>
             <button
               type="button"
-              className="btn mb-2 flex w-full items-center justify-between px-2 py-1.5 text-xs"
+              className="btn mb-2 flex w-full items-center justify-between"
               aria-expanded={advancedFiltersOpen}
               aria-controls="conversation-advanced-filters"
               onClick={() => setAdvancedFiltersOpen((value) => !value)}
@@ -1449,21 +1449,21 @@ export default function Conversations() {
                   </label>
                 ) : null}
                 <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filas de atendimento">
-                  <button type="button" aria-pressed={!queueFilter} className={`btn px-2 py-1 text-xs ${!queueFilter ? "primary" : ""}`} onClick={() => setQueueFilter("")}>Todas</button>
-                  {(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <button type="button" aria-pressed={queueFilter === queue.id} key={queue.id} className={`btn px-2 py-1 text-xs ${queueFilter === queue.id ? "primary" : ""}`} onClick={() => setQueueFilter(queue.id)}><span className="mr-1 inline-block size-2 rounded-full" style={{ backgroundColor: queue.color }} aria-hidden="true" />{queue.name} <span className="mono">{queue.conversation_count}</span></button>)}
+                  <button type="button" aria-pressed={!queueFilter} className={`btn ${!queueFilter ? "primary" : ""}`} onClick={() => setQueueFilter("")}>Todas</button>
+                  {(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <button type="button" aria-pressed={queueFilter === queue.id} key={queue.id} className={`btn ${queueFilter === queue.id ? "primary" : ""}`} onClick={() => setQueueFilter(queue.id)}><span className="mr-1 inline-block size-2 rounded-full" style={{ backgroundColor: queue.color }} aria-hidden="true" />{queue.name} <span className="mono">{queue.conversation_count}</span></button>)}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  <button type="button" disabled={!hasWorkspaceScope} aria-pressed={hasWorkspaceScope && filter === "mine"} className={`btn px-2 py-1 text-xs ${!hasWorkspaceScope || filter === "mine" ? "primary" : ""}`} onClick={() => { if (hasWorkspaceScope) setFilter(filter === "mine" ? "human" : "mine"); }}>Minhas conversas</button>
-                  {hasWorkspaceScope ? <button type="button" aria-pressed={filter === "unassigned"} className={`btn px-2 py-1 text-xs ${filter === "unassigned" ? "primary" : ""}`} onClick={() => setFilter(filter === "unassigned" ? "human" : "unassigned")}>Sem responsável</button> : null}
-                  <button type="button" aria-pressed={unreadOnly} className={`btn px-2 py-1 text-xs ${unreadOnly ? "primary" : ""}`} onClick={() => setUnreadOnly((value) => !value)}>Não lidas</button>
-                  <button type="button" aria-pressed={pendingOnly} className={`btn px-2 py-1 text-xs ${pendingOnly ? "primary" : ""}`} onClick={() => setPendingOnly((value) => !value)}>Pendências</button>
+                  <button type="button" disabled={!hasWorkspaceScope} aria-pressed={hasWorkspaceScope && filter === "mine"} className={`btn ${!hasWorkspaceScope || filter === "mine" ? "primary" : ""}`} onClick={() => { if (hasWorkspaceScope) setFilter(filter === "mine" ? "human" : "mine"); }}>Minhas conversas</button>
+                  {hasWorkspaceScope ? <button type="button" aria-pressed={filter === "unassigned"} className={`btn ${filter === "unassigned" ? "primary" : ""}`} onClick={() => setFilter(filter === "unassigned" ? "human" : "unassigned")}>Sem responsável</button> : null}
+                  <button type="button" aria-pressed={unreadOnly} className={`btn ${unreadOnly ? "primary" : ""}`} onClick={() => setUnreadOnly((value) => !value)}>Não lidas</button>
+                  <button type="button" aria-pressed={pendingOnly} className={`btn ${pendingOnly ? "primary" : ""}`} onClick={() => setPendingOnly((value) => !value)}>Pendências</button>
                 </div>
-                <button type="button" className="btn px-2 py-1 text-xs" onClick={() => { setConnectionFilter(""); setQueueFilter(""); setFilter(hasWorkspaceScope ? "human" : "mine"); setUnreadOnly(false); setPendingOnly(false); setAdvancedFiltersOpen(false); }}>Limpar filtros</button>
+                <button type="button" className="btn" onClick={() => { setConnectionFilter(""); setQueueFilter(""); setFilter(hasWorkspaceScope ? "human" : "mine"); setUnreadOnly(false); setPendingOnly(false); setAdvancedFiltersOpen(false); }}>Limpar filtros</button>
               </div>
             ) : null}
 
             {hasWorkspaceScope ? (
-              <div className="conversation-filter-tabs grid grid-cols-4 gap-1 rounded-md border border-[var(--border)] bg-transparent p-1">
+              <div className="conversation-filter-tabs">
                 {[
                   ["human", "Abertas", unreadCounts?.human],
                   ["ai", "IA", unreadCounts?.ai],
@@ -1475,9 +1475,7 @@ export default function Conversations() {
                     key={key as string}
                     onClick={() => setFilter(key as string)}
                     aria-pressed={filter === key}
-                    className={`flex min-w-0 items-center justify-center gap-1 truncate rounded-md px-1.5 py-1.5 text-xs font-medium transition ${
-                      filter === key ? "border border-[var(--primary-border)] bg-[var(--primary-subtle)] text-[var(--primary-text)]" : "border border-transparent text-[var(--text-secondary)] hover:text-[var(--text-secondary)]"
-                    }`}
+                    className="flex min-w-0 items-center justify-center gap-1 truncate"
                   >
                     <span className="truncate">{label}</span>
                     {Number(count) > 0 ? (
@@ -1497,7 +1495,7 @@ export default function Conversations() {
           </header>
 
           <div
-            className="conversation-list__items min-h-0 flex-1 overflow-y-auto p-2.5"
+            className="conversation-list__items min-h-0 flex-1 overflow-y-auto"
             tabIndex={0}
             aria-label="Lista de conversas"
           >
@@ -1505,13 +1503,13 @@ export default function Conversations() {
             {listError ? (
               <div className="mb-2.5 flex items-center justify-between gap-2 rounded-md border border-[var(--warning-border)] bg-transparent p-2.5 text-sm text-[var(--warning-text)]" role="alert">
                 <span>Não foi possível carregar as conversas.</span>
-                <button type="button" className="btn warn shrink-0 px-2 py-1 text-xs" onClick={() => void mutateList()}>Tentar novamente</button>
+                <button type="button" className="btn warn shrink-0" onClick={() => void mutateList()}>Tentar novamente</button>
               </div>
             ) : null}
             {listLoading && items.length === 0 ? (
               <div className="space-y-1.5 p-1">
                 {Array.from({ length: 5 }).map((_, index) => (
-                  <div key={index} className="skeleton  rounded-md border border-[var(--border)]" />
+                  <div key={index} className="skeleton rounded-md border border-[var(--border)]" />
                 ))}
               </div>
             ) : items.length === 0 ? (
@@ -1525,7 +1523,7 @@ export default function Conversations() {
                   <div className="pt-1.5 text-center">
                     <button
                       type="button"
-                      className="btn px-3 py-1.5 text-xs"
+                      className="btn"
                       onClick={() => void loadOlderConversations()}
                       disabled={loadingOlderList}
                     >
@@ -1564,7 +1562,7 @@ export default function Conversations() {
             </div>
           ) : (
             <>
-              <header className="conversation-thread__header flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--border)] bg-transparent px-4 py-2.5">
+              <header className="conversation-thread__header shrink-0">
                 <button
                   type="button"
                   className="conversation-thread__back shrink-0"
@@ -1587,16 +1585,16 @@ export default function Conversations() {
                     className="h-7 w-7 text-xs"
                   />
                 </button>
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0">
                   <button
                     type="button"
-                    className="conversation-thread__contact-name block max-w-full truncate text-left text-sm font-semibold text-[var(--text)]"
+                    className="conversation-thread__contact-name block max-w-full truncate text-left"
                     onClick={(event) => openContactPanel(event.currentTarget)}
                     title="Abrir dados do contato"
                   >
                     {thread.conversation.channel === "instagram" ? instagramDisplayName(thread.conversation.contact_name, thread.conversation.instagram_username, thread.conversation.contact_identifier, thread.conversation.contact_phone) : thread.conversation.contact_name ?? thread.conversation.contact_phone ?? "Contato sem identificação"}
                   </button>
-                  <div className="conversation-thread__meta mt-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs text-[var(--text-muted)]">
+                  <div className="conversation-thread__meta mt-0.5 overflow-hidden whitespace-nowrap">
                     <ChannelBadge channel={thread.conversation.channel === "instagram" ? "instagram" : "whatsapp"} size={13} />
                     {thread.conversation.channel !== "instagram" && threadConnectionLabel ? <><span className="shrink-0 text-[var(--text-muted)]">·</span><span className="shrink-0">Número: {threadConnectionLabel}</span></> : null}
                     <span className="shrink-0 text-[var(--text-muted)]">·</span>
@@ -1611,7 +1609,7 @@ export default function Conversations() {
                     {thread.conversation.status === "closed" && thread.conversation.resolved_at ? <span>Resolvida em {new Date(thread.conversation.resolved_at).toLocaleString("pt-BR")}</span> : null}
                   </div>
                 </div>
-                <div className="conversation-thread__actions flex flex-wrap items-center justify-end gap-1.5">
+                <div className="conversation-thread__actions">
                   {leadsEnabled && thread.conversation.lead_id ? (
                     thread.conversation.pipeline_stage && thread.conversation.lead_updated_at ? (
                       <ConversationStatusPicker
@@ -1628,7 +1626,7 @@ export default function Conversations() {
                   ) : null}
                   {canReply ? thread.conversation.status === "closed"
                     ? <span className="text-xs text-[var(--text-secondary)]" aria-label="Fila atual">Fila: {thread.conversation.queue_name ?? "Sem fila"}</span>
-                    : <label className="field"><span className="sr-only">Fila do atendimento</span><select className="input py-1.5 text-xs" aria-label="Fila do atendimento" value={thread.conversation.queue_id ?? ""} onChange={(event) => { if (event.target.value) void moveConversationToQueue(event.target.value); }}><option value="">Sem fila</option>{(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></label>
+                    : <label className="field"><span className="sr-only">Fila do atendimento</span><select className="input" aria-label="Fila do atendimento" value={thread.conversation.queue_id ?? ""} onChange={(event) => { if (event.target.value) void moveConversationToQueue(event.target.value); }}><option value="">Sem fila</option>{(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></label>
                     : null}
                   {canReply && thread.conversation.status === "open" ? <button className="btn primary shrink-0 active:scale-95" onClick={resolveConversation} disabled={changingOwner || followUpPending}>
                     <CheckCircle size={14} aria-hidden="true" /> Resolver
@@ -1650,7 +1648,7 @@ export default function Conversations() {
                           <label className="field">
                             <span className="label">Novo responsável</span>
                             <select
-                              className="input py-1.5 text-xs"
+                              className="input"
                               value={conversation.assigned_user_id ?? ""}
                               disabled={changingOwner}
                               onChange={(event) => void assignConversation(event.target.value)}
@@ -1666,7 +1664,7 @@ export default function Conversations() {
                   ) : null}
                   {thread.conversation ? (
                     <PopoverMenu
-                      buttonClassName="btn conversation-action-menu-trigger shrink-0 p-2 active:scale-95"
+                      buttonClassName="btn conversation-action-menu-trigger shrink-0 active:scale-95"
                       icon={<DotsThreeVertical size={16} weight="bold" aria-hidden="true" />}
                       ariaLabel="Mais ações da conversa"
                       title="Mais ações"
@@ -1697,7 +1695,7 @@ export default function Conversations() {
                               <label className="field px-3 py-2">
                                 <span className="label">Assinatura do atendente</span>
                                 <select
-                                  className="input py-1.5 text-xs"
+                                  className="input"
                                   value={activeConversation.signature_enabled === null || activeConversation.signature_enabled === undefined
                                     ? ""
                                     : String(activeConversation.signature_enabled)}
@@ -1743,9 +1741,9 @@ export default function Conversations() {
               {aiActionNotice ? <div className="shrink-0 border-b border-[var(--primary-border)] px-4 py-2 text-xs text-[var(--primary-text)]" role="status">{aiActionNotice}</div> : null}
 
               {thread.conversation.status === "open" && !thread.conversation.ai_active ? (
-                <div className="conversation-thread__pause flex shrink-0 items-center gap-2 border-b border-[var(--warning-border)] bg-transparent px-4 py-1.5 text-[var(--warning-text)]">
+                <div className="conversation-thread__pause flex shrink-0 items-center gap-2">
                   <Pause size={13} className="shrink-0" />
-                  <p className="truncate text-xs leading-tight text-[var(--warning-text)]">
+                  <p className="truncate leading-tight">
                     {thread.conversation.handoff_reason === "manually_paused"
                       ? "IA pausada manualmente para este contato — responda pelo painel ou celular."
                       : "Transferida para atendimento humano — responda pelo painel ou celular."}
@@ -1768,7 +1766,7 @@ export default function Conversations() {
                       <div className="mb-4 flex justify-center">
                         <button
                           type="button"
-                          className="btn text-xs"
+                          className="btn"
                           disabled={loadingOlder}
                           onClick={() => void loadOlderMessages()}
                         >
@@ -1821,7 +1819,7 @@ export default function Conversations() {
                     <button
                       type="button"
                       onClick={() => scrollToBottom()}
-                      className="btn absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full border-[var(--border-strong)] bg-[var(--bg)] p-2 text-[var(--text)]"
+                      className="btn conversation-thread__jump-latest absolute bottom-3 left-1/2 z-10 -translate-x-1/2"
                       aria-label="Ir para a mensagem mais recente"
                     >
                       <ArrowDown size={16} />

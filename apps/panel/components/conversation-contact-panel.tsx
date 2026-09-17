@@ -169,8 +169,8 @@ export function ConversationContactPanel({
   }
 
   return (
-    <aside ref={panelRef} className="conversation-contact-panel flex min-h-0 min-w-0 flex-col border-l border-[var(--border)] bg-[var(--surface)]" aria-label="Dados do contato" tabIndex={-1}>
-      <header className="conversation-contact-panel__header flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-3">
+    <aside ref={panelRef} className="conversation-contact-panel min-h-0 min-w-0" aria-label="Dados do contato" tabIndex={-1}>
+      <header className="conversation-contact-panel__header flex shrink-0 items-center justify-between px-4 py-3">
         <h2 className="text-sm font-semibold text-[var(--text)]">Dados do lead</h2>
         <Button type="button" autoFocus data-autofocus className="conversation-contact-panel__icon" onClick={onClose} aria-label="Fechar dados do contato" title="Fechar">
           <X size={18} aria-hidden="true" />
@@ -178,7 +178,7 @@ export function ConversationContactPanel({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <section className="conversation-contact-panel__identity border-b border-[var(--border-subtle)] px-4 py-4">
+        <section className="conversation-contact-panel__identity border-b border-[var(--border-subtle)] px-4">
           <div className="flex min-w-0 items-center gap-3">
             <ContactAvatar name={title} src={conversation.avatar_url} className="h-10 w-10 shrink-0 text-sm" />
             <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -187,7 +187,7 @@ export function ConversationContactPanel({
                 <label className="sr-only" htmlFor="contact-name-edit">Nome do contato</label>
                 <Input
                   id="contact-name-edit"
-                  className="input min-w-0 py-1.5 text-center text-sm"
+                  className="input text-center"
                   value={draftName}
                   onChange={(event) => setDraftName(event.target.value)}
                   onCompositionStart={() => { compositionActiveRef.current = true; }}
@@ -213,7 +213,7 @@ export function ConversationContactPanel({
                   disabled={savingName}
                   autoFocus
                 />
-                <Button type="button" className="btn primary shrink-0 px-2.5 py-1.5 text-xs" onClick={() => void saveName()} disabled={savingName}>{savingName ? "Salvando…" : "Salvar"}</Button>
+                <Button type="button" className="btn primary shrink-0" onClick={() => void saveName()} disabled={savingName}>{savingName ? "Salvando…" : "Salvar"}</Button>
               </div>
             ) : (
               <>
@@ -273,7 +273,7 @@ export function ConversationContactPanel({
           {assetsError ? (
             <div className="mt-3 flex items-center justify-between gap-2 border border-[var(--warning-border)] bg-[var(--warning-subtle)] p-2 text-xs text-[var(--warning-text)]" role="alert">
               <span>{assetsError}</span>
-              {onRetryAssets ? <Button type="button" className="btn shrink-0 text-xs" onClick={onRetryAssets}>Tentar novamente</Button> : null}
+              {onRetryAssets ? <Button type="button" className="btn shrink-0" onClick={onRetryAssets}>Tentar novamente</Button> : null}
             </div>
           ) : null}
 
@@ -322,7 +322,7 @@ export function ConversationContactPanel({
             ) : <p id="contact-panel-docs" className="conversation-contact-panel__empty" role="tabpanel" aria-labelledby="contact-panel-docs-tab">Nenhum documento compartilhado.</p>
           ) : null}
           {!assetsLoading && assetsHasMore && onLoadMoreAssets ? (
-            <Button type="button" className="btn mt-3 w-full text-xs" onClick={onLoadMoreAssets} disabled={assetsLoadingMore}>
+            <Button type="button" className="btn mt-3 w-full" onClick={onLoadMoreAssets} disabled={assetsLoadingMore}>
               {assetsLoadingMore ? "Carregando mais…" : "Carregar mais conteúdo"}
             </Button>
           ) : null}

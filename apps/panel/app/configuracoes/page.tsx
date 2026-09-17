@@ -669,7 +669,14 @@ function PanelNotificationSettingsPanel() {
     await Notification.requestPermission();
   }
 
-  if (isLoading) return <div className="skeleton h-48 max-w-2xl" aria-label="Carregando preferências de notificação" />;
+  if (isLoading) {
+    return (
+      <div className="grid max-w-2xl gap-4" aria-busy="true" aria-label="Carregando preferências de notificação">
+        <div className="skeleton h-8 w-2/5" />
+        <div className="skeleton h-28" />
+      </div>
+    );
+  }
   return (
     <div className="grid max-w-3xl gap-6 border-t border-[var(--border)] pt-6">
       <div>
@@ -1132,9 +1139,9 @@ function AtendonMeetSettingsPanel({ canManage }: { canManage: boolean }) {
 
   return (
     <form className="max-w-3xl border-y border-[var(--border)] py-6" onSubmit={submit}>
-      <div className="grid gap-6 sm:grid-cols-[44px_minmax(0,1fr)]">
-        <span className="grid size-11 place-items-center rounded-full border border-[var(--primary-border)] bg-[var(--primary-subtle)] text-[var(--primary-text)]">
-          <VideoCamera size={21} aria-hidden="true" />
+      <div className="grid gap-6 sm:grid-cols-[40px_minmax(0,1fr)]">
+        <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--primary-text)]">
+          <VideoCamera size={19} aria-hidden="true" />
         </span>
         <div className="min-w-0">
           <div className="flex flex-wrap items-start justify-between gap-5 border-b border-[var(--border)] pb-5">

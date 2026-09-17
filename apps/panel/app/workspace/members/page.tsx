@@ -1,9 +1,10 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { ArrowsLeftRight, LinkSimple, PencilSimple, Trash } from "@phosphor-icons/react";
+import { ArrowsLeftRight, DotsThreeVertical, LinkSimple, PencilSimple, Trash } from "@phosphor-icons/react";
 import useSWR from "swr";
 import { Empty, LoadingCards } from "@/components/page-state";
+import { PopoverMenu } from "@/components/popover-menu";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { accessStatusLabel } from "@/lib/labels";
@@ -281,17 +282,29 @@ export default function WorkspaceMembersPage() {
                                     Perfil
                                   </button>
                                 ) : null}
-                                {canTransferOwner && !member.is_owner_role && member.status === "active" ? (
-                                  <button type="button" className="btn" disabled={locked} onClick={() => void transferOwner(member.id)}>
-                                    <ArrowsLeftRight size={16} aria-hidden="true" />
-                                    Transferir
-                                  </button>
-                                ) : null}
-                                {canRemoveMembers && !member.is_owner_role ? (
-                                  <button type="button" className="btn warn" disabled={locked} onClick={() => void removeMember(member.id)}>
-                                    <Trash size={16} aria-hidden="true" />
-                                    Remover
-                                  </button>
+                                {(canTransferOwner && !member.is_owner_role && member.status === "active") || (canRemoveMembers && !member.is_owner_role) ? (
+                                  <PopoverMenu
+                                    buttonClassName="btn"
+                                    icon={<DotsThreeVertical size={16} weight="bold" aria-hidden="true" />}
+                                    ariaLabel={`Mais ações de ${member.name || member.email}`}
+                                    title="Mais ações"
+                                    panelClassName="conversation-action-menu__panel"
+                                  >
+                                    {(close) => (
+                                      <>
+                                        {canTransferOwner && !member.is_owner_role && member.status === "active" ? (
+                                          <button type="button" className="conversation-action-menu__item" disabled={locked} onClick={() => { close(); void transferOwner(member.id); }}>
+                                            <ArrowsLeftRight size={15} aria-hidden="true" /> Transferir propriedade
+                                          </button>
+                                        ) : null}
+                                        {canRemoveMembers && !member.is_owner_role ? (
+                                          <button type="button" className="conversation-action-menu__item conversation-action-menu__item--warn" disabled={locked} onClick={() => { close(); void removeMember(member.id); }}>
+                                            <Trash size={15} aria-hidden="true" /> Remover do workspace
+                                          </button>
+                                        ) : null}
+                                      </>
+                                    )}
+                                  </PopoverMenu>
                                 ) : null}
                               </div>
                             </td>

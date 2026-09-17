@@ -138,26 +138,26 @@ export default function Overview() {
                   <Dot tone={connected ? "success" : "warning"} />
                   <span className={connected ? "success-text" : "warning"}>{connected ? "Conectado" : "Desconectado"}</span>
                 </dd>
-                <p className="type-meta mono">status: {data.connection.status}</p>
+                <dd className="type-meta mono">status: {data.connection.status}</dd>
               </div>
               <div className="overview-metrics__item">
                 <dt className="type-overline">Aguardando humano</dt>
                 <dd className="metric warning">{data.counts.handoff}</dd>
-                <p className="type-meta">
+                <dd className="type-meta">
                   {hasWorkspaceScope
                     ? `${data.counts.handoff_unassigned} sem responsável · ${data.counts.handoff_over_sla} acima de 15 min`
                     : `${data.counts.handoff_over_sla} dos seus atendimentos acima de 15 min`}
-                </p>
+                </dd>
               </div>
               <div className="overview-metrics__item">
                 <dt className="type-overline">Conversas abertas</dt>
                 <dd className="metric">{data.counts.open}</dd>
-                <p className="type-meta">{data.counts.ai_open} com IA · {data.counts.resolved_today} resolvidas hoje</p>
+                <dd className="type-meta">{data.counts.ai_open} com IA · {data.counts.resolved_today} resolvidas hoje</dd>
               </div>
               <div className="overview-metrics__item">
                 <dt className="type-overline">Mensagens hoje</dt>
                 <dd className="metric">{data.counts.messagesToday}</dd>
-                <p className="type-meta">contato, IA e humano</p>
+                <dd className="type-meta">contato, IA e humano</dd>
               </div>
             </dl>
           </Panel>

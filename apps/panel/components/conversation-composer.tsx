@@ -297,7 +297,7 @@ export function ConversationComposer({
   }
 
   return (
-    <form ref={formRef} onSubmit={send} className="conversation-composer shrink-0 border-t border-[var(--border)] bg-transparent p-3 sm:p-4" aria-busy={sending}>
+    <form ref={formRef} onSubmit={send} className="conversation-composer shrink-0" aria-busy={sending}>
       <div className="conversation-composer__tabs" role="tablist" aria-label="Tipo de mensagem">
         <span className="is-active" role="tab" aria-selected="true">Responder</span>
         <span role="tab" aria-selected="false" aria-disabled="true">Nota interna</span>
@@ -367,13 +367,13 @@ export function ConversationComposer({
             event.target.value = "";
           }}
         />
-        <Button type="button" className="btn h-11 w-11 p-0 active:scale-95" onClick={() => fileInputRef.current?.click()} aria-label="Anexar arquivo" disabled={sending || recording || !canAttach}>
+        <Button type="button" className="btn active:scale-95" onClick={() => fileInputRef.current?.click()} aria-label="Anexar arquivo" disabled={sending || recording || !canAttach}>
           <Paperclip size={19} />
         </Button>
-        <Button type="button" className="btn h-11 w-11 p-0 active:scale-95" onClick={startRecording} aria-label="Gravar áudio" disabled={sending || recording || !supports("audio")}>
+        <Button type="button" className="btn active:scale-95" onClick={startRecording} aria-label="Gravar áudio" disabled={sending || recording || !supports("audio")}>
           <Microphone size={19} />
         </Button>
-        <label className="field gap-0">
+        <label>
           <span className="sr-only">Mensagem</span>
           <Textarea
             value={draft}
@@ -387,13 +387,13 @@ export function ConversationComposer({
               // deste evento, com isComposing=false — não pode enviar.
               compositionJustEndedRef.current = true;
             }}
-            className="conversation-composer__textarea input min-h-11 max-h-32 resize-y py-3 leading-5"
+            className="conversation-composer__textarea input max-h-32"
             placeholder={attachment?.mediaType === "audio" ? "Áudio pronto para enviar" : attachment ? "Adicionar uma legenda" : channel === "instagram" ? "Responder pelo Instagram" : "Responder pelo WhatsApp conectado"}
             autoComplete="off"
             disabled={sending || recording || attachment?.mediaType === "audio" || !canSendText}
           />
         </label>
-        <Button type="submit" className="conversation-composer__send btn primary h-11 active:scale-95" aria-label={sending ? "Enviando mensagem" : "Enviar mensagem"} disabled={sending || recording || !canSend || (!draft.trim() && !attachment)}>
+        <Button type="submit" className="conversation-composer__send btn primary active:scale-95" aria-label={sending ? "Enviando mensagem" : "Enviar mensagem"} disabled={sending || recording || !canSend || (!draft.trim() && !attachment)}>
           {sending ? <span className="h-4 w-4 animate-pulse rounded-full border border-current" aria-hidden="true" /> : <PaperPlaneRight size={16} aria-hidden="true" />}
           <span>{sending ? "Enviando…" : "Enviar"}</span>
         </Button>

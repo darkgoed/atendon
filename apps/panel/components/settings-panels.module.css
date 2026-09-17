@@ -16,7 +16,7 @@
 .settingsDestination span { display: grid; gap: var(--space-1); min-width: 0; }
 .settingsDestination small { color: var(--text-secondary); }
 .tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
-.tab { min-height: var(--control-height-touch); padding: var(--space-3) var(--space-4); border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); white-space: nowrap; }
+.tab { min-height: var(--control-height-md); padding: var(--space-2) var(--space-3); border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); white-space: nowrap; }
 .tabActive { border-bottom-color: var(--primary); color: var(--primary-text); }
 .catalogLayout { display: grid; gap: var(--space-4); min-width: 0; }
 .catalogLayoutManaged { grid-template-columns: minmax(0, 1fr) minmax(18rem, 26rem); }
@@ -35,7 +35,7 @@
 .dialogSection { display: grid; gap: var(--space-3); padding-block: var(--space-4); border-top: 1px solid var(--border); }
 @media (max-width: 48rem) {
   .tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: var(--space-1); }
-  .tab { flex: 0 0 auto; }
+  .tab { flex: 0 0 auto; min-height: var(--control-height-touch); }
   .saveBar { align-items: stretch; }
   .saveActions { width: 100%; margin-inline-start: 0; }
   .saveActions > button { flex: 1 1 12rem; }

@@ -347,7 +347,7 @@ export function ConversationScheduler({
             {contactName ?? contactPhone} <span className="mono text-xs text-[var(--text-muted)]">· {contactPhone}</span>
           </p>
         </div>
-        <Button type="button" className="btn shrink-0 p-2" aria-label="Fechar agenda" disabled={creating} onClick={onClose}>
+        <Button type="button" className="btn shrink-0" aria-label="Fechar agenda" disabled={creating} onClick={onClose}>
           <X size={16} aria-hidden="true" />
         </Button>
       </header>
@@ -486,10 +486,10 @@ export function ConversationScheduler({
                 </strong>
               </div>
               <div className="flex gap-2">
-                <Button type="button" className="btn p-2" disabled={date <= today || creating} onClick={() => moveDate(-1)} aria-label="Dia anterior">
+                <Button type="button" className="btn" disabled={date <= today || creating} onClick={() => moveDate(-1)} aria-label="Dia anterior">
                   <ArrowLeft size={16} aria-hidden="true" />
                 </Button>
-                <Button type="button" className="btn p-2" disabled={creating} onClick={() => moveDate(1)} aria-label="Próximo dia">
+                <Button type="button" className="btn" disabled={creating} onClick={() => moveDate(1)} aria-label="Próximo dia">
                   <ArrowRight size={16} aria-hidden="true" />
                 </Button>
               </div>

@@ -283,7 +283,7 @@ export default function Agent() {
                 <p className="sub">Informe o slug do provider da OpenRouter. Em branco, mantém o roteamento automático/global.</p>
                 <p className="sub">A chave é criptografada no servidor e nunca é retornada ao navegador.</p>
               </section>
-              <section className="line-section grid gap-5">
+              <section className="line-section grid gap-4">
                 <div className="cardtitle channels-ai-section-title">Parâmetros</div>
                 <Field label="Nível de raciocínio">
                   <select className="input" value={form.reasoningEffort} onChange={(event) => change({ reasoningEffort: event.target.value as AgentForm["reasoningEffort"] })}>
