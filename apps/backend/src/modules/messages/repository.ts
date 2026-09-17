@@ -2221,14 +2221,42 @@ export class MessageRepository {
     message: HumanMessage & { channel: "instagram"; instagramContactId: string }
   ): Promise<"recorded" | "duplicate"> {
     return withTenantTransaction(this.db, message.tenantId, async (client) => {
-      const conversation = await client.query<{ id: string }>(
-        `UPDATE conversations SET ai_active=false,handoff_reason='manually_paused',handoff_error_code=NULL,
-           instagram_username=COALESCE($4,instagram_username),last_message_at=now(),status='open',resolved_at=NULL,
-           queue_id=COALESCE(queue_id,
-             (SELECT id FROM conversation_queues WHERE tenant_id=$1 AND is_initial AND archived_at IS NULL LIMIT 1))
-         WHERE tenant_id=$1 AND session_id=$2 AND instagram_contact_id=$3 AND contact_phone IS NULL
+      // Eco humano (o dono da conta respondeu pelo app nativo do Instagram)
+      // pode ser o PRIMEIRO evento de um contato que nunca mandou DM pelo
+      // AtendON — não existe conversa ainda. Antes, isto fazia só UPDATE e,
+      // sem linha para casar, afetava 0 linhas e lançava
+      // "Instagram conversation does not belong to tenant and connection"
+      // em retry infinito (>10000 tentativas observadas em produção).
+      // Agora faz INSERT..ON CONFLICT como o equivalente de WhatsApp em
+      // recordHuman(), criando a conversa quando ainda não existe.
+      // lead_id é NOT NULL em conversations; para Instagram (diferente do
+      // fluxo por telefone) não existe trigger que crie o lead sozinho, por
+      // isso criamos/casamos o scheduling_lead aqui, mesmo padrão usado em
+      // instagram/repository.ts::persistEvent.
+      const lead = await client.query<{ id: string }>(
+        `INSERT INTO scheduling_leads(tenant_id,phone,name,source,instagram_contact_id,instagram_session_id)
+         VALUES($1,NULL,NULL,'instagram',$2,$3)
+         ON CONFLICT(tenant_id,instagram_session_id,instagram_contact_id) WHERE instagram_contact_id IS NOT NULL
+         DO UPDATE SET updated_at=now()
          RETURNING id`,
-        [message.tenantId, message.sessionId, message.instagramContactId, message.instagramUsername ?? null]
+        [message.tenantId, message.instagramContactId, message.sessionId]
+      );
+      const conversation = await client.query<{ id: string }>(
+        `INSERT INTO conversations(
+           tenant_id,session_id,contact_phone,instagram_contact_id,instagram_username,lead_id,
+           ai_active,handoff_reason,status,last_message_at,queue_id
+         ) VALUES(
+           $1,$2,NULL,$3,$4,$5,false,'manually_paused','open',now(),
+           (SELECT id FROM conversation_queues WHERE tenant_id=$1 AND is_initial AND archived_at IS NULL LIMIT 1)
+         )
+         ON CONFLICT(tenant_id,session_id,instagram_contact_id) WHERE instagram_contact_id IS NOT NULL
+         DO UPDATE SET
+           ai_active=false,handoff_reason='manually_paused',handoff_error_code=NULL,
+           instagram_username=COALESCE(EXCLUDED.instagram_username,conversations.instagram_username),
+           last_message_at=now(),status='open',resolved_at=NULL,
+           queue_id=COALESCE(conversations.queue_id,EXCLUDED.queue_id)
+         RETURNING id`,
+        [message.tenantId, message.sessionId, message.instagramContactId, message.instagramUsername ?? null, lead.rows[0].id]
       );
       const row = conversation.rows[0];
       if (!row) throw new Error("Instagram conversation does not belong to tenant and connection");

@@ -129,4 +129,35 @@ describe("Instagram identity in the existing AI repository", () => {
     );
     expect(rows.rows).toEqual([{ sender: "human", ai_active: false }]);
   });
+
+  // Regressão de produção: um eco humano (dono da conta respondendo pelo
+  // app nativo do Instagram) pode ser o PRIMEIRO evento de um contato que
+  // nunca mandou DM pelo AtendON — sem conversa pré-existente para casar.
+  // Antes disto, recordInstagramHuman fazia só UPDATE, afetava 0 linhas e
+  // lançava "Instagram conversation does not belong to tenant and
+  // connection" em retry infinito (>10000 tentativas observadas em
+  // produção). Deve criar a conversa em vez de lançar.
+  it("creates the conversation on a human echo when the contact never messaged in before", async () => {
+    const repository = new MessageRepository(pool, config, { followUp: async () => "enqueued" });
+    const freshContactId = `igsid-${randomUUID()}`;
+    const echo = {
+      kind: "human" as const,
+      channel: "instagram" as const,
+      externalId: `echo-fresh-${randomUUID()}`,
+      tenantId,
+      sessionId,
+      contactPhone: `ig:${freshContactId}`,
+      instagramContactId: freshContactId,
+      text: "Oi, respondendo direto pelo Instagram"
+    };
+
+    await expect(repository.recordHuman(echo)).resolves.toBe("recorded");
+    const rows = await pool.query<{ sender: string; ai_active: boolean; instagram_contact_id: string }>(
+      `SELECT m.sender,c.ai_active,c.instagram_contact_id FROM messages m
+       JOIN conversations c ON c.id=m.conversation_id
+       WHERE m.external_message_id=$1`,
+      [echo.externalId]
+    );
+    expect(rows.rows).toEqual([{ sender: "human", ai_active: false, instagram_contact_id: freshContactId }]);
+  });
 });
