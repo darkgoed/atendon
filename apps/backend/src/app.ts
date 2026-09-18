@@ -2,6 +2,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { compare, hash } from "bcryptjs";
+import { createHash } from "node:crypto";
 import { errors, jwtVerify } from "jose";
 import Fastify from "fastify";
 import type { Pool, PoolClient } from "pg";
@@ -21,6 +22,18 @@ import { applySignature, resolveSignatureSettings, type SignatureFormat, type Si
 import { enqueueInboundRecovery } from "./queue/message-queue.js";
 import { handleEvolutionWebhook } from "./modules/whatsapp/webhook-handler.js";
 import { registerSchedulingRoutes } from "./modules/scheduling/routes.js";
+import { registerInternalRoutes } from "./modules/internal/routes.js";
+import { registerInternalPreferenceRoutes } from "./modules/internal/prefs-routes.js";
+import { registerTaskRoutes } from "./modules/tasks/routes.js";
+import { registerCustomFieldRoutes } from "./modules/custom-fields/routes.js";
+import { registerTrashRoutes } from "./modules/trash/routes.js";
+import { registerQuickReplyRoutes } from "./modules/quick-replies/routes.js";
+import { registerSearchRoutes } from "./modules/search/routes.js";
+import {
+  loadPanelNotificationPreferences,
+  notificationPreferencesPatchSchema,
+  updatePanelNotificationPreferences
+} from "./modules/internal/service.js";
 import { registerMeetRoutes } from "./modules/meet/routes.js";
 import { registerWorkspaceRoutes } from "./modules/workspaces/routes.js";
 import { registerRootRoutes } from "./modules/root/routes.js";
@@ -43,6 +56,7 @@ import { registerStickerRoutes } from "./modules/stickers/routes.js";
 import { loadCommercialDashboard } from "./modules/dashboard/service.js";
 import { registerDashboardWidgetRoutes } from "./modules/dashboard-widgets/routes.js";
 import { registerOrganizationRoutes } from "./modules/organization/routes.js";
+import { registerContactOpsRoutes } from "./modules/contact-ops/routes.js";
 import { registerOperationsRoutes } from "./modules/operations/routes.js";
 import { isCapabilityEnabled, isFeatureFlagEnabled, type FeatureFlagKey } from "./modules/operations/feature-flags.js";
 import { RealtimeCoordinator } from "./modules/realtime/coordinator.js";
@@ -61,6 +75,7 @@ import { TripzDocumentService } from "./modules/tripz-ai/document/service.js";
 import { enqueueTripzAiTurn } from "./queue/tripz-ai-queue.js";
 import { panelPresence } from "./modules/realtime/presence.js";
 import { withTenantTransaction } from "./db/tenant-transaction.js";
+import { hasStoredContent, recalculateStorageUsage, reserveStorageBytes } from "./modules/organization/storage.js";
 import { fetchOpenRouterCreditBalance } from "./modules/usage/openrouter-credits.js";
 import {
   canAccessConversation,
@@ -105,11 +120,6 @@ const profileUpdateSchema = z.object({
   newPassword: z.string().min(12).max(200).optional()
 }).refine((value) => value.name || value.email || value.newPassword, "Informe nome, e-mail ou nova senha")
   .refine((value) => !(value.email || value.newPassword) || value.currentPassword, "Informe a senha atual para alterar e-mail ou senha");
-const notificationPreferencesSchema = z.object({
-  enabled: z.boolean().optional(),
-  sound_enabled: z.boolean().optional(),
-  visual_enabled: z.boolean().optional()
-}).strict().refine((value) => Object.keys(value).length > 0, "Informe ao menos uma preferência");
 const notificationMuteSchema = z.object({ muted: z.boolean() }).strict();
 const contactUpdateSchema = z.object({ name: z.string().trim().min(1).max(200) }).strict();
 const workspaceUpdateSchema = z.object({
@@ -654,43 +664,12 @@ export function buildApp(options: {
   });
   app.get("/me", async (request) => buildMePayload(await requireSession(request)));
   app.get("/me/notification-preferences", async (request) => {
-    const session = await requireSession(request);
-    const [preferences, muted] = await Promise.all([
-      db.query<{ enabled: boolean; sound_enabled: boolean; visual_enabled: boolean }>(
-        `SELECT enabled,sound_enabled,visual_enabled
-         FROM panel_notification_preferences WHERE tenant_id=$1 AND user_id=$2`,
-        [session.tenantId, session.userId]
-      ),
-      db.query<{ id: string; contact_name: string | null; contact_phone: string; muted_at: Date }>(
-        `SELECT conversation.id,conversation.contact_name,conversation.contact_phone,mute.created_at muted_at
-         FROM panel_notification_conversation_mutes mute
-         JOIN conversations conversation
-           ON conversation.id=mute.conversation_id AND conversation.tenant_id=mute.tenant_id
-         WHERE mute.tenant_id=$1 AND mute.user_id=$2
-         ORDER BY mute.created_at DESC`,
-        [session.tenantId, session.userId]
-      )
-    ]);
-    return {
-      preferences: preferences.rows[0] ?? { enabled: true, sound_enabled: true, visual_enabled: true },
-      muted_conversations: muted.rows
-    };
+    return loadPanelNotificationPreferences(await requireSession(request));
   });
   app.patch("/me/notification-preferences", async (request) => {
     const session = await requireSession(request);
-    const body = notificationPreferencesSchema.parse(request.body);
-    const updated = await db.query<{ enabled: boolean; sound_enabled: boolean; visual_enabled: boolean }>(
-      `INSERT INTO panel_notification_preferences(tenant_id,user_id,enabled,sound_enabled,visual_enabled)
-       VALUES($1,$2,COALESCE($3,true),COALESCE($4,true),COALESCE($5,true))
-       ON CONFLICT(tenant_id,user_id) DO UPDATE SET
-         enabled=COALESCE($3,panel_notification_preferences.enabled),
-         sound_enabled=COALESCE($4,panel_notification_preferences.sound_enabled),
-         visual_enabled=COALESCE($5,panel_notification_preferences.visual_enabled),
-         updated_at=now()
-       RETURNING enabled,sound_enabled,visual_enabled`,
-      [session.tenantId, session.userId, body.enabled ?? null, body.sound_enabled ?? null, body.visual_enabled ?? null]
-    );
-    return { preferences: updated.rows[0] };
+    const body = notificationPreferencesPatchSchema.parse(request.body);
+    return updatePanelNotificationPreferences(session, body);
   });
   app.patch("/me/profile", { config: { rateLimit: HTTP_RATE_LIMITS.sensitiveWrite } }, async (request, reply) => {
     const session = await requireSession(request);
@@ -1367,12 +1346,19 @@ export function buildApp(options: {
     const session = await requireRootWorkspace(request);
     const body = followUpMediaBodySchema.parse(request.body);
     const decoded = decodeFollowUpMedia(body);
-    const media = await new FollowUpMediaRepository(db).create({
-      tenantId: session.tenantId,
-      userId: session.userId,
-      name: body.name,
-      description: body.description,
-      ...decoded
+    // R4: quota verificada ANTES de gravar (413 ao estourar) e contador
+    // ajustado na MESMA transação. Conteúdo idêntico deduplica e não consome quota.
+    const media = await withTenantTransaction(db, session.tenantId, async (client) => {
+      if (!await hasStoredContent(client, "ai_follow_up_media_assets", session.tenantId, createHash("sha256").update(decoded.data).digest("hex"))) {
+        await reserveStorageBytes(client, session.tenantId, decoded.data.length);
+      }
+      return new FollowUpMediaRepository(client).create({
+        tenantId: session.tenantId,
+        userId: session.userId,
+        name: body.name,
+        description: body.description,
+        ...decoded
+      });
     });
     await auditLog({
       actorUserId: session.userId,
@@ -1391,7 +1377,11 @@ export function buildApp(options: {
   app.delete("/ai-follow-ups/media/:id", async (request, reply) => {
     const session = await requireRootWorkspace(request);
     const { id } = idParams.parse(request.params);
-    const removed = await new FollowUpMediaRepository(db).remove(session.tenantId, id);
+    const removed = await withTenantTransaction(db, session.tenantId, async (client) => {
+      const result = await new FollowUpMediaRepository(client).remove(session.tenantId, id);
+      if (result === "removed") await recalculateStorageUsage(session.tenantId, client);
+      return result;
+    });
     if (removed === "in_use") {
       return reply.status(409).send({ error: "Remova esta imagem das tentativas antes de excluí-la" });
     }
@@ -2833,6 +2823,14 @@ export function buildApp(options: {
   void app.register(registerOrganizationRoutes);
   void app.register(registerPostSalesRoutes);
   void app.register(registerSchedulingRoutes);
+  void app.register(registerInternalRoutes);
+  void app.register(registerInternalPreferenceRoutes);
+  void app.register(registerTaskRoutes);
+  void app.register(registerCustomFieldRoutes);
+  void app.register(registerContactOpsRoutes);
+  void app.register(registerTrashRoutes);
+  void app.register(registerQuickReplyRoutes);
+  void app.register(registerSearchRoutes);
   void app.register(registerMeetRoutes);
   void app.register(registerStickerRoutes);
   void app.register(registerQualificationRoutes);

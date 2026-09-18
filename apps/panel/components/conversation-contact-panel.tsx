@@ -12,6 +12,7 @@ import {
 } from "@phosphor-icons/react";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ContactAvatar } from "./contact-avatar";
+import { ConversationNotes } from "./conversation-notes";
 import { Button, Input } from "@/components/ui";
 import { instagramDisplayIdentity, instagramDisplayName } from "@/lib/channel-identity";
 import { shouldSubmitOnEnter } from "@/lib/compat";
@@ -328,6 +329,9 @@ export function ConversationContactPanel({
           ) : null}
         </section>
 
+        <section className="border-b border-[var(--border-subtle)] px-4 py-3.5" aria-label="Nota interna da conversa">
+          <ConversationNotes conversationId={conversation.id} />
+        </section>
         {canEdit ? (
           <section className="px-4 py-4">
             <Button type="button" className="conversation-contact-panel__clear" onClick={onClearConversation}>

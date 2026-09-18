@@ -209,6 +209,7 @@ async function loadWidgetData(
          LEFT JOIN scheduling_leads lead
            ON lead.tenant_id=stage.tenant_id
           AND lead.pipeline_stage_id=stage.id
+          AND lead.deleted_at IS NULL
           AND ($2::boolean OR lead.assigned_member_id=$3)
          WHERE stage.tenant_id=$1 AND stage.archived_at IS NULL
          GROUP BY stage.id,stage.name,stage.color,stage.position,

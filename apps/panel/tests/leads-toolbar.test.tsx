@@ -18,6 +18,7 @@ vi.mock("swr", () => ({ default: (key: string | null) => ({
 }) }));
 vi.mock("@/lib/api", () => ({ api: vi.fn() }));
 vi.mock("@/lib/lead-filters", () => ({ buildLeadFilterQuery: () => "", }));
+vi.mock("@/lib/meet", () => ({ apiContentUrl: (path: string) => `/backend${path}` }));
 vi.mock("@/lib/labels", () => ({ leadStatusLabel: (status: string) => status }));
 vi.mock("@/lib/use-permission", () => ({ usePermission: (permission: string) => permissions[permission] ?? false }));
 vi.mock("@/lib/organization", () => ({
@@ -35,7 +36,7 @@ vi.mock("@/components/contact-avatar", () => ({ ContactAvatar: () => <span /> })
 vi.mock("@/components/page-state", () => ({ Empty: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock("@/components/lead-tag-picker", () => ({ LeadTagChips: () => null, LeadTagPicker: () => <button type="button">Etiquetas</button>, LeadTagMenuItems: () => null }));
 vi.mock("next/link", () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
-vi.mock("@phosphor-icons/react", () => ({ DotsThreeVertical: () => null, MagnifyingGlass: () => null, MagicWand: () => null, WhatsappLogo: () => null, Funnel: () => null, X: () => null }));
+vi.mock("@phosphor-icons/react", () => ({ DotsThreeVertical: () => null, DownloadSimple: () => null, MagnifyingGlass: () => null, MagicWand: () => null, WhatsappLogo: () => null, Funnel: () => null, X: () => null, UploadSimple: () => null }));
 
 import LeadsPage from "../app/contatos/page";
 import { BulkLeadActions } from "../components/bulk-lead-actions";
@@ -47,6 +48,7 @@ describe("leads toolbar", () => {
     expect(markup).toContain("Visões");
     expect(markup).toContain("Filtros");
     expect(markup).toContain("Catálogo");
+    expect(markup).toContain("Exportar CSV");
     expect(markup).toContain('class="leads-table-surface responsive-table-wrap overflow-y-auto"');
     expect(markup).toContain("overflow-y-auto");
     expect(markup).not.toContain('class="leads-filters"');
@@ -57,6 +59,13 @@ describe("leads toolbar", () => {
     const markup = renderToStaticMarkup(<LeadsPage />);
     expect(markup).not.toContain("Catálogo");
     permissions["tags.manage"] = true;
+  });
+
+  it("omits the CSV export without leads.follow_up.read", () => {
+    permissions["leads.follow_up.read"] = false;
+    const markup = renderToStaticMarkup(<LeadsPage />);
+    expect(markup).not.toContain("Exportar CSV");
+    permissions["leads.follow_up.read"] = true;
   });
 
 

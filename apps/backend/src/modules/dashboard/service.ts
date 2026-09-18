@@ -99,7 +99,7 @@ export async function loadCommercialDashboard(
          )::int overdue_follow_ups,
          round(avg(l.qualification_stars)::numeric,1)::text average_quality
        FROM scheduling_appointments a
-       JOIN scheduling_leads l ON l.id=a.lead_id AND l.tenant_id=a.tenant_id
+       JOIN scheduling_leads l ON l.id=a.lead_id AND l.tenant_id=a.tenant_id AND l.deleted_at IS NULL
        WHERE a.tenant_id=$1
          AND a.start_at >= $2::timestamptz AND a.start_at < $3::timestamptz
          AND ($4::boolean OR a.assigned_member_id=$5)`,
@@ -170,7 +170,7 @@ export async function loadCommercialDashboard(
               unit.name unit_name,a.meeting_url meet_url,assigned_user.email assigned_user_email,
               pool.availability_status assigned_availability_status
        FROM scheduling_appointments a
-       JOIN scheduling_leads l ON l.id=a.lead_id AND l.tenant_id=a.tenant_id
+       JOIN scheduling_leads l ON l.id=a.lead_id AND l.tenant_id=a.tenant_id AND l.deleted_at IS NULL
        JOIN scheduling_units unit ON unit.id=a.unit_id AND unit.tenant_id=a.tenant_id
        LEFT JOIN workspace_members assigned_member
          ON assigned_member.id=a.assigned_member_id AND assigned_member.workspace_id=a.tenant_id
@@ -261,7 +261,7 @@ export async function loadCommercialDashboard(
       `WITH period_leads AS MATERIALIZED (
          SELECT lead.*
          FROM scheduling_leads lead
-         WHERE lead.tenant_id=$1
+         WHERE lead.tenant_id=$1 AND lead.deleted_at IS NULL
            AND lead.created_at >= $2::timestamptz AND lead.created_at < $3::timestamptz
            AND ($4::boolean OR COALESCE(lead.sdr_member_id,lead.assigned_member_id)=$5)
        )
@@ -327,11 +327,11 @@ export async function loadCommercialDashboard(
            WHERE tenant_id=$1 AND ($4::boolean OR assigned_user_id=$5) AND status='open'
          ) open_conversations,
          (SELECT count(*)::int FROM scheduling_leads
-           WHERE tenant_id=$1 AND ($4::boolean OR COALESCE(sdr_member_id,assigned_member_id)=$6)
+           WHERE tenant_id=$1 AND deleted_at IS NULL AND ($4::boolean OR COALESCE(sdr_member_id,assigned_member_id)=$6)
              AND handoff_at >= $2::timestamptz AND handoff_at < $3::timestamptz
          ) handoffs,
          (SELECT count(*)::int FROM scheduling_leads
-           WHERE tenant_id=$1 AND ($4::boolean OR COALESCE(sdr_member_id,assigned_member_id)=$6)
+           WHERE tenant_id=$1 AND deleted_at IS NULL AND ($4::boolean OR COALESCE(sdr_member_id,assigned_member_id)=$6)
              AND created_at >= $2::timestamptz AND created_at < $3::timestamptz
              AND assigned_member_id IS NULL AND sdr_member_id IS NULL AND closer_member_id IS NULL
          ) unassigned_leads`,

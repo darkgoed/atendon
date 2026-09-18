@@ -1,0 +1,417 @@
+// @vitest-environment jsdom
+import { useState } from "react";
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+/* jsdom não implementa ResizeObserver (React Flow mede nós na montagem) —
+   stub mínimo antes de qualquer render. */
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+if (!("ResizeObserver" in globalThis)) {
+  (globalThis as unknown as Record<string, unknown>).ResizeObserver = ResizeObserverStub;
+}
+
+const mocks = vi.hoisted(() => ({
+  api: vi.fn(),
+  flowId: "fluxo-teste",
+}));
+
+vi.mock("@/lib/api", () => ({
+  api: mocks.api,
+  ApiError: class ApiError extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.status = status;
+    }
+  },
+}));
+
+vi.mock("@/components/shell", () => ({
+  Shell: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
+}));
+
+vi.mock("@/lib/use-permission", () => ({
+  usePermission: () => true,
+}));
+
+vi.mock("next/navigation", () => ({
+  useParams: () => ({ id: mocks.flowId }),
+}));
+
+/* Phosphor é pesado demais para os testes. Mock explícito por ícone —
+   NÃO usar Proxy com get: () => stub: o proxy também intercepta "then",
+   o namespace da mock vira um thenable que nunca resolve e o import do
+   módulo trava a coleta inteira do vitest (hang sem saída). */
+vi.mock("@phosphor-icons/react", () => ({
+  ArrowsDownUp: () => null,
+  ChatText: () => null,
+  Clock: () => null,
+  Eye: () => null,
+  GitFork: () => null,
+  Hourglass: () => null,
+  Kanban: () => null,
+  Keyboard: () => null,
+  ListBullets: () => null,
+  Plug: () => null,
+  Power: () => null,
+  Tag: () => null,
+  UserFocus: () => null,
+  WebhooksLogo: () => null,
+  X: () => null,
+}));
+
+import { FlowEditor } from "@/components/flow-editor/flow-editor";
+import {
+  graphFromDefinition,
+  layoutDefinition,
+  newFlowId,
+  newStepFor,
+  normalizeDefinition,
+  parseTrace,
+  removeStep,
+  setEdgeTarget,
+  validateDefinition,
+  type FlowDefinition,
+  type PaletteItem,
+} from "@/components/flow-editor/flow-model";
+import FluxoEditorPage from "@/app/fluxos/[id]/page";
+
+/* Definition fixo — válido no schema ATUAL do backend (kinds clássicos). */
+const FIXTURE: FlowDefinition = normalizeDefinition({
+  start: "P1",
+  origem: "facebook",
+  intro: "Olá! Vamos começar.",
+  triggers: { ctwa: true, session_ids: [], keywords: ["oi"] },
+  steps: {
+    P1: {
+      kind: "options",
+      question: "Qual é o seu nicho?",
+      field: "nicho",
+      options: [{ value: "Ótica" }, { value: "Outros" }],
+      transitions: { "Ótica": "E1" },
+      next: "P2",
+    },
+    P2: {
+      kind: "boolean",
+      question: "Tem investimentos para crescer?",
+      options: [{ value: "SIM" }, { value: "NÃO" }],
+      transitions: { "SIM": "E1", "NÃO": "E2" },
+    },
+    E1: { kind: "final", message: "Perfeito! Em breve falamos com você." },
+    E2: { kind: "final", message: "Obrigado pelo contato!" },
+  },
+});
+
+/* Shape REAL do backend (flowStepSchema): delay=wait_minutes,
+   wait_for_reply=timeout_minutes+on_timeout, action=action_type+tag_ids(uuid). */
+const TAG_ID = "11111111-2222-3333-4444-555555555555";
+const NEW_SHAPES: FlowDefinition = normalizeDefinition({
+  start: "D1",
+  origem: "facebook",
+  triggers: { ctwa: false, session_ids: [], keywords: ["oi"] },
+  steps: {
+    D1: { kind: "delay", wait_minutes: 5, next: "W1" },
+    W1: { kind: "wait_for_reply", timeout_minutes: 30, on_timeout: "E1", next: "A1", variable_name: "resposta" },
+    A1: { kind: "action", action_type: "tag_add", tag_ids: [TAG_ID], next: "E1" },
+    E1: { kind: "final", message: "Feito!" },
+  },
+});
+
+const baseProps = {
+  flowId: "fluxo-teste",
+  nome: "Fluxo de teste",
+  ativo: true,
+  canManage: true,
+  saving: false,
+  saved: false,
+  serverError: null,
+  trace: null,
+  onNome: () => {},
+  onDefinition: () => {},
+  onSave: () => {},
+  onSimulate: () => {},
+  onCloseTrace: () => {},
+};
+
+function editorProps(overrides: Partial<typeof baseProps> = {}) {
+  return { ...baseProps, ...overrides };
+}
+
+/* O FlowEditor é controlado: quem aplica onDefinition é o pai (a página).
+   O harness replica a página — guarda o definition em estado e registra
+   as chamadas — para que edições reflitam no canvas como no app real. */
+function InteractiveEditor({ initialDefinition, onDefinition }: { initialDefinition: FlowDefinition; onDefinition: (next: FlowDefinition) => void }) {
+  const [definition, setDefinition] = useState(initialDefinition);
+  return (
+    <FlowEditor
+      {...editorProps()}
+      definition={definition}
+      onDefinition={(next: FlowDefinition) => {
+        onDefinition(next);
+        setDefinition(next);
+      }}
+    />
+  );
+}
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
+describe("modelo puro (flow-model)", () => {
+  it("converte definition em nós/edges com handles por opção e gatilho→start", () => {
+    const { nodes, edges } = graphFromDefinition(FIXTURE);
+    expect(nodes.map((node) => node.id)).toEqual(["__trigger__", "P1", "P2", "E1", "E2"]);
+    const triggerEdge = edges.find((edge) => edge.source === "__trigger__");
+    expect(triggerEdge?.target).toBe("P1");
+    // P1: aresta "out" (next) + aresta da opção "Ótica"
+    expect(edges.find((edge) => edge.id === "P1:out")?.target).toBe("P2");
+    expect(edges.find((edge) => edge.id === "P1:opt:Ótica")?.target).toBe("E1");
+    expect(edges.find((edge) => edge.id === "P1:opt:Ótica")?.label).toBe("Ótica");
+    // P2 boolean: handles SIM/NÃO rotulados Sim/Não
+    expect(edges.find((edge) => edge.id === "P2:opt:SIM")?.label).toBe("Sim");
+    expect(edges.find((edge) => edge.id === "P2:opt:NÃO")?.label).toBe("Não");
+  });
+
+  it("liga nós atualizando next (handle out) ou transitions (handle da opção)", () => {
+    const linked = setEdgeTarget(FIXTURE, "P1", "out", "E1");
+    expect(linked.steps.P1.next).toBe("E1");
+    const branched = setEdgeTarget(FIXTURE, "P2", "SIM", "P1");
+    expect(branched.steps.P2.transitions?.SIM).toBe("P1");
+    const removed = setEdgeTarget(FIXTURE, "P2", "NÃO", null);
+    expect(removed.steps.P2.transitions?.NÃO).toBeUndefined();
+  });
+
+  it("removeStep limpa next/transitions que apontavam para a etapa e reponta o start", () => {
+    const next = removeStep(FIXTURE, "E1");
+    expect(next?.steps.E1).toBeUndefined();
+    expect(next?.start).toBe("P1");
+    expect(next?.steps.P1.transitions?.["Ótica"]).toBeUndefined();
+    expect(next?.steps.P2.transitions?.SIM).toBeUndefined();
+    expect(next?.steps.P2.transitions?.NÃO).toBe("E2");
+  });
+
+  it("valida como o backend: start inexistente, final sem mensagem, opção sem destino", () => {
+    expect(validateDefinition(FIXTURE)).toEqual([]);
+    const broken: FlowDefinition = {
+      ...FIXTURE,
+      start: "fantasma",
+      steps: { E1: { kind: "final" }, X1: { kind: "options", question: "?", options: [{ value: "A" }] } },
+    };
+    const messages = validateDefinition(broken).map((issue) => issue.message);
+    expect(messages.some((message) => message.includes("gatilho"))).toBe(true);
+    expect(messages.some((message) => message.includes("mensagem"))).toBe(true);
+    expect(messages.some((message) => message.includes("Opção \"A\""))).toBe(true);
+  });
+
+  it("kinds novos nascem com o shape do backend em minutos", () => {
+    const paletteItem = (id: PaletteItem["id"], kind: PaletteItem["kind"]): PaletteItem => ({ id, kind, label: id, hint: "", icon: "" });
+    expect(newStepFor(paletteItem("delay", "delay"))).toEqual({ kind: "delay", wait_minutes: 5 });
+    expect(newStepFor(paletteItem("wait_for_reply", "wait_for_reply"))).toEqual({ kind: "wait_for_reply", timeout_minutes: 30 });
+    expect(newStepFor(paletteItem("tag_add", "action"))).toEqual({ kind: "action", action_type: "tag_add", tag_ids: [] });
+    expect(newStepFor(paletteItem("stage_move", "action"))).toEqual({ kind: "action", action_type: "stage_move" });
+    expect(newStepFor(paletteItem("webhook", "action"))).toEqual({ kind: "action", action_type: "webhook" });
+  });
+
+  it("validação client espelha o zod do backend nos kinds novos", () => {
+    expect(validateDefinition(NEW_SHAPES)).toEqual([]);
+    const broken: FlowDefinition = {
+      ...FIXTURE,
+      steps: {
+        ...FIXTURE.steps,
+        D1: { kind: "delay", wait_minutes: 2000, next: "E1" },
+        W1: { kind: "wait_for_reply", next: "E1" },
+        A1: { kind: "action", action_type: "webhook", webhook_url: "http://localhost/hook", next: "E1" },
+        A2: { kind: "action", next: "E1" },
+        A3: { kind: "action", action_type: "tag_add", tag_ids: ["nao-uuid"], next: "E1" },
+      },
+    };
+    const messages = validateDefinition(broken).map((issue) => issue.message);
+    expect(messages.some((message) => message.includes("wait_minutes (1-1440)"))).toBe(true);
+    expect(messages.some((message) => message.includes("timeout_minutes (1-1440)"))).toBe(true);
+    expect(messages.some((message) => message.includes("on_timeout"))).toBe(true);
+    expect(messages.some((message) => message.includes("action_type"))).toBe(true);
+    expect(messages.some((message) => message.includes("https://"))).toBe(true);
+    expect(messages.some((message) => message.includes("tag_ids"))).toBe(true);
+  });
+
+  it("layout dagre posiciona todos os nós sem colisão de ids", () => {
+    const positions = layoutDefinition(FIXTURE);
+    expect(positions.get("__trigger__")).toBeDefined();
+    expect(positions.get("E2")).toBeDefined();
+    expect(positions.get("P1")).not.toEqual(positions.get("P2"));
+  });
+
+  it("parseTrace aceita snake_case e camelCase", () => {
+    const trace = parseTrace({ steps: [{ node_id: "P1", label: "Opções", output: "oi" }], end_reason: "aguardando" });
+    expect(trace.steps[0].nodeId).toBe("P1");
+    expect(trace.endReason).toBe("aguardando");
+    expect(parseTrace({ steps: [{ nodeId: "E1" }] }).steps[0].nodeId).toBe("E1");
+    expect(parseTrace(null).steps).toEqual([]);
+  });
+
+  it("id de fluxo novo é slug válido para o backend", () => {
+    expect(newFlowId()).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+  });
+});
+
+describe("FlowEditor", () => {
+  it("renderiza paleta por grupos, nós das etapas e arestas do definition fixo", () => {
+    render(<FlowEditor {...editorProps()} definition={FIXTURE} />);
+    expect(screen.getByText("Mensagens")).toBeInTheDocument();
+    expect(screen.getByText("Controle")).toBeInTheDocument();
+    expect(screen.getByText("Ações CRM")).toBeInTheDocument();
+    // nós: gatilho + 4 etapas
+    for (const id of ["__trigger__", "P1", "P2", "E1", "E2"]) {
+      expect(screen.getByTestId(`flow-node-${id}`)).toBeInTheDocument();
+    }
+    expect(screen.getByTestId("flow-node-P1").textContent).toContain("Qual é o seu nicho?");
+    expect(screen.getByTestId("flow-node-P2").textContent).toContain("Sim");
+    // arestas renderizadas pelo React Flow
+    expect(document.querySelector(".react-flow__edges")).not.toBeNull();
+  });
+
+  it("mudar propriedade reflete no cartão do nó e chama onDefinition com a etapa alterada", () => {
+    const onDefinition = vi.fn();
+    render(<InteractiveEditor initialDefinition={FIXTURE} onDefinition={onDefinition} />);
+    fireEvent.click(screen.getByTestId("flow-node-P1"));
+    const panel = screen.getByRole("complementary", { name: "Propriedades da etapa" });
+    const question = panel.querySelector("textarea") as HTMLTextAreaElement;
+    expect(question.value).toBe("Qual é o seu nicho?");
+    fireEvent.change(question, { target: { value: "Qual é o nicho da loja?" } });
+    expect(screen.getByTestId("flow-node-P1").textContent).toContain("Qual é o nicho da loja?");
+    expect(onDefinition).toHaveBeenCalled();
+    const next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.P1.question).toBe("Qual é o nicho da loja?");
+    expect(next.steps.P1.next).toBe("P2"); // resto preservado — edição incremental
+  });
+
+  it("clique na paleta adiciona nó com id novo e abre o painel de propriedades", () => {
+    const onDefinition = vi.fn();
+    render(<InteractiveEditor initialDefinition={FIXTURE} onDefinition={onDefinition} />);
+    fireEvent.click(screen.getByRole("button", { name: /Aguardar resposta/ }));
+    const addedId = onDefinition.mock.calls.at(-1)?.[0].start === "P1"
+      ? Object.keys(onDefinition.mock.calls.at(-1)?.[0].steps).find((id: string) => !FIXTURE.steps[id])
+      : null;
+    expect(addedId).toMatch(/^n_[0-9a-f]+$/);
+    // NÓ EXISTENTE: ids do definition continuam os mesmos (upsert por id, sem recreate)
+    expect(Object.keys(onDefinition.mock.calls.at(-1)?.[0].steps)).toEqual(
+      expect.arrayContaining(["P1", "P2", "E1", "E2", addedId]),
+    );
+    expect(screen.getByRole("complementary", { name: "Propriedades da etapa" }).textContent).toContain("Aguardar resposta");
+  });
+
+  it("painel do wait_for_reply edita timeout_minutes e on_timeout (shape do backend)", () => {
+    const onDefinition = vi.fn();
+    render(<InteractiveEditor initialDefinition={NEW_SHAPES} onDefinition={onDefinition} />);
+    fireEvent.click(screen.getByTestId("flow-node-W1"));
+    const panel = screen.getByRole("complementary", { name: "Propriedades da etapa" });
+    const timeout = panel.querySelector('input[type="number"]') as HTMLInputElement;
+    expect(timeout.value).toBe("30");
+    fireEvent.change(timeout, { target: { value: "45" } });
+    let next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.W1.timeout_minutes).toBe(45);
+    const select = panel.querySelector("select") as HTMLSelectElement; // primeiro select = on_timeout
+    fireEvent.change(select, { target: { value: "A1" } });
+    next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.W1.on_timeout).toBe("A1");
+  });
+
+  it("painel da ação edita tag_ids (um uuid por linha)", () => {
+    const onDefinition = vi.fn();
+    render(<InteractiveEditor initialDefinition={NEW_SHAPES} onDefinition={onDefinition} />);
+    fireEvent.click(screen.getByTestId("flow-node-A1"));
+    const panel = screen.getByRole("complementary", { name: "Propriedades da etapa" });
+    const tags = panel.querySelector("textarea") as HTMLTextAreaElement;
+    expect(tags.value).toBe(TAG_ID);
+    fireEvent.change(tags, { target: { value: `${TAG_ID}\n66666666-2222-3333-4444-555555555555` } });
+    const next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.A1.tag_ids).toEqual([TAG_ID, "66666666-2222-3333-4444-555555555555"]);
+    expect(next.steps.A1.action_type).toBe("tag_add");
+  });
+
+  it("mostra problemas de validação e o trace de simulação quando fornecidos", () => {
+    const broken: FlowDefinition = { ...FIXTURE, steps: { ...FIXTURE.steps, E1: { kind: "final" } } };
+    render(
+      <FlowEditor
+        {...editorProps()}
+        definition={broken}
+        trace={{ running: false, steps: [{ nodeId: "P1", label: "Opções", output: "Ótica" }], endReason: "aguardando" }}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toContain("problema(s)");
+    const region = screen.getByRole("region", { name: "Resultado da simulação" });
+    expect(region.textContent).toContain("P1");
+    expect(region.textContent).toContain("aguardando");
+  });
+});
+
+describe("página do editor (/fluxos/:id)", () => {
+  function mockGet() {
+    mocks.api.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === "/qualification/flows/fluxo-teste" && (!init || !init.method)) {
+        return Promise.resolve({ flow: { id: "fluxo-teste", nome: "Fluxo de teste", ativo: true, definition: FIXTURE, atualizado_em: null } });
+      }
+      if (path === "/qualification/flows/fluxo-teste/simulate") {
+        return Promise.resolve({ steps: [{ nodeId: "P1", label: "Opções" }, { nodeId: "P2", label: "Sim/Não" }], end_reason: "aguardando" });
+      }
+      return Promise.resolve({});
+    });
+  }
+
+  it("salva via PUT com payload válido e simula exibindo o trace", async () => {
+    mockGet();
+    render(<FluxoEditorPage />);
+    await waitFor(() => expect(screen.getByTestId("flow-node-P1")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => {
+      expect(mocks.api.mock.calls.some(([path, init]) => path === "/qualification/flows/fluxo-teste" && init?.method === "PUT")).toBe(true);
+    });
+    const putCall = mocks.api.mock.calls.find(([path, init]) => path === "/qualification/flows/fluxo-teste" && init?.method === "PUT")!;
+    const payload = JSON.parse(String(putCall[1].body));
+    expect(payload.nome).toBe("Fluxo de teste");
+    expect(payload.ativo).toBe(true);
+    expect(payload.definition.start).toBe("P1");
+    expect(payload.definition.steps.P1.options).toHaveLength(2);
+    expect(payload.definition.steps.P1.transitions).toEqual({ "Ótica": "E1" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Simular" }));
+    const region = await screen.findByRole("region", { name: "Resultado da simulação" });
+    expect(region.textContent).toContain("P1");
+    expect(region.textContent).toContain("aguardando");
+  });
+
+  it("PUT com kinds novos envia o shape real do backend (wait_minutes/timeout_minutes/action_type/tag_ids)", async () => {
+    mocks.flowId = "fluxo-formas-novas"; // outra chave SWR — cache do teste anterior não vaza
+    const flowPath = `/qualification/flows/${mocks.flowId}`;
+    mocks.api.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === flowPath && (!init || !init.method)) {
+        return Promise.resolve({ flow: { id: mocks.flowId, nome: "Fluxo de teste", ativo: true, definition: NEW_SHAPES, atualizado_em: null } });
+      }
+      return Promise.resolve({});
+    });
+    render(<FluxoEditorPage />);
+    await waitFor(() => expect(screen.getByTestId("flow-node-D1")).toBeInTheDocument());
+    expect(screen.getByTestId("flow-node-D1").textContent).toContain("Aguardar 5 min");
+
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => {
+      expect(mocks.api.mock.calls.some(([path, init]) => path === flowPath && init?.method === "PUT")).toBe(true);
+    });
+    const putCall = mocks.api.mock.calls.find(([path, init]) => path === flowPath && init?.method === "PUT")!;
+    const payload = JSON.parse(String(putCall[1].body));
+    const steps = payload.definition.steps;
+    expect(steps.D1).toEqual({ kind: "delay", wait_minutes: 5, next: "W1" });
+    expect(steps.W1).toEqual({ kind: "wait_for_reply", timeout_minutes: 30, on_timeout: "E1", next: "A1", variable_name: "resposta" });
+    expect(steps.A1).toEqual({ kind: "action", action_type: "tag_add", tag_ids: [TAG_ID], next: "E1" });
+    // Nenhum campo chutado do shape antigo no payload inteiro (chave "x":; não casa com o VALOR "action" de kind).
+    expect(JSON.stringify(payload)).not.toMatch(/"(seconds|timeout_seconds|attendant|url|action)":/);
+  });
+});

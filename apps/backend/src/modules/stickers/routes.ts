@@ -1,9 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { requireRootWorkspace } from "../../auth/session.js";
+import { withTenantTransaction } from "../../db/tenant-transaction.js";
 import { db } from "../../db/client.js";
+import { hasStoredContent, recalculateStorageUsage, reserveStorageBytes } from "../organization/storage.js";
 import { HTTP_RATE_LIMITS } from "../../security/http-rate-limit.js";
-import { StickerRepository, decodeStickerBase64 } from "./repository.js";
+import { StickerRepository, decodeStickerBase64, stickerContentHash } from "./repository.js";
 
 const idParams = z.object({ id: z.string().uuid() });
 const createBody = z.object({
@@ -56,14 +58,23 @@ export async function registerStickerRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const session = await requireRootWorkspace(request);
     const body = createBody.parse(request.body);
-    const sticker = await stickers.createUpload({
-      tenantId: session.tenantId,
-      userId: session.userId,
-      name: body.name,
-      description: body.description,
-      tags: [...new Set(body.tags.map((tag) => tag.toLocaleLowerCase("pt-BR")))],
-      fileName: body.fileName,
-      data: decodeStickerBase64(body.dataBase64)
+    const data = decodeStickerBase64(body.dataBase64);
+    // R4: quota de armazenamento verificada ANTES de gravar (413 ao estourar)
+    // e contador ajustado na MESMA transação do upload. Conteúdo idêntico
+    // deduplica por (tenant_id,content_hash) e não consome quota.
+    const sticker = await withTenantTransaction(db, session.tenantId, async (client) => {
+      if (!await hasStoredContent(client, "ai_stickers", session.tenantId, stickerContentHash(data))) {
+        await reserveStorageBytes(client, session.tenantId, data.length);
+      }
+      return new StickerRepository(client).createUpload({
+        tenantId: session.tenantId,
+        userId: session.userId,
+        name: body.name,
+        description: body.description,
+        tags: [...new Set(body.tags.map((tag) => tag.toLocaleLowerCase("pt-BR")))],
+        fileName: body.fileName,
+        data
+      });
     });
     await audit(request, { action: "agent.sticker.create", resourceId: sticker.id, metadata: { source: sticker.source } });
     return reply.status(201).send({ sticker });
@@ -87,7 +98,13 @@ export async function registerStickerRoutes(app: FastifyInstance) {
   app.delete("/ai-stickers/:id", async (request, reply) => {
     const session = await requireRootWorkspace(request);
     const { id } = idParams.parse(request.params);
-    if (!await stickers.remove(session.tenantId, id)) return reply.status(404).send({ error: "Figurinha não encontrada" });
+    // R4: exclusão reconcilia o contador de uso na mesma transação.
+    const removed = await withTenantTransaction(db, session.tenantId, async (client) => {
+      const removed = await new StickerRepository(client).remove(session.tenantId, id);
+      if (removed) await recalculateStorageUsage(session.tenantId, client);
+      return removed;
+    });
+    if (!removed) return reply.status(404).send({ error: "Figurinha não encontrada" });
     await audit(request, { action: "agent.sticker.delete", resourceId: id });
     return reply.status(204).send();
   });

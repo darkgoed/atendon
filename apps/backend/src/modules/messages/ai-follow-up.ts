@@ -102,7 +102,7 @@ type FollowUpRow = {
   ai_model: string | null;
   model_params: { temperature?: number; max_tokens?: number } | null;
   agent_is_active: boolean | null;
-  active_appointment: boolean;
+  block_reason: "lead_deleted" | "appointment_active" | null;
   openrouter_provider: string | null;
   openrouter_api_key_encrypted: string | null;
   humanizer_config: HumanizerConfig | null;
@@ -140,32 +140,51 @@ export async function scheduleAiFollowUpsAfterAgentReply(
     sequence_version: number;
     next_run_at: Date;
   }>(
-    `WITH active_appointment AS MATERIALIZED (
-       SELECT 1
-       FROM conversations conversation
-       JOIN scheduling_leads lead
-         ON lead.tenant_id=conversation.tenant_id
-        AND (lead.id=conversation.lead_id OR (
-          conversation.lead_id IS NULL AND conversation.contact_phone IS NOT NULL AND lead.phone IS NOT NULL
-          AND regexp_replace(lead.phone,'\\D','','g')=regexp_replace(conversation.contact_phone,'\\D','','g')
-        ))
-       WHERE conversation.id=$2 AND conversation.tenant_id=$1
-         AND (
-           lead.recovery_required
-           OR lead.status NOT IN ('novo','em_atendimento','aguardando_resposta','qualificado','em_qualificacao','aprovado')
-           OR EXISTS (
-             SELECT 1 FROM scheduling_appointments appointment
-             WHERE appointment.tenant_id=lead.tenant_id
-               AND appointment.lead_id=lead.id
-               AND appointment.status IN ('confirmado','reagendado')
-           )
-         )
-       LIMIT 1
+    `WITH active_block AS MATERIALIZED (
+       SELECT CASE
+         WHEN EXISTS (
+           -- Lead na lixeira: o robô ignora (nenhuma retomada é criada) —
+           -- match por lead_id ou, quando a conversa não tem lead, por telefone.
+           SELECT 1
+           FROM conversations conversation
+           JOIN scheduling_leads lead
+             ON lead.tenant_id=conversation.tenant_id
+            AND lead.deleted_at IS NOT NULL
+            AND (lead.id=conversation.lead_id OR (
+              conversation.lead_id IS NULL AND conversation.contact_phone IS NOT NULL AND lead.phone IS NOT NULL
+              AND regexp_replace(lead.phone,'\\D','','g')=regexp_replace(conversation.contact_phone,'\\D','','g')
+            ))
+           WHERE conversation.id=$2 AND conversation.tenant_id=$1
+         ) THEN 'lead_deleted'
+         WHEN EXISTS (
+           SELECT 1
+           FROM conversations conversation
+           JOIN scheduling_leads lead
+             ON lead.tenant_id=conversation.tenant_id
+            AND lead.deleted_at IS NULL
+            AND (lead.id=conversation.lead_id OR (
+              conversation.lead_id IS NULL AND conversation.contact_phone IS NOT NULL AND lead.phone IS NOT NULL
+              AND regexp_replace(lead.phone,'\\D','','g')=regexp_replace(conversation.contact_phone,'\\D','','g')
+            ))
+           WHERE conversation.id=$2 AND conversation.tenant_id=$1
+             AND (
+               lead.recovery_required
+               OR lead.status NOT IN ('novo','em_atendimento','aguardando_resposta','qualificado','em_qualificacao','aprovado')
+               OR EXISTS (
+                 SELECT 1 FROM scheduling_appointments appointment
+                 WHERE appointment.tenant_id=lead.tenant_id
+                   AND appointment.lead_id=lead.id
+                   AND appointment.status IN ('confirmado','reagendado')
+               )
+             )
+         ) THEN 'appointment_active'
+         ELSE NULL
+       END reason
      ), cancel_existing AS (
        UPDATE ai_follow_up_schedules
        SET status='cancelled',next_run_at=NULL,processing_started_at=NULL,
-           cancellation_reason='appointment_active',updated_at=now()
-       WHERE conversation_id=$2 AND EXISTS(SELECT 1 FROM active_appointment)
+           cancellation_reason=(SELECT reason FROM active_block),updated_at=now()
+       WHERE conversation_id=$2 AND EXISTS(SELECT 1 FROM active_block WHERE reason IS NOT NULL)
        RETURNING conversation_id
      )
      INSERT INTO ai_follow_up_schedules
@@ -189,8 +208,8 @@ export async function scheduleAiFollowUpsAfterAgentReply(
          c.messaging_window_expires_at IS NOT NULL
          AND $4::timestamptz + make_interval(mins => s.ai_follow_up_delays_minutes[1]) <= c.messaging_window_expires_at
        ))
-       AND NOT EXISTS(SELECT 1 FROM active_appointment)
-     ON CONFLICT(conversation_id) DO UPDATE SET
+       AND NOT EXISTS(SELECT 1 FROM active_block WHERE reason IS NOT NULL)
+       ON CONFLICT(conversation_id) DO UPDATE SET
        tenant_id=EXCLUDED.tenant_id,
        last_agent_message_id=EXCLUDED.last_agent_message_id,
        follow_up_count=0,
@@ -315,24 +334,38 @@ export class AiFollowUpRepository {
                 s.openrouter_provider,s.openrouter_api_key_encrypted,s.humanizer_config,
                 a.agent_config_version_id,a.system_prompt,a.ai_model,a.model_params,a.is_active agent_is_active,
                 latest.id latest_message_id,latest.sender latest_sender,
-                EXISTS(
-                  SELECT 1 FROM scheduling_leads lead
-                  WHERE lead.tenant_id=c.tenant_id
-                    AND (lead.id=c.lead_id OR (
-                      c.lead_id IS NULL AND c.contact_phone IS NOT NULL AND lead.phone IS NOT NULL
-                      AND regexp_replace(lead.phone,'\\D','','g')=regexp_replace(c.contact_phone,'\\D','','g')
-                    ))
-                    AND (
-                      lead.recovery_required
-                      OR lead.status NOT IN ('novo','em_atendimento','aguardando_resposta','qualificado','em_qualificacao','aprovado')
-                      OR EXISTS (
-                        SELECT 1 FROM scheduling_appointments appointment
-                        WHERE appointment.tenant_id=lead.tenant_id
-                          AND appointment.lead_id=lead.id
-                          AND appointment.status IN ('confirmado','reagendado')
+                CASE
+                  WHEN EXISTS(
+                    -- Lead na lixeira: robô ignora a conversa e cancela a fila.
+                    SELECT 1 FROM scheduling_leads lead
+                    WHERE lead.tenant_id=c.tenant_id
+                      AND lead.deleted_at IS NOT NULL
+                      AND (lead.id=c.lead_id OR (
+                        c.lead_id IS NULL AND c.contact_phone IS NOT NULL AND lead.phone IS NOT NULL
+                        AND regexp_replace(lead.phone,'\\D','','g')=regexp_replace(c.contact_phone,'\\D','','g')
+                      ))
+                  ) THEN 'lead_deleted'
+                  WHEN EXISTS(
+                    SELECT 1 FROM scheduling_leads lead
+                    WHERE lead.tenant_id=c.tenant_id
+                      AND lead.deleted_at IS NULL
+                      AND (lead.id=c.lead_id OR (
+                        c.lead_id IS NULL AND c.contact_phone IS NOT NULL AND lead.phone IS NOT NULL
+                        AND regexp_replace(lead.phone,'\\D','','g')=regexp_replace(c.contact_phone,'\\D','','g')
+                      ))
+                      AND (
+                        lead.recovery_required
+                        OR lead.status NOT IN ('novo','em_atendimento','aguardando_resposta','qualificado','em_qualificacao','aprovado')
+                        OR EXISTS (
+                          SELECT 1 FROM scheduling_appointments appointment
+                          WHERE appointment.tenant_id=lead.tenant_id
+                            AND appointment.lead_id=lead.id
+                            AND appointment.status IN ('confirmado','reagendado')
+                        )
                       )
-                    )
-                ) active_appointment
+                  ) THEN 'appointment_active'
+                  ELSE NULL
+                END block_reason
          FROM ai_follow_up_schedules f
          JOIN conversations c ON c.id=f.conversation_id AND c.tenant_id=f.tenant_id
          JOIN whatsapp_sessions connection ON connection.id=c.session_id AND connection.tenant_id=c.tenant_id
@@ -379,7 +412,7 @@ export class AiFollowUpRepository {
         && row.agent_is_active === true && Boolean(row.agent_config_version_id)
         && Boolean(row.system_prompt) && Boolean(row.ai_model)
         && row.latest_message_id === row.last_agent_message_id && row.latest_sender === "agent"
-        && !row.active_appointment && !completed && !windowExpired;
+        && row.block_reason === null && !completed && !windowExpired;
       if (!eligible) {
         if (!row.agent_config_version_id && row.agent_is_active === true) {
           const alert = "Configuração ativa do agente sem versão resolvível";
@@ -399,8 +432,7 @@ export class AiFollowUpRepository {
           [conversationId, completed ? "completed" : "cancelled",
             completed ? "maximum_reached"
               : windowExpired ? "window_expired"
-                : row.active_appointment ? "appointment_active"
-                  : !row.agent_config_version_id ? "agent_version_missing" : "conversation_changed"]
+                : row.block_reason ?? (!row.agent_config_version_id ? "agent_version_missing" : "conversation_changed")]
         );
         await client.query("COMMIT");
         return null;

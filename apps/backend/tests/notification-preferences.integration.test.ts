@@ -66,7 +66,7 @@ describe("personal panel notification preferences", () => {
       headers: { cookie: firstCookie },
       payload: { sound_enabled: false }
     });
-    expect(changed.json().preferences).toEqual({ enabled: true, sound_enabled: false, visual_enabled: true });
+    expect(changed.json().preferences).toEqual({ enabled: true, sound_enabled: false, visual_enabled: true, sound_key: null, volume: null });
     expect((await app.inject({ url: "/me/notification-preferences", headers: { cookie: secondCookie } })).json().preferences.sound_enabled).toBe(true);
 
     expect((await app.inject({

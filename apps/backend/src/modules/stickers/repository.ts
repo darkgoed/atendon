@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import type { Pool } from "pg";
 
 export const MAX_STICKER_BYTES = 1024 * 1024;
+export function stickerContentHash(data: Buffer): string {
+  return createHash("sha256").update(data).digest("hex");
+}
 
 export interface AiStickerSummary {
   id: string;
@@ -50,7 +53,7 @@ export function decodeStickerBase64(value: string): Buffer {
 }
 
 export class StickerRepository {
-  constructor(private readonly db: Pool) {}
+  constructor(private readonly db: Pick<Pool, "query">) {}
 
   async list(tenantId: string): Promise<AiStickerSummary[]> {
     const result = await this.db.query<AiStickerSummary>(

@@ -535,7 +535,7 @@ export class MessageRepository {
                  AND appointment.status IN ('confirmado','reagendado') AND appointment.end_at>now()
                ORDER BY appointment.start_at DESC LIMIT 1) active_appointment
        FROM conversations c JOIN tenants t ON t.id=c.tenant_id
-       LEFT JOIN scheduling_leads lead ON lead.id=c.lead_id AND lead.tenant_id=c.tenant_id
+       LEFT JOIN scheduling_leads lead ON lead.id=c.lead_id AND lead.tenant_id=c.tenant_id AND lead.deleted_at IS NULL
        LEFT JOIN tenant_ai_settings settings ON settings.tenant_id=c.tenant_id
        LEFT JOIN LATERAL (
          SELECT v.id agent_config_version_id,v.system_prompt,v.ai_model,v.model_params,v.enabled_tools,

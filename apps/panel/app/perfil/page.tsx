@@ -1,9 +1,10 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { CheckCircle, UserCircle } from "@phosphor-icons/react";
+import { CheckCircle, SlidersHorizontal, UserCircle } from "@phosphor-icons/react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
+import { AppearancePreferences } from "@/components/appearance-preferences";
 import { api } from "@/lib/api";
 import type { PanelSession } from "@/lib/session";
 import { Button, Card, Field, Input, PageHeader, Section } from "@/components/ui";
@@ -110,6 +111,13 @@ export default function ProfilePage() {
           </Section>
         </Card>
       </div>
+
+      <Card className="admin-card">
+        <Section title="Preferências" className={styles.section}>
+          <SlidersHorizontal size={18} className="accent" aria-hidden="true" />
+          <AppearancePreferences />
+        </Section>
+      </Card>
       </div>
     </Shell>
   );

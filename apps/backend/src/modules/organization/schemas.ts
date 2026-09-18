@@ -34,6 +34,14 @@ export const lossReasonCreateSchema = z.object({
   exige_observacao: z.boolean().optional()
 }).strict();
 
+export const storageSettingsSchema = z.object({
+  // Quota em bytes; NULL = sem limite próprio (plano). 0 bloqueia qualquer
+  // upload novo de asset.
+  storage_quota_bytes: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+  // Retenção em dias; NULL = sem autoexclusão. Job diário no worker.
+  retention_days: z.number().int().min(1).max(36500).nullable().optional()
+}).strict().refine((value) => Object.keys(value).length > 0, "Informe ao menos um campo");
+
 export const lossReasonUpdateSchema = z.object({
   rotulo: z.string().trim().min(1).max(120).optional(),
   posicao: z.number().int().min(0).max(9999).optional(),

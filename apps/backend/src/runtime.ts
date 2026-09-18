@@ -9,6 +9,7 @@ import { enqueueHandoffNotification } from "./queue/handoff-notification-queue.j
 import { AiFollowUpProcessor, AiFollowUpRepository } from "./modules/messages/ai-follow-up.js";
 import { aiTurnProgressStore } from "./modules/realtime/ai-turn-progress.js";
 import { MeetingConfirmationRepository } from "./modules/scheduling/meeting-confirmation.js";
+import { QualificationService } from "./modules/qualification/service.js";
 import { createInstagramRuntime } from "./modules/instagram/index.js";
 import type { InstagramRuntime } from "./modules/instagram/types.js";
 import { ChannelGatewayRouter } from "./modules/messages/channel-gateway.js";
@@ -29,6 +30,10 @@ export function createWhatsAppRuntime(): {
   const ai = new OpenRouterClient(config);
   const meetingConfirmations = new MeetingConfirmationRepository(db);
   const messageRepository = new MessageRepository(db, config);
+  // Robô determinístico de fluxos de qualificação (R22): roda antes do turno de
+  // IA. Sem classificador de IA — o robô é determinístico (handleInbound sem
+  // aiClassify). Sem fluxo/gatilho ativo o outcome é null e o turno segue igual.
+  const qualificationRobot = new QualificationService();
   const processor = new MessageProcessor(
     messageRepository,
     gateway,
@@ -42,7 +47,8 @@ export function createWhatsAppRuntime(): {
     // presença. Sem isso o estado nunca sairia de "solicitada" e os lembretes
     // continuariam pedindo confirmação a quem já confirmou.
     (tenantId, appointmentId, response) =>
-      meetingConfirmations.registerContactConfirmation(tenantId, appointmentId, response)
+      meetingConfirmations.registerContactConfirmation(tenantId, appointmentId, response),
+    (input) => qualificationRobot.handleInbound(input)
   );
   const followUpRepository = new AiFollowUpRepository(db, config);
   const followUpProcessor = new AiFollowUpProcessor(followUpRepository, gateway, ai);

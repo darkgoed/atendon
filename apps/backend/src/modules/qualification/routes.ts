@@ -1,11 +1,12 @@
 import type { FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { requirePermission } from "../../auth/session.js";
 import { leadScopeCondition, resolveCaseScope } from "../../auth/case-scope.js";
 import { db } from "../../db/client.js";
 import { httpError, slug, uuid, withTransaction } from "../scheduling/service.js";
 import { activationIssues, flowDefinitionSchema, DEFAULT_QUALIFICATION_FLOW } from "./flow.js";
-import { QualificationService } from "./service.js";
+import { simulateFlow, QualificationService } from "./service.js";
 
 const flowUpsertBody = z.object({
   nome: z.string().trim().min(1).max(200),
@@ -91,13 +92,113 @@ export async function registerQualificationRoutes(app: FastifyInstance) {
     return reply.status(result.rows[0].created ? 201 : 200).send({ flow: flowMapper(result.rows[0]) });
   });
 
+  // R22: histórico de execução do fluxo. Paginação keyset (created_at DESC, id DESC),
+  // filtro opcional por conversa ("como entrou → o que aconteceu").
+  const executionsQuery = z.object({
+    conversation_id: uuid.optional(),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+    cursor: z.string().max(500).optional()
+  });
+
+  function encodeExecutionCursor(row: { created_at: Date | string; id: string }): string {
+    return Buffer.from(JSON.stringify({ created_at: new Date(row.created_at).toISOString(), id: row.id })).toString("base64url");
+  }
+
+  function decodeExecutionCursor(raw: string): { created_at: Date; id: string } {
+    try {
+      const parsed = z.object({ created_at: z.string().datetime(), id: uuid }).parse(JSON.parse(Buffer.from(raw, "base64url").toString("utf8")));
+      return { created_at: new Date(parsed.created_at), id: parsed.id };
+    } catch {
+      throw httpError(400, "Cursor inválido");
+    }
+  }
+
+  app.get("/qualification/flows/:id/executions", async (request, reply) => {
+    const session = await requirePermission(request, "agent.read");
+    const { id } = z.object({ id: slug }).parse(request.params);
+    const query = executionsQuery.parse(request.query);
+    const flow = await db.query("SELECT 1 FROM qualification_flows WHERE tenant_id=$1 AND id=$2", [session.tenantId, id]);
+    if (!flow.rows[0]) return reply.status(404).send({ error: "Fluxo não encontrado" });
+    const conditions = ["tenant_id=$1", "flow_id=$2"];
+    const params: unknown[] = [session.tenantId, id];
+    if (query.conversation_id) {
+      params.push(query.conversation_id);
+      conditions.push(`conversation_id=$${params.length}::uuid`);
+    }
+    if (query.cursor) {
+      const cursor = decodeExecutionCursor(query.cursor);
+      params.push(cursor.created_at, cursor.id);
+      conditions.push(`(created_at,id) < ($${params.length - 1},$${params.length})`);
+    }
+    params.push(query.limit + 1);
+    const result = await db.query(
+      `SELECT id,conversation_id,lead_id,node_id,kind,status,detail,created_at FROM flow_execution_log
+       WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC, id DESC LIMIT $${params.length}`,
+      params
+    );
+    const hasMore = result.rows.length > query.limit;
+    const executions = hasMore ? result.rows.slice(0, query.limit) : result.rows;
+    return {
+      executions,
+      next_cursor: hasMore && executions.length ? encodeExecutionCursor(executions[executions.length - 1]) : null
+    };
+  });
+
+  // Dry-run do editor: aceita camel/snake do chamador ({text|entrada|maxSteps|max_steps})
+  // e devolve o traço determinístico. Zero efeito colateral (lição 2: grafo em memória).
+  const simulateBody = z.object({
+    definition: z.record(z.string(), z.unknown()),
+    text: z.string().max(4_000).optional(),
+    entrada: z.string().max(4_000).optional(),
+    maxSteps: z.number().int().min(1).max(200).optional(),
+    max_steps: z.number().int().min(1).max(200).optional()
+  }).strict();
+
+  app.post("/qualification/flows/:id/simulate", async (request) => {
+    await requirePermission(request, "agent.read");
+    const body = simulateBody.parse(request.body);
+    const definition = flowDefinitionSchema.parse(body.definition);
+    const trace = simulateFlow(definition, body.text ?? body.entrada ?? "", body.maxSteps ?? body.max_steps);
+    return { trace: trace.map((item) => ({ ...item, nodeId: item.node_id })) };
+  });
+
+  const duplicateBody = z.object({ name: z.string().trim().min(1).max(200) }).strict();
+
+  app.post("/qualification/flows/:id/duplicate", async (request, reply) => {
+    const session = await requirePermission(request, "agent.manage");
+    const { id } = z.object({ id: slug }).parse(request.params);
+    const { name } = duplicateBody.parse(request.body);
+    const source = await db.query<{ definition: unknown }>(
+      "SELECT definition FROM qualification_flows WHERE tenant_id=$1 AND id=$2", [session.tenantId, id]
+    );
+    if (!source.rows[0]) return reply.status(404).send({ error: "Fluxo não encontrado" });
+    const definition = flowDefinitionSchema.parse(source.rows[0].definition);
+    const baseId = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "fluxo";
+    let newId = baseId;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        // Duplicata nasce INATIVA (R25): a cópia precisa de revisão antes de assumir o tráfego.
+        const inserted = await db.query(
+          "INSERT INTO qualification_flows(tenant_id,id,name,active,definition) VALUES($1,$2,$3,false,$4) RETURNING *",
+          [session.tenantId, newId, name, definition]
+        );
+        return reply.status(201).send({ flow: flowMapper(inserted.rows[0]) });
+      } catch (error) {
+        if ((error as { code?: string }).code !== "23505") throw error;
+        newId = `${baseId}-${randomUUID().slice(0, 8)}`;
+      }
+    }
+    throw httpError(409, "Não foi possível gerar um identificador único para o fluxo");
+  });
+
   app.post("/scheduling/leads/:id/qualification/:acao", async (request, reply) => {
     const session = await requirePermission(request, "leads.update_status");
     const { id, acao } = z.object({ id: uuid, acao: z.enum(["pausar", "retomar", "reiniciar"]) }).parse(request.params);
     const scope = await resolveCaseScope(db, session);
     const visible = await db.query(
       `SELECT 1 FROM scheduling_leads lead
-       WHERE lead.tenant_id=$1 AND lead.id=$2
+       WHERE lead.tenant_id=$1 AND lead.id=$2 AND lead.deleted_at IS NULL
          AND (${leadScopeCondition(scope, "lead", "$3")})`,
       [session.tenantId, id, scope.memberId]
     );

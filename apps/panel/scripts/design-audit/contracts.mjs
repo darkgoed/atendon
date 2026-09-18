@@ -20,7 +20,7 @@ export const ROUTE_CONTRACTS = {
   "/follow-ups": populated("Follow-ups", "Retornar contato|qa-followup", "/follow-ups"),
   "/humanizacao": populated("Humanização", "professional|Timing", "/humanizacao"),
   "/contatos": populated("Contatos", "Cliente QA com nome comercial deliberadamente longo", "/contatos"),
-  "/contatos/[id]": { expectedPath: null, heading: "Cliente QA com nome comercial deliberadamente longo", headingRole: "heading", marker: "qa-note", entitySelector: "[aria-labelledby='internal-notes-title']", state: "populated" },
+  "/contatos/[id]": { expectedPath: null, heading: "Cliente QA com nome comercial deliberadamente longo", headingRole: "heading", marker: "Notas internas", entitySelector: "[aria-labelledby='lead-notes-title']", state: "populated" },
   "/pipeline": populated("Pipeline", "Cliente QA com nome comercial deliberadamente longo", "/pipeline"),
   "/pos-venda": populated("Carteira de pós-venda", "Marina QA · Cliente de implantação empresarial|Confirmar treinamento de implantação", "/pos-venda"),
   "/pos-venda/cobranca": populated("Cobranças de crediário", "Cliente QA|qa-debt", "/pos-venda/cobranca"),
@@ -49,6 +49,12 @@ export const ROUTE_CONTRACTS = {
   "/invitations/[token]": { expectedPath: "/invitations/qa-token", heading: "Aceitar convite", headingRole: "heading", marker: "AtendON QA Workspace|guest@example.test|Operador", entitySelector: ".invitation-summary", state: "public" },
   "/meet/[roomId]": { expectedPath: "/meet/qa-room", heading: "Não foi possível entrar na sala|Sala de videochamada", headingRole: "heading", marker: "qa-room|Tentar novamente|Preparando sua sala", entitySelector: "main > section", state: "public" },
   "/reuniao/[code]": { expectedPath: "/reuniao/qa-code", heading: "Não foi possível entrar na sala|Sala de videochamada", headingRole: "heading", marker: "qa-code|Tentar novamente|Preparando sua sala", entitySelector: "main > section", state: "public" },
-  "/agente/figurinhas": { expectedPath: "/follow-ups", heading: "Follow-ups", headingRole: "heading", marker: "Atraso|mídias|120", entitySelector: ".channels-ai-page, form, input", state: "populated" }
+  "/agente/figurinhas": { expectedPath: "/follow-ups", heading: "Follow-ups", headingRole: "heading", marker: "Atraso|mídias|120", entitySelector: ".channels-ai-page, form, input", state: "populated" },
+  "/tarefas": { expectedPath: null, heading: "Tarefas", headingRole: "heading", marker: "Prioridade", entitySelector: "main article[data-task-id]", state: "populated" },
+  "/contatos/campos": { expectedPath: null, heading: "Campos personalizados", headingRole: "heading", marker: "chave:", entitySelector: "main article[data-field-id]", state: "populated" },
+  "/contatos/lixeira": { expectedPath: null, heading: "Lixeira", headingRole: "heading", marker: "Excluído em", entitySelector: "main article[data-trash-id]", state: "populated" },
+  "/contatos/importar": { expectedPath: null, heading: "Importar contatos", headingRole: "heading", marker: "Histórico de importações", entitySelector: "main [aria-labelledby='import-history-title']", state: "populated" },
+  "/fluxos": { expectedPath: null, heading: "Fluxos", headingRole: "heading", marker: "Fluxo QA de qualificação", entitySelector: "main .card ul li", state: "populated" },
+  "/fluxos/[id]": { expectedPath: "/fluxos/qa-flow-0001", heading: "Fluxo QA de qualificação", headingRole: "heading", marker: "Olá QA", entitySelector: "main .react-flow__node", state: "populated" }
 };
 export function contractFor(route) { return ROUTE_CONTRACTS[route]; }

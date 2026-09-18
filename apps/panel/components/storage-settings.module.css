@@ -1,0 +1,6 @@
+/* Painel de Armazenamento (Configurações → Armazenamento): espelha o layout
+   dos demais painéis de configuração; aqui ficam só as regras de layout da
+   lista de uso por origem — as barras usam o Progress global (.progress). */
+.origins { display: grid; gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+.origins > li { display: grid; gap: var(--space-2); }
+.originMeta { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2); }

@@ -573,7 +573,7 @@ async function fetchLeadFollowUpRow(client: PoolClient, tenantId: string, leadId
      LEFT JOIN users u ON u.id=wm.user_id
      LEFT JOIN scheduling_google_meet_closers pool
        ON pool.tenant_id=l.tenant_id AND pool.member_id=l.assigned_member_id
-     WHERE l.id=$1 AND l.tenant_id=$2`,
+     WHERE l.id=$1 AND l.tenant_id=$2 AND l.deleted_at IS NULL`,
     [leadId, tenantId]
   );
   if (!result.rows[0]) throw httpError(404, "Lead não encontrado");
@@ -643,7 +643,7 @@ export async function updateLeadFollowUp(tenantId: string, leadId: string, input
       `SELECT l.assigned_member_id,l.next_action,l.next_action_at,t.timezone
        FROM scheduling_leads l
        JOIN tenants t ON t.id=l.tenant_id
-       WHERE l.id=$1 AND l.tenant_id=$2
+       WHERE l.id=$1 AND l.tenant_id=$2 AND l.deleted_at IS NULL
        FOR UPDATE OF l`,
       [leadId, tenantId]
     );
@@ -1574,7 +1574,7 @@ export async function listAppointmentAssignees(
   }>(
     `SELECT appointment.id,appointment.assigned_member_id,appointment.start_at,appointment.end_at,lead.name lead_name
      FROM scheduling_appointments appointment
-     JOIN scheduling_leads lead ON lead.id=appointment.lead_id AND lead.tenant_id=appointment.tenant_id
+     JOIN scheduling_leads lead ON lead.id=appointment.lead_id AND lead.tenant_id=appointment.tenant_id AND lead.deleted_at IS NULL
      WHERE appointment.tenant_id=$1
        AND appointment.assigned_member_id=ANY($2::uuid[])
        AND appointment.status IN ('confirmado','reagendado')
@@ -1669,7 +1669,7 @@ export async function reassignAppointmentAssignee(
               appointment.assigned_member_id,previous_member.user_id previous_user_id,
               lead.name lead_name,lead.phone lead_phone
        FROM scheduling_appointments appointment
-       JOIN scheduling_leads lead ON lead.id=appointment.lead_id AND lead.tenant_id=appointment.tenant_id
+       JOIN scheduling_leads lead ON lead.id=appointment.lead_id AND lead.tenant_id=appointment.tenant_id AND lead.deleted_at IS NULL
        LEFT JOIN workspace_members previous_member
          ON previous_member.id=appointment.assigned_member_id AND previous_member.workspace_id=appointment.tenant_id
        WHERE appointment.tenant_id=$1 AND appointment.id=$2
@@ -2436,7 +2436,7 @@ export async function openAppointmentConversation(
               lead.phone,lead.name
        FROM scheduling_appointments appointment
        JOIN scheduling_leads lead
-         ON lead.id=appointment.lead_id AND lead.tenant_id=appointment.tenant_id
+         ON lead.id=appointment.lead_id AND lead.tenant_id=appointment.tenant_id AND lead.deleted_at IS NULL
        WHERE appointment.id=$1 AND appointment.tenant_id=$2
        FOR UPDATE OF appointment,lead`,
       [appointmentId, tenantId]
@@ -2685,18 +2685,19 @@ export async function removeAppointment(tenantId: string, appointmentId: string)
 }
 
 export async function deleteLead(tenantId: string, leadId: string, actor: FollowUpActor) {
+  // Soft delete (lixeira de contatos, migration 0171): o lead ganha
+  // deleted_at/deleted_by e sai de listas/dashboards; agendamentos e conversas
+  // permanecem para permitir restauração. A exclusão definitiva é feita
+  // apenas por DELETE /trash/leads/:id (trash.manage).
   await withTransaction(async (client) => {
     const lead = await client.query("SELECT id FROM scheduling_leads WHERE id=$1 AND tenant_id=$2 FOR UPDATE", [leadId, tenantId]);
     if (!lead.rows[0]) throw httpError(404, "Lead não encontrado");
     await insertFollowUpAudit(client, tenantId, leadId, actor, "scheduling_lead.delete", {});
     await client.query(
-      `UPDATE usage_logs SET conversation_id=NULL
-       WHERE tenant_id=$1 AND conversation_id IN (SELECT id FROM conversations WHERE tenant_id=$1 AND lead_id=$2)`,
-      [tenantId, leadId]
+      `UPDATE scheduling_leads SET deleted_at=now(),deleted_by=$3,updated_at=now()
+       WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, leadId, actor.userId]
     );
-    await client.query("DELETE FROM scheduling_appointments WHERE tenant_id=$1 AND lead_id=$2", [tenantId, leadId]);
-    await client.query("DELETE FROM conversations WHERE tenant_id=$1 AND lead_id=$2", [tenantId, leadId]);
-    await client.query("DELETE FROM scheduling_leads WHERE tenant_id=$1 AND id=$2", [tenantId, leadId]);
   });
   return { id: leadId };
 }
@@ -2738,7 +2739,7 @@ export async function updateLeadIdentity(
 
       const duplicateLead = await client.query<{ id: string }>(
         `SELECT id FROM scheduling_leads
-         WHERE tenant_id=$1 AND id<>$2
+         WHERE tenant_id=$1 AND id<>$2 AND deleted_at IS NULL
            AND regexp_replace(phone,'\\D','','g')=$3
          LIMIT 1`,
         [tenantId, leadId, nextPhoneKey]
@@ -2887,6 +2888,9 @@ export async function upsertLead(
                source=CASE WHEN $12 THEN $7 ELSE source END,
                facebook_attribution=CASE WHEN $13::jsonb <> '{}'::jsonb THEN $13::jsonb ELSE facebook_attribution END,
                campaign=CASE WHEN $14 THEN $15 ELSE campaign END,
+               -- Lead na lixeira com o mesmo telefone é reativado pelo upsert:
+               -- UNIQUE(tenant_id,phone) impede inserir um novo com o mesmo valor.
+               deleted_at=NULL,deleted_by=NULL,
                updated_at=now()
            WHERE tenant_id=$1 AND id=$2
            RETURNING *`,

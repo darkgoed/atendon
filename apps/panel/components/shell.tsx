@@ -9,6 +9,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { CommandPalette, type PaletteItem } from "@/components/command-palette";
 import { MessageNotifications } from "@/components/message-notifications";
 import { NotificationCenter } from "@/components/notification-center";
+import { InternalNotifications } from "@/components/internal-notifications";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { VersionBanner } from "@/components/version-banner";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
@@ -430,6 +431,9 @@ export function Shell({
               ROOT
             </Link>
           ) : null}
+          {/* Sino de notificações internas (R2 v6): user-scoped e independente do
+              centro de alertas — presente em TODAS as páginas, inclusive /conversas. */}
+          <InternalNotifications />
           <Link className="mono topbar__version" href="/changelog" title="Ver changelog público">
             AtendON v{versionData?.version ?? "—"}{versionData?.buildNumber ? ` · Build ${versionData.buildNumber}` : ""}
           </Link>

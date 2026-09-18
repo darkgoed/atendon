@@ -106,7 +106,7 @@ async function scheduleAppointmentGroupNotificationRefreshes(
      JOIN scheduling_appointments appointment
        ON appointment.id=notification.appointment_id AND appointment.tenant_id=notification.tenant_id
      JOIN scheduling_leads lead
-       ON lead.id=appointment.lead_id AND lead.tenant_id=appointment.tenant_id
+       ON lead.id=appointment.lead_id AND lead.tenant_id=appointment.tenant_id AND lead.deleted_at IS NULL
      JOIN tenants tenant ON tenant.id=appointment.tenant_id
      LEFT JOIN workspace_members assigned_member
        ON assigned_member.id=lead.assigned_member_id AND assigned_member.workspace_id=lead.tenant_id
@@ -189,6 +189,7 @@ export async function refreshAppointmentGroupNotificationsForConversation(
      FROM conversations conversation
      JOIN scheduling_leads lead
        ON lead.tenant_id=conversation.tenant_id
+      AND lead.deleted_at IS NULL
       AND regexp_replace(lead.phone,'\\D','','g')=regexp_replace(conversation.contact_phone,'\\D','','g')
      WHERE conversation.tenant_id=$1 AND conversation.id=$2`,
     [tenantId, conversationId]

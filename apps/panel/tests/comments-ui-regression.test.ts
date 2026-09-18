@@ -231,11 +231,14 @@ describe("comments.md UI regressions", () => {
     expect(leadDetailSource).not.toContain("readableQualificationAnswers(data.qualificacao.respostas)");
   });
 
-  it("does not render the lead detail timeline", () => {
+  // R9 devolveu a timeline ao detalhe do lead como componente dedicado
+  // (LeadEventHistory, colapsável); a implementação antiga inline continua fora.
+  it("keeps the lead history in a dedicated collapsible component", () => {
     expect(leadDetailSource).not.toContain("ReadableDetails");
     expect(leadDetailSource).not.toContain("leadEventLabel");
-    expect(leadDetailSource).not.toContain("Timeline");
     expect(leadDetailSource).not.toContain("data.eventos");
+    expect(leadDetailSource).toContain("@/components/lead-history-tabs");
+    expect(leadDetailSource).toContain("<LeadEventHistory");
   });
 
   it("reserves an internal top lane for usage tooltips so hover content is not clipped", () => {

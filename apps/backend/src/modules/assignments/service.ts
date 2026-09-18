@@ -574,7 +574,7 @@ async function synchronizeRows(
                 lead.name lead_name,lead.phone lead_phone,appointment.start_at
          FROM scheduling_appointments appointment
          JOIN scheduling_leads lead
-           ON lead.id=appointment.lead_id AND lead.tenant_id=appointment.tenant_id
+           ON lead.id=appointment.lead_id AND lead.tenant_id=appointment.tenant_id AND lead.deleted_at IS NULL
          LEFT JOIN workspace_members previous_member
            ON previous_member.id=appointment.assigned_member_id
           AND previous_member.workspace_id=appointment.tenant_id
@@ -692,6 +692,7 @@ export async function rebalanceUnscheduledAssignments(
        SELECT lead.phone
        FROM scheduling_leads lead
        WHERE lead.tenant_id=$1
+         AND lead.deleted_at IS NULL
          AND lead.status NOT IN ('fechado','perdido')
        UNION
        SELECT conversation.contact_phone
@@ -706,6 +707,7 @@ export async function rebalanceUnscheduledAssignments(
        JOIN scheduling_appointments appointment
          ON appointment.tenant_id=lead.tenant_id AND appointment.lead_id=lead.id
        WHERE lead.tenant_id=$1
+         AND lead.deleted_at IS NULL
          AND ${normalizedPhoneSql("lead.phone")}=${normalizedPhoneSql("active_case.phone")}
          AND appointment.status IN ('confirmado','reagendado')
      )
@@ -825,6 +827,7 @@ export async function redistributeRemovedAssignments(
        SELECT lead.phone
        FROM scheduling_leads lead
        WHERE lead.tenant_id=$1
+         AND lead.deleted_at IS NULL
          AND lead.assigned_member_id=ANY($2::uuid[])
          AND lead.status NOT IN ('fechado','perdido')
        UNION

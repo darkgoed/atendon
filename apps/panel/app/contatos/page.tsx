@@ -1,6 +1,6 @@
 "use client";
 
-import { DotsThreeVertical, MagicWand, MagnifyingGlass } from "@phosphor-icons/react";
+import { DotsThreeVertical, DownloadSimple, MagicWand, MagnifyingGlass, UploadSimple } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
@@ -16,6 +16,7 @@ import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { buildLeadFilterQuery, type LeadFilters } from "@/lib/lead-filters";
 import { leadStatusLabel } from "@/lib/labels";
+import { apiContentUrl } from "@/lib/meet";
 import { applyLeadSavedViewFilters, leadFiltersForSavedView, useCaseOrganizationEnabled } from "@/lib/organization";
 import { useRealtimeSignals } from "@/lib/realtime";
 import { hasWorkspaceWideCaseScope, type PanelSession } from "@/lib/session";
@@ -200,6 +201,16 @@ export default function LeadsPage() {
     <header className="leads-page__header">
       <div><h1>{hasWorkspaceScope ? "Contatos" : "Meus contatos"}</h1></div>
       <div className="leads-page__actions flex min-h-8 flex-wrap items-center gap-2">
+        <Link className="btn crm-compact-button" href="/contatos/importar"><UploadSimple size={14} aria-hidden="true" />Importar</Link>
+        {canReadFollowUp ? (
+          <Button
+            className="crm-compact-button"
+            icon={<DownloadSimple size={14} aria-hidden="true" />}
+            onClick={() => window.location.assign(apiContentUrl(query ? `/contact-ops/export.csv?${query}` : "/contact-ops/export.csv"))}
+          >
+            Exportar CSV
+          </Button>
+        ) : null}
         <SavedViewsControl resource="leads" filters={leadFiltersForSavedView(filters)} onApply={applySavedFilters} />
         <label className="field m-0">
           <span className="sr-only">Buscar contato</span>

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type pg from "pg";
+import { reserveStorageBytes } from "../organization/storage.js";
 import {
   createEmptyTripzProposalState,
   mergeTripzProposalPatch,
@@ -704,6 +705,9 @@ export class TripzAiRepository implements TripzRepositoryPort {
         [scope.tenantId, input.conversationId, input.contentHash]
       );
       if (existing.rows[0]) return { attachment: attachmentFromRow(existing.rows[0]), reused: true };
+      // R4: anexo novo consome quota da empresa — verificação ANTES de gravar
+      // (413 ao estourar), ajuste do contador na mesma transação do INSERT.
+      await reserveStorageBytes(client, scope.tenantId, input.data.length);
       const count = await client.query<{ count: number }>(
         "SELECT count(*)::int count FROM tripz_ai_attachments WHERE tenant_id=$1 AND conversation_id=$2",
         [scope.tenantId, input.conversationId]

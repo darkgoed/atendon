@@ -26,15 +26,22 @@ import {
 } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
 import type { PanelNotificationPreferencesResponse } from "@/lib/message-notifications";
+import {
+  DEFAULT_SOUND_KEY,
+  NOTIFICATION_SOUNDS,
+  playNotificationSound,
+  resolveSoundKey
+} from "@/lib/notification-sounds";
 import { WebPushSettings } from "@/components/web-push-settings";
 import { ConversationQueueManager } from "@/components/conversation-queue-manager";
 import { WorkspaceLogoSection } from "@/components/workspace-logo";
+import { StorageSettingsPanel } from "@/components/storage-settings";
 import { SETTINGS_COLOR_DEFAULTS } from "@/components/settings-colors";
 import { Button, Field as UiField, Input } from "@/components/ui";
 import styles from "@/components/settings-panels.module.css";
 
 type CatalogResource = "categorias" | "parceiros" | "unidades";
-type Resource = CatalogResource | "workspace" | "attendants" | "conversation-queues" | "atendon-meet" | "google-meet" | "signature" | "panel-notifications" | "agenda-notifications";
+type Resource = CatalogResource | "workspace" | "attendants" | "conversation-queues" | "atendon-meet" | "google-meet" | "signature" | "panel-notifications" | "agenda-notifications" | "armazenamento";
 type CatalogItem = {
   id?: string;
   nome?: string;
@@ -65,7 +72,8 @@ const resourceLabels: Record<Resource, string> = {
   "google-meet": "Google Meet",
   signature: "Assinatura do atendente",
   "panel-notifications": "Notificações do painel",
-  "agenda-notifications": "Notificações de agendamento"
+  "agenda-notifications": "Notificações de agendamento",
+  armazenamento: "Armazenamento"
 };
 
 const COMMON_TIMEZONES = [
@@ -120,6 +128,7 @@ export default function ConfigPage() {
   const canUpdateWorkspace = usePermission("workspace.update");
   const canReadSignature = usePermission("signature.read");
   const canManageSignature = usePermission("signature.manage");
+  const canManageStorage = usePermission("storage.manage");
   const hasAgendaNotificationsReadPermission = usePermission("scheduling_notifications.read");
   const hasAgendaNotificationsManagePermission = usePermission("scheduling_notifications.manage");
   const canReadAgendaNotifications = appointmentsEnabled && hasAgendaNotificationsReadPermission;
@@ -160,7 +169,8 @@ export default function ConfigPage() {
     ...(appointmentsEnabled && canReadUnits ? ["atendon-meet" as const, "google-meet" as const] : []),
     ...(canReadSignature ? ["signature" as const] : []),
     ...(session?.activeWorkspace ? ["panel-notifications" as const] : []),
-    ...(canReadAgendaNotifications ? ["agenda-notifications" as const] : [])
+    ...(canReadAgendaNotifications ? ["agenda-notifications" as const] : []),
+    ...(canManageStorage ? ["armazenamento" as const] : [])
   ], [
     canReadAttendants,
     canManageQueues,
@@ -171,6 +181,7 @@ export default function ConfigPage() {
     canReadUnits,
     canUpdateWorkspace,
     appointmentsEnabled,
+    canManageStorage,
     leadsEnabled,
     session?.activeWorkspace
   ]);
@@ -186,7 +197,8 @@ export default function ConfigPage() {
     if (requested === "attendants" && canReadAttendants) setResource("attendants");
     if (requested === "conversation-queues" && canManageQueues) setResource("conversation-queues");
     if (requested === "workspace" && canUpdateWorkspace) setResource("workspace");
-  }, [canManageQueues, canReadAttendants, canReadUnits, canUpdateWorkspace]);
+    if (requested === "armazenamento" && canManageStorage) setResource("armazenamento");
+  }, [canManageQueues, canManageStorage, canReadAttendants, canReadUnits, canUpdateWorkspace]);
 
   const load = useCallback(() => {
     setError("");
@@ -194,7 +206,7 @@ export default function ConfigPage() {
       setLoading(false);
       return Promise.resolve();
     }
-    if (resource === "workspace" || resource === "attendants" || resource === "conversation-queues" || resource === "atendon-meet" || resource === "google-meet" || resource === "signature" || resource === "panel-notifications" || resource === "agenda-notifications") {
+    if (resource === "workspace" || resource === "attendants" || resource === "conversation-queues" || resource === "atendon-meet" || resource === "google-meet" || resource === "signature" || resource === "panel-notifications" || resource === "agenda-notifications" || resource === "armazenamento") {
       setLoading(false);
       return Promise.resolve();
     }
@@ -292,6 +304,8 @@ export default function ConfigPage() {
         <PanelNotificationSettingsPanel />
       ) : resource === "agenda-notifications" ? (
         <AgendaNotificationSettingsPanel canManage={canManageAgendaNotifications} />
+      ) : resource === "armazenamento" ? (
+        <StorageSettingsPanel canManage={canManageStorage} />
       ) : <>
         {error ? <p className="error mb-4" role="alert">{error}</p> : null}
         {!canManage && !loading ? <p className="sub mb-4" role="status">Esta seção está disponível somente para consulta.</p> : null}
@@ -634,7 +648,35 @@ function PanelNotificationSettingsPanel() {
   );
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [soundKey, setSoundKey] = useState<string>(DEFAULT_SOUND_KEY);
+  const [volume, setVolume] = useState(50);
   const preferences = data?.preferences ?? { enabled: true, sound_enabled: true, visual_enabled: true };
+
+  useEffect(() => {
+    if (!data) return;
+    setSoundKey(resolveSoundKey(data.preferences.sound_key));
+    const persisted = data.preferences.volume;
+    setVolume(typeof persisted === "number" && Number.isFinite(persisted) ? Math.min(100, Math.max(0, Math.round(persisted))) : 50);
+  }, [data]);
+
+  async function saveSoundPreferences(next: { soundKey: string; volume: number }) {
+    if (saving) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      const response = await api<{ preferences: typeof preferences }>("/me/notification-preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ sound_key: next.soundKey, volume: next.volume })
+      });
+      await mutate((current) => current ? { ...current, preferences: response.preferences } : current, { revalidate: false });
+    } catch (caught) {
+      setSaveError(caught instanceof Error ? caught.message : "Não foi possível salvar a preferência.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const soundControlsDisabled = saving || !preferences.enabled || !preferences.sound_enabled;
 
   async function change(key: keyof typeof preferences, value: boolean) {
     if (saving) return;
@@ -695,6 +737,61 @@ function PanelNotificationSettingsPanel() {
           </label>
         ))}
       </div>
+      <section className="border-t border-[var(--border)] pt-5" aria-label="Som e volume das notificações">
+        <h3 className="text-sm font-semibold">Som e volume</h3>
+        <p className="sub mt-1 text-xs">Toque tocado localmente quando chega uma nova mensagem. Use “Testar som” para ouvir com o volume atual.</p>
+        <div className={styles.soundGrid}>
+          <label className={styles.soundField}>
+            <span className="sub">Som</span>
+            <select
+              className="input"
+              value={soundKey}
+              disabled={soundControlsDisabled}
+              onChange={(event) => {
+                const nextKey = event.target.value;
+                setSoundKey(nextKey);
+                playNotificationSound(nextKey, volume);
+                void saveSoundPreferences({ soundKey: nextKey, volume });
+              }}
+            >
+              {NOTIFICATION_SOUNDS.map((sound) => (
+                <option key={sound.key} value={sound.key}>{sound.label}</option>
+              ))}
+            </select>
+          </label>
+          <div className={styles.soundField}>
+            <label className="sub" htmlFor="panel-notification-volume">Volume</label>
+            <div className={styles.volumeRow}>
+              <input
+                id="panel-notification-volume"
+                className={styles.volumeSlider}
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={volume}
+                disabled={soundControlsDisabled}
+                aria-label="Volume do som de notificação (0 a 100)"
+                onChange={(event) => setVolume(Number(event.target.value))}
+                onPointerUp={() => void saveSoundPreferences({ soundKey, volume })}
+                onKeyUp={() => void saveSoundPreferences({ soundKey, volume })}
+                onBlur={() => void saveSoundPreferences({ soundKey, volume })}
+              />
+              <span className={styles.volumeValue} aria-hidden="true">{volume}%</span>
+            </div>
+          </div>
+          <div className={styles.soundField}>
+            <button
+              type="button"
+              className="btn"
+              disabled={soundControlsDisabled}
+              onClick={() => playNotificationSound(soundKey, volume)}
+            >
+              Testar som
+            </button>
+          </div>
+        </div>
+      </section>
       {typeof Notification !== "undefined" && Notification.permission !== "granted" ? (
         <button type="button" className="btn justify-self-start" onClick={() => void requestDesktopPermission()}>Permitir notificações do navegador</button>
       ) : null}

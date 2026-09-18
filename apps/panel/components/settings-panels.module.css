@@ -33,6 +33,11 @@
 .choice { display: flex; align-items: flex-start; gap: var(--space-3); min-height: var(--control-height-touch); padding: var(--space-3); border-bottom: 1px solid var(--border-subtle); }
 .choice input { flex: 0 0 auto; margin-top: var(--space-1); }
 .dialogSection { display: grid; gap: var(--space-3); padding-block: var(--space-4); border-top: 1px solid var(--border); }
+.soundGrid { display: grid; align-items: end; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); max-width: 48rem; }
+.soundField { display: grid; align-content: start; gap: var(--space-2); min-width: 0; }
+.volumeRow { display: flex; align-items: center; gap: var(--space-3); }
+.volumeSlider { width: 100%; min-height: var(--control-height); accent-color: var(--primary); }
+.volumeValue { min-width: 3ch; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--text-meta); text-align: end; }
 @media (max-width: 48rem) {
   .tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: var(--space-1); }
   .tab { flex: 0 0 auto; min-height: var(--control-height-touch); }

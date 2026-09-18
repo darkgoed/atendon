@@ -205,6 +205,24 @@ export function createAudioContext(): AudioContext | null {
 }
 
 /**
+ * `localStorage` com feature detection: acesso "nu" derruba navegadores antigos
+ * em modo privado (Safari < 11 lança ao tocar em `localStorage`) e páginas
+ * com storage bloqueado (cookies desativados). Retorna `null` quando o
+ * storage não está disponível; o chamador degrada com elegância.
+ */
+export function safeLocalStorage(): Storage | null {
+  try {
+    if (typeof localStorage === "undefined" || localStorage === null) return null;
+    const probe = "__atendon-storage-probe__";
+    localStorage.setItem(probe, probe);
+    localStorage.removeItem(probe);
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * `decodeAudioData` na forma com callbacks: Safari < 14.1 não cumpre a
  * forma de Promise (resolvia `undefined` e a waveform ficava vazia). Em
  * navegadores modernos a Promise retornada e os callbacks coexistem — o

@@ -255,7 +255,7 @@ export class MeetingConfirmationRepository {
                 conversation.id conversation_id, conversation.session_id, conversation.contact_jid,
                 tenant.timezone
          FROM scheduling_appointments a
-         JOIN scheduling_leads lead ON lead.id = a.lead_id AND lead.tenant_id = a.tenant_id
+         JOIN scheduling_leads lead ON lead.id = a.lead_id AND lead.tenant_id = a.tenant_id AND lead.deleted_at IS NULL
          JOIN tenants tenant ON tenant.id = a.tenant_id
          JOIN conversations conversation
            ON conversation.lead_id = a.lead_id AND conversation.tenant_id = a.tenant_id
@@ -325,7 +325,7 @@ export class MeetingConfirmationRepository {
          JOIN scheduling_appointments appointment
            ON appointment.id = outbox.appointment_id AND appointment.tenant_id = outbox.tenant_id
          JOIN scheduling_leads lead
-           ON lead.id = appointment.lead_id AND lead.tenant_id = appointment.tenant_id
+           ON lead.id = appointment.lead_id AND lead.tenant_id = appointment.tenant_id AND lead.deleted_at IS NULL
          JOIN tenants tenant ON tenant.id = outbox.tenant_id
          WHERE outbox.id = $1
          FOR UPDATE OF outbox SKIP LOCKED`,

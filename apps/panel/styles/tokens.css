@@ -448,3 +448,89 @@
   --post-sales-billing-table-min: 1100px;
   --post-sales-customer-max: 11rem;
 }
+
+/* ==========================================================================
+   4. Preferências individuais (R16) — ADITIVO
+   Ativadas por data-density / data-accent no <html>, persistidas em
+   GET/PATCH /me/appearance-preferences + localStorage (boot script do layout).
+   data-accent redeclara a FAMÍLIA --primary (o acento real do sistema — os
+   aliases --accent* da camada 3 apontam para ela e seguem a troca). Valores
+   emprestados da paleta categórica, AA-verificados nos dois temas.
+   ========================================================================= */
+:root[data-density="compact"] {
+  --control-height-sm: 24px;
+  --control-height: 28px;
+  --control-height-md: 30px;
+  --control-height-lg: 32px;
+  --row-height: 32px;
+  --row-height-lg: 38px;
+  --pad-panel: var(--space-3);
+  --pad-panel-lg: var(--space-4);
+  --gutter: clamp(12px, 1.4vw, 20px);
+}
+
+:root[data-accent="green"] {
+  --primary: #16875B;
+  --primary-hover: #11714B;
+  --primary-active: #0D5C3D;
+  --primary-subtle: #EAF7F0;
+  --primary-subtle-hover: #DBF0E4;
+  --primary-border: #BFE3D0;
+  --primary-foreground: #FFFFFF;
+  --primary-text: #147C54;
+}
+
+:root[data-accent="violet"] {
+  --primary: #7C4DCB;
+  --primary-hover: #6C3FB8;
+  --primary-active: #5D339F;
+  --primary-subtle: #F3EDFC;
+  --primary-subtle-hover: #E9DDFA;
+  --primary-border: #DCCBF3;
+  --primary-foreground: #FFFFFF;
+  --primary-text: #6C3FB8;
+}
+
+:root[data-accent="cyan"] {
+  --primary: #0E7490;
+  --primary-hover: #0C6379;
+  --primary-active: #0A5265;
+  --primary-subtle: #E6F5F8;
+  --primary-subtle-hover: #D6EEF3;
+  --primary-border: #BCDEE6;
+  --primary-foreground: #FFFFFF;
+  --primary-text: #0C6579;
+}
+
+:root[data-theme="dark"][data-accent="green"] {
+  --primary: #42C98B;
+  --primary-hover: #57D49C;
+  --primary-active: #35B87C;
+  --primary-subtle: #132C23;
+  --primary-subtle-hover: #1A3A2C;
+  --primary-border: #1F4A36;
+  --primary-foreground: #08111F;
+  --primary-text: #42C98B;
+}
+
+:root[data-theme="dark"][data-accent="violet"] {
+  --primary: #B292F0;
+  --primary-hover: #C3A8F4;
+  --primary-active: #A284E6;
+  --primary-subtle: #221A33;
+  --primary-subtle-hover: #2B2140;
+  --primary-border: #3D2F5A;
+  --primary-foreground: #221A33;
+  --primary-text: #B292F0;
+}
+
+:root[data-theme="dark"][data-accent="cyan"] {
+  --primary: #4EC3D4;
+  --primary-hover: #6ED2E0;
+  --primary-active: #3BAFBE;
+  --primary-subtle: #10272C;
+  --primary-subtle-hover: #16343A;
+  --primary-border: #1E454D;
+  --primary-foreground: #08111F;
+  --primary-text: #4EC3D4;
+}

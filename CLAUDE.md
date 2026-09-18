@@ -106,10 +106,18 @@ This project lives inside the shared `/var/www` Git worktree. For every AtendON
 commit or deployment, stage and commit only `apps/atendon/**` from the Git root
 (`/var/www`). Never use a root-wide `git add -A` or include sibling projects.
 
-Production deploys through Coolify application `luaj67tqgrdsjlvdjrt9x3ot` from
-`git@github.com:darkgoed/apps.git`, branch `main`, base directory `/atendon`,
-using `/docker-compose.yml`. The local mapping is
-`/var/www/apps/atendon` -> remote `/atendon`. A missing local Git remote or SSH
+Production deploys through Coolify application `luaj67tqgrdsjlvdjrt9x3ot`
+(https://coolify.alpdash.com.br) from `git@github.com:darkgoed/atendon.git`,
+branch `main`, base directory `/` (repo root), using `/docker-compose.yml`.
+The GitHub repo contains ONLY AtendON with files at the repository root (the
+`darkgoed/apps` monorepo no longer exists; `crm-whatsapp`/`endopmmfc` are
+local-only). The local mapping is `/var/www/apps/atendon` -> remote repo root:
+local commits keep the `apps/atendon/**` prefix, but release commits landed on
+`main` must be created with root-relative paths (commit-tree graft — see the
+`atendon-release` skill). Commit identity in `/var/www` is `user.name Codex` +
+`user.email 90406944+darkgoed@users.noreply.github.com` (never `codex@local`).
+Pre-rewrite monorepo history exists only on local branch
+`backup-main-pre-rewrite` — never delete it. A missing local Git remote or SSH
 credential is an authentication/setup problem, not an ambiguous deployment
 scope; do not ask the user to choose the scope again.
 
@@ -120,3 +128,17 @@ npm run build && npm test
 ## CLI Quick Reference
 
 Use the project's normal `npm` scripts and local tooling only.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `darkgoed/atendon` via the `gh` CLI (this worktree's `origin`; AtendON-only repo). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the app root (`apps/atendon`). See `docs/agents/domain.md`.

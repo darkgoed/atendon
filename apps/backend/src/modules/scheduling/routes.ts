@@ -70,7 +70,7 @@ async function panelCaseScope(request: FastifyRequest, permission: PermissionKey
 async function canAccessLead(session: WorkspaceSession, scope: CaseScope, leadId: string): Promise<boolean> {
   const result = await db.query(
     `SELECT 1 FROM scheduling_leads lead
-     WHERE lead.tenant_id=$1 AND lead.id=$2
+     WHERE lead.tenant_id=$1 AND lead.id=$2 AND lead.deleted_at IS NULL
        AND (${leadScopeCondition(scope, "lead", "$3")})`,
     [session.tenantId, leadId, scope.memberId]
   );
@@ -79,7 +79,7 @@ async function canAccessLead(session: WorkspaceSession, scope: CaseScope, leadId
 
 async function canReadLead(session: WorkspaceSession, scope: CaseScope, leadId: string): Promise<boolean> {
   const result = await db.query(
-    `SELECT 1 FROM scheduling_leads lead WHERE lead.tenant_id=$1 AND lead.id=$2
+    `SELECT 1 FROM scheduling_leads lead WHERE lead.tenant_id=$1 AND lead.id=$2 AND lead.deleted_at IS NULL
        AND (${leadReadScopeCondition(scope,"lead","$3")})`,
     [session.tenantId,leadId,scope.memberId]
   );
@@ -272,6 +272,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
     const params: unknown[] = [tenantId, scope.memberId];
     const conditions = [
       "l.tenant_id=$1",
+      "l.deleted_at IS NULL",
       `(${leadReadScopeCondition(scope, "l", "$2")})`
     ];
     for (const [field, value, column] of [
@@ -452,10 +453,12 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
       throw httpError(403, "Membro ativo obrigatório para criar um lead");
     }
     const body = leadBody.parse(request.body);
+    // Lead na lixeira não é duplicata para o painel: o upsert por telefone
+    // reativa o contato removido (mesmo telefone tem UNIQUE por tenant).
     const existing = await db.query<{ id: string }>(
       `SELECT id
        FROM scheduling_leads
-       WHERE tenant_id=$1
+       WHERE tenant_id=$1 AND deleted_at IS NULL
          AND regexp_replace(phone,'\\D','','g')=regexp_replace($2,'\\D','','g')
        ORDER BY created_at,id
        LIMIT 1`,
@@ -533,7 +536,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
          ORDER BY conversation.last_message_at DESC NULLS LAST, conversation.id DESC
          LIMIT 1
        ) contact_conversation ON true
-       WHERE l.id=$1 AND l.tenant_id=$2
+       WHERE l.id=$1 AND l.tenant_id=$2 AND l.deleted_at IS NULL
          AND (${leadReadScopeCondition(scope, "l", "$3")})`, [id, tenantId, scope.memberId]
     );
     if (!lead.rows[0]) return reply.status(404).send({ error: "Lead não encontrado" });
@@ -652,7 +655,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
               pool.calendar_color assigned_calendar_color,
               conv.id conversation_id
        FROM scheduling_appointments a
-       JOIN scheduling_leads l ON l.id=a.lead_id AND l.tenant_id=a.tenant_id
+       JOIN scheduling_leads l ON l.id=a.lead_id AND l.tenant_id=a.tenant_id AND l.deleted_at IS NULL
        JOIN scheduling_units u ON u.id=a.unit_id AND u.tenant_id=a.tenant_id
        LEFT JOIN workspace_members assigned_member
          ON assigned_member.id=a.assigned_member_id AND assigned_member.workspace_id=a.tenant_id
@@ -685,7 +688,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
     const normalizedSearch = query.busca?.replace(/\D/g,"") ?? "";
     const result = await db.query(
       `SELECT l.* FROM scheduling_leads l
-       WHERE l.tenant_id=$1 AND l.status NOT IN ('fechado','perdido')
+       WHERE l.tenant_id=$1 AND l.status NOT IN ('fechado','perdido') AND l.deleted_at IS NULL
          AND (${leadScopeCondition(scope, "l", "$2")})
          AND ($3::text IS NULL OR l.name ILIKE '%' || $3 || '%'
            OR l.phone ILIKE '%' || $3 || '%'
@@ -732,7 +735,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
        LEFT JOIN LATERAL (
          SELECT l.id,l.name,l.phone,l.status,l.unit_id
          FROM scheduling_leads l
-         WHERE l.tenant_id=c.tenant_id
+         WHERE l.tenant_id=c.tenant_id AND l.deleted_at IS NULL
            AND regexp_replace(l.phone,'\\D','','g')=regexp_replace(c.contact_phone,'\\D','','g')
          ORDER BY l.updated_at DESC,l.id
          LIMIT 1

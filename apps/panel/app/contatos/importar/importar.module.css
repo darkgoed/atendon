@@ -1,0 +1,136 @@
+/* Central de importação (R14) — módulo próprio, cascata sem @layer.
+   Somente tokens; layout local do wizard enxuto. */
+
+.flowCard {
+  margin-bottom: var(--space-4);
+}
+
+.mapTable,
+.previewTable {
+  margin-top: var(--space-3);
+  max-height: 22rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.previewTable {
+  max-height: 14rem;
+  background: var(--surface-sunken);
+}
+
+.mapTable table,
+.previewTable table {
+  font-size: var(--text-label);
+}
+
+.policy {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) 0 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.policyOptions {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.policyOption {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-label);
+}
+
+.policyOption input {
+  margin-top: 3px;
+}
+
+.policyOption small {
+  display: block;
+  color: var(--text-secondary);
+}
+
+.resultSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.resultLines {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.resultLineList {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+.resultLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-label);
+}
+
+.resultLine:last-child {
+  border-bottom: 0;
+}
+
+.resultLineMessage {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.historyList {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.historyItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-label);
+}
+
+.historyItem:last-child {
+  border-bottom: 0;
+}
+
+.historyIcon {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.historyCounts {
+  margin-left: auto;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+@media (max-width: 640px) {
+  .historyItem {
+    flex-wrap: wrap;
+  }
+
+  .historyCounts {
+    margin-left: 0;
+    text-align: left;
+  }
+}

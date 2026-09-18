@@ -8,6 +8,8 @@ import { api } from "@/lib/api";
 import { audioDisplayName } from "@/lib/audio-waveform";
 import { confirmedFailedSend, definitiveProviderRejection } from "@/lib/conversation-send";
 import { randomUUID, shouldSubmitOnEnter, submitForm } from "@/lib/compat";
+import { ConversationQuickReplies, type ConversationQuickRepliesHandle } from "@/components/conversation-quick-replies";
+import styles from "@/components/conversation-quick-replies.module.css";
 
 type MediaType = "audio" | "image" | "video" | "document";
 type Attachment = { file: globalThis.File; mediaType: MediaType };
@@ -69,6 +71,7 @@ function fileBase64(file: globalThis.File): Promise<string> {
 export function ConversationComposer({
   conversationId,
   channel = "whatsapp",
+  contactName,
   replyTo,
   onCancelReply,
   onSent,
@@ -78,6 +81,7 @@ export function ConversationComposer({
 }: {
   conversationId: string;
   channel?: "whatsapp" | "instagram";
+  contactName?: string | null;
   replyTo?: ReplyTarget | null;
   onCancelReply?: () => void;
   onSent: () => Promise<void> | void;
@@ -93,6 +97,8 @@ export function ConversationComposer({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const formRef = useRef<HTMLFormElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const quickRepliesRef = useRef<ConversationQuickRepliesHandle>(null);
   const compositionActiveRef = useRef(false);
   const compositionJustEndedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -280,6 +286,10 @@ export function ConversationComposer({
   }
 
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // O popup de respostas rápidas intercepta Enter/Tab/setas ANTES do
+    // submit-guard: Enter seleciona e insere, nunca envia (preventDefault +
+    // stopPropagation dentro do popup — inclusive contra o guard do IME).
+    if (quickRepliesRef.current?.handleKeyDown(event)) return;
     const compositionJustEnded = compositionJustEndedRef.current;
     compositionJustEndedRef.current = false;
     if (!shouldSubmitOnEnter({
@@ -353,7 +363,18 @@ export function ConversationComposer({
         />
       ) : null}
 
-      <div className="conversation-composer__controls grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-end gap-2">
+      <div className={styles.anchor}>
+        {canSendText ? (
+          <ConversationQuickReplies
+            conversationId={conversationId}
+            contactName={contactName}
+            draft={draft}
+            onReplaceDraft={setDraft}
+            textareaRef={textareaRef}
+            controlRef={quickRepliesRef}
+          />
+        ) : null}
+        <div className="conversation-composer__controls grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-end gap-2">
         <Input
           ref={fileInputRef}
           className="sr-only"
@@ -376,6 +397,7 @@ export function ConversationComposer({
         <label>
           <span className="sr-only">Mensagem</span>
           <Textarea
+            ref={textareaRef}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={handleComposerKeyDown}
@@ -397,6 +419,7 @@ export function ConversationComposer({
           {sending ? <span className="h-4 w-4 animate-pulse rounded-full border border-current" aria-hidden="true" /> : <PaperPlaneRight size={16} aria-hidden="true" />}
           <span>{sending ? "Enviando…" : "Enviar"}</span>
         </Button>
+        </div>
       </div>
       {availabilityMessage ? <p className="mt-2 text-xs text-[var(--warning-text)]" role="status">{availabilityMessage}</p> : null}
       <div className="conversation-composer__footer">

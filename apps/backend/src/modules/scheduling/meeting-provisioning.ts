@@ -342,7 +342,7 @@ export class MeetingProvisioningRepository {
          JOIN scheduling_appointments appointment
            ON appointment.id=outbox.appointment_id AND appointment.tenant_id=outbox.tenant_id
          JOIN scheduling_leads lead
-           ON lead.id=appointment.lead_id AND lead.tenant_id=appointment.tenant_id
+           ON lead.id=appointment.lead_id AND lead.tenant_id=appointment.tenant_id AND lead.deleted_at IS NULL
          JOIN scheduling_units unit
            ON unit.id=appointment.unit_id AND unit.tenant_id=appointment.tenant_id
          JOIN tenants tenant ON tenant.id=appointment.tenant_id

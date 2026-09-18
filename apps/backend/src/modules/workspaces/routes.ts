@@ -6,6 +6,8 @@ import type { PermissionKey } from "../../auth/rbac.js";
 import { createSessionToken, requirePermission, requireRootWorkspace, requireSession, type WorkspaceSession } from "../../auth/session.js";
 import { db } from "../../db/client.js";
 import { config } from "../../config.js";
+import { withTenantTransaction } from "../../db/tenant-transaction.js";
+import { dataUrlByteLength, recalculateStorageUsage, reserveStorageBytes } from "../organization/storage.js";
 import { getEmailProvider } from "../../mail/index.js";
 import { buildInvitationAcceptUrl, createInvitationToken, sendWorkspaceInvitationEmail, shouldExposeInvitationToken } from "../../mail/invitations.js";
 import { HTTP_RATE_LIMITS } from "../../security/http-rate-limit.js";
@@ -206,11 +208,26 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
   app.patch("/workspaces/current/logo", async (request) => {
     const session = await requirePermission(request, "workspace.update");
     const body = logoBody.parse(request.body);
-    const result = await db.query<{ id: string; name: string; logo_data: string | null }>(
-      `UPDATE tenants SET logo_data=$2,updated_at=now()
-       WHERE id=$1 RETURNING id,name,logo_data`,
-      [session.tenantId, body.logo_data]
-    );
+    // R4: a logo é byte armazenado da empresa — quota verificada ANTES de
+    // gravar (delta pode ser negativo na substituição) e contador ajustado
+    // na MESMA transação.
+    const result = await withTenantTransaction(db, session.tenantId, async (client) => {
+      const current = await client.query<{ logo_data: string | null }>(
+        "SELECT logo_data FROM tenants WHERE id=$1",
+        [session.tenantId]
+      );
+      if (!current.rows[0]) throw httpError(404, "Workspace não encontrado");
+      await reserveStorageBytes(
+        client,
+        session.tenantId,
+        dataUrlByteLength(body.logo_data) - dataUrlByteLength(current.rows[0].logo_data ?? "")
+      );
+      return client.query<{ id: string; name: string; logo_data: string | null }>(
+        `UPDATE tenants SET logo_data=$2,updated_at=now()
+         WHERE id=$1 RETURNING id,name,logo_data`,
+        [session.tenantId, body.logo_data]
+      );
+    });
     if (!result.rows[0]) throw httpError(404, "Workspace não encontrado");
     await audit(request, {
       action: "workspace.logo.update",
@@ -223,11 +240,16 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
 
   app.delete("/workspaces/current/logo", async (request) => {
     const session = await requirePermission(request, "workspace.update");
-    const result = await db.query<{ id: string; name: string; logo_data: string | null }>(
-      `UPDATE tenants SET logo_data=NULL,updated_at=now()
-       WHERE id=$1 RETURNING id,name,logo_data`,
-      [session.tenantId]
-    );
+    const result = await withTenantTransaction(db, session.tenantId, async (client) => {
+      const updated = await client.query<{ id: string; name: string; logo_data: string | null }>(
+        `UPDATE tenants SET logo_data=NULL,updated_at=now()
+         WHERE id=$1 RETURNING id,name,logo_data`,
+        [session.tenantId]
+      );
+      if (!updated.rows[0]) throw httpError(404, "Workspace não encontrado");
+      await recalculateStorageUsage(session.tenantId, client);
+      return updated;
+    });
     if (!result.rows[0]) throw httpError(404, "Workspace não encontrado");
     await audit(request, {
       action: "workspace.logo.delete",

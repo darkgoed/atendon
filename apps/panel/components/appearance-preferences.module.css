@@ -1,0 +1,63 @@
+/* Preferências de aparência (R16 — Perfil). Classes próprias; nada de
+   utilities Tailwind (cascade unlayered vence de qualquer forma). */
+
+.group {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.optionGroup {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.optionLabel {
+  color: var(--text-secondary);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: var(--text-control);
+  transition: var(--transition-control);
+}
+
+.option:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.optionActive {
+  border-color: var(--primary-border);
+  background: var(--primary-subtle);
+  color: var(--primary-text);
+  font-weight: var(--weight-semibold);
+}
+
+.optionActive:hover {
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+
+.swatch {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 1px solid rgb(0 0 0 / 0.18);
+  border-radius: var(--radius-pill);
+}

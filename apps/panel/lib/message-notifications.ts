@@ -28,6 +28,10 @@ export type PanelNotificationPreferences = {
   enabled: boolean;
   sound_enabled: boolean;
   visual_enabled: boolean;
+  /** Som selecionado (contrato PATCH /me/notification-preferences; null = padrão). */
+  sound_key?: string | null;
+  /** Volume salvo em 0-100 (int|null). Runtime converte para ganho 0-1. */
+  volume?: number | null;
 };
 
 export type PanelNotificationPreferencesResponse = {

@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { PoolClient } from "pg";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { createSessionToken, requireRoot } from "../../auth/session.js";
@@ -16,14 +17,32 @@ import { httpError } from "../scheduling/service.js";
 import { HTTP_RATE_LIMITS } from "../../security/http-rate-limit.js";
 
 const uuid = z.string().uuid();
+// Preset de empresa (R26): copia a estrutura "de fábrica" de um workspace-modelo
+// — pipeline, etiquetas, campos personalizados, fluxos de qualificação e
+// preferências. Whitelist explícita: NUNCA copia contatos, conversas,
+// whatsapp_sessions/credenciais/tokens, dados binários, notas, tarefas,
+// lixeira, notificações ou auditoria.
+const workspacePresetBody = z.object({
+  pipeline: z.boolean().optional(),
+  tags: z.boolean().optional(),
+  custom_fields: z.boolean().optional(),
+  flows: z.union([
+    z.array(z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(120)).max(50),
+    z.literal("all_active")
+  ]).optional(),
+  preferences: z.boolean().optional()
+}).strict();
 const workspaceBody = z.object({
   name: z.string().trim().min(2).max(200),
   slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(120).optional(),
   ownerEmail: z.string().email(),
   capabilityTemplateTenantId: z.string().uuid().optional(),
+  preset_source_tenant_id: uuid.optional(),
+  preset: workspacePresetBody.optional(),
   planId: z.string().uuid().optional(),
   planCode: z.string().trim().min(1).max(80).optional()
-}).refine((value) => !(value.planId && value.planCode), "Informe planId ou planCode, não ambos");
+}).refine((value) => !(value.planId && value.planCode), "Informe planId ou planCode, não ambos")
+  .refine((value) => !value.preset || value.preset_source_tenant_id, "preset exige preset_source_tenant_id");
 const workspaceUpdateBody = z.object({
   name: z.string().trim().min(2).max(200).optional(),
   status: z.enum(["trial", "active", "suspended"]).optional(),
@@ -43,6 +62,137 @@ function slugify(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 90) || `workspace-${randomBytes(4).toString("hex")}`;
+}
+
+type WorkspacePresetOptions = {
+  pipeline?: boolean;
+  tags?: boolean;
+  custom_fields?: boolean;
+  flows?: string[] | "all_active";
+  preferences?: boolean;
+};
+
+type WorkspacePresetCounts = {
+  pipeline_stages: number;
+  tags: number;
+  custom_fields: number;
+  flows: number;
+};
+
+// Copia a whitelist do preset DENTRO da transação de criação do workspace.
+// CUIDADO: pipeline_stages/lead_tags/custom_field_defs têm PK GLOBAL de id
+// (única é a restrição composta (id,tenant_id), que existe para as FKs
+// compostas) — a cópia usa IDs NOVOS e remapeia as pipeline_transitions de
+// origem → destino 1:1. Fluxos preservam o id porque a PK é composta
+// (tenant_id,id) e o id do fluxo é semântico. As etapas SEMEADAS pelo trigger
+// (0098/0112) são removidas antes da cópia — o tenant novo não tem leads, e as
+// transições semeadas cascateiam com a exclusão das etapas.
+async function copyWorkspacePreset(
+  client: PoolClient,
+  targetTenantId: string,
+  sourceTenantId: string,
+  options: WorkspacePresetOptions
+): Promise<WorkspacePresetCounts> {
+  const source = await client.query("SELECT id FROM tenants WHERE id=$1 FOR SHARE", [sourceTenantId]);
+  if (!source.rows[0]) throw httpError(404, "Workspace-modelo do preset não encontrado");
+  const copied: WorkspacePresetCounts = { pipeline_stages: 0, tags: 0, custom_fields: 0, flows: 0 };
+
+  if (options.pipeline) {
+    await client.query("DELETE FROM pipeline_stages WHERE tenant_id=$1", [targetTenantId]);
+    // Mapa de origem → destino (ids novos, globalmente únicos) numa temp table
+    // da transação: as transições precisam apontar para as etapas copiadas.
+    await client.query("CREATE TEMP TABLE preset_stage_map(old_id uuid PRIMARY KEY,new_id uuid NOT NULL) ON COMMIT DROP");
+    await client.query(
+      "INSERT INTO preset_stage_map SELECT id,gen_random_uuid() FROM pipeline_stages WHERE tenant_id=$1",
+      [sourceTenantId]
+    );
+    const stages = await client.query(
+      `INSERT INTO pipeline_stages(
+         id,tenant_id,name,color,position,capacity_target,technical_status,is_default,archived_at
+       )
+       SELECT preset_stage_map.new_id,$1,source_stage.name,source_stage.color,source_stage.position,source_stage.capacity_target,
+              source_stage.technical_status,source_stage.is_default,source_stage.archived_at
+       FROM pipeline_stages source_stage
+       JOIN preset_stage_map ON preset_stage_map.old_id=source_stage.id
+       WHERE source_stage.tenant_id=$2`,
+      [targetTenantId, sourceTenantId]
+    );
+    copied.pipeline_stages = stages.rowCount ?? 0;
+    // Transições copiam depois das etapas, já remapeadas para os ids novos.
+    await client.query(
+      `INSERT INTO pipeline_transitions(tenant_id,from_stage_id,to_stage_id)
+       SELECT $1,from_map.new_id,to_map.new_id
+       FROM pipeline_transitions
+       JOIN preset_stage_map from_map ON from_map.old_id=pipeline_transitions.from_stage_id
+       JOIN preset_stage_map to_map ON to_map.old_id=pipeline_transitions.to_stage_id
+       ON CONFLICT DO NOTHING`,
+      [targetTenantId]
+    );
+  }
+
+  if (options.tags) {
+    const tags = await client.query(
+      `INSERT INTO lead_tags(tenant_id,name,color,archived_at)
+       SELECT $1,name,color,archived_at
+       FROM lead_tags WHERE tenant_id=$2`,
+      [targetTenantId, sourceTenantId]
+    );
+    copied.tags = tags.rowCount ?? 0;
+  }
+
+  if (options.custom_fields) {
+    const fields = await client.query(
+      `INSERT INTO custom_field_defs(tenant_id,entity,key,label,type,options,required)
+       SELECT $1,entity,key,label,type,options,required
+       FROM custom_field_defs WHERE tenant_id=$2`,
+      [targetTenantId, sourceTenantId]
+    );
+    copied.custom_fields = fields.rowCount ?? 0;
+  }
+
+  if (options.flows) {
+    const requestedIds = Array.isArray(options.flows) ? options.flows : null;
+    if (requestedIds) {
+      const found = await client.query<{ count: number }>(
+        "SELECT count(*)::int count FROM qualification_flows WHERE tenant_id=$1 AND id=ANY($2::text[])",
+        [sourceTenantId, requestedIds]
+      );
+      if ((found.rows[0]?.count ?? 0) !== requestedIds.length) {
+        throw httpError(400, "Fluxo de qualificação inexistente no workspace-modelo");
+      }
+    }
+    // A constraint uq_qualification_flows_one_active_per_tenant permite um único
+    // fluxo ativo: entre os ativos copiados, só o atualizado por último nasce
+    // ativo; os demais são copiados inativos (mesma regra do serviço de fluxos).
+    const flows = await client.query(
+      `INSERT INTO qualification_flows(tenant_id,id,name,active,definition)
+       SELECT $1,source_flow.id,source_flow.name,
+              source_flow.active AND row_number() OVER (
+                ORDER BY source_flow.active DESC,source_flow.updated_at DESC,source_flow.id
+              ) = 1,
+              source_flow.definition
+       FROM qualification_flows source_flow
+       WHERE source_flow.tenant_id=$2 ${requestedIds ? "AND source_flow.id=ANY($3::text[])" : "AND source_flow.active"}
+       ON CONFLICT DO NOTHING`,
+      requestedIds ? [targetTenantId, sourceTenantId, requestedIds] : [targetTenantId, sourceTenantId]
+    );
+    copied.flows = flows.rowCount ?? 0;
+  }
+
+  if (options.preferences) {
+    await client.query(
+      `UPDATE tenants target
+       SET timezone=source_tenant.timezone,
+           business_hours_start=source_tenant.business_hours_start,
+           business_hours_end=source_tenant.business_hours_end,
+           updated_at=now()
+       FROM tenants source_tenant
+       WHERE source_tenant.id=$2 AND target.id=$1`,
+      [targetTenantId, sourceTenantId]
+    );
+  }
+
+  return copied;
 }
 
 async function audit(request: FastifyRequest, input: { action: string; workspaceId?: string | null; resourceType: string; resourceId?: string | null; metadata?: Record<string, unknown> }) {
@@ -126,6 +276,11 @@ export async function registerRootRoutes(app: FastifyInstance) {
          RETURNING id,slug`,
         [body.name, `${baseSlug}-${randomBytes(3).toString("hex")}`, root.userId]
       );
+      // Preset de empresa (R26): copia a whitelist dentro da mesma transação —
+      // se qualquer etapa falhar, o workspace inteiro (e a cópia) é desfeito.
+      const presetCopied = body.preset_source_tenant_id
+        ? await copyWorkspacePreset(client, workspace.rows[0].id, body.preset_source_tenant_id, body.preset ?? {})
+        : null;
       await client.query(
         `INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,current_period_start,current_period_end,trial_ends_at)
          VALUES($1,$2,CASE WHEN $3 > 0 THEN 'TRIALING' ELSE 'ACTIVE' END,now(),now() + make_interval(months => $4),CASE WHEN $3 > 0 THEN now() + make_interval(days => $3) ELSE NULL END)
@@ -192,11 +347,16 @@ export async function registerRootRoutes(app: FastifyInstance) {
         );
       }
       const operationGroup = randomUUID();
+      // Linha extra de auditoria só quando houve preset: mesmo operation_group
+      // do POST, com { source_tenant_id, copied } para reconstituir a cópia.
+      const presetAuditRow = presetCopied
+        ? ",($1,$2,'root','root.tenant.preset','workspace',$3,$12,$7,$8,$9)"
+        : "";
       await client.query(
         `INSERT INTO audit_logs(actor_user_id,workspace_id,actor_scope,action,resource_type,resource_id,metadata,ip_address,user_agent,operation_group)
          VALUES($1,$2,'root','root.workspaces.create','workspace',$3,$4,$7,$8,$9),
                ($1,$2,'root','root.owner.invite','workspace_invitation',$5,$6,$7,$8,$9),
-               ($1,$2,'root','capability.template.copy','capability_template',$10,$11,$7,$8,$9)`,
+               ($1,$2,'root','capability.template.copy','capability_template',$10,$11,$7,$8,$9)${presetAuditRow}`,
         [
           root.userId,
           workspace.rows[0].id,
@@ -210,7 +370,10 @@ export async function registerRootRoutes(app: FastifyInstance) {
           body.capabilityTemplateTenantId,
           { source_tenant_id: body.capabilityTemplateTenantId,
             capabilities: copiedCapabilities.map((capability) => ({ key: capability.key, enabled: capability.enabled }))
-          }
+          },
+          ...(presetCopied
+            ? [{ source_tenant_id: body.preset_source_tenant_id, copied: presetCopied }]
+            : [])
         ]
       );
       await client.query("COMMIT");
@@ -232,6 +395,7 @@ export async function registerRootRoutes(app: FastifyInstance) {
       return reply.status(201).send({
         workspace: { id: workspace.rows[0].id, slug: workspace.rows[0].slug, sessionId: session.rows[0].id },
         capabilities: copiedCapabilities.map((capability) => ({ key: capability.key, enabled: capability.enabled })),
+        ...(presetCopied ? { preset: presetCopied } : {}),
         ownerInvitation: { id: invitation.rows[0].id, email: body.ownerEmail.toLocaleLowerCase("en-US"), expiresAt: invitation.rows[0].expires_at },
         token: shouldExposeInvitationToken(config, emailProvider) ? token : undefined,
         emailDelivery

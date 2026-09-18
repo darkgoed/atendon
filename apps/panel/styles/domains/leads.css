@@ -76,9 +76,11 @@
 .leads-page__actions {
   display: flex;
   min-width: 0;
-  flex: none;
+  flex: 0 1 auto;
+  max-width: 100%;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 

@@ -78,7 +78,7 @@ async function loadLeadMetric(
                 ELSE 'other'
               END source_group
        FROM scheduling_leads lead
-       WHERE lead.tenant_id=$1 AND ($4::boolean OR lead.assigned_member_id=$5)
+       WHERE lead.tenant_id=$1 AND lead.deleted_at IS NULL AND ($4::boolean OR lead.assigned_member_id=$5)
      )
      SELECT
        count(*) FILTER (WHERE created_at >= $2::timestamptz AND created_at < $3::timestamptz)::int new_leads,
@@ -146,7 +146,7 @@ async function loadSalesMetric(
                 ELSE 'other'
               END source_group
        FROM scheduling_leads lead
-       WHERE lead.tenant_id=$1
+       WHERE lead.tenant_id=$1 AND lead.deleted_at IS NULL
          AND lead.commercial_updated_at >= $2::timestamptz
          AND lead.commercial_updated_at < $3::timestamptz
          AND ($4::boolean OR lead.assigned_member_id=$6)

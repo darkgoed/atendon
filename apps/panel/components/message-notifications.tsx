@@ -19,19 +19,10 @@ import {
   type PanelNotificationPreferencesResponse,
   type NotificationThreadResponse
 } from "@/lib/message-notifications";
+import { playNotificationSound } from "@/lib/notification-sounds";
 import { useRealtimeSignals, type RealtimeSignal } from "@/lib/realtime";
 
 const fetcher = <T,>(url: string) => api<T>(url);
-
-function playMessageSound() {
-  try {
-    const audio = new Audio("/sounds/notification.mp3");
-    audio.volume = 0.5;
-    void audio.play().catch(() => undefined);
-  } catch {
-    // Browsers may block sound until the first user interaction.
-  }
-}
 
 function MessageRealtimeSync({
   onSignal
@@ -124,7 +115,7 @@ export function MessageNotifications({
         if (oldest) seenMessageIdsRef.current.delete(oldest);
       }
 
-      if (preferences.sound_enabled) playMessageSound();
+      if (preferences.sound_enabled) playNotificationSound(preferences.sound_key, preferences.volume);
       if (preferences.visual_enabled) {
         setLeaving(false);
         setNotification(nextNotification);

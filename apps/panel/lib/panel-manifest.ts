@@ -7,11 +7,15 @@ import {
   GearSix,
   HandHeart,
   Kanban,
+  ListChecks,
+  SlidersHorizontal,
   Sparkle,
+  Trash,
   UsersThree,
   Vault,
   Watch,
-  CreditCard
+  CreditCard,
+  FlowArrow
 } from "@phosphor-icons/react";
 import type { PanelSession } from "./session";
 import { canAccessRootWorkspace, canAccessWithSession } from "./session";
@@ -64,11 +68,18 @@ export const panelManifest: readonly PanelManifestItem[] = [
   { href: "/", label: "Visão geral", group: "Atendimento", Icon: Gauge, requiredPermissions: ["dashboard.read"], capability: "dashboard_v1", menu: true, match: (path) => path === "/" },
   { href: "/conversas", label: "Conversas", group: "Atendimento", Icon: ChatsCircle, requiredPermissions: ["conversations.read"], menu: true, match: startsAt("/conversas") },
   { href: "/pipeline", label: "Pipeline", group: "Atendimento", Icon: Kanban, requiredPermissions: ["leads.read"], capability: "pipeline_v1", menu: true, match: startsAt("/pipeline") },
+  // Campos personalizados e lixeira são sub-rotas de /contatos com permissões
+  // próprias: entram ANTES de /contatos para que o match (primeiro hit) não as
+  // absorva na capability leads_v1.
+  { href: "/contatos/campos", label: "Campos personalizados", group: "Atendimento", Icon: SlidersHorizontal, requiredPermissions: ["fields.manage"], menu: true, match: startsAt("/contatos/campos") },
+  { href: "/contatos/lixeira", label: "Lixeira", group: "Atendimento", Icon: Trash, requiredPermissions: ["trash.manage"], menu: true, match: startsAt("/contatos/lixeira") },
   { href: "/contatos", label: "Contatos", group: "Atendimento", Icon: UsersThree, requiredPermissions: ["leads.read"], capability: "leads_v1", menu: true, match: startsAt("/contatos") },
   { href: "/agenda", label: "Agenda", group: "Atendimento", Icon: CalendarDots, requiredPermissions: ["appointments.read"], capability: "appointments_v1", menu: true, match: startsAt("/agenda") },
+  { href: "/tarefas", label: "Tarefas", group: "Atendimento", Icon: ListChecks, requiredPermissions: ["tasks.read"], menu: true, match: startsAt("/tarefas") },
   { href: "/pos-venda", label: "Carteira", group: "Pós-venda", Icon: HandHeart, requiredPermissions: ["post_sales.use"], capability: "post_sales_v1", menu: true, match: (path) => path === "/pos-venda" || path.startsWith("/pos-venda/cobranca") },
   { href: "/pos-venda/configurar", label: "Configurar checklist", group: "Pós-venda", Icon: ClipboardText, requiredPermissions: ["post_sales.manage"], capability: "post_sales_v1", menu: true, match: startsAt("/pos-venda/configurar") },
   { href: "/tripz-ai", label: "Tripz IA", group: "Copiloto", Icon: Sparkle, requiredPermissions: ["tripz_ai.use"], capability: "tripz_ai_v1", menu: true, match: startsAt("/tripz-ai") },
+  { href: "/fluxos", label: "Fluxos (robô)", group: "Copiloto", Icon: FlowArrow, requiredPermissions: ["agent.read"], menu: true, match: startsAt("/fluxos") },
   { href: "/alertas", label: "Alertas", group: "Administração", Icon: Watch, capability: "workspace_admin_v1", rootOnly: true, match: startsAt("/alertas") },
   { href: "/follow-ups", label: "Follow-ups", group: "Administração", Icon: Clock, rootWorkspaceOnly: true, requiredFeature: "AI_FOLLOWUP", menu: true, match: startsAt("/follow-ups") },
   // Cobrança nunca pode depender de uma capability comercial: uma empresa

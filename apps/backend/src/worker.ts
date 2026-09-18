@@ -85,6 +85,9 @@ import { runBillingReconciliationBatch, runSubscriptionLifecycleBatch } from "./
 import { runMercadoPagoReconciliationBatch } from "./billing/mercadopago-reconciliation.js";
 import { runDunningBatch } from "./billing/dunning.js";
 import { applyScheduledDowngrades } from "./billing/proration.js";
+import { runStorageRetention } from "./modules/organization/storage.js";
+import { listDueFlowWaits, purgeFlowExecutionLogs, QualificationService } from "./modules/qualification/service.js";
+import { QUALIFICATION_WAIT_QUEUE, qualificationWaitQueue, type QualificationWaitJob } from "./queue/qualification-wait-queue.js";
 import {
   OAUTH_TOKEN_RENEWAL_INTERVAL_MS,
   runOAuthTokenRenewalBatch,
@@ -407,6 +410,44 @@ meetMaintenanceWorker.on("failed", (job, error) => {
   logger.error({ jobId: job?.id, kind: job?.data.kind, error }, "Meet recording maintenance failed");
 });
 
+// R22 — Fluxos de robô: retomada de esperas (delay/wait_for_reply). O job
+// revalida o estado sob lock de linha (processDueWait), então a corrida com o
+// reconciliador vira no-op para quem chegar segundo.
+const qualificationService = new QualificationService();
+const qualificationWaitWorker = new Worker<QualificationWaitJob>(
+  QUALIFICATION_WAIT_QUEUE,
+  (job) => qualificationService.processDueWait(job.data),
+  { connection: redisConnection, concurrency: 3, metrics: workerMetrics }
+);
+qualificationWaitWorker.on("completed", (job, result) => {
+  if (result.processed) logger.info({ jobId: job.id, qualificationId: job.data.qualificationId }, "Qualification wait resumed");
+  else logger.debug({ jobId: job.id, qualificationId: job.data.qualificationId, reason: result.reason }, "Qualification wait no-op");
+});
+qualificationWaitWorker.on("failed", (job, error) => {
+  logger.error({ jobId: job?.id, qualificationId: job?.data.qualificationId, err: error }, "Qualification wait resume failed; database reconciler will recover");
+});
+// Rede de segurança: esperas vencidas que o BullMQ perdeu (enqueue falhou,
+// restart, etc.). processDueWait revalida tudo, então repetir é inofensivo.
+const reconcileQualificationWaits = async (): Promise<void> => {
+  for (const wait of await listDueFlowWaits()) {
+    await qualificationService.processDueWait(wait).catch((error) =>
+      logger.error({ error, qualificationId: wait.qualificationId }, "Due qualification wait processing failed"));
+  }
+};
+const qualificationWaitReconciler = setInterval(() => {
+  void reconcileQualificationWaits()
+    .catch((error) => logger.error({ error }, "Qualification wait reconciliation failed"));
+}, 30_000);
+// Retenção de 90 dias do histórico de execução dos fluxos (0174).
+const purgeFlowExecutionLogsJob = (): void => {
+  void purgeFlowExecutionLogs()
+    .then((deleted) => { if (deleted > 0) logger.info({ deleted }, "flow_execution_log retention purge finished"); })
+    .catch((error) => logger.error({ error }, "flow_execution_log retention purge failed"));
+};
+const flowLogRetentionTimer = setInterval(purgeFlowExecutionLogsJob, 24 * 60 * 60 * 1000);
+flowLogRetentionTimer.unref();
+purgeFlowExecutionLogsJob();
+
 const reconcileTripzAiTurns = async (): Promise<void> => {
   const interruptedTurns = await tripzAiRepository.failStaleProcessingTurns({ limit: 100 });
   const turns = await tripzAiRepository.listQueuedTurnsForRecovery({ olderThanMs: 30_000, limit: 100 });
@@ -419,6 +460,26 @@ const tripzAiReconciler = setInterval(() => {
   void reconcileTripzAiTurns()
     .catch((error) => logger.error({ component: "TripzAI", error }, "[TripzAI] queued turn reconciliation failed"));
 }, 30_000);
+
+// R4 — Retenção do armazenamento da empresa: PONTO ÚNICO de exclusão de
+// mídias antigas. Para tenants com storage_retention_days setado (NULL =
+// sem autoexclusão), roda 1x/dia (mais uma execução logo após o boot, que
+// também reconcilia o contador de uso). Nada aqui apaga em cascata
+// mensagens/conversas.
+const STORAGE_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const runStorageRetentionJob = (): void => {
+  void runStorageRetention()
+    .then((result) => {
+      if (result.tenants_examined > 0 || result.itens_excluidos > 0) {
+        logger.info({ component: "Storage", ...result }, "storage retention job finished");
+      }
+    })
+    .catch((error) => logger.error({ component: "Storage", error }, "storage retention job failed"));
+};
+const storageRetentionInitialTimer = setTimeout(runStorageRetentionJob, 2 * 60_000);
+const storageRetentionTimer = setInterval(runStorageRetentionJob, STORAGE_RETENTION_INTERVAL_MS);
+storageRetentionInitialTimer.unref();
+storageRetentionTimer.unref();
 
 const businessHoursState = new Map<string, boolean>();
 const reconcileBusinessHoursPresence = async (): Promise<void> => {
@@ -651,6 +712,8 @@ void reconcilePendingMeetingResults()
   .catch((error) => logger.error({ error }, "Initial pending meeting result reconciliation failed"));
 void reconcileTripzAiTurns()
   .catch((error) => logger.error({ component: "TripzAI", error }, "[TripzAI] initial queued turn reconciliation failed"));
+void reconcileQualificationWaits()
+  .catch((error) => logger.error({ error }, "Initial qualification wait reconciliation failed"));
 instagramScheduler.start();
 if (config.MEET_ENABLED) {
   void scheduleMeetMaintenanceJobs()
@@ -677,6 +740,8 @@ async function shutdown(): Promise<void> {
   clearInterval(oauthTokenRenewalTimer);
   clearInterval(heartbeatTimer);
   clearInterval(tripzAiReconciler);
+  clearInterval(qualificationWaitReconciler);
+  clearInterval(flowLogRetentionTimer);
   await instagramScheduler.stop();
   try {
     const redis = await worker.client;
@@ -697,6 +762,8 @@ async function shutdown(): Promise<void> {
   await tripzAiWorker.close();
   await meetMaintenanceWorker.close();
   await meetMaintenanceQueue.close();
+  await qualificationWaitWorker.close();
+  await qualificationWaitQueue.close();
   await webPushRuntime.close();
   await aiTurnProgressStore.close();
   process.exit(0);

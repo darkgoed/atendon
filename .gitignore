@@ -29,3 +29,9 @@ apps/backend/.baileys-auth/
 logs/*
 !logs/.gitkeep
 deploy/nginx/maintenance.flag
+
+# Local agent-skill installs (Hermes/Claude/Codex) — never part of a release
+.agents/
+.claude/skills/
+.claude-plugin/
+.hermes/skills/

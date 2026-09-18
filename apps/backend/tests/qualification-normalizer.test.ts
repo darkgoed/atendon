@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activationIssues, flowDefinitionSchema, NEWAVE_FLOW, renderFinalMessage, renderQuestion, totalQuestions } from "../src/modules/qualification/flow.js";
+import { activationIssues, assertPublicWebhookUrl, flowDefinitionSchema, NEWAVE_FLOW, renderFinalMessage, renderQuestion, totalQuestions, webhookUrlSchema } from "../src/modules/qualification/flow.js";
 import { classifyBoolean, classifyRevenue, classifyYears, matchAnswer, matchAnswerCandidates, normalizeInstagram } from "../src/modules/qualification/normalizer.js";
 
 const FLOW = flowDefinitionSchema.parse({
@@ -109,5 +109,43 @@ describe("Instagram", () => {
   it("rejeita texto livre e URL de outro domínio", () => {
     expect(normalizeInstagram("minha loja no insta")).toBeNull();
     expect(normalizeInstagram("https://example.com/minha.loja")).toBeNull();
+  });
+});
+
+describe("webhook_url — SSRF (F-05)", () => {
+  it("rejeita http:// e hosts internos", () => {
+    expect(webhookUrlSchema.safeParse("http://example.com/hook").success).toBe(false);
+    expect(webhookUrlSchema.safeParse("https://localhost/hook").success).toBe(false);
+    expect(webhookUrlSchema.safeParse("https://192.168.1.1/hook").success).toBe(false);
+    expect(webhookUrlSchema.safeParse("https://169.254.169.254/hook").success).toBe(false);
+  });
+  it("rejeita faixas privadas/loopback/CGNAT e IPv6 interno", () => {
+    for (const url of [
+      "https://10.0.0.5/hook",
+      "https://127.0.0.1/hook",
+      "https://0.1.2.3/hook",
+      "https://172.16.0.9/hook",
+      "https://172.31.255.1/hook",
+      "https://100.64.0.1/hook",
+      "https://minhaapp.internal/hook",
+      "https://minhaapp.local/hook",
+      "https://intranet/hook",
+      "https://[::1]/hook",
+      "https://[fc00::1]/hook",
+      "https://[fe80::1]/hook",
+      "https://[::ffff:10.0.0.1]/hook"
+    ]) {
+      expect(webhookUrlSchema.safeParse(url).success, url).toBe(false);
+    }
+  });
+  it("aceita https público", () => {
+    expect(webhookUrlSchema.safeParse("https://api.example.com/hook").success).toBe(true);
+    expect(webhookUrlSchema.safeParse("https://8.8.8.8/hook").success).toBe(true);
+  });
+  it("guarda runtime bloqueia snapshot de fluxo obsoleto", () => {
+    expect(() => assertPublicWebhookUrl("https://localhost/hook")).toThrow();
+    expect(() => assertPublicWebhookUrl("https://192.168.0.10/hook")).toThrow();
+    expect(() => assertPublicWebhookUrl("http://example.com/hook")).toThrow();
+    expect(() => assertPublicWebhookUrl("https://api.example.com/hook")).not.toThrow();
   });
 });

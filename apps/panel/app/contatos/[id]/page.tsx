@@ -6,9 +6,14 @@ import { useParams, useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { ContactAvatar } from "@/components/contact-avatar";
+import { LeadCustomFields } from "@/components/lead-custom-fields";
+import { LeadEventHistory } from "@/components/lead-history-tabs";
+import { LeadNotes } from "@/components/lead-notes";
 import { Shell } from "@/components/shell";
+import { UnsavedChangesStrip, type UnsavedChangeField } from "@/components/unsaved-changes-strip";
 import { ApiError, api } from "@/lib/api";
-import { fetchLead, fetchLeadFollowUp, updateLeadStatus, qualifyLeadContext,  addLeadNote, transferLead } from "@/lib/leads-api";
+import { useDraft } from "@/lib/drafts";
+import { fetchLead, fetchLeadFollowUp, updateLeadStatus, qualifyLeadContext, transferLead } from "@/lib/leads-api";
 import { formatLeadStatusLabel } from "@/lib/format";
 import { statusLabel } from "../lead-domain";
 import { commercialPreparationAnswers } from "@/lib/labels";
@@ -128,11 +133,12 @@ export default function LeadDetail() {
   const [responsibleMemberId, setResponsibleMemberId] = useState("");
   const [nextAction, setNextAction] = useState("");
   const [nextActionLocal, setNextActionLocal] = useState("");
-  const [note, setNote] = useState("");
   const [savingFollowUp, setSavingFollowUp] = useState(false);
-  const [addingNote, setAddingNote] = useState(false);
   const hadAccessRef = useRef(false);
   const accessEpochRef = useRef(0);
+  // R18 — rascunho da identidade do contato (form principal): salvo a cada
+  // alteração, limpo ao salvar/cancelar; sobrevive ao reload (strip).
+  const identityDraft = useDraft<{ nome: string; telefone: string }>(`lead-identity:${id}`);
   const { data: session } = useSWR<PanelSession>("/me", (url: string) => api<PanelSession>(url), {
     revalidateOnFocus: false,
     dedupingInterval: 10_000
@@ -279,6 +285,11 @@ export default function LeadDetail() {
     setFeedback("");
   }
 
+  async function persistIdentity(nome: string, telefone: string) {
+    await api(`/scheduling/leads/${id}/identity`, { method: "PATCH", body: JSON.stringify({ nome, telefone }) });
+    await load();
+  }
+
   async function saveIdentity(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canUpdateStatus || !data || savingIdentity) return;
@@ -292,10 +303,59 @@ export default function LeadDetail() {
     setError("");
     setFeedback("");
     try {
-      await api(`/scheduling/leads/${id}/identity`, { method: "PATCH", body: JSON.stringify({ nome, telefone }) });
-      await load();
+      await persistIdentity(nome, telefone);
       setEditingIdentity(false);
+      identityDraft.clear();
       setFeedback("Nome e telefone atualizados no lead e no contato vinculado.");
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Falha ao atualizar nome e telefone");
+    } finally {
+      setSavingIdentity(false);
+    }
+  }
+
+  // R18 — o rascunho acompanha cada tecla do form principal e é descartado
+  // quando os campos voltam ao valor já salvo no lead.
+  function syncIdentityDraft(nome: string, telefone: string) {
+    if (!editingIdentity) return;
+    const committedNome = (data?.lead.nome ?? "").trim();
+    const committedTelefone = (data?.lead.telefone ?? "").trim();
+    if (nome.trim() === committedNome && telefone.trim() === committedTelefone) identityDraft.clear();
+    else identityDraft.save({ nome, telefone });
+  }
+
+  function handleIdentityNameChange(value: string) {
+    setIdentityName(value);
+    syncIdentityDraft(value, identityPhone);
+  }
+
+  function handleIdentityPhoneChange(value: string) {
+    setIdentityPhone(value);
+    syncIdentityDraft(identityName, value);
+  }
+
+  function cancelIdentityEdit() {
+    setEditingIdentity(false);
+    identityDraft.clear();
+  }
+
+  async function saveIdentityDraft() {
+    const draft = identityDraft.draft;
+    if (!draft || savingIdentity) return;
+    const nome = draft.nome.trim();
+    const telefone = draft.telefone.trim();
+    if (!nome || telefone.replace(/\D/g, "").length < 8) {
+      identityDraft.clear();
+      setError("O rascunho não tinha nome e telefone válidos (ao menos 8 dígitos) e foi descartado.");
+      return;
+    }
+    setSavingIdentity(true);
+    setError("");
+    setFeedback("");
+    try {
+      await persistIdentity(nome, telefone);
+      identityDraft.clear();
+      setFeedback("Rascunho salvo: nome e telefone atualizados no lead e no contato vinculado.");
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "Falha ao atualizar nome e telefone");
     } finally {
@@ -373,26 +433,6 @@ export default function LeadDetail() {
     }
   }
 
-  async function addNote(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const content = note.trim();
-    if (!canManageFollowUp || !content || addingNote) return;
-    setAddingNote(true);
-    setError("");
-    setFeedback("");
-    try {
-      const persisted = await addLeadNote(id, content) as { nota: FollowUpData["notas"][number] };
-      setNote("");
-      setFeedback("Nota interna adicionada.");
-      setFollowUpData((current) => current ? { ...current, notas: [persisted.nota, ...current.notas] } : current);
-      await refreshAfterFollowUpMutation("Nota interna adicionada.");
-    } catch (noteError) {
-      setError(noteError instanceof Error ? noteError.message : "Falha ao adicionar a nota interna");
-    } finally {
-      setAddingNote(false);
-    }
-  }
-
   async function transfer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canTransfer) return;
@@ -423,6 +463,12 @@ export default function LeadDetail() {
     });
   }
   const pendingResults = (data?.agendamentos ?? []).filter((item) => item.result_pending_at).length;
+  const identityChanges: UnsavedChangeField[] = identityDraft.draft && data
+    ? [
+        { label: "Nome", before: data.lead.nome ?? "", after: identityDraft.draft.nome },
+        { label: "Telefone", before: data.lead.telefone, after: identityDraft.draft.telefone }
+      ]
+    : [];
 
   return (
     <Shell>
@@ -444,15 +490,15 @@ export default function LeadDetail() {
                 <form className="crm-detail-form" onSubmit={saveIdentity}>
                   <label className="field">
                     <span className="sr-only">Nome do contato</span>
-                    <input className="input" value={identityName} onChange={(event) => setIdentityName(event.target.value)} maxLength={200} required aria-label="Nome do contato" />
+                    <input className="input" value={identityName} onChange={(event) => handleIdentityNameChange(event.target.value)} maxLength={200} required aria-label="Nome do contato" />
                   </label>
                   <label className="field">
                     <span className="sr-only">Telefone do contato</span>
-                    <input className="input mono" type="tel" value={identityPhone} onChange={(event) => setIdentityPhone(event.target.value)} maxLength={50} required aria-label="Telefone do contato" />
+                    <input className="input mono" type="tel" value={identityPhone} onChange={(event) => handleIdentityPhoneChange(event.target.value)} maxLength={50} required aria-label="Telefone do contato" />
                   </label>
                   <div className="flex gap-2">
                     <button className="btn primary" disabled={savingIdentity}>{savingIdentity ? "Salvando…" : "Salvar"}</button>
-                    <button type="button" className="btn px-2.5" onClick={() => setEditingIdentity(false)} disabled={savingIdentity} aria-label="Cancelar edição"><X size={16} aria-hidden="true" /></button>
+                    <button type="button" className="btn px-2.5" onClick={cancelIdentityEdit} disabled={savingIdentity} aria-label="Cancelar edição"><X size={16} aria-hidden="true" /></button>
                   </div>
                 </form>
               ) : (
@@ -497,39 +543,11 @@ export default function LeadDetail() {
                   <p className="sub">Este contato ainda não foi qualificado. Use “Qualificar com IA” para analisar o histórico completo da conversa.</p>
                 </section>
               )}
-              {canReadFollowUp ? (
-                <section className="card" aria-labelledby="internal-notes-title">
-                  <div id="internal-notes-title" className="cardtitle">Notas internas</div>
-                  <p className="sub mb-4">Visíveis apenas para membros autorizados do workspace.</p>
-                  {canManageFollowUp ? (
-                    <form className="mb-5 border-b border-[var(--border)] pb-5" onSubmit={addNote}>
-                      <label className="field">
-                        <span className="label">Nova nota</span>
-                        <textarea className="input min-h-24 resize-y" value={note} onChange={(event) => setNote(event.target.value)} maxLength={4000} required placeholder="Registre contexto útil para o próximo atendimento" />
-                      </label>
-                      <div className="mt-3 flex items-center justify-between gap-3">
-                        <span className="crm-caption">{note.length}/4000</span>
-                        <button className="btn primary" disabled={addingNote || !note.trim()}>{addingNote ? "Adicionando…" : "Adicionar nota"}</button>
-                      </div>
-                    </form>
-                  ) : null}
-                  {followUpLoading && !followUpData ? <div className="skeleton h-20" aria-label="Carregando notas internas" /> : null}
-                  {followUpData?.notas.length === 0 ? <p className="sub" role="status">Nenhuma nota interna registrada.</p> : null}
-                  {followUpData?.notas.length ? (
-                    <div className="grid gap-3">
-                      {followUpData.notas.map((item) => (
-                        <article key={item.id} className="rounded border border-[var(--border)] p-4">
-                          <p className="whitespace-pre-wrap text-sm text-[var(--text-secondary)]">{item.nota}</p>
-                          <footer className="crm-detail-note__footer">
-                            <span>{item.autor_email}</span>
-                            <time className="mono">{new Date(item.criado_em).toLocaleString("pt-BR", { timeZone: followUpData.follow_up.timezone })}</time>
-                          </footer>
-                        </article>
-                      ))}
-                    </div>
-                  ) : null}
-                </section>
-              ) : null}
+              <LeadNotes leadId={id} />
+              {/* R9/R10 — histórico completo do lead (timeline + atividades),
+                  colapsado por padrão; R7 v6 — campos personalizados na sequência. */}
+              <LeadEventHistory leadId={id} timezone={data.timezone} />
+              <LeadCustomFields leadId={id} />
             </div>
             <aside className="lead-detail-aside">
               <section className="card">
@@ -661,6 +679,17 @@ export default function LeadDetail() {
         </>
       ) : null}
       </div>
+      <UnsavedChangesStrip
+        active={Boolean(data) && identityDraft.hasUnsaved && !savingIdentity}
+        changes={identityChanges}
+        onDiscard={() => {
+          identityDraft.clear();
+          setFeedback("Rascunho de alterações descartado.");
+        }}
+        onSave={() => void saveIdentityDraft()}
+        saveLabel="Salvar alterações"
+        saving={savingIdentity}
+      />
     </Shell>
   );
 }

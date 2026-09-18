@@ -1,0 +1,98 @@
+/* FlowConnect — pattern "fluxo conectado" do design system.
+   Blocos `.card` (primitive global) ligados por setas discretas: linha 1px em
+   --text-muted (semântico do --text-8) com cabeça pequena. Regras locais
+   apenas de layout; nenhuma cor fora de tokens, nenhuma numeração. */
+
+.root {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-5);
+}
+
+/* horizontal (com wrap) e auto: linha; auto desce para coluna em <=640px
+   (media query não aceita var(--bp-*), o valor é o requisito do pattern). */
+.root[data-direction="horizontal"],
+.root[data-direction="auto"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.root[data-direction="vertical"] {
+  flex-direction: column;
+}
+
+.item {
+  display: grid;
+  gap: var(--space-1);
+  flex: 1 1 11rem;
+  min-width: 11rem;
+}
+
+.root[data-direction="vertical"] .item {
+  flex: 0 0 auto;
+  width: 100%;
+}
+
+/* Setas do fallback (sem medição): entre cards, discretas, 1px. */
+.connectorSlot {
+  display: flex;
+  flex: 0 0 auto;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.connectorGlyph {
+  width: 16px;
+  height: 16px;
+}
+
+.connectorGlyph path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+}
+
+.root[data-direction="vertical"] .connectorGlyph {
+  transform: rotate(90deg);
+}
+
+/* Overlay SVG dos conectores medidos. Não intercepta nada. */
+.overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  color: var(--text-muted);
+}
+
+.connectorLine,
+.connectorHead {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1px;
+}
+
+/* Conectores medidos substituem os inline (que continuam no DOM para SSR). */
+.root[data-measured="true"] .connectorSlot {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .root[data-direction="auto"] {
+    flex-direction: column;
+  }
+
+  .root[data-direction="auto"] .item {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .root[data-direction="auto"] .connectorGlyph {
+    transform: rotate(90deg);
+  }
+}

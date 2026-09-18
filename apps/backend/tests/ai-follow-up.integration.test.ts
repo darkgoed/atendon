@@ -409,4 +409,66 @@ describe("AI follow-up persistence", () => {
     expect(schedule.rows[0].first_delay_minutes).toBe(120);
     expect(schedule.rows[0].sequence_started_at.toISOString()).toBe(sentAt.toISOString());
   });
+
+  it("lead na lixeira não recebe follow-up: vencido cancela como lead_deleted e nova criação é bloqueada", async () => {
+    const trashPhone = `5511${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
+    const trashInboundExternalId = `trash-inbound-${randomUUID()}`;
+    const context = await messages.recordInboundAndLoadContext({
+      externalId: trashInboundExternalId,
+      tenantId,
+      sessionId,
+      contactPhone: trashPhone,
+      text: "Me conta como funciona"
+    });
+    expect(context).not.toBeNull();
+    const trashConversationId = context!.conversationId;
+    await messages.recordAgentReply({
+      tenantId,
+      sessionId,
+      conversationId: trashConversationId,
+      text: "Claro, funciona assim...",
+      model: "test/model",
+      externalId: `agent-trash-${randomUUID()}`,
+      inboundExternalId: trashInboundExternalId
+    });
+    expect((await pool.query<{ status: string }>(
+      "SELECT status FROM ai_follow_up_schedules WHERE conversation_id=$1",
+      [trashConversationId]
+    )).rows[0]?.status).toBe("scheduled");
+
+    // Lead vai para a lixeira (0171): o robô deve ignorar a conversa.
+    const leadId = (await pool.query<{ lead_id: string | null }>(
+      "SELECT lead_id FROM conversations WHERE id=$1",
+      [trashConversationId]
+    )).rows[0].lead_id;
+    expect(leadId).toBeTruthy();
+    await pool.query("UPDATE scheduling_leads SET deleted_at=now() WHERE id=$1", [leadId!]);
+
+    // Vencido: claim não processa e cancela com lead_deleted.
+    await pool.query(
+      "UPDATE ai_follow_up_schedules SET next_run_at=now()-interval '1 second' WHERE conversation_id=$1",
+      [trashConversationId]
+    );
+    expect(await followUps.claimDue(trashConversationId)).toBeNull();
+    expect((await pool.query<{ status: string; cancellation_reason: string }>(
+      "SELECT status,cancellation_reason FROM ai_follow_up_schedules WHERE conversation_id=$1",
+      [trashConversationId]
+    )).rows[0]).toEqual({ status: "cancelled", cancellation_reason: "lead_deleted" });
+
+    // Nova tentativa de agendar (agente respondeu de novo): criação bloqueada
+    // e o motivo lead_deleted é preservado.
+    await messages.recordAgentReply({
+      tenantId,
+      sessionId,
+      conversationId: trashConversationId,
+      text: "Segunda retomada não deveria agendar",
+      model: "test/model",
+      externalId: `agent-trash-2-${randomUUID()}`,
+      inboundExternalId: `trash-inbound-2-${randomUUID()}`
+    });
+    expect((await pool.query<{ status: string; cancellation_reason: string }>(
+      "SELECT status,cancellation_reason FROM ai_follow_up_schedules WHERE conversation_id=$1",
+      [trashConversationId]
+    )).rows[0]).toEqual({ status: "cancelled", cancellation_reason: "lead_deleted" });
+  });
 });

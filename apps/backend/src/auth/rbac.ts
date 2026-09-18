@@ -62,6 +62,13 @@ export const PERMISSIONS = [
   { key: "saved_views.publish", module: "organization", action: "saved_views_publish", description: "Publicar visoes compartilhadas" },
   { key: "post_sales.use", module: "post_sales", action: "use", description: "Visualizar e operar a carteira de pós-venda" },
   { key: "post_sales.manage", module: "post_sales", action: "manage", description: "Configurar o checklist de pós-venda" },
+  { key: "tasks.read", module: "tasks", action: "read", description: "Visualizar tarefas" },
+  { key: "tasks.assign", module: "tasks", action: "assign", description: "Atribuir, reatribuir e gerenciar tarefas da equipe" },
+  { key: "fields.manage", module: "fields", action: "manage", description: "Administrar o catalogo de campos personalizados de contatos" },
+  { key: "trash.manage", module: "trash", action: "manage", description: "Gerenciar a lixeira de contatos (visualizar, restaurar e excluir definitivamente)" },
+  { key: "quick_replies.read", module: "quick_replies", action: "read", description: "Visualizar respostas rapidas do workspace" },
+  { key: "quick_replies.manage", module: "quick_replies", action: "manage", description: "Criar, editar e excluir respostas rapidas do workspace" },
+  { key: "storage.manage", module: "storage", action: "manage", description: "Visualizar e configurar o armazenamento do workspace (quota e retenção)" },
   { key: "tripz_ai.use", module: "tripz_ai", action: "use", description: "Usar o copiloto Tripz IA" },
   { key: "tripz_ai.manage", module: "tripz_ai", action: "manage", description: "Gerenciar propostas Tripz IA do workspace" }
 ] as const;
@@ -93,7 +100,10 @@ export const OPERATOR_PERMISSIONS: PermissionKey[] = [
   "availability.read",
   "signature.read",
   "tags.apply",
-  "post_sales.use"
+  "post_sales.use",
+  // Mesmos grants que 0169/0172 deram ao OPERADOR de workspaces existentes.
+  "tasks.read",
+  "quick_replies.read"
 ];
 
 export const SUPERVISOR_PERMISSIONS: PermissionKey[] = [
@@ -102,7 +112,14 @@ export const SUPERVISOR_PERMISSIONS: PermissionKey[] = [
   "pipeline.manage",
   "loss_reasons.manage",
   "saved_views.publish",
-  "leads.delete"
+  "leads.delete",
+  // Mesmos grants que 0169-0172 deram ao SUPERVISOR de workspaces existentes.
+  "tasks.assign",
+  "fields.manage",
+  "trash.manage",
+  "quick_replies.manage",
+  // Mesmo grant que 0173 deu ao SUPERVISOR de workspaces existentes (R4).
+  "storage.manage"
 ];
 
 export async function ensurePermissionCatalog(client: PoolClient) {

@@ -104,7 +104,7 @@ async function assertAccessibleLead(
   const result = await client.query<LeadRow>(
     `SELECT id,status,pipeline_stage_id,assigned_member_id,updated_at
      FROM scheduling_leads
-     WHERE tenant_id=$1 AND id=$2
+     WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL
        AND ($3::boolean OR assigned_member_id=$4)
      ${lock ? "FOR UPDATE" : ""}`,
     [tenantId,leadId,access.workspaceWide,access.memberId]
@@ -294,7 +294,7 @@ export async function loadPipeline(tenantId: string, includeArchived = false) {
               count(lead.id)::int lead_count,stage.created_at,stage.updated_at
        FROM pipeline_stages stage
        LEFT JOIN scheduling_leads lead
-         ON lead.tenant_id=stage.tenant_id AND lead.pipeline_stage_id=stage.id
+         ON lead.tenant_id=stage.tenant_id AND lead.pipeline_stage_id=stage.id AND lead.deleted_at IS NULL
        WHERE stage.tenant_id=$1 AND ($2::boolean OR stage.archived_at IS NULL)
        GROUP BY stage.id
        ORDER BY stage.archived_at NULLS FIRST,stage.position,stage.id`,
@@ -400,7 +400,7 @@ export async function updatePipelineStage(tenantId: string, stageId: string, act
       const current = await client.query<StageRow & { lead_count: number }>(
         `SELECT stage.*,
                 (SELECT count(*)::int FROM scheduling_leads lead
-                 WHERE lead.tenant_id=stage.tenant_id AND lead.pipeline_stage_id=stage.id) lead_count
+                 WHERE lead.tenant_id=stage.tenant_id AND lead.pipeline_stage_id=stage.id AND lead.deleted_at IS NULL) lead_count
          FROM pipeline_stages stage
          WHERE stage.tenant_id=$1 AND stage.id=$2 AND stage.archived_at IS NULL
          FOR UPDATE`,
@@ -442,7 +442,7 @@ export async function archivePipelineStage(
     const current = await client.query<StageRow & { lead_count: number }>(
       `SELECT stage.*,
               (SELECT count(*)::int FROM scheduling_leads lead
-               WHERE lead.tenant_id=stage.tenant_id AND lead.pipeline_stage_id=stage.id) lead_count
+               WHERE lead.tenant_id=stage.tenant_id AND lead.pipeline_stage_id=stage.id AND lead.deleted_at IS NULL) lead_count
        FROM pipeline_stages stage
        WHERE stage.tenant_id=$1 AND stage.id=$2 AND stage.archived_at IS NULL
        FOR UPDATE`,
@@ -606,7 +606,7 @@ async function validateBulk(
   const leads = await client.query<LeadRow>(
     `SELECT id,status,pipeline_stage_id,assigned_member_id,updated_at
      FROM scheduling_leads
-     WHERE tenant_id=$1 AND id=ANY($2::uuid[])
+     WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL
        AND ($3::boolean OR assigned_member_id=$4)
      ${lock ? "FOR UPDATE" : ""}`,
     [tenantId,ids,access.workspaceWide,access.memberId]

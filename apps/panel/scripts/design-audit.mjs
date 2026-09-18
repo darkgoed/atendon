@@ -11,6 +11,7 @@ import { commercialFixture } from "./design-audit/fixtures/commercial.mjs";
 import { settingsFixture } from "./design-audit/fixtures/settings.mjs";
 import { rootFixture } from "./design-audit/fixtures/root.mjs";
 import { publicTripzFixture } from "./design-audit/fixtures/public-tripz.mjs";
+import { panelsV6Fixture } from "./design-audit/fixtures/panels-v6.mjs";
 import { CAPABILITY_CATALOG, ENTITLEMENTS, FEATURE_FLAG_KEYS } from "./design-audit/catalog.mjs";
 import { loadInventory } from "./design-audit/inventory.mjs";
 import { contractFor } from "./design-audit/contracts.mjs";
@@ -26,7 +27,7 @@ const themeFilter = process.env.THEME_FILTER;
 const inventoryPath = process.env.ROUTE_INVENTORY;
 const viewports = [{ name: "360x800", width: 360, height: 800 }, { name: "768x1024", width: 768, height: 1024 }, { name: "1440x900", width: 1440, height: 900 }].filter((v) => !viewportFilter || new RegExp(viewportFilter, "i").test(v.name));
 const themes = ["dark", "light"].filter((v) => !themeFilter || new RegExp(themeFilter, "i").test(v));
-const routeReplacements = { "/invitations/[token]": "/invitations/qa-token", "/convite": "/convite?token=qa-token", "/contatos/[id]": `/contatos/${IDS.lead}`, "/meet/[roomId]": "/meet/qa-room", "/reuniao/[code]": "/reuniao/qa-code" };
+const routeReplacements = { "/invitations/[token]": "/invitations/qa-token", "/convite": "/convite?token=qa-token", "/contatos/[id]": `/contatos/${IDS.lead}`, "/meet/[roomId]": "/meet/qa-room", "/reuniao/[code]": "/reuniao/qa-code", "/fluxos/[id]": "/fluxos/qa-flow-0001" };
 const routePath = (url) => new URL(url).pathname.replace(/^\/(?:api|backend)/, "");
 const json = (intercept, body, status = 200) => intercept.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 const ROOT_WORKSPACE_ROUTES = new Set(["/alertas", "/follow-ups", "/agente/figurinhas"]);
@@ -52,7 +53,9 @@ function payload(path, method, useRoot, route) {
   if (path === "/events") return { status: 204 };
   if (path === "/capabilities") return { body: { capabilities: CAPABILITY_CATALOG } };
   if (path === "/billing/my-plan") return { body: ENTITLEMENTS };
-  for (const fixture of [conversationFixture, commercialFixture, settingsFixture, rootFixture, publicTripzFixture]) { const value = fixture(path); if (value !== undefined) return { body: value }; }
+  // panels-v6 primeiro: endpoints hidratados pelo Shell em todas as rotas
+  // (aparência/sino/preferências) precisam existir antes dos fixtures por domínio.
+  for (const fixture of [panelsV6Fixture, conversationFixture, commercialFixture, settingsFixture, rootFixture, publicTripzFixture]) { const value = fixture(path); if (value !== undefined) return { body: value }; }
 
 }
 async function boundedFontsReady(page) {

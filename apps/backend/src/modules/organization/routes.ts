@@ -26,9 +26,11 @@ import {
   stageParams,
   stageTransitionsSchema,
   stageUpdateSchema,
+  storageSettingsSchema,
   tagCreateSchema,
   tagUpdateSchema
 } from "./schemas.js";
+import { getOrganizationStorage, updateStorageSettings } from "./storage.js";
 import {
   createLossReason,
   listLossReasons,
@@ -303,5 +305,22 @@ export async function registerOrganizationRoutes(app: FastifyInstance) {
     );
     if (operation.rows[0]) assertBulkPermission(session,operation.rows[0].action);
     return undoBulkOperation(session.tenantId,operationId,actor(request,session));
+  });
+
+  // R4 — Armazenamento da empresa. storage.manage é de gestores
+  // (espelho de pipeline.manage: OWNER/ADMIN/SUPERVISOR), então GET e PATCH
+  // usam a mesma chave; leitura de uso e configuração de quota/retenção não
+  // dependem de case_organization_v1 (configuração de workspace, não de
+  // organização de casos).
+  app.get("/organization/storage", async (request) => {
+    const session = await requirePermission(request,"storage.manage");
+    return { storage: await getOrganizationStorage(session.tenantId) };
+  });
+
+  app.patch("/organization/storage/settings", async (request) => {
+    const session = await requirePermission(request,"storage.manage");
+    const input = storageSettingsSchema.parse(request.body);
+    const storage = await updateStorageSettings(session.tenantId,input,actor(request,session));
+    return { storage };
   });
 }

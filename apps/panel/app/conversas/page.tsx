@@ -1827,6 +1827,7 @@ export default function Conversations() {
                     key={selected}
                     conversationId={selected}
                     channel={thread.conversation.channel === "instagram" ? "instagram" : "whatsapp"}
+                    contactName={thread.conversation.contact_name ?? null}
                     replyTo={replyTarget}
                     onCancelReply={() => setReplyTarget(null)}
                     onError={setError}

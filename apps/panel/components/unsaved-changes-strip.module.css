@@ -1,0 +1,122 @@
+/* Strip de alterações não salvas (R18) — módulo próprio, cascata sem @layer
+   (CSS modules não entram nas layers do design system). Só tokens de cor/
+   espaçamento; nada de hex literal. */
+
+.strip {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-4);
+  transform: translateX(-50%);
+  z-index: var(--z-sticky);
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  max-width: calc(100vw - 2 * var(--space-4));
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-elevated);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+  font-size: var(--text-control);
+}
+
+.message {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  min-height: var(--control-height);
+  color: var(--primary-text);
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.link:disabled {
+  opacity: 0.6;
+  cursor: default;
+  text-decoration: none;
+}
+
+/* Popover do diff resumido: panel simples acima da barra, sem modal. */
+.diff {
+  max-width: min(28rem, calc(100vw - 2 * var(--space-4)));
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-elevated);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+}
+
+.diffList {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.diffRow {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-label);
+}
+
+.diffLabel {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.diffValues {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.before {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+}
+
+.arrow {
+  color: var(--text-muted);
+}
+
+.after {
+  color: var(--text);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .bar {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .message {
+    white-space: normal;
+    text-align: center;
+  }
+}

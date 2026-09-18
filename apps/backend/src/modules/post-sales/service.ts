@@ -298,13 +298,13 @@ export async function createManualPostSaleClient(
     let leadId = input.lead_id ?? null;
     if (leadId) {
       const lead = await client.query<{ id: string }>(
-        "SELECT id FROM scheduling_leads WHERE tenant_id=$1 AND id=$2 AND phone=$3",
+        "SELECT id FROM scheduling_leads WHERE tenant_id=$1 AND id=$2 AND phone=$3 AND deleted_at IS NULL",
         [tenantId, leadId, input.phone_e164]
       );
       if (!lead.rows[0]) throw httpError(400, "O lead informado não corresponde ao telefone do cliente");
     } else {
       leadId = (await client.query<{ id: string }>(
-        "SELECT id FROM scheduling_leads WHERE tenant_id=$1 AND phone=$2 LIMIT 1",
+        "SELECT id FROM scheduling_leads WHERE tenant_id=$1 AND phone=$2 AND deleted_at IS NULL LIMIT 1",
         [tenantId, input.phone_e164]
       )).rows[0]?.id ?? null;
     }
@@ -368,7 +368,7 @@ export async function captureClosedSalePostSaleClient(
     return { created: false, clientId: null, reason: "feature_disabled" as const };
   }
   const lead = (await client.query<{ id: string; name: string | null; phone: string }>(
-    "SELECT id,name,phone FROM scheduling_leads WHERE tenant_id=$1 AND id=$2 FOR SHARE",
+    "SELECT id,name,phone FROM scheduling_leads WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL FOR SHARE",
     [tenantId, leadId]
   )).rows[0];
   if (!lead) throw httpError(404, "Lead não encontrado");

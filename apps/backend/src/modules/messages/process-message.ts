@@ -56,6 +56,7 @@ import {
 } from "../tripz-ai/zulu.js";
 import { extractSchedulingTimes, hasSchedulingTime } from "./scheduling-time.js";
 import { workspaceClockNote } from "./turn-clock.js";
+import { markQualificationOutboxSent, type QualificationInbound, type QualificationOutcome } from "../qualification/service.js";
 import { buscarDisponibilidade, markLeadDisqualified, verificarHorarios } from "../scheduling/service.js";
 import {
   buildAiTurnPreview,
@@ -968,7 +969,13 @@ export class MessageProcessor {
       tenantId: string,
       appointmentId: string,
       response: string
-    ) => Promise<boolean>
+    ) => Promise<boolean>,
+    /**
+     * Robô de fluxos de qualificação (R22), injetado pelo runtime. Roda ANTES
+     * do turno de IA; outcome não-nulo = o fluxo consumiu a mensagem (IA não
+     * roda). undefined = motor de robô desligado (zero mudança no turno).
+     */
+    private readonly qualificationInbound?: (input: QualificationInbound) => Promise<QualificationOutcome | null>
   ) {}
 
   async process(
@@ -2524,6 +2531,52 @@ export class MessageProcessor {
         };
       }
     };
+    // Robô de qualificação (R22): roda onde o turno de IA começaria, depois dos
+    // guards determinísticos (debounce, transcrição, handoff, mídia, rate limit)
+    // e ANTES do consumo de billing/geração. Outcome não-nulo = o motor do fluxo
+    // consumiu a mensagem; a IA não é invocada para não duplicar resposta.
+    // null (sem fluxo/gatilho/canal) = comportamento existente inalterado.
+    if (this.qualificationInbound && message.channel !== "instagram") {
+      let robotOutcome: QualificationOutcome | null = null;
+      try {
+        robotOutcome = await this.qualificationInbound({
+          tenantId: message.tenantId,
+          sessionId: message.sessionId,
+          contactPhone: message.contactPhone,
+          contactJid: message.contactJid,
+          contactName: message.contactName,
+          text: effectiveMessage.text,
+          externalId: message.externalId,
+          referral: message.referral
+        });
+      } catch (error) {
+        logger.warn({ err: error, externalId: message.externalId, conversationId: context.conversationId }, "Qualification flow robot check failed; falling through to AI turn");
+      }
+      if (robotOutcome) {
+        if (robotOutcome.reply) {
+          const sent = await this.gateway.sendText(message.sessionId, destination, robotOutcome.reply);
+          if (robotOutcome.outboxId) {
+            await markQualificationOutboxSent(robotOutcome.outboxId, sent.externalId).catch((error) =>
+              logger.warn({ err: error, outboxId: robotOutcome?.outboxId, externalId: message.externalId }, "Failed to mark inline qualification message as sent"));
+          }
+          await this.repository.recordAgentReply({
+            tenantId: message.tenantId,
+            sessionId: message.sessionId,
+            conversationId: context.conversationId,
+            agentConfigVersionId: context.agentConfigVersionId,
+            text: robotOutcome.reply,
+            model: "qualification-flow",
+            externalId: sent.externalId,
+            inboundExternalId: message.externalId,
+            inboundExternalIds: [...processingExternalIds]
+          });
+          logger.info({ externalId: message.externalId, conversationId: context.conversationId, reason: "qualification_robot_reply" }, "Qualification flow robot replied; AI turn skipped");
+        }
+        await this.repository.markInboundProcessed(message, processingExternalIds);
+        return robotOutcome.reply ? "answered" : "ignored";
+      }
+    }
+
     let result: Awaited<ReturnType<typeof sendReply>>;
     try {
       // Reserva atômica: lê o saldo e grava o consumo na MESMA transação,

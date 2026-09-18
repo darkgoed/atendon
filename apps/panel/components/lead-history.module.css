@@ -1,0 +1,197 @@
+/* Histórico do lead (R9/R10) — módulo próprio, cascata sem @layer.
+   Timeline agrupada com eventos por fonte (IA / robô / humano) e visão
+   compacta de atividades. Somente tokens. */
+
+.heading {
+  margin: 0;
+}
+
+.panel {
+  margin-top: var(--space-4);
+}
+
+.header {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2);
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chevron {
+  margin-left: auto;
+  color: var(--text-secondary);
+  transition: transform 0.15s ease;
+}
+
+.chevron[data-open="true"] {
+  transform: rotate(180deg);
+}
+
+.tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+}
+
+.tab {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: none;
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--text-label);
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"] {
+  border-color: var(--primary-border);
+  background: var(--primary-subtle);
+  color: var(--primary-text);
+  font-weight: 600;
+}
+
+.timeline,
+.compactList {
+  display: grid;
+  gap: var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.compactList {
+  gap: var(--space-3);
+}
+
+.groupTitle {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.group {
+  margin: 0;
+}
+
+/* Linha do evento: ícone de fonte + título + badge + detalhe + ator/tempo. */
+.row {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.compactList .row {
+  padding: var(--space-2) 0;
+}
+
+.sourceIcon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+}
+
+.row[data-source="ai"] .sourceIcon {
+  border-color: var(--primary-border);
+  background: var(--primary-subtle);
+  color: var(--primary-text);
+}
+
+.row[data-source="human"] .sourceIcon {
+  border-color: var(--success-border);
+  background: var(--success-subtle);
+  color: var(--success-text);
+}
+
+.body {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.title {
+  font-size: var(--text-body);
+}
+
+.sourceBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.row[data-source="ai"] .sourceBadge {
+  border-color: var(--primary-border);
+  background: var(--primary-subtle);
+  color: var(--primary-text);
+}
+
+.row[data-source="human"] .sourceBadge {
+  border-color: var(--success-border);
+  background: var(--success-subtle);
+  color: var(--success-text);
+}
+
+.detail {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-label);
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+}
+
+.loadMore {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-3);
+}
+
+.compactList .detail {
+  display: none;
+}
+
+/* Visão compacta (R10): ação, ator, quando — sem detalhe longo. */
+.compactList .head {
+  gap: var(--space-2);
+}
