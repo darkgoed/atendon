@@ -26,8 +26,8 @@ const memberParams = z.object({ memberId: uuid });
 const invitationParams = z.object({ invitationId: uuid });
 const invitationTokenParams = z.object({ token: z.string().trim().min(32).max(200) });
 const inviteBody = z.object({ email: z.string().trim().email().max(254), roleId: uuid });
-const updateMemberBody = z.object({ roleId: uuid.optional(), status: z.enum(["active", "suspended"]).optional() })
-  .refine((value) => value.roleId || value.status, "Informe roleId ou status");
+const updateMemberBody = z.object({ roleId: uuid.optional(), status: z.enum(["active", "suspended"]).optional(), team_id: uuid.nullable().optional() })
+  .refine((value) => value.roleId || value.status || Object.prototype.hasOwnProperty.call(value, "team_id"), "Informe roleId, status ou team_id");
 const updateMemberProfileBody = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   email: z.string().trim().email().max(254).optional(),
@@ -263,10 +263,12 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
     const session = await requirePermission(request, "members.read");
     const result = await db.query(
       `SELECT m.id,m.status,m.joined_at,m.created_at,u.id user_id,u.name,u.email,u.status user_status,
-              u.is_root,u.must_change_password,r.id role_id,r.name role_name,r.is_owner_role
+              u.is_root,u.must_change_password,r.id role_id,r.name role_name,r.is_owner_role,
+              m.team_id,team.name team_name
        FROM workspace_members m
        JOIN users u ON u.id=m.user_id
        JOIN workspace_roles r ON r.id=m.role_id
+       LEFT JOIN teams team ON team.id=m.team_id AND team.tenant_id=m.workspace_id
        WHERE m.workspace_id=$1
        ORDER BY r.is_owner_role DESC,u.email`,
       [session.tenantId]
@@ -288,14 +290,20 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
     if (current.rows[0].is_owner_role) throw httpError(409, "OWNER exige transferencia explicita de propriedade");
     await assertRoleAssignable(session, current.rows[0].role_id);
     if (body.roleId) await assertRoleAssignable(session, body.roleId);
+    // B6 Times: vínculo opcional do membro com uma equipe do workspace.
+    if (body.team_id) {
+      const team = await db.query("SELECT id FROM teams WHERE tenant_id=$1 AND id=$2", [session.tenantId, body.team_id]);
+      if (!team.rows[0]) throw httpError(400, "Equipe não encontrada neste workspace");
+    }
     const result = await db.query(
       `UPDATE workspace_members SET
          role_id=COALESCE($3,role_id),
          status=COALESCE($4,status),
+         team_id=CASE WHEN $5::boolean THEN $6::uuid ELSE team_id END,
          updated_at=now()
        WHERE workspace_id=$1 AND id=$2
-       RETURNING id,status,role_id,updated_at`,
-      [session.tenantId, memberId, body.roleId ?? null, body.status ?? null]
+       RETURNING id,status,role_id,team_id,updated_at`,
+      [session.tenantId, memberId, body.roleId ?? null, body.status ?? null, body.team_id !== undefined, body.team_id ?? null]
     );
     await audit(request, { action: "members.update", resourceType: "workspace_member", resourceId: memberId, metadata: body });
     await db.query("UPDATE users SET session_version=session_version+1,updated_at=now() WHERE id=$1", [current.rows[0].user_id]);

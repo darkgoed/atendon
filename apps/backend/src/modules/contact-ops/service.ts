@@ -594,7 +594,10 @@ export type AwaitingReplyQuery = { limit: number; cursor?: string };
  * respondeu) — ver relatório para a decisão completa.
  */
 export async function listAwaitingReply(tenantId: string, scope: CaseScope, query: AwaitingReplyQuery) {
-  const params: unknown[] = [tenantId, scope.memberId];
+  // conversationScopeCondition('mine') compara c.assigned_user_id — o param é o
+  // USER da sessão; scope.memberId aqui filtrava por um uuid de workspace_members
+  // que a coluna nunca contém (fila vazia para operador).
+  const params: unknown[] = [tenantId, scope.userId];
   const conditions = [
     "c.tenant_id=$1",
     "c.status='open'",

@@ -251,42 +251,47 @@ export default function ConfigPage() {
         ) : null}
       </header>
 
-      {visibleSettingsDestinations.length > 0 ? (
-        <section className={styles.destinations} aria-labelledby="settings-destinations-title">
-          <div className={styles.destinationHeader}>
-            <div>
-              <span className="label">Administração</span>
-              <h2 id="settings-destinations-title" className="mt-1 text-base">Áreas de configuração</h2>
-            </div>
-            <span className="mono type-caption text-[var(--text-muted)]">{visibleSettingsDestinations.length} área(s)</span>
-          </div>
-          <nav className={styles.destinationGrid} aria-label="Áreas de configuração">
-            {visibleSettingsDestinations.map(({ href, label, description, Icon }) => (
-              <Link key={href} href={href} className={styles.settingsDestination}>
-                <Icon size={19} aria-hidden="true" />
-                <span>
-                  <strong>{label}</strong>
-                  <small>{description}</small>
-                </span>
-              </Link>
-            ))}
-          </nav>
-        </section>
-      ) : null}
+      {visibleSettingsDestinations.length > 0 || visibleTabs.length > 0 ? (
+        /* ONDA 1 (SPEC v7): navegação interna de configurações no idioma do
+           rail (components/nav-rail.tsx) — nav lateral com os MESMOS destinos
+           (settingsDestinations, gating intacto) e as MESMAS abas
+           (visibleTabs); só a apresentação muda (styles/domains/shell-rail.css). */
+        <div className="settings-rail">
+          {visibleSettingsDestinations.length > 0 ? (
+            <section className="settings-rail__group" aria-labelledby="settings-destinations-title">
+              <div className="settings-rail__grouphead">
+                <h2 id="settings-destinations-title">Áreas de configuração</h2>
+                <span className="settings-rail__count mono">{visibleSettingsDestinations.length} área(s)</span>
+              </div>
+              <nav className="settings-rail__nav" aria-label="Áreas de configuração">
+                {visibleSettingsDestinations.map(({ href, label, description, Icon }) => (
+                  <Link key={href} href={href} className="settings-rail__link">
+                    <Icon size={18} aria-hidden="true" />
+                    <span>
+                      <strong>{label}</strong>
+                      <small>{description}</small>
+                    </span>
+                  </Link>
+                ))}
+              </nav>
+            </section>
+          ) : null}
 
-      {visibleTabs.length > 0 ? <nav className={styles.tabs} aria-label="Configurações operacionais">
-        {visibleTabs.map((tab) => (
-          <button
-            type="button"
-            aria-pressed={resource === tab}
-            key={tab}
-            onClick={() => setResource(tab)}
-            className={`${styles.tab} ${resource === tab ? styles.tabActive : ""}`}
-          >
-            {resourceLabels[tab]}
-          </button>
-        ))}
-      </nav> : null}
+          {visibleTabs.length > 0 ? <nav className="settings-rail__group" aria-label="Configurações operacionais">
+            {visibleTabs.map((tab) => (
+              <button
+                type="button"
+                aria-pressed={resource === tab}
+                key={tab}
+                onClick={() => setResource(tab)}
+                className="settings-rail__tab"
+              >
+                {resourceLabels[tab]}
+              </button>
+            ))}
+          </nav> : null}
+        </div>
+      ) : null}
 
       {resource === "workspace" ? (
         <WorkspaceSettingsPanel canManageLogo={canUpdateWorkspace} />

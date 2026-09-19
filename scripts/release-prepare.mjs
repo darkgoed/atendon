@@ -16,8 +16,9 @@ import path from "node:path";
 // outro arquivo: só estes são ignorados.
 const RELEASE_STATE_DIRS = [".hermes", ".claude", ".agents", ".codex"];
 // features.md: mesmo caso de comments.md — colagem de referência feita pelo
-// operador/agentes na raiz do app, não é produto.
-const RELEASE_STATE_FILES = ["comments.md", "features.md", "skills-lock.json"];
+// operador/agentes na raiz do app, não é produto. TODO-POS-DEPLOY.md: a mesma
+// classe — registro de pendências do operador/agentes, nunca produto.
+const RELEASE_STATE_FILES = ["comments.md", "features.md", "skills-lock.json", "TODO-POS-DEPLOY.md"];
 
 /** Recebe a saída de `git status --porcelain` e devolve só as entradas que
  * realmente impedem a release. Os caminhos podem vir relativos à raiz do

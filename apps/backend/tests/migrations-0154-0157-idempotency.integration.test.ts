@@ -129,7 +129,7 @@ afterAll(async () => {
   }
   await adminPool.end();
   if (temporaryRoot) await rm(temporaryRoot, { recursive: true, force: true });
-});
+}, 120_000); // replay de ~157 migrations excede o hookTimeout default (10s) sob carga
 
 describe("0154–0157 em banco descartável", () => {
   it("marca tenants existentes como legados, deixa os novos livres e preserva a escolha ao reexecutar 0156–0157", async () => {

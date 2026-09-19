@@ -39,7 +39,8 @@ export const storageSettingsSchema = z.object({
   // upload novo de asset.
   storage_quota_bytes: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable().optional(),
   // Retenção em dias; NULL = sem autoexclusão. Job diário no worker.
-  retention_days: z.number().int().min(1).max(36500).nullable().optional()
+  retention_days: z.number().int().min(1).max(36500).nullable().optional(),
+  retention: z.object({ enabled: z.boolean(), months: z.number().int().min(1).max(1200).nullable() }).strict().optional()
 }).strict().refine((value) => Object.keys(value).length > 0, "Informe ao menos um campo");
 
 export const lossReasonUpdateSchema = z.object({

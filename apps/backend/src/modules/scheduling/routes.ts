@@ -247,6 +247,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
       pipeline_stage_id: z.string().uuid().optional(),
       sdr_member_id: z.string().uuid().optional(),
       closer_member_id: z.string().uuid().optional(),
+      team_id: z.string().uuid().optional(),
       origem: z.string().trim().max(200).optional(),
       campanha: z.string().trim().max(200).optional(),
       period_start: date.optional(),
@@ -286,6 +287,12 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
       ["investimento",query.investimento && (normalizeText(query.investimento) === "nao" ? "NÃO" : "SIM"),"q.investimento"],["formulario",query.formulario,"q.status"]
     ] as const) {
       void field; if (value) { params.push(value); conditions.push(`${column}=$${params.length}`); }
+    }
+    // B6 Times: filtro por equipe do responsável (owner→team, spec B6) — o
+    // responsável individual do lead precisa pertencer à equipe pedida.
+    if (query.team_id) {
+      params.push(query.team_id);
+      conditions.push(`l.assigned_member_id IN (SELECT m2.id FROM workspace_members m2 WHERE m2.workspace_id=l.tenant_id AND m2.team_id=$${params.length})`);
     }
     if (query.fila_humana) conditions.push("l.requires_human_decision=true");
     if (query.action_bucket==="result_pending") conditions.push("latest_appointment.result_pending_at IS NOT NULL");

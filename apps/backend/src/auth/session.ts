@@ -4,8 +4,9 @@ import type { FastifyRequest } from "fastify";
 import { config } from "../config.js";
 import { db } from "../db/client.js";
 import { PERMISSIONS, type PermissionKey } from "./rbac.js";
+import { isWorkspaceSessionRevoked } from "./sessions.js";
 
-export interface PanelSession { userId: string; tenantId: string; email: string; role: string; isRoot?: boolean; sessionVersion?: number; rootWorkspaceAccess?: boolean }
+export interface PanelSession { userId: string; tenantId: string; email: string; role: string; isRoot?: boolean; sessionVersion?: number; rootWorkspaceAccess?: boolean; sid?: string }
 export interface IdentitySession {
   userId: string;
   tenantId?: string;
@@ -14,6 +15,9 @@ export interface IdentitySession {
   sessionVersion?: number;
   rootWorkspaceAccess?: boolean;
   mustChangePassword?: boolean;
+  // B2 Security: id da linha workspace_sessions (0178). Tokens sem sid são
+  // legados (pré-migration) e seguem válidos até o TTL.
+  sid?: string;
 }
 export interface WorkspaceSession extends IdentitySession {
   tenantId: string;
@@ -55,7 +59,17 @@ export async function requireIdentity(
     if (!current.rows[0] || current.rows[0].status !== "active") {
       throw Object.assign(new Error("Usuário desativado"), { statusCode: 401 });
     }
+    // B2 Security: desafio TOTP não é sessão — só /auth/totp/verify o consome.
+    // A rejeição vem ANTES do session_version: o desafio não carrega sessão.
+    if (payload.totpChallenge === true) {
+      throw Object.assign(new Error("Conclua a verificação em duas etapas"), { statusCode: 401 });
+    }
     if (Number(payload.sessionVersion) !== current.rows[0].session_version) {
+      throw Object.assign(new Error("Sessão revogada"), { statusCode: 401 });
+    }
+    // Sessões com sid consultam workspace_sessions (revogação individual).
+    // Tokens legados (sem sid) continuam válidos até o TTL do JWT.
+    if (typeof payload.sid === "string" && await isWorkspaceSessionRevoked(userId, payload.sid)) {
       throw Object.assign(new Error("Sessão revogada"), { statusCode: 401 });
     }
     if (current.rows[0].must_change_password && !options.allowPasswordChangeRequired) {
@@ -68,7 +82,10 @@ export async function requireIdentity(
       isRoot: current.rows[0].is_root,
       sessionVersion: current.rows[0].session_version,
       rootWorkspaceAccess: payload.rootWorkspaceAccess === true,
-      mustChangePassword: current.rows[0].must_change_password
+      mustChangePassword: current.rows[0].must_change_password,
+      // B2 Security: repassa o sid da linha workspace_sessions para as rotas
+      // de sessões (lista marca a atual; revoke-others preserva a própria).
+      sid: typeof payload.sid === "string" ? payload.sid : undefined
     };
   } catch (error) {
     if (error instanceof errors.JOSEError) {

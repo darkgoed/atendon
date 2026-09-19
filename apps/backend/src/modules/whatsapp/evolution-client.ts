@@ -1,5 +1,5 @@
 import type { AppConfig } from "../../config.js";
-import type { ReadReceipt } from "../messages/types.js";
+import type { InteractivePayload, ReadReceipt } from "../messages/types.js";
 
 type Json = Record<string, unknown>;
 export const EVOLUTION_MAX_RESPONSE_BYTES = 48 * 1024 * 1024;
@@ -386,6 +386,43 @@ export class EvolutionClient {
     const key = result.key as Json | undefined;
     const externalId = String(key?.id ?? result.id ?? "");
     if (!externalId) throw new Error("Evolution API did not return a sticker message id");
+    return { externalId };
+  }
+
+  /** C1-h: mensagens interativas (botões reply/cta_url e lista de seções).
+   * Mesma extração de key/id do sendText/sendMedia. */
+  async sendInteractive(instanceName: string, number: string, payload: InteractivePayload): Promise<{ externalId: string }> {
+    const numberOnly = number.split("@")[0];
+    const result = payload.kind === "buttons"
+      ? await this.request<{ key?: Json; id?: string | number }>(`/message/sendButtons/${encodeURIComponent(instanceName)}`, {
+        method: "POST",
+        body: JSON.stringify({
+          number: numberOnly,
+          titleMessage: payload.text ?? "",
+          buttons: payload.buttons.map((button) => button.url
+            ? { buttonType: "url", displayText: button.displayText, url: button.url }
+            : { buttonType: "reply", displayText: button.displayText })
+        })
+      })
+      : await this.request<{ key?: Json; id?: string | number }>(`/message/sendList/${encodeURIComponent(instanceName)}`, {
+        method: "POST",
+        body: JSON.stringify({
+          number: numberOnly,
+          ...(payload.text ? { titleMessage: payload.text } : {}),
+          buttonText: payload.buttonText,
+          description: payload.sectionTitle,
+          sections: [{
+            title: payload.sectionTitle,
+            rows: payload.rows.map((row) => ({
+              rowTitle: row.title,
+              ...(row.description ? { rowDescription: row.description } : {})
+            }))
+          }]
+        })
+      });
+    const key = result.key as Json | undefined;
+    const externalId = String(key?.id ?? result.id ?? "");
+    if (!externalId) throw new Error("Evolution API did not return a message id");
     return { externalId };
   }
 }

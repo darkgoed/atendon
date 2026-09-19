@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 import type { Logger } from "pino";
-import type { MessageGateway, QuotedMessage, ReadReceipt } from "../messages/types.js";
+import type { MessageGateway, InteractivePayload, QuotedMessage, ReadReceipt } from "../messages/types.js";
 import type { AppConfig } from "../../config.js";
 import { EvolutionClient, isEvolutionConnectionClosedError } from "./evolution-client.js";
 import type { OutboundMediaPayload } from "./evolution-client.js";
@@ -143,6 +143,14 @@ export class WhatsAppSessionManager implements MessageGateway {
     if (!this.config.WHATSAPP_ENABLED) throw new Error("WhatsApp integration is disabled");
     return this.sendWithConnectionRecovery(sessionId, "sticker", (instanceName) =>
       this.evolution.sendSticker(instanceName, contactPhone, sticker.dataBase64));
+  }
+
+  /** C1-h: botões/lista interativos — mesmo caminho de recuperação do sendText. */
+  async sendInteractive(sessionId: string, contactPhone: string, payload: InteractivePayload): Promise<{ externalId: string }> {
+    this.assertRoutableDestination(contactPhone);
+    if (!this.config.WHATSAPP_ENABLED) throw new Error("WhatsApp integration is disabled");
+    return this.sendWithConnectionRecovery(sessionId, "text", (instanceName) =>
+      this.evolution.sendInteractive(instanceName, contactPhone, payload));
   }
 
   private assertRoutableDestination(destination: string): void {

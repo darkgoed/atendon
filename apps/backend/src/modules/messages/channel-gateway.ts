@@ -6,6 +6,8 @@ import { prepareInstagramOutboundMedia } from "../instagram/media-transcode.js";
 import type { InstagramRuntime, ProviderSendResult } from "../instagram/types.js";
 import { WhatsAppSendRejectedError } from "../whatsapp/errors.js";
 import type {
+  InteractivePayload,
+  MessagingCapabilityFlags,
   MessageGateway,
   QuotedMessage,
   ReadReceipt
@@ -474,5 +476,27 @@ export class ChannelGatewayRouter implements MessageGateway {
       return this.whatsappGateway.sendSticker(sessionId, contactPhone, sticker);
     }
     return this.unsupported("enviar figurinha");
+  }
+
+  async sendInteractive(sessionId: string, contactPhone: string, payload: InteractivePayload): Promise<{ externalId: string }> {
+    const route = await this.route(sessionId);
+    if (route.channel === "whatsapp") {
+      if (!this.whatsappGateway.sendInteractive) this.unsupported("mensagem interativa");
+      return this.whatsappGateway.sendInteractive(sessionId, contactPhone, payload);
+    }
+    this.unsupported("mensagem interativa");
+  }
+
+  async sessionMessagingCapabilities(sessionId: string): Promise<MessagingCapabilityFlags> {
+    const route = await this.route(sessionId);
+    if (route.channel === "whatsapp") {
+      const gateway = this.whatsappGateway;
+      return {
+        reactions: Boolean(gateway.sendReaction || gateway.sendReactionStrict),
+        forward_media: Boolean(gateway.sendMedia && gateway.downloadMedia),
+        interactive: Boolean(gateway.sendInteractive)
+      };
+    }
+    return { reactions: false, forward_media: false, interactive: false };
   }
 }

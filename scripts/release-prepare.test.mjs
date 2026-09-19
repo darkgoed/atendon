@@ -34,7 +34,8 @@ test("estado de sessão de agentes não bloqueia a release; código sujo bloquei
     "?? apps/atendon/.hermes/state/progress.md",
     " M apps/atendon/comments.md",
     " M apps/atendon/skills-lock.json",
-    "?? apps/atendon/features.md"
+    "?? apps/atendon/features.md",
+    "?? apps/atendon/TODO-POS-DEPLOY.md"
   ].join("\n")), []);
 
   assert.deepEqual(

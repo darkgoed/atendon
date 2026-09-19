@@ -1,0 +1,417 @@
+/* ============================================================================
+   Domínio: shell-rail — port visual do shell (SPEC v7, ONDA 1)
+   ----------------------------------------------------------------------------
+   Porta 1:1 o idioma visual do donor (crm-whatsapp) para a navegação do
+   AtendON, SEM tocar tokens.css/global: aqui valem só tokens AtendON
+   (cores via var(--*), densidade via --control-height/--radius, bordas
+   sutilizadas = --border-subtle) mapeados dos padrões do donor:
+
+     donor                        → AtendON
+     w-16 (64px)                  → --rail-width (64px)
+     w-[300px]                    → --context-panel-width (300px)
+     bg-background/80 + blur      → color-mix(--bg 80%) + backdrop-filter
+     bg-card/70 + blur            → color-mix(--surface 70%) + backdrop-filter
+     border-border/70             → var(--border-subtle)
+     rounded-xl (10px donor)      → var(--radius-lg)
+     rounded-2xl                  → var(--radius-lg)
+     size-10 / size-5             → 40px / 20px (com --icon-lg p/ fallbacks)
+     bg-primary/10 + text-primary → color-mix(--primary 10%) + --primary-text
+     hover:bg-accent              → var(--surface-hover)
+     hover:bg-destructive/10      → color-mix(--danger 10%) + --danger-text
+
+   DADOS: lib/panel-manifest.ts permanece INTACTO como fonte de menu; nenhum
+   item, capability ou gating novo. Tipografia: Schibsted Grotesk (next/font,
+   variável --font-display-crm montada no layout raiz) aplicada APENAS neste
+   domínio — --font-sans global segue Geist (contrato font-sans-token).
+
+   Responsivo: ≥1280px = rail + painel de contexto (breakpoint do donor);
+   <1280px mantém a UX atual do AtendON com o vocabulário visual do donor.
+   Compat Safari 12–15: nenhum dvh novo; backdrop-filter com prefixo + fallback
+   opaco; color-mix com fallback var(--token) na linha anterior.
+   ========================================================================= */
+
+:root {
+  --rail-width: 64px;
+  --context-panel-width: 300px;
+  /* Altura do header de contexto (py 16 + controle 32 + borda 1): a página
+     /conversas reserva esta altura na coluna da lista para nada ficar sob o
+     header fixo. */
+  --context-panel-header-h: 65px;
+}
+
+/* Tipografia do port: aplicada SÓ ao domínio do novo shell. */
+.nav-rail,
+.context-panel,
+.rail-more-panel,
+.settings-rail {
+  font-family: var(--font-display-crm, var(--font-sans));
+}
+
+/* =============================================================== NAVRAIL == */
+/* Base oculta; entra só em ≥1280px (breakpoint estrutural do donor). */
+
+.nav-rail { display: none; }
+
+@media (min-width: 1280px) {
+  .nav-rail {
+    position: fixed;
+    z-index: var(--z-sidebar);
+    top: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    width: var(--rail-width);
+    min-height: 0;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-4) 0;
+    overflow: visible;
+    background: var(--bg);
+    background: color-mix(in srgb, var(--bg) 80%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border-right: 1px solid var(--border-subtle);
+  }
+
+  /* Logo: tile da marca (donor: size-10 rounded-2xl bg-primary). O BrandMark
+     do AtendON é bicolor (anel + seta): sobre --primary uma das formas some,
+     então o tile usa --primary-subtle + --primary-text — as DUAS formas têm
+     contraste nos dois temas. */
+  .nav-rail__logo {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    flex: none;
+    place-items: center;
+    border-radius: var(--radius-lg);
+    background: var(--primary-subtle);
+    color: var(--primary-text);
+  }
+  .nav-rail__logo-mark { width: 24px; height: auto; }
+
+  .nav-rail__divider {
+    width: 32px;
+    height: 1px;
+    flex: none;
+    margin-block: var(--space-2);
+    background: var(--border-subtle);
+  }
+
+  .nav-rail__nav {
+    display: flex;
+    width: 100%;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    padding-block: var(--space-1);
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .nav-rail__nav::-webkit-scrollbar { display: none; }
+
+  /* Item do rail (donor: Link size-10 rounded-xl; ativo bg-primary/10
+     text-primary; ícone size-5; Tooltip side=right via components/ui). */
+  .nav-rail__link {
+    position: relative;
+    display: grid;
+    width: 40px;
+    height: 40px;
+    flex: none;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-lg);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-decoration: none;
+    transition: var(--transition-control);
+  }
+  .nav-rail__link:hover { background: var(--surface-hover); color: var(--text); text-decoration: none; }
+  .nav-rail__link.active {
+    background: var(--primary-subtle);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--primary-text);
+  }
+
+  /* Contador do handoff (dado AtendON): pill sólida da marca no canto. */
+  .nav-rail__count {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: grid;
+    min-width: 16px;
+    height: 16px;
+    place-items: center;
+    padding: 0 4px;
+    border-radius: var(--radius-pill);
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-family: var(--font-mono);
+    font-size: var(--text-micro);
+    font-weight: var(--weight-semibold);
+    line-height: 1;
+  }
+
+  .nav-rail__availability.is-available { color: var(--success-text); }
+  .nav-rail__availability.is-unavailable { color: var(--warning-text); }
+
+  /* Tema: ThemeToggle existente vestido como item do rail. */
+  .nav-rail__theme { color: var(--text-secondary); }
+  .nav-rail__theme-toggle { display: grid; width: 40px; height: 40px; place-items: center; }
+
+  .nav-rail__logout:hover {
+    background: var(--danger-subtle);
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+    color: var(--danger-text);
+  }
+
+  /* WorkspaceSwitcher compacto: só o avatar; o menu (absoluto, z popover)
+     escapa do rail porque ele não recorta overflow. */
+  .nav-rail__workspace { width: 100%; min-width: 0; display: grid; place-items: center; }
+  .nav-rail__workspace .workspace-switcher { margin-bottom: 0; }
+  .nav-rail__workspace .workspace-switcher__trigger {
+    width: 40px;
+    min-width: 0;
+    grid-template-columns: 24px;
+    justify-items: center;
+    padding: var(--space-1);
+    border-color: transparent;
+    background: transparent;
+    gap: 0;
+  }
+  .nav-rail__workspace .workspace-switcher__trigger:hover,
+  .nav-rail__workspace .workspace-switcher__trigger[aria-expanded="true"] { background: var(--surface-hover); }
+  .nav-rail__workspace .workspace-switcher__identity,
+  .nav-rail__workspace .workspace-switcher__chevron { display: none; }
+  .nav-rail__workspace .workspace-switcher__menu { left: 0; }
+
+  /* =========================================================== SHELL 64 == */
+
+  .shell--rail .sidebar { display: none; }
+  .shell--rail .topbar { left: var(--rail-width); }
+  .shell--rail .content {
+    width: calc(100% - var(--rail-width));
+    margin-left: var(--rail-width);
+  }
+  /* O estado recolhido salvo antes do port (localStorage) não pode devolver
+     a topbar/coluna para a largura da sidebar antiga. */
+  :root[data-sidebar="collapsed"] .shell--rail .topbar { left: var(--rail-width); }
+
+  /* ===================================================== CONTEXT PANEL == */
+
+  .context-panel__backdrop { display: none; }
+  .context-panel { display: none; }
+
+  .shell--conversas .context-panel__backdrop {
+    position: fixed;
+    z-index: -1;
+    top: var(--topbar-height);
+    bottom: 0;
+    left: var(--rail-width);
+    display: block;
+    width: var(--context-panel-width);
+    background: var(--surface);
+    background: color-mix(in srgb, var(--surface) 70%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border-right: 1px solid var(--border-subtle);
+  }
+
+  .shell--conversas .context-panel {
+    position: fixed;
+    z-index: var(--z-sticky);
+    top: calc(var(--topbar-height) + var(--topbar-height));
+    left: var(--rail-width);
+    display: block;
+    width: var(--context-panel-width);
+  }
+
+  /* Busca global no header do painel (donor GlobalSearch): abre o
+     CommandPalette EXISTENTE — o port não cria segunda busca. */
+  .context-panel__search {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-height: var(--control-height);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    background: color-mix(in srgb, var(--surface-sunken) 30%, transparent);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: var(--text-control);
+    text-align: left;
+    transition: var(--transition-control);
+  }
+  .context-panel__search:hover { background: var(--surface-hover); color: var(--text); }
+  .context-panel__search > span { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .context-panel__search > kbd {
+    flex: none;
+    padding: 0 var(--space-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xs);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-micro);
+  }
+
+  /* A LISTA EXISTENTE da página, re-vestida como coluna de contexto (donor:
+     bg-card/70 + blur + border-r; cartões rounded-xl com borda; ativo
+     border-primary/30 + bg-primary/5). A página não é editada nesta onda. */
+  .shell--conversas .conversation-screen { background: transparent; }
+  .shell--conversas .conversation-layout {
+    grid-template-columns: var(--context-panel-width) minmax(440px, 1fr);
+    background: transparent;
+  }
+  .shell--conversas .conversation-layout[data-contact-panel="open"] {
+    grid-template-columns: var(--context-panel-width) minmax(440px, 1fr) var(--context-pane-width);
+  }
+  .shell--conversas .conversation-list {
+    padding-top: var(--context-panel-header-h);
+    background: transparent;
+    border-right: 0;
+  }
+  .shell--conversas .conversation-list__header,
+  .shell--conversas .conversation-list__items { background: transparent; }
+  .shell--conversas .conversation-list__item {
+    margin: var(--space-1) var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+  }
+  .shell--conversas .conversation-list__item:hover {
+    background: var(--surface-hover);
+    background: color-mix(in srgb, var(--surface-hover) 60%, transparent);
+    border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+  .shell--conversas .conversation-list__item[aria-pressed="true"] {
+    background: var(--primary-subtle);
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
+    border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+  /* O donor marca o selecionado pela borda/superfície — sem barra lateral. */
+  .shell--conversas .conversation-list__item::before { display: none; }
+}
+
+/* ============================================== POPULAR "MAIS" (rail) ===== */
+
+.rail-more-panel {
+  display: grid;
+  min-width: 240px;
+  max-height: min(26rem, calc(100vh - var(--space-8)));
+  padding: var(--space-2);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-popover);
+}
+
+.rail-more__group { display: grid; gap: 1px; }
+.rail-more__group + .rail-more__group { margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--border-subtle); }
+.rail-more__label {
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-overline);
+  text-transform: uppercase;
+}
+.rail-more__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height-md);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+  transition: var(--transition-control);
+}
+.rail-more__item > svg { flex: none; }
+.rail-more__item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-more__item:hover { background: var(--surface-hover); color: var(--text); text-decoration: none; }
+.rail-more__item.active { background: var(--primary-subtle); color: var(--primary-text); font-weight: var(--weight-semibold); }
+
+/* ============================================= SETTINGS (idioma do rail) == */
+
+.settings-rail__group { display: grid; gap: var(--space-1); padding-bottom: var(--space-4); }
+.settings-rail__group + .settings-rail__group { padding-top: var(--space-4); border-top: 1px solid var(--border-subtle); }
+.settings-rail__grouphead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 0 var(--space-2) var(--space-1); }
+.settings-rail__grouphead h2 { color: var(--text-muted); font-size: var(--text-micro); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-overline); text-transform: uppercase; }
+.settings-rail__count { color: var(--text-muted); font-size: var(--text-micro); }
+.settings-rail__nav { display: grid; gap: var(--space-1); }
+
+.settings-rail__link,
+.settings-rail__tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--control-height-md);
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+  text-align: left;
+  text-decoration: none;
+  transition: var(--transition-control);
+}
+.settings-rail__link > svg, .settings-rail__tab > svg { flex: none; color: var(--text-muted); transition: var(--transition-control); }
+.settings-rail__link:hover, .settings-rail__tab:hover { background: var(--surface-hover); color: var(--text); text-decoration: none; }
+.settings-rail__link:hover > svg, .settings-rail__tab:hover > svg { color: var(--text); }
+.settings-rail__link > span { display: grid; min-width: 0; gap: 1px; }
+.settings-rail__link > span > small { color: var(--text-muted); font-size: var(--text-micro); line-height: var(--leading-tight); }
+.settings-rail__tab[aria-pressed="true"] {
+  background: var(--primary-subtle);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary-text);
+  font-weight: var(--weight-semibold);
+}
+.settings-rail__tab[aria-pressed="true"] > svg { color: var(--primary-text); }
+
+@media (min-width: 960px) {
+  /* Nav lateral: coluna fixa à esquerda, conteúdo ao lado. Float + sticky
+     (sem wrapper no JSX dos painéis; os irmãos seguintes recuam via seletores
+     de irmão). */
+  .settings-rail {
+    position: sticky;
+    top: var(--topbar-height);
+    z-index: var(--z-sticky);
+    float: left;
+    width: var(--settings-nav-width);
+    margin-right: var(--space-5);
+  }
+  .settings-rail ~ * { margin-left: calc(var(--settings-nav-width) + var(--space-5)); }
+}
+
+@media (max-width: 959px) {
+  .settings-rail { float: none; width: auto; }
+  .settings-rail ~ * { margin-left: 0; }
+}
+
+/* ======================================= <1280px: UX atual, visual donor == */
+
+/* Vocabulário do donor na sidebar AtendON existente: itens arredondados,
+   ativo com tint da marca (sem barra lateral), hover de superfície. */
+.shell--rail .nav a { border-radius: var(--radius-md); }
+.shell--rail .nav a:hover { background: var(--surface-hover); color: var(--text); }
+.shell--rail .nav a.active { background: var(--primary-subtle); background: color-mix(in srgb, var(--primary) 10%, transparent); color: var(--primary-text); }
+.shell--rail .nav a.active::before { display: none; }
+
+@media (max-width: 700px) {
+  .shell--rail .nav a { border-radius: var(--radius-lg); }
+  .shell--rail .nav a[aria-current="page"] { background: var(--primary-subtle); background: color-mix(in srgb, var(--primary) 10%, transparent); color: var(--primary-text); }
+  .shell--rail .mobile-nav-panel { border-radius: var(--radius-lg); }
+}

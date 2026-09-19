@@ -1,24 +1,32 @@
 /* Sino de notificações internas (R2 v6). Classes próprias — o cascade
-   unlayered de CSS module vence Tailwind; nada de utilities na marcação. */
+   unlayered de CSS module vence Tailwind; nada de utilities na marcação.
+
+   ONDA 1 (SPEC v7): visual do donor (crm-whatsapp notification-bell) —
+   gatilho FLUTUANTE fixo no canto inferior direito (48px, pill, sombra),
+   badge de contagem e painel acima do gatilho. APENAS apresentação: dados
+   (/me/internal-notifications), aria-labels e comportamento intactos. */
 
 .trigger {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: var(--z-toast);
   display: grid;
-  width: var(--control-height);
-  height: var(--control-height);
+  width: 48px;
+  height: 48px;
   place-items: center;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-pill);
-  background: var(--surface-elevated);
+  background: var(--bg);
   color: var(--text-secondary);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-drag);
   transition: var(--transition-control);
 }
 
 .trigger:hover {
-  border-color: var(--primary-border);
   background: var(--surface-hover);
-  color: var(--primary-text);
+  color: var(--text);
 }
 
 .bellWrap {
@@ -27,15 +35,17 @@
   place-items: center;
 }
 
+/* donor: badge size-5 (20px) absolute -right-1 -top-1, rounded-full,
+   text-[10px] bg-destructive — sobre o sino flutuante. */
 .badge {
   position: absolute;
-  top: calc(var(--space-1) * -1.5);
-  right: calc(var(--space-2) * -1);
+  top: -4px;
+  right: -4px;
   display: grid;
-  min-width: var(--space-4);
-  height: var(--space-4);
+  min-width: 20px;
+  height: 20px;
   place-items: center;
-  padding: 0 var(--space-1);
+  padding: 0 4px;
   border-radius: var(--radius-pill);
   background: var(--danger);
   color: var(--text-inverse);
@@ -45,13 +55,37 @@
   line-height: 1;
 }
 
+/* donor: sino treme enquanto há não lidas ([animation:bell-shake_0.5s…]).
+   O badge só existe quando há não lidas, então ele habilita o shake;
+   browsers sem :has simplesmente não tremem (degradação segura). */
+.bellWrap:has(.badge) > svg {
+  animation: bell-shake 0.5s ease-in-out infinite;
+}
+
+@keyframes bell-shake {
+  0%, 100% { transform: rotate(0deg); }
+  15% { transform: rotate(14deg); }
+  30% { transform: rotate(-8deg); }
+  45% { transform: rotate(14deg); }
+  60% { transform: rotate(-4deg); }
+  75% { transform: rotate(10deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bellWrap:has(.badge) > svg { animation: none; }
+}
+
+/* donor: painel w-[min(20rem,100vw-3rem)] max-h-[28rem] rounded-2xl border
+   border-border/70 bg-background shadow-xl — ancorado pelo PopoverMenu, que
+   o vira para cima do gatilho (posição fixa, canto inferior direito). */
 .panel {
   display: grid;
-  width: min(21rem, calc(100vw - var(--space-8)));
-  max-height: min(26rem, calc(100vh - var(--space-8)));
+  width: min(20rem, calc(100vw - 3rem));
+  max-height: min(28rem, calc(100vh - 12rem));
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  background: var(--surface-elevated);
-  box-shadow: var(--shadow-popover);
+  background: var(--bg);
+  box-shadow: var(--shadow-dialog);
   overflow: hidden;
 }
 
@@ -60,6 +94,7 @@
   min-height: 0;
 }
 
+/* donor: header px-4 py-3 border-b border-border/70. */
 .header {
   display: flex;
   align-items: center;
@@ -70,11 +105,9 @@
 }
 
 .header strong {
-  font-size: var(--text-label);
+  color: var(--text);
+  font-size: var(--text-body);
   font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-overline);
-  text-transform: uppercase;
-  color: var(--text-secondary);
 }
 
 .markAll {
@@ -91,24 +124,26 @@
 .list {
   display: grid;
   overflow-y: auto;
-  max-height: 21rem;
+  max-height: 24rem;
+  padding-block: var(--space-1);
 }
 
+/* donor: empty px-4 py-8 text-center text-sm muted-foreground. */
 .empty {
   margin: 0;
-  padding: var(--space-6) var(--space-4);
-  color: var(--text-secondary);
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-muted);
   font-size: var(--text-body);
   text-align: center;
 }
 
+/* donor: itens px-4 py-3 hover:bg-accent; não lida bg-primary/5. */
 .item {
   display: grid;
   gap: var(--space-1);
   width: 100%;
   padding: var(--space-3) var(--space-4);
   border: 0;
-  border-bottom: 1px solid var(--border-subtle);
   background: transparent;
   color: var(--text-secondary);
   text-align: start;
@@ -116,17 +151,17 @@
   font-size: var(--text-body);
 }
 
-.item:last-child { border-bottom: 0; }
 .item:hover { background: var(--surface-hover); color: var(--text); }
 
 .itemTitle {
   color: var(--text);
-  font-size: var(--text-control);
-  font-weight: var(--weight-medium);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-semibold);
 }
 
 .itemBody {
   overflow: hidden;
+  color: var(--text-muted);
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -139,9 +174,10 @@
 
 .itemUnread {
   background: var(--primary-subtle);
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
 }
 
-.itemUnread:hover { background: var(--primary-subtle-hover); }
+.itemUnread:hover { background: var(--surface-hover); }
 
 .itemUnread .itemTitle {
   font-weight: var(--weight-semibold);

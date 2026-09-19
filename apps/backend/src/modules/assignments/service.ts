@@ -57,7 +57,13 @@ export async function lockAttendantRotation(client: PoolClient, tenantId: string
   );
 }
 
-async function eligibleAttendants(client: PoolClient, tenantId: string): Promise<AttendantAssignment[]> {
+async function eligibleAttendants(
+  client: PoolClient,
+  tenantId: string,
+  options: { teamId?: string } = {}
+): Promise<AttendantAssignment[]> {
+  // B6 Times: filtro de equipe sobre o MESMO pool — nunca um sistema paralelo
+  // de disponibilidade. workspace_members.team_id restringe os elegíveis.
   const result = await client.query<AttendantAssignment & { member_id: string; user_id: string; availability_status: "available" | "unavailable" }>(
     `SELECT m.id member_id,m.user_id,u.email,pool.availability_status
      FROM scheduling_google_meet_closers pool
@@ -65,6 +71,7 @@ async function eligibleAttendants(client: PoolClient, tenantId: string): Promise
        ON m.id=pool.member_id AND m.workspace_id=pool.tenant_id AND m.status='active'
      JOIN users u ON u.id=m.user_id AND u.status='active'
      WHERE pool.tenant_id=$1
+       AND ($2::uuid IS NULL OR m.team_id=$2)
        AND EXISTS (
          SELECT 1 FROM workspace_role_permissions permission
          WHERE permission.role_id=m.role_id AND permission.permission_key='leads.read'
@@ -78,7 +85,7 @@ async function eligibleAttendants(client: PoolClient, tenantId: string): Promise
          WHERE permission.role_id=m.role_id AND permission.permission_key='conversations.reply'
        )
      ORDER BY pool.created_at,m.id`,
-    [tenantId]
+    [tenantId, options.teamId ?? null]
   );
   return result.rows.map((row) => ({
     memberId: row.member_id,
@@ -300,11 +307,12 @@ export async function selectAvailableAppointmentAttendant(
 export async function selectNextAttendant(
   client: PoolClient,
   tenantId: string,
-  options: { excludeMemberIds?: string[] } = {}
+  options: { excludeMemberIds?: string[]; teamId?: string } = {}
 ): Promise<AttendantAssignment | null> {
   await lockAttendantRotation(client, tenantId);
   const excluded = new Set(options.excludeMemberIds ?? []);
-  const pool = (await eligibleAttendants(client, tenantId)).filter((candidate) => !excluded.has(candidate.memberId));
+  const pool = (await eligibleAttendants(client, tenantId, { teamId: options.teamId }))
+    .filter((candidate) => !excluded.has(candidate.memberId));
   if (!pool.length) {
     await client.query(
       "UPDATE attendant_assignment_cursors SET last_member_id=NULL,updated_at=now() WHERE tenant_id=$1",
@@ -325,6 +333,19 @@ export async function selectNextAttendant(
     [tenantId, selected.memberId]
   );
   return selected;
+}
+
+/**
+ * B6 Times: round-robin do pool existente restrito aos membros da equipe.
+ * Contrato usado pelo endpoint de assign (team_id) e pela futura action
+ * assign_to de fluxos — o cursor do round-robin é o mesmo do pool geral.
+ */
+export async function pickTeamRoundRobinMember(
+  client: PoolClient,
+  tenantId: string,
+  teamId: string
+): Promise<{ memberId: string; userId: string; email: string; availabilityStatus: "available" | "unavailable" } | null> {
+  return selectNextAttendant(client, tenantId, { teamId });
 }
 
 async function loadCaseRows(
@@ -371,9 +392,10 @@ async function loadCaseRows(
 async function eligibleByExistingAssignment(
   client: PoolClient,
   tenantId: string,
-  rows: CaseRows
+  rows: CaseRows,
+  options: { teamId?: string } = {}
 ): Promise<AttendantAssignment | null> {
-  const attendants = await eligibleAttendants(client, tenantId);
+  const attendants = await eligibleAttendants(client, tenantId, options);
   const preferredAssignments = [
     rows.conversations.find(
       (conversation) => conversation.status === "open" && conversation.assigned_user_id
@@ -658,23 +680,26 @@ export async function ensureCaseAssignment(
     reason: Extract<AssignmentReason, "novo_contato" | "lead_criado" | "retorno_conversa_encerrada" | "reuniao_sem_responsavel">;
     forceRotation?: boolean;
     preferredMemberId?: string;
+    // B6 Times: quando o caso pertence a uma equipe, a rotação e a manutenção
+    // do responsável ficam restritas aos membros dela.
+    teamId?: string;
   }
 ): Promise<AttendantAssignment | null> {
   await lockAttendantRotation(client, input.tenantId);
   const rows = await loadCaseRows(client, input.tenantId, input.selector);
   if (!rows) return null;
   if ((await Promise.all(rows.leads.map((lead) => assignmentIsLockedByAttendance(client, input.tenantId, lead.id)))).some(Boolean)) {
-    return eligibleByExistingAssignment(client, input.tenantId, rows);
+    return eligibleByExistingAssignment(client, input.tenantId, rows, { teamId: input.teamId });
   }
   const preferred = input.preferredMemberId
-    ? (await eligibleAttendants(client, input.tenantId)).find(
+    ? (await eligibleAttendants(client, input.tenantId, { teamId: input.teamId })).find(
         (candidate) => candidate.memberId === input.preferredMemberId
       ) ?? null
     : null;
   const current = input.forceRotation || input.preferredMemberId
     ? null
-    : await eligibleByExistingAssignment(client, input.tenantId, rows);
-  const assignment = preferred ?? current ?? await selectNextAttendant(client, input.tenantId);
+    : await eligibleByExistingAssignment(client, input.tenantId, rows, { teamId: input.teamId });
+  const assignment = preferred ?? current ?? await selectNextAttendant(client, input.tenantId, { teamId: input.teamId });
   await synchronizeRows(client, input.tenantId, rows, assignment, input.reason);
   return assignment;
 }

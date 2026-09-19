@@ -10,6 +10,8 @@ import { CommandPalette, type PaletteItem } from "@/components/command-palette";
 import { MessageNotifications } from "@/components/message-notifications";
 import { NotificationCenter } from "@/components/notification-center";
 import { InternalNotifications } from "@/components/internal-notifications";
+import { NavRail, splitRailItems, type RailMenuItem, type RailMoreGroup, type RailPrimaryItem } from "@/components/nav-rail";
+import { ContextPanel } from "@/components/context-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { VersionBanner } from "@/components/version-banner";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
@@ -33,6 +35,8 @@ import {
   publishWorkspaceContextChange,
   type PanelSession
 } from "@/lib/session";
+
+import "@/styles/domains/shell-rail.css";
 
 const fetcher = <T,>(url: string) => api<T>(url);
 type ShellAttendant = {
@@ -172,6 +176,8 @@ export function Shell({
   }, [versionData?.version]);
 
   const currentItem = useMemo<PanelManifestItem | undefined>(() => findPanelManifestItem(path), [path]);
+  const handoffCount = dashboard?.counts?.handoff ?? 0;
+  const isConversas = path === "/conversas" || path.startsWith("/conversas/");
   const visibleGroups = useMemo(() => {
     if (!session) return [];
     const showOperationalGroups = !session.user.isRoot || session.rootWorkspaceAccess;
@@ -195,6 +201,28 @@ export function Shell({
       .filter((group) => group.items.length > 0);
   }, [capabilities, entitlements.features, session]);
   const canRenderCurrentPage = Boolean(session && (!currentItem || canAccessManifestItem(session, currentItem)));
+  // Partição do rail (SPEC v7, onda 1): primários fixos + popover "mais"
+  // agrupado. Mesma fonte de dados (manifest), mesmo gating — nada novo aqui.
+  const railMenuItems = useMemo<RailMenuItem[]>(
+    () => visibleGroups.flatMap((group) => group.items.map(({ href, label, Icon }) => ({ href, label, group: group.label, Icon }))),
+    [visibleGroups]
+  );
+  const { primary: railPrimaryBase, more: railMoreBase } = useMemo(() => splitRailItems(railMenuItems), [railMenuItems]);
+  const railPrimaryItems = useMemo<RailPrimaryItem[]>(
+    () => railPrimaryBase.map((item) => ({
+      ...item,
+      active: matchesPath(path, item.href),
+      count: item.href === "/conversas" && handoffCount > 0 ? handoffCount : undefined
+    })),
+    [handoffCount, path, railPrimaryBase]
+  );
+  const railMoreGroups = useMemo<RailMoreGroup[]>(
+    () => railMoreBase.map((group) => ({
+      ...group,
+      items: group.items.map((item) => ({ ...item, active: matchesPath(path, item.href) }))
+    })),
+    [path, railMoreBase]
+  );
   const paletteItems = useMemo<PaletteItem[]>(
     () => visibleGroups.flatMap((group) => group.items.map(({ href, label, Icon }) => ({ href, label, Icon, group: group.label }))),
     [visibleGroups]
@@ -282,11 +310,33 @@ export function Shell({
   const userName = formatUserName(session.user.email);
   const userInitials = getInitials(userName);
   const userRole = session.user.isRoot ? "ROOT" : workspaceRole;
-  const handoffCount = dashboard?.counts?.handoff ?? 0;
   const showRootBanner = session.actorScope === "root" && !path.startsWith("/root");
+  const workspaceSlot = session.activeWorkspace && session.workspaces.length > 1 ? (
+    <WorkspaceSwitcher
+      activeWorkspaceId={session.activeWorkspace?.id}
+      disabled={switchingWorkspace}
+      onChange={switchWorkspace}
+      workspaces={session.workspaces}
+    />
+  ) : null;
+  const railAvailability = currentAttendant ? {
+    available: currentAttendant.availability_status === "available",
+    pending: changingAvailability,
+    onToggle: () => void toggleAvailability()
+  } : null;
 
   return (
-    <div className={`shell${flush ? " shell--flush" : ""}${fitViewport ? " shell--fit" : ""}`} data-mobile-nav={mobileNavOpen ? "open" : "closed"}>
+    <div className={`shell shell--rail${isConversas ? " shell--conversas" : ""}${flush ? " shell--flush" : ""}${fitViewport ? " shell--fit" : ""}`} data-mobile-nav={mobileNavOpen ? "open" : "closed"}>
+      <NavRail
+        items={railPrimaryItems}
+        moreGroups={railMoreGroups}
+        onOpenPalette={() => setPaletteOpen(true)}
+        onLogout={logout}
+        availability={railAvailability}
+        workspaceSlot={workspaceSlot}
+        profileActive={matchesPath(path, "/perfil")}
+      />
+      {isConversas ? <ContextPanel onOpenSearch={() => setPaletteOpen(true)} /> : null}
       {mobileNavOpen ? <button type="button" className="mobile-nav-backdrop" aria-label="Fechar menu" onClick={() => setMobileNavOpen(false)} /> : null}
       <aside className="sidebar">
         <div className="sidebar-top">

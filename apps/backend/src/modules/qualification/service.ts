@@ -1,12 +1,13 @@
 import { promises as dnsPromises } from "node:dns";
-import type { PoolClient } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { db } from "../../db/client.js";
 import { logger } from "../../logger.js";
 import { zonedParts } from "../../timezone.js";
-import type { MessageGateway, MessageReferral } from "../messages/types.js";
+import type { InteractivePayload, MessageGateway, MessageReferral } from "../messages/types.js";
 import { httpError, withTransaction } from "../scheduling/service.js";
 import {
-  assertPublicWebhookUrl, flowDefinitionSchema, nextStepId, remainingQuestions, renderFinalMessage, renderQuestion,
+  assertPublicWebhookUrl, conditionValueHidden, evaluateCondition, flowDefinitionSchema, interactiveChoices, interactivePayload,
+  nextStepId, remainingQuestions, renderFinalMessage, renderInteractivePreview, renderQuestion,
   renderTemplate, totalQuestions, type FlowDefinition, type FlowStep, type FlowVars
 } from "./flow.js";
 import { classifyBoolean, matchAnswer, matchAnswerCandidates, normalizeText } from "./normalizer.js";
@@ -30,7 +31,7 @@ export interface QualificationOutcome { reply: string | null; outboxId?: string 
 
 type QualificationStatus = "em_andamento" | "pausado" | "concluido";
 type TriggerType = "ctwa" | "session" | "keyword";
-type OutboxKind = "question" | "clarification" | "confirmation" | "final" | "message";
+type OutboxKind = "question" | "clarification" | "confirmation" | "final" | "message" | "interactive";
 type ExecutionStatus = "entered" | "completed" | "failed" | "waiting" | "skipped";
 
 interface StateRow {
@@ -49,16 +50,21 @@ interface StateRow {
   conversation_id: string | null;
   assigned_user_id: string | null;
   lead_name: string | null;
+  flow_allowed_role_ids: unknown;
 }
 
 interface OutboxRow {
   id: string;
   tenant_id: string;
+  qualification_id: string | null;
+  step_id: string | null;
   session_id: string;
   contact_phone: string;
   contact_jid: string | null;
   message: string;
   inbound_external_id: string;
+  message_kind: string;
+  interactive_payload: Record<string, unknown> | null;
 }
 
 /** Contexto de execução do fluxo (uma conversa/lead processando um passo a passo). */
@@ -75,7 +81,7 @@ interface WalkContext {
   timezone: string | null;
 }
 
-interface WalkMessage { stepId: string; kind: OutboxKind; text: string }
+interface WalkMessage { stepId: string; kind: OutboxKind; text: string; interactive?: Record<string, unknown> }
 
 interface WalkWebhook { stepId: string; url: string; method: "GET" | "POST" | "PUT"; body: string | null }
 
@@ -151,6 +157,36 @@ function tenantDate(timezone: string | null | undefined, now = new Date()): stri
 /** Variáveis para interpolação {{...}}: respostas anteriores por campo + contato + data. */
 function flowVars(answers: Record<string, string>, contact: { name?: string | null; phone: string }, timezone: string | null | undefined): FlowVars {
   return { ...answers, nome: contact.name ?? "", telefone: contact.phone, data: tenantDate(timezone) };
+}
+
+/**
+ * Gating de execução por papel (SPEC v7 C1-c): allowed_role_ids vazio = sem
+ * restrição; com restrição, o responsável atual do lead (assigned_member_id)
+ * precisa ter um dos papéis. Lead sem responsável = bloqueado (fail-closed,
+ * sempre logado como skipped no flow_execution_log).
+ */
+async function flowRoleAllowed(
+  database: Pick<Pool, "query">,
+  tenantId: string,
+  leadId: string,
+  allowedRoleIds: unknown
+): Promise<boolean> {
+  const roles = Array.isArray(allowedRoleIds) ? allowedRoleIds as string[] : [];
+  if (!roles.length) return true;
+  // Fail-closed: com restrição, o responsável atual do lead PRECISA ter um dos
+  // papéis. Lead sem responsável (ou com responsável órfão/papel removido) =
+  // bloqueado — o executor grava skipped e o turno de IA assume.
+  const result = await database.query<{ allowed: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM scheduling_leads l
+       JOIN workspace_members m ON m.id=l.assigned_member_id AND m.workspace_id=l.tenant_id
+       JOIN workspace_roles r ON r.id=m.role_id
+       WHERE l.id=$1 AND l.tenant_id=$2 AND r.id=ANY($3::uuid[])
+     ) AS allowed
+     LIMIT 1`,
+    [leadId, tenantId, roles]
+  );
+  return Boolean(result.rows[0]?.allowed);
 }
 
 function attribution(input: QualificationInbound, tenantProduct: string): Record<string, unknown> {
@@ -333,6 +369,23 @@ export function simulateFlow(definition: FlowDefinition, text: string, maxSteps 
       case "final":
         trace.push({ node_id: stepId, kind: step.kind, result: renderFinalMessage(step, vars), next: null });
         return trace;
+      case "finalize":
+        trace.push({ node_id: stepId, kind: step.kind, result: `encerra o fluxo (${step.end_reason ?? "sem motivo"})`, next: null });
+        return trace;
+      case "branch":
+      case "condition": {
+        const outcome = evaluateCondition(step, vars) ? "yes" : "no";
+        trace.push({ node_id: stepId, kind: step.kind, result: `${step.variable_name ?? "?"} ${step.operator ?? "?"} ${conditionValueHidden(step.operator) ? "(sem valor)" : step.value ?? ""} → ${outcome}`, next: step.transitions?.[outcome] ?? null });
+        if (!step.transitions?.[outcome]) {
+          trace.push({ node_id: stepId, kind: step.kind, result: `saída "${outcome}" sem destino`, next: null });
+          return trace;
+        }
+        stepId = step.transitions[outcome] as string;
+        continue;
+      }
+      case "interactive":
+        trace.push({ node_id: stepId, kind: step.kind, result: renderInteractivePreview(step, vars), next: null });
+        return trace;
       case "message":
         trace.push({ node_id: stepId, kind: step.kind, result: renderTemplate(step.message ?? "", vars), next: step.next ?? null });
         stepId = step.next;
@@ -400,9 +453,11 @@ export class QualificationService {
     const snapshot = await db.query<StateRow>(
       `SELECT q.id,q.lead_id,q.flow_id,q.current_step,q.status,q.answers,q.pending_value,q.ask_pending,
               q.last_inbound_external_id,q.definition_snapshot,q.wait_until,q.wait_session_id,
-              c.id conversation_id,c.assigned_user_id,l.name lead_name
+              c.id conversation_id,c.assigned_user_id,l.name lead_name,
+              f.allowed_role_ids flow_allowed_role_ids
        FROM scheduling_leads l
        JOIN lead_qualifications q ON q.lead_id=l.id AND q.tenant_id=l.tenant_id
+       JOIN qualification_flows f ON f.id=q.flow_id AND f.tenant_id=q.tenant_id
        JOIN conversations c ON c.lead_id=l.id AND c.tenant_id=l.tenant_id
        WHERE l.tenant_id=$1 AND l.phone=$2 AND c.session_id=$3`,
       [input.tenantId, input.contactPhone, input.sessionId]
@@ -421,6 +476,18 @@ export class QualificationService {
     if (!definition) return null;
     const step = definition.steps[state.current_step];
     if (!step || step.kind === "final") return null;
+
+    // C1-c: gating de execução por papel do responsável do lead. Bloqueado =
+    // robô calado (turno de IA assume) + log skipped role_not_allowed.
+    if (!(await flowRoleAllowed(db, input.tenantId, state.lead_id, state.flow_allowed_role_ids))) {
+      await logExecutionBestEffort(
+        { tenantId: input.tenantId, flowId: state.flow_id, leadId: state.lead_id, conversationId: state.conversation_id },
+        { id: state.current_step, kind: step.kind },
+        "skipped",
+        { motivo: "role_not_allowed" }
+      );
+      return null;
+    }
 
     if (state.wait_until && step.kind === "wait_for_reply") {
       return this.consumeWaitReply(input, state, definition, step, timezone);
@@ -441,11 +508,18 @@ export class QualificationService {
       return this.applyPrompt(input, state, { pendingValue: state.pending_value, askPending: false }, confirmationPrompt(state.pending_value), "confirmation");
     }
 
-    const candidates = matchAnswerCandidates(step, input.text);
-    const value = candidates.length > 1 ? null : matchAnswer(step, input.text);
-    if (value) return this.acceptAnswer(input, state, definition, step, value, input.text, timezone);
+    // Nó interactive: a resposta do contato casa com as escolhas (botões/linhas)
+    // por um passo virtual options=interactiveChoices(step) — roteamento segue
+    // via transitions[value] ?? next; o passo REAL mantém kind/log/renderização.
+    const isInteractive = step.kind === "interactive";
+    const matchStep: FlowStep = isInteractive ? { ...step, kind: "options", options: interactiveChoices(step) } : step;
+    const candidates = matchAnswerCandidates(matchStep, input.text);
+    const value = candidates.length > 1 ? null : matchAnswer(matchStep, input.text);
+    if (value) return this.acceptAnswer(input, state, definition, matchStep, value, input.text, timezone, step.kind);
 
-    if (candidates.length <= 1 && aiClassify && step.kind !== "text" && step.options?.length) {
+    // IA só classifica perguntas com opções estruturadas — NÃO escolhas de nó
+    // interactive (a escolha é do toque no botão/linha, não heurística de texto).
+    if (candidates.length <= 1 && aiClassify && step.kind !== "text" && step.kind !== "interactive" && step.options?.length) {
       const candidate = await aiClassify(step.question ?? "", step.options.map((option) => option.value), input.text).catch(() => null);
       const valid = candidate ? step.options.find((option) => normalizeText(option.value) === normalizeText(candidate)) : undefined;
       if (valid) return this.applyPrompt(input, state, { pendingValue: valid.value, askPending: false }, confirmationPrompt(valid.value), "confirmation");
@@ -523,12 +597,14 @@ export class QualificationService {
         id: string; tenant_id: string; lead_id: string; flow_id: string; current_step: string; status: QualificationStatus;
         wait_until: Date | null; wait_session_id: string | null; answers: Record<string, string>; definition_snapshot: unknown;
         lead_phone: string; lead_name: string | null; conversation_id: string | null; contact_phone: string | null; contact_jid: string | null;
-        timezone: string | null;
+        timezone: string | null; flow_allowed_role_ids: unknown;
       }>(
         `SELECT q.id,q.tenant_id,q.lead_id,q.flow_id,q.current_step,q.status,q.wait_until,q.wait_session_id,q.answers,q.definition_snapshot,
-                l.phone lead_phone,l.name lead_name,c.id conversation_id,c.contact_phone,c.contact_jid,t.timezone
+                l.phone lead_phone,l.name lead_name,c.id conversation_id,c.contact_phone,c.contact_jid,t.timezone,
+                f.allowed_role_ids flow_allowed_role_ids
          FROM lead_qualifications q
          JOIN scheduling_leads l ON l.id=q.lead_id AND l.tenant_id=q.tenant_id AND l.deleted_at IS NULL
+         JOIN qualification_flows f ON f.id=q.flow_id AND f.tenant_id=q.tenant_id
          LEFT JOIN conversations c ON c.tenant_id=q.tenant_id AND c.lead_id=q.lead_id AND c.session_id=q.wait_session_id
          JOIN tenants t ON t.id=q.tenant_id
          WHERE q.id=$1 AND q.tenant_id=$2 FOR UPDATE OF q`, [data.qualificationId, data.tenantId]
@@ -579,6 +655,14 @@ export class QualificationService {
         await logExecution(client, ctx, { id: state.current_step, kind: step.kind }, "failed", { motivo: "destino_da_espera_inexistente" });
         return { processed: false, reason: "missing_target" };
       }
+      // C1-c: papel do responsável saiu da allowlist desde o agendamento — a
+      // espera é cancelada (sem reprocessamento infinito do reconciliador) e
+      // o nó fica registrado como skipped; a retomada futura é por inbound.
+      if (!(await flowRoleAllowed(client, state.tenant_id, state.lead_id, state.flow_allowed_role_ids))) {
+        await client.query("UPDATE lead_qualifications SET wait_until=NULL,updated_at=now() WHERE id=$1", [state.id]);
+        await logExecution(client, ctx, { id: state.current_step, kind: step.kind }, "skipped", { motivo: "role_not_allowed" });
+        return { processed: false, reason: "role_not_allowed" };
+      }
 
       await logExecution(client, ctx, { id: state.current_step, kind: step.kind }, "completed", { motivo: "timeout" });
       const vars = flowVars(state.answers ?? {}, { name: state.lead_name, phone: state.lead_phone }, state.timezone);
@@ -597,7 +681,8 @@ export class QualificationService {
 
   async listPendingOutbox(limit = 100): Promise<OutboxRow[]> {
     const result = await db.query<OutboxRow>(
-      `SELECT id,tenant_id,session_id,contact_phone,contact_jid,message,inbound_external_id FROM qualification_message_outbox
+      `SELECT id,tenant_id,qualification_id,step_id,session_id,contact_phone,contact_jid,message,inbound_external_id,message_kind,interactive_payload
+       FROM qualification_message_outbox
        WHERE status='pending' AND next_attempt_at<=now() AND (claimed_at IS NULL OR claimed_at<now()-interval '2 minutes')
          AND EXISTS (SELECT 1 FROM whatsapp_sessions s WHERE s.id=qualification_message_outbox.session_id
            AND s.tenant_id=qualification_message_outbox.tenant_id AND s.channel='whatsapp' AND s.archived_at IS NULL)
@@ -613,12 +698,33 @@ export class QualificationService {
          AND (claimed_at IS NULL OR claimed_at<now()-interval '2 minutes')
          AND EXISTS (SELECT 1 FROM whatsapp_sessions s WHERE s.id=qualification_message_outbox.session_id
            AND s.tenant_id=qualification_message_outbox.tenant_id AND s.channel='whatsapp' AND s.archived_at IS NULL)
-       RETURNING id,tenant_id,session_id,contact_phone,contact_jid,message,inbound_external_id`, [row.id]
+       RETURNING id,tenant_id,qualification_id,step_id,session_id,contact_phone,contact_jid,message,inbound_external_id,message_kind,interactive_payload`, [row.id]
     );
     if (!claimed.rows[0]) return "";
     const current = claimed.rows[0];
+    const interactive = current.message_kind === "interactive" && current.interactive_payload
+      ? current.interactive_payload as unknown as InteractivePayload
+      : null;
     try {
-      const sent = await gateway.sendText(current.session_id, current.contact_jid ?? current.contact_phone, current.message);
+      let sent: { externalId: string };
+      let interactiveDetail: Record<string, unknown> = {};
+      if (interactive) {
+        // C1-h: mensagem interativa sai por sendInteractive. Sem o método no
+        // gateway = capability indisponível → degradação segura: falha
+        // definitiva (sem retry infinito) + log do executor; UI esconde o nó.
+        if (!gateway.sendInteractive) {
+          await db.query(
+            "UPDATE qualification_message_outbox SET status='failed',last_error=$2,claimed_at=NULL WHERE id=$1 AND status='pending'",
+            [current.id, "capability_indisponivel"]
+          );
+          await this.logInteractiveDelivery(current, "failed", { motivo: "capability_indisponivel" });
+          return "";
+        }
+        sent = await gateway.sendInteractive(current.session_id, current.contact_jid ?? current.contact_phone, interactive);
+        interactiveDetail = { payload_kind: interactive.kind };
+      } else {
+        sent = await gateway.sendText(current.session_id, current.contact_jid ?? current.contact_phone, current.message);
+      }
       await withTransaction(async (client) => {
         await client.query(
           `UPDATE qualification_message_outbox SET status='sent',external_message_id=$2,sent_at=now(),last_error=NULL,claimed_at=NULL
@@ -637,8 +743,10 @@ export class QualificationService {
           [`${current.tenant_id}:${current.session_id}:${current.inbound_external_id}`]
         );
       });
+      if (interactive) await this.logInteractiveDelivery(current, "completed", interactiveDetail);
       return sent.externalId;
     } catch (error) {
+      if (interactive) await this.logInteractiveDelivery(current, "failed", { erro: error instanceof Error ? error.message : String(error) });
       await db.query(
         `UPDATE qualification_message_outbox SET attempts=attempts+1,last_error=$2,claimed_at=NULL,
          status=CASE WHEN $3::boolean THEN 'pending' ELSE 'failed' END,
@@ -651,24 +759,48 @@ export class QualificationService {
 
   async deliverOutboxById(id: string, gateway: MessageGateway): Promise<string | null> {
     const result = await db.query<OutboxRow>(
-      "SELECT id,tenant_id,session_id,contact_phone,contact_jid,message,inbound_external_id FROM qualification_message_outbox WHERE id=$1 AND status='pending'",
+      "SELECT id,tenant_id,qualification_id,step_id,session_id,contact_phone,contact_jid,message,inbound_external_id,message_kind,interactive_payload FROM qualification_message_outbox WHERE id=$1 AND status='pending'",
       [id]
     );
     return result.rows[0] ? this.deliverOutbox(result.rows[0], gateway) : null;
+  }
+
+  /**
+   * Log do executor (flow_execution_log) para a entrega da mensagem interativa.
+   * Best-effort: a outbox não depende desta linha; conversa resolvida não fica
+   * disponível aqui (row não a carrega) — lead/fluxo vêm da qualificação.
+   */
+  private async logInteractiveDelivery(row: OutboxRow, status: ExecutionStatus, detail: Record<string, unknown>): Promise<void> {
+    if (!row.qualification_id) return;
+    try {
+      const state = await db.query<{ lead_id: string; flow_id: string }>(
+        "SELECT lead_id,flow_id FROM lead_qualifications WHERE id=$1 AND tenant_id=$2", [row.qualification_id, row.tenant_id]
+      );
+      if (!state.rows[0]) return;
+      await logExecutionBestEffort(
+        { tenantId: row.tenant_id, flowId: state.rows[0].flow_id, leadId: state.rows[0].lead_id, conversationId: null },
+        { id: row.step_id ?? "interactive", kind: "interactive" },
+        status,
+        detail
+      );
+    } catch {
+      // Log é diagnóstico; nunca bloqueia a entrega.
+    }
   }
 
   private async pendingForInbound(tenantId: string, qualificationId: string, externalId: string): Promise<QualificationOutcome> {
     const pending = await db.query<{ id: string; message: string }>(
       `SELECT id,message FROM qualification_message_outbox
        WHERE tenant_id=$1 AND qualification_id=$2 AND inbound_external_id=$3 AND status='pending'
+         AND message_kind <> 'interactive'
        ORDER BY created_at DESC LIMIT 1`, [tenantId, qualificationId, externalId]
     );
     return pending.rows[0] ? { reply: pending.rows[0].message, outboxId: pending.rows[0].id } : { reply: null };
   }
 
   private async startFlow(input: QualificationInbound, timezone: string | null): Promise<QualificationOutcome | null> {
-    const flowRow = await db.query<{ id: string; definition: unknown }>(
-      "SELECT id,definition FROM qualification_flows WHERE tenant_id=$1 AND active ORDER BY updated_at DESC LIMIT 1", [input.tenantId]
+    const flowRow = await db.query<{ id: string; definition: unknown; allowed_role_ids: unknown }>(
+      "SELECT id,definition,allowed_role_ids FROM qualification_flows WHERE tenant_id=$1 AND active ORDER BY updated_at DESC LIMIT 1", [input.tenantId]
     );
     if (!flowRow.rows[0]) return null;
     const definition = parseDefinition(input.tenantId, flowRow.rows[0].definition);
@@ -704,6 +836,18 @@ export class QualificationService {
         selector: { leadId },
         reason: "lead_criado"
       });
+      // C1-c: gating por papel — o fluxo NEM COMEÇA quando o responsável do
+      // lead não está em allowed_role_ids (vazio = sem restrição). Log skipped
+      // e turno de IA assume (outcome null).
+      if (!(await flowRoleAllowed(client, input.tenantId, leadId, flowRow.rows[0].allowed_role_ids))) {
+        await logExecutionBestEffort(
+          { tenantId: input.tenantId, flowId: flowRow.rows[0].id, leadId, conversationId: existingLead.rows[0]?.conversation_id ?? null },
+          { id: definition.start, kind: "gate" },
+          "skipped",
+          { motivo: "role_not_allowed" }
+        );
+        return { outcome: null as QualificationOutcome | null, walk: null, ctx: null, vars: null };
+      }
       const tenant = await client.query<{ product: string }>(
         "SELECT COALESCE(NULLIF(slug,''), NULLIF(name,''), id::text) AS product FROM tenants WHERE id=$1",
         [input.tenantId]
@@ -816,7 +960,7 @@ export class QualificationService {
     return outcome;
   }
 
-  private async acceptAnswer(input: QualificationInbound, state: StateRow, definition: FlowDefinition, step: FlowStep, value: string, rawText: string, timezone: string | null): Promise<QualificationOutcome> {
+  private async acceptAnswer(input: QualificationInbound, state: StateRow, definition: FlowDefinition, step: FlowStep, value: string, rawText: string, timezone: string | null, logKind?: string): Promise<QualificationOutcome> {
     const targetId = nextStepId(step, value);
     if (!targetId || !definition.steps[targetId]) return { reply: null };
     const answers = { ...state.answers, ...(step.field ? { [step.field]: value } : {}) };
@@ -842,7 +986,7 @@ export class QualificationService {
       const row = fresh.rows[0];
       if (!row || row.status !== "em_andamento" || row.current_step !== state.current_step || row.last_inbound_external_id === input.externalId) return null;
 
-      await logExecution(client, ctx, { id: state.current_step, kind: step.kind }, "completed", { valor: value, resposta: rawText });
+      await logExecution(client, ctx, { id: state.current_step, kind: logKind ?? step.kind }, "completed", { valor: value, resposta: rawText });
       const walk = await this.walkFlow(client, ctx, definition, vars, targetId, [historyEntry]);
       const answeredCount = Object.keys(answers).length;
       await client.query(
@@ -956,6 +1100,46 @@ export class QualificationService {
           await logExecution(client, ctx, { id: stepId, kind: step.kind }, "waiting", {
             ate: output.waitUntil.toISOString(), timeout_minutos: step.timeout_minutes, variavel: step.variable_name ?? null
           });
+          return output;
+        }
+        case "branch":
+        case "condition": {
+          // C1-a: avaliação no mesmo mecanismo de variáveis do fluxo (respostas
+          // anteriores + nome/telefone/data). Saídas yes/no vindas do snapshot;
+          // destino inexistente = falha explícita (mesma semântica de missing_step).
+          const outcome = evaluateCondition(step, vars) ? "yes" : "no";
+          const target = step.transitions?.[outcome];
+          await logExecution(client, ctx, { id: stepId, kind: step.kind }, "completed", {
+            resultado: outcome, variavel: step.variable_name ?? null, operador: step.operator ?? null, valor: step.value ?? null
+          });
+          if (!target || !definition.steps[target]) {
+            output.stoppedReason = "missing_step";
+            await logExecution(client, ctx, { id: stepId, kind: step.kind }, "failed", { motivo: "destino_da_condicao_inexistente", resultado: outcome });
+            return output;
+          }
+          stepId = target;
+          continue;
+        }
+        case "finalize": {
+          // C1-a: encerra sem enviar mensagem — end_reason vira resultado_final
+          // (o autor usa nós message antes do finalize quando quer despedida).
+          output.concludo = { resultado: step.end_reason ?? "finalizado", classificacao: null };
+          output.status = "concluido";
+          output.stoppedReason = "final";
+          await logExecution(client, ctx, { id: stepId, kind: step.kind }, "completed", { end_reason: step.end_reason ?? null });
+          return output;
+        }
+        case "interactive": {
+          // C1-h: para aguardando a escolha do contato; o payload estruturado
+          // segue na outbox e sai por sendInteractive (capability-gated).
+          output.messages.push({
+            stepId, kind: "interactive",
+            text: prefix + renderInteractivePreview(step, vars),
+            interactive: interactivePayload(step, vars) as Record<string, unknown>
+          });
+          prefix = "";
+          output.stoppedReason = "input";
+          await logExecution(client, ctx, { id: stepId, kind: step.kind }, "entered", { tipo: step.interactive_type ?? null });
           return output;
         }
         default: {
@@ -1116,13 +1300,16 @@ export class QualificationService {
       try {
         const queued = await client.query<{ id: string }>(
           `INSERT INTO qualification_message_outbox
-             (tenant_id,qualification_id,session_id,contact_phone,contact_jid,step_id,inbound_external_id,message_kind,message)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
-           ON CONFLICT (qualification_id,step_id,inbound_external_id,message_kind) DO UPDATE SET message=EXCLUDED.message
+             (tenant_id,qualification_id,session_id,contact_phone,contact_jid,step_id,inbound_external_id,message_kind,message,interactive_payload)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           ON CONFLICT (qualification_id,step_id,inbound_external_id,message_kind)
+           DO UPDATE SET message=EXCLUDED.message,interactive_payload=EXCLUDED.interactive_payload
            RETURNING id`,
-          [ctx.tenantId, qualificationId, ctx.sessionId, ctx.contactPhone, ctx.contactJid ?? null, message.stepId, ctx.externalId, message.kind, message.text]
+          [ctx.tenantId, qualificationId, ctx.sessionId, ctx.contactPhone, ctx.contactJid ?? null, message.stepId, ctx.externalId, message.kind, message.text, message.interactive ?? null]
         );
-        if (first.reply === null) first = { reply: message.text, outboxId: queued.rows[0]?.id };
+        // Interactive NUNCA vai inline: precisa do sendInteractive (payload
+        // estruturado) que só a outbox roteia — o caminho inline é sendText.
+        if (first.reply === null && message.kind !== "interactive") first = { reply: message.text, outboxId: queued.rows[0]?.id };
       } catch (error) {
         // Corrida de retomada (23505): outro walk enfileirou a mesma linha —
         // trata como no-op e o walk continua.

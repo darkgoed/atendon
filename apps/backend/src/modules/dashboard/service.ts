@@ -2,6 +2,7 @@ import type { WorkspaceSession } from "../../auth/session.js";
 import { resolveCaseScope } from "../../auth/case-scope.js";
 import { db } from "../../db/client.js";
 import { resolveReportingRange, shiftDateKey, type ReportingInput } from "../reporting.js";
+import { loadQueueWaiting, loadPipelineBottlenecks, loadFirstResponseByOperator } from "../reports/service.js";
 
 export type CommercialDashboardPeriod = "today" | "week" | "month" | "custom";
 export type CommercialDashboardInput = ReportingInput;
@@ -50,7 +51,7 @@ export async function loadCommercialDashboard(
     scopedMemberId
   ];
 
-  const [summary, created, series, agenda, team, sdr, operations] = await Promise.all([
+  const [summary, created, series, agenda, team, sdr, operations, queueWaiting, bottlenecks, firstResponse] = await Promise.all([
     db.query<{
       scheduled: number;
       completed: number;
@@ -343,7 +344,10 @@ export async function loadCommercialDashboard(
         session.userId,
         scopedMemberId
       ]
-    )
+    ),
+    loadQueueWaiting(session.tenantId, caseScope),
+    loadPipelineBottlenecks(session.tenantId, caseScope, range),
+    loadFirstResponseByOperator(session.tenantId, caseScope, range)
   ]);
 
   const totals = summary.rows[0] ?? {
@@ -498,6 +502,22 @@ export async function loadCommercialDashboard(
       availability_status: member.availability_status,
       is_current: member.member_id === viewer?.member_id,
       is_next: member.member_id === nextMemberId
+    })),
+    queue_waiting: queueWaiting,
+    pipeline_bottlenecks: bottlenecks.items[0]
+      ? {
+          pipeline_id: bottlenecks.items[0].pipeline_id,
+          stage_id: bottlenecks.items[0].stage_id,
+          stage_name: bottlenecks.items[0].stage_name,
+          contacts: bottlenecks.items[0].contacts,
+          avg_minutes: bottlenecks.items[0].avg_minutes
+        }
+      : null,
+    first_response_avg: firstResponse.items.map((item) => ({
+      user_id: item.user_id,
+      name: item.name,
+      seconds: item.seconds,
+      conversations: item.conversations
     }))
   };
 }

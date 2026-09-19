@@ -6,13 +6,22 @@ export const flowStepKind = z.enum([
   "message", // envia mensagem e segue (sem pergunta)
   "delay", // espera wait_minutes e segue
   "wait_for_reply", // aguarda resposta do contato até timeout_minutes
-  "action" // efeito determinístico (tag/estágio/agente/webhook)
+  "action", // efeito determinístico (tag/estágio/agente/webhook)
+  // SPEC v7 C1 (deltas aprovados):
+  "branch", // desvio por condição (saídas yes/no)
+  "condition", // sinônimo de branch (mesmo mecanismo, rótulo do editor)
+  "finalize", // encerra o fluxo com end_reason
+  "interactive" // botões/lista via sendInteractive (capability-gated)
 ]);
 export type FlowStepKind = z.infer<typeof flowStepKind>;
 
 const flowOptionSchema = z.object({
   value: z.string().trim().min(1).max(200),
-  keywords: z.array(z.string().min(1).max(200)).optional()
+  keywords: z.array(z.string().min(1).max(200)).optional(),
+  // Nó interactive (modo buttons): url presente transforma a opção em botão
+  // cta_url (abre link no aparelho do contato em vez de responder). Link é
+  // aberto pelo cliente do contato — só exige http(s), sem denylist SSRF.
+  url: z.string().trim().url().max(500).refine((value) => ["http:", "https:"].includes(new URL(value).protocol), "URL precisa usar http(s)").optional()
 });
 export type FlowOption = z.infer<typeof flowOptionSchema>;
 
@@ -67,6 +76,20 @@ export function assertPublicWebhookUrl(url: string): void {
   }
 }
 
+export const flowConditionOperator = z.enum([
+  "eq", "neq", "contains", "not_contains", "starts_with", "is_empty", "is_not_empty"
+]);
+export type FlowConditionOperator = z.infer<typeof flowConditionOperator>;
+
+const interactiveRowSchema = z.object({
+  text: z.string().trim().min(1).max(60),
+  description: z.string().trim().max(100).optional()
+});
+const interactiveSectionSchema = z.object({
+  title: z.string().trim().min(1).max(60),
+  rows: z.array(interactiveRowSchema).min(1).max(10)
+});
+
 const flowStepSchema = z.object({
   kind: flowStepKind,
   question: z.string().trim().min(1).max(2_000).optional(),
@@ -90,7 +113,18 @@ const flowStepSchema = z.object({
   agent_id: z.string().uuid().optional(),
   webhook_url: webhookUrlSchema.optional(),
   method: z.enum(["GET", "POST", "PUT"]).optional(),
-  template: z.string().trim().max(8_000).optional()
+  template: z.string().trim().max(8_000).optional(),
+  // branch/condition — variável + operador; saídas yes/no em transitions.
+  // valor é oculto p/ is_empty/is_not_empty (validação no superRefine).
+  operator: flowConditionOperator.optional(),
+  value: z.string().trim().max(200).optional(),
+  // finalize
+  end_reason: z.string().trim().min(1).max(200).optional(),
+  // interactive (buttons até 3 / list seções+linhas máx 10 / cta_url)
+  interactive_type: z.enum(["buttons", "list"]).optional(),
+  interactive_button_text: z.string().trim().min(1).max(60).optional(),
+  interactive_section_title: z.string().trim().min(1).max(60).optional(),
+  interactive_sections: z.array(interactiveSectionSchema).max(10).optional()
 });
 export type FlowStep = z.infer<typeof flowStepSchema>;
 
@@ -163,6 +197,49 @@ export const flowDefinitionSchema = z.object({
       }
       continue;
     }
+    if (step.kind === "branch" || step.kind === "condition") {
+      if (!step.variable_name) context.addIssue({ code: z.ZodIssueCode.custom, message: `Etapa "${id}" (${step.kind}) precisa de variable_name`, path: ["steps", id] });
+      if (!step.operator) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: `Etapa "${id}" (${step.kind}) precisa de operator`, path: ["steps", id] });
+      } else if (conditionValueHidden(step.operator)) {
+        if (step.value) context.addIssue({ code: z.ZodIssueCode.custom, message: `Etapa "${id}" (${step.operator}) não aceita valor (campo oculto)`, path: ["steps", id] });
+      } else if (!step.value) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: `Etapa "${id}" (${step.operator}) precisa de value`, path: ["steps", id] });
+      }
+      if (!step.transitions?.yes) context.addIssue({ code: z.ZodIssueCode.custom, message: `Etapa "${id}" (${step.kind}) precisa de saída "yes"`, path: ["steps", id] });
+      if (!step.transitions?.no) context.addIssue({ code: z.ZodIssueCode.custom, message: `Etapa "${id}" (${step.kind}) precisa de saída "no"`, path: ["steps", id] });
+      continue;
+    }
+    if (step.kind === "finalize") {
+      if (!step.end_reason) context.addIssue({ code: z.ZodIssueCode.custom, message: `Etapa de finalização "${id}" precisa de end_reason`, path: ["steps", id] });
+      continue;
+    }
+    if (step.kind === "interactive") {
+      if (!step.interactive_type) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: `Etapa interativa "${id}" precisa de interactive_type`, path: ["steps", id] });
+      } else if (step.interactive_type === "buttons") {
+        if (!step.options?.length) {
+          context.addIssue({ code: z.ZodIssueCode.custom, message: `Etapa interativa "${id}" (buttons) precisa de opções`, path: ["steps", id] });
+        } else if (step.options.length > 3) {
+          context.addIssue({ code: z.ZodIssueCode.custom, message: `Etapa interativa "${id}" (buttons) aceita no máximo 3 botões`, path: ["steps", id] });
+        }
+      } else {
+        if (!step.interactive_sections?.length) {
+          context.addIssue({ code: z.ZodIssueCode.custom, message: `Etapa interativa "${id}" (list) precisa de interactive_sections`, path: ["steps", id] });
+        } else {
+          const totalRows = step.interactive_sections.reduce((total, section) => total + section.rows.length, 0);
+          if (totalRows > 10) {
+            context.addIssue({ code: z.ZodIssueCode.custom, message: `Etapa interativa "${id}" (list) aceita no máximo 10 linhas somadas (hoje: ${totalRows})`, path: ["steps", id] });
+          }
+        }
+      }
+      for (const choice of interactiveChoices(step)) {
+        if (!(step.transitions?.[choice.value] ?? step.next)) {
+          context.addIssue({ code: z.ZodIssueCode.custom, message: `Escolha "${choice.value}" da etapa interativa "${id}" não tem etapa seguinte`, path: ["steps", id] });
+        }
+      }
+      continue;
+    }
     // kinds de pergunta (years/revenue/options/boolean/text)
     if (!step.question) context.addIssue({ code: z.ZodIssueCode.custom, message: `Etapa "${id}" precisa de question`, path: ["steps", id] });
     if (!step.next && !step.transitions) context.addIssue({ code: z.ZodIssueCode.custom, message: `Etapa "${id}" precisa de next ou transitions`, path: ["steps", id] });
@@ -208,7 +285,9 @@ export function activationIssues(definition: FlowDefinition): string[] {
     }
   }
   const reachFinal = new Set<string>();
-  const queue = Object.entries(definition.steps).filter(([, step]) => step.kind === "final").map(([id]) => id);
+  const queue = Object.entries(definition.steps)
+    .filter(([, step]) => step.kind === "final" || step.kind === "finalize")
+    .map(([id]) => id);
   while (queue.length) {
     const current = queue.pop() as string;
     if (reachFinal.has(current)) continue;
@@ -236,6 +315,7 @@ export function activationIssues(definition: FlowDefinition): string[] {
 export function renderQuestion(step: FlowStep, vars: FlowVars = {}): string {
   const question = renderTemplate(step.question ?? "", vars);
   if (step.kind === "boolean") return `${question} (Sim ou Não)`;
+  if (step.kind === "interactive") return renderInteractivePreview(step, vars);
   if (step.kind === "text" || !step.options?.length) return question;
   return `${question}\n${step.options.map((option) => `• ${renderTemplate(option.value, vars)}`).join("\n")}`;
 }
@@ -253,10 +333,90 @@ export function nextStepId(step: FlowStep, value: string): string | undefined {
   return step.transitions?.[value] ?? step.next;
 }
 
+/** is_empty/is_not_empty não levam valor (campo oculto no editor). */
+export function conditionValueHidden(operator: FlowConditionOperator | undefined): boolean {
+  return operator === "is_empty" || operator === "is_not_empty";
+}
+
+/**
+ * Avalia branch/condition no mesmo mecanismo de variáveis do fluxo (respostas
+ * anteriores + nome/telefone/data). eq/neq são match exato; contains/
+ * not_contains/starts_with comparam normalizado (minúsculas, sem acento) —
+ * mesmo critério do normalizador de respostas. Operadores is_* usam trim.
+ */
+export function evaluateCondition(step: FlowStep, vars: FlowVars): boolean {
+  const actual = vars[step.variable_name ?? ""] ?? "";
+  const expected = step.value ?? "";
+  switch (step.operator) {
+    case "eq": return actual === expected;
+    case "neq": return actual !== expected;
+    case "contains": return normalize(actual).includes(normalize(expected));
+    case "not_contains": return !normalize(actual).includes(normalize(expected));
+    case "starts_with": return normalize(actual).startsWith(normalize(expected));
+    case "is_empty": return actual.trim() === "";
+    case "is_not_empty": return actual.trim() !== "";
+    default: return false;
+  }
+}
+
+function normalize(text: string): string {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
+}
+
+/**
+ * Escolhas de um nó interactive em forma de opções (fonte única de roteamento).
+ * buttons → options (value = displayText, url opcional = cta_url);
+ * list → linhas das seções (value = título da linha).
+ */
+export function interactiveChoices(step: FlowStep): FlowOption[] {
+  if (step.interactive_type === "list") {
+    return (step.interactive_sections ?? []).flatMap((section) =>
+      section.rows.map((row) => ({ value: row.text })));
+  }
+  return step.options ?? [];
+}
+
+/** Payload estruturado para o gateway opcional sendInteractive. */
+export function interactivePayload(
+  step: FlowStep,
+  vars: FlowVars = {}
+): import("../messages/types.js").InteractivePayload {
+  if (step.interactive_type === "list") {
+    const rows = (step.interactive_sections ?? []).flatMap((section) =>
+      section.rows.map((row) => ({
+        title: renderTemplate(row.text, vars),
+        ...(row.description ? { description: renderTemplate(row.description, vars) } : {})
+      })));
+    return {
+      kind: "list",
+      ...(step.message ? { text: renderTemplate(step.message, vars) } : {}),
+      buttonText: step.interactive_button_text ?? "Escolher",
+      sectionTitle: step.interactive_section_title ?? "Opções",
+      rows
+    };
+  }
+  return {
+    kind: "buttons",
+    ...(step.message ? { text: renderTemplate(step.message, vars) } : {}),
+    buttons: (step.options ?? []).map((option) => ({
+      displayText: renderTemplate(option.value, vars),
+      ...(option.url ? { url: option.url } : {})
+    }))
+  };
+}
+
+/** Texto legível do nó interactive (história/mensagem do outbox). */
+export function renderInteractivePreview(step: FlowStep, vars: FlowVars = {}): string {
+  const intro = renderTemplate(step.message ?? "", vars);
+  const bullets = interactiveChoices(step).map((choice) => `• ${renderTemplate(choice.value, vars)}`).join("\n");
+  if (!intro) return bullets;
+  return `${intro}\n${bullets}`;
+}
+
 /** Maior quantidade de perguntas em qualquer caminho a partir do início (para exibir progresso). */
 export function totalQuestions(definition: FlowDefinition, from = definition.start, seen: Set<string> = new Set()): number {
   const step = definition.steps[from];
-  if (!step || step.kind === "final" || seen.has(from)) return 0;
+  if (!step || step.kind === "final" || step.kind === "finalize" || seen.has(from)) return 0;
   const nextSeen = new Set(seen).add(from);
   const deepest = stepTargets(step).reduce((max, target) => Math.max(max, totalQuestions(definition, target, nextSeen)), 0);
   return (QUESTION_KINDS.includes(step.kind) ? 1 : 0) + deepest;

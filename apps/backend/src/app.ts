@@ -9,6 +9,8 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 import { createSessionToken, requireIdentity, requirePermission, requireRootWorkspace, requireSession, requireWorkspace } from "./auth/session.js";
 import { buildMePayload, listWorkspacesForUser } from "./auth/workspace-service.js";
+import { issueTotpChallenge } from "./auth/totp.js";
+import { createWorkspaceSessionRow } from "./auth/sessions.js";
 import { config } from "./config.js";
 import { db } from "./db/client.js";
 import { logger } from "./logger.js";
@@ -56,6 +58,12 @@ import { registerStickerRoutes } from "./modules/stickers/routes.js";
 import { loadCommercialDashboard } from "./modules/dashboard/service.js";
 import { registerDashboardWidgetRoutes } from "./modules/dashboard-widgets/routes.js";
 import { registerOrganizationRoutes } from "./modules/organization/routes.js";
+import { registerTeamsRoutes } from "./modules/organization/teams-routes.js";
+import { registerLeadMergeRoutes } from "./modules/organization/lead-merge-routes.js";
+import { registerSecurityRoutes } from "./auth/security-routes.js";
+import { registerReportsRoutes } from "./modules/reports/routes.js";
+import { registerOrganizationStorageRoutes } from "./modules/organization/storage.js";
+import { registerMessagingRoutes } from "./modules/messaging/routes.js";
 import { registerContactOpsRoutes } from "./modules/contact-ops/routes.js";
 import { registerOperationsRoutes } from "./modules/operations/routes.js";
 import { isCapabilityEnabled, isFeatureFlagEnabled, type FeatureFlagKey } from "./modules/operations/feature-flags.js";
@@ -83,7 +91,8 @@ import {
   hasWorkspaceCaseAccess,
   resolveCaseScope
 } from "./auth/case-scope.js";
-import { transferCaseAssignment } from "./modules/assignments/service.js";
+import { transferCaseAssignment, pickTeamRoundRobinMember } from "./modules/assignments/service.js";
+import { assignConversationToTeam } from "./modules/organization/teams.js";
 import { refreshAppointmentGroupNotificationsForConversation } from "./modules/scheduling/notification-repository.js";
 import {
   createRedisRateLimitStore,
@@ -193,6 +202,7 @@ const conversationsQuerySchema = z.object({
   q: z.string().trim().max(120).optional().transform((value) => value || undefined),
   queue_id: z.string().uuid().optional(),
   session_id: z.string().uuid().optional(),
+  team_id: z.string().uuid().optional(),
   unread: z.enum(["true", "false"]).optional(),
   pending_action: z.enum(["true", "false"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -209,7 +219,7 @@ const conversationMessagesV2QuerySchema = z.object({
 }).refine((value) => !(value.before && value.after), {
   message: "Use somente before ou after"
 });
-const conversationAssignmentSchema = z.object({ userId: z.string().uuid().nullable() });
+const conversationAssignmentSchema = z.object({ userId: z.string().uuid().nullable(), team_id: z.string().uuid().nullable().optional() });
 const idParams = z.object({ id: z.string().uuid() });
 const messageIdParams = z.object({ id: z.string().uuid(), messageId: z.string().uuid() });
 const alertsQuerySchema = z.object({
@@ -560,8 +570,9 @@ export function buildApp(options: {
         is_root: boolean;
         status: string;
         must_change_password: boolean;
+        totp_enabled: boolean;
       }>(
-        "SELECT id,email,password_hash,is_root,status,must_change_password FROM users WHERE email=$1",
+        "SELECT id,email,password_hash,is_root,status,must_change_password,totp_enabled_at IS NOT NULL AS totp_enabled FROM users WHERE email=$1",
         [email]
       );
       const user = userResult.rows[0];
@@ -570,6 +581,14 @@ export function buildApp(options: {
         return reply.status(401).send({ error: "E-mail ou senha inválidos" });
       }
       await db.query("UPDATE users SET last_login_at=now() WHERE id=$1", [user.id]);
+      if (user.totp_enabled) {
+        // B2: 2FA é um desafio SEM sessão — só /auth/totp/verify emite o cookie real.
+        await issueTotpChallenge(reply, user.id);
+        return {
+          totp_required: true,
+          user: { id: user.id, email: user.email, isRoot: user.is_root }
+        };
+      }
       const workspaces = await listWorkspacesForUser(db, user.id, user.is_root);
       let activeWorkspace = workspaces[0];
       if (user.is_root) {
@@ -580,13 +599,20 @@ export function buildApp(options: {
         activeWorkspace = workspaces.find((workspace) => workspace.id === home.rows[0]?.workspace_id) ?? activeWorkspace;
       }
       if (!activeWorkspace) return reply.status(403).send({ error: "Usuário sem workspace ativo" });
+      const sid = await createWorkspaceSessionRow({
+        userId: user.id,
+        tenantId: activeWorkspace.id,
+        ip: request.ip,
+        userAgent: request.headers["user-agent"] as string | undefined
+      });
       const token = await createSessionToken({
         userId: user.id,
         tenantId: activeWorkspace.id,
         email: user.email,
         role: activeWorkspace.role,
         isRoot: user.is_root,
-        rootWorkspaceAccess: user.is_root
+        rootWorkspaceAccess: user.is_root,
+        sid
       });
       reply.setCookie("atendon_session", token, { httpOnly: true, sameSite: "lax", secure: config.NODE_ENV === "production", path: "/", maxAge: 43_200 });
       return {
@@ -1523,7 +1549,7 @@ export function buildApp(options: {
   app.get("/conversations", async (request) => {
     const session = await requirePermission(request, "conversations.read");
     const scope = await resolveCaseScope(db, session);
-    const { filter, q, queue_id, session_id, unread, pending_action, limit, before } = conversationsQuerySchema.parse(request.query);
+    const { filter, q, queue_id, session_id, team_id, unread, pending_action, limit, before } = conversationsQuerySchema.parse(request.query);
     const condition = filter === "human" ? "AND c.status='open' AND c.ai_active=false"
       : filter === "ai" ? "AND c.status='open' AND c.ai_active=true"
         : filter === "mine" ? "AND c.status='open' AND c.assigned_user_id=$3"
@@ -1542,6 +1568,7 @@ export function buildApp(options: {
     const filterConditions = [
       "AND ($4::uuid IS NULL OR c.queue_id=$4)",
       "AND ($5::uuid IS NULL OR c.session_id=$5)",
+      "AND ($6::uuid IS NULL OR c.assigned_team_id=$6)",
       unread === "true" ? "AND EXISTS (SELECT 1 FROM messages unread_message WHERE unread_message.conversation_id=c.id AND unread_message.sender='contact' AND unread_message.created_at > COALESCE(c.last_read_at,'-infinity'))" : unread === "false" ? "AND NOT EXISTS (SELECT 1 FROM messages read_message WHERE read_message.conversation_id=c.id AND read_message.sender='contact' AND read_message.created_at > COALESCE(c.last_read_at,'-infinity'))" : "",
       pending_action === "true" ? "AND lead.next_action_at IS NOT NULL AND lead.next_action_at <= now()+interval '15 minutes'" : pending_action === "false" ? "AND (lead.next_action_at IS NULL OR lead.next_action_at > now()+interval '15 minutes')" : ""
     ].join(" ");
@@ -1550,7 +1577,7 @@ export function buildApp(options: {
       OR strpos(COALESCE(c.contact_phone,''),$2) > 0
       OR strpos(lower(COALESCE(c.instagram_username,'')),lower(replace($2,'@',''))) > 0
       OR strpos(COALESCE(c.instagram_contact_id,''),$2) > 0)`;
-    const values: unknown[] = [session.tenantId, q ?? "", session.userId, queue_id ?? null, session_id ?? null];
+    const values: unknown[] = [session.tenantId, q ?? "", session.userId, queue_id ?? null, session_id ?? null, team_id ?? null];
     // Keyset page: (last_message_at, id) < before-cursor, matching ORDER BY.
     if (before) {
       values.push(before.createdAt, before.id);
@@ -1569,6 +1596,7 @@ export function buildApp(options: {
         ELSE c.contact_phone END contact_identifier,
       c.contact_avatar_url avatar_url, c.ai_active, c.handoff_reason,
       c.status, c.last_message_at, c.contact_jid, c.assigned_user_id, c.claimed_at, c.resolved_at,
+      c.assigned_team_id,
       c.contact_presence, c.contact_presence_updated_at, c.contact_last_seen_at, c.signature_enabled,
       c.queue_id, qqueue.name queue_name, qqueue.color queue_color, qqueue.position queue_position,
       qqueue.is_initial queue_is_initial, qqueue.is_resolved queue_is_resolved, qqueue.archived_at queue_archived_at,
@@ -2424,7 +2452,10 @@ export function buildApp(options: {
     if (!await canAccessConversation(db, session, id)) {
       return reply.status(404).send({ error: "Conversa não encontrada" });
     }
-    const { userId } = conversationAssignmentSchema.parse(request.body);
+    const { userId, team_id } = conversationAssignmentSchema.parse(request.body);
+    if (userId && team_id) {
+      return reply.status(400).send({ error: "Informe responsável OU equipe, não ambos" });
+    }
     const target = userId
       ? await db.query<{ member_id: string }>(
           `SELECT m.id member_id
@@ -2448,11 +2479,22 @@ export function buildApp(options: {
     if (userId && !target?.rows[0]) {
       return reply.status(400).send({ error: "Responsável deve ser um atendente ativo do pool" });
     }
-    const assignment = await withTenantTransaction(db, session.tenantId, (client) =>
-      transferCaseAssignment(client, {
+    const assignment = await withTenantTransaction(db, session.tenantId, async (client) => {
+      // B6: atribuição por equipe = round-robin dentro do time (membro pode
+      // ficar null quando o time não tem atendente elegível) + marca do time.
+      let targetMemberId = target?.rows[0]?.member_id ?? null;
+      let pickedFromTeam: string | null = null;
+      if (team_id) {
+        const pick = await pickTeamRoundRobinMember(client, session.tenantId, team_id);
+        if (pick && !targetMemberId) {
+          targetMemberId = pick.memberId;
+          pickedFromTeam = pick.memberId;
+        }
+      }
+      const result = await transferCaseAssignment(client, {
         tenantId: session.tenantId,
         selector: { conversationId: id },
-        targetMemberId: target?.rows[0]?.member_id ?? null,
+        targetMemberId,
         actor: {
           userId: session.userId,
           actorScope: session.actorScope,
@@ -2460,14 +2502,25 @@ export function buildApp(options: {
           userAgent: request.headers["user-agent"]
         },
         manager: hasWorkspaceCaseAccess(session)
-      })
-    );
+      });
+      if (team_id) {
+        await assignConversationToTeam(client, {
+          tenantId: session.tenantId,
+          conversationId: id,
+          teamId: team_id,
+          actor: { userId: session.userId, actorScope: session.actorScope },
+          previousUserId: result.previousUserId,
+          assignedUserId: result.assignment?.userId ?? null
+        });
+      }
+      return { ...result, pickedFromTeam };
+    });
     if (!assignment.found) return reply.status(404).send({ error: "Conversa não encontrada" });
     await auditLog({
       actorUserId: session.userId,
       workspaceId: session.tenantId,
       actorScope: session.actorScope,
-      action: userId ? "conversation.assigned" : "conversation.unassigned",
+      action: assignment.assignment?.userId ? "conversation.assigned" : "conversation.unassigned",
       resourceType: "conversation",
       resourceId: id,
       metadata: { fromUserId: assignment.previousUserId, toUserId: assignment.assignment?.userId ?? null },
@@ -2821,6 +2874,11 @@ export function buildApp(options: {
   void app.register(registerWhatsAppConnectionRoutes, { whatsapp });
   void app.register(registerDashboardWidgetRoutes);
   void app.register(registerOrganizationRoutes);
+  void app.register(registerTeamsRoutes);
+  void app.register(registerLeadMergeRoutes);
+  void app.register(registerSecurityRoutes);
+  void app.register(registerOrganizationStorageRoutes);
+  void app.register(registerReportsRoutes);
   void app.register(registerPostSalesRoutes);
   void app.register(registerSchedulingRoutes);
   void app.register(registerInternalRoutes);
@@ -2844,6 +2902,7 @@ export function buildApp(options: {
     renderPdf: async ({ scope, proposal }: TripzDocumentRenderContext) => tripzDocuments.renderPdf(scope, proposal)
   });
   void app.register(registerConversationQueueRoutes);
+  void app.register(registerMessagingRoutes, { gateway: messageGateway });
 
   return app;
 }

@@ -51,8 +51,9 @@ describe("attendance assignment lock", () => {
     }
     // The guard returns the existing assignment rather than nulling it. This
     // is the key invariant: an unassigned lead may still receive its first
-    // assignment; only a replacement is blocked after attendance.
-    expect(source).toContain("return eligibleByExistingAssignment(client, input.tenantId, rows);");
+    // assignment; only a replacement is blocked after attendance. (Onda 2:
+    // a guarda ganhou filtro opcional de equipe — { teamId }.)
+    expect(source).toContain("return eligibleByExistingAssignment(client, input.tenantId, rows, { teamId: input.teamId });");
     expect(source).toContain('"transferencia_manual"');
     expect(source).toContain('statusCode: 403');
   });

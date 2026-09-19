@@ -74,6 +74,33 @@ export interface QuotedMessage {
   text: string;
 }
 
+/** Flags de capability de mensagem, derivadas por sessão (REGRA ARQUITETURAL WhatsApp). */
+export interface MessagingCapabilityFlags {
+  reactions: boolean;
+  forward_media: boolean;
+  interactive: boolean;
+}
+
+/** Botão de mensagem interativa: reply (texto volta como resposta) ou cta_url (abre link). */
+export interface InteractiveButton {
+  displayText: string;
+  url?: string;
+}
+
+export interface InteractiveListRow {
+  title: string;
+  description?: string;
+}
+
+export interface InteractiveListSection {
+  title: string;
+  rows: InteractiveListRow[];
+}
+
+export type InteractivePayload =
+  | { kind: "buttons"; text?: string; buttons: InteractiveButton[] }
+  | { kind: "list"; text?: string; buttonText: string; sectionTitle: string; rows: InteractiveListRow[] };
+
 export interface MessageGateway {
   sendText(sessionId: string, contactPhone: string, text: string, quoted?: QuotedMessage): Promise<{ externalId: string }>;
   sendPresence(sessionId: string, contactPhone: string, presence: "composing" | "paused", delayMs?: number): Promise<void>;
@@ -99,4 +126,10 @@ export interface MessageGateway {
     mimeType: string;
     fileName?: string;
   }>;
+  /** Capability opcional (SPEC v7 C1-h): botões/lista/cta_url. Quando ausente,
+   * a capability `interactive` é false e o executor degrada com log (nó oculto). */
+  sendInteractive?(sessionId: string, contactPhone: string, payload: InteractivePayload): Promise<{ externalId: string }>;
+  /** Capability opcional: flags de reação/encaminhar-mídia/interativa por sessão.
+   * Derivadas dos métodos presentes no gateway/provider desta sessão. */
+  sessionMessagingCapabilities?(sessionId: string): Promise<MessagingCapabilityFlags>;
 }
