@@ -13,6 +13,7 @@ import { ConversationScheduler } from "@/components/conversation-scheduler";
 import { ConversationStatusPicker } from "@/components/conversation-status-picker";
 import { Empty } from "@/components/page-state";
 import { LeadTagChips, type LeadTag } from "@/components/lead-tag-picker";
+import { ListFiltersBar, type ListFilterDef } from "@/components/ui/filters";
 import { MessageActionsMenu } from "@/components/message-actions-menu";
 import { ModalDialog } from "@/components/modal-dialog";
 import { PopoverMenu } from "@/components/popover-menu";
@@ -268,7 +269,7 @@ function ConversationItem({ item, selected, showLeadTags, onClick }: { item: Con
           <strong data-unread={unread > 0 ? "true" : undefined} className={`conversation-list__name min-w-0 truncate text-[var(--text)] ${unread > 0 ? "font-semibold" : ""}`}>{title}</strong>
           <time className="conversation-list__time mono shrink-0 text-[var(--text-muted)]">{formatClock(item.last_message_at)}</time>
         </div>
-        {item.contact_name ? <p className="conversation-list__company mono truncate text-[var(--text-muted)]" dir="ltr">{item.channel === "instagram" ? instagramDisplayIdentity(item.instagram_username, item.contact_identifier) : item.contact_phone}</p> : null}
+        {item.contact_name ? <p className="conversation-list__company mono text-[var(--text-muted)]" dir="ltr">{item.channel === "instagram" ? instagramDisplayIdentity(item.instagram_username, item.contact_identifier) : item.contact_phone}</p> : null}
         <div className="conversation-list__preview-row flex min-w-0 items-start justify-between gap-2">
           <p className="conversation-list__preview line-clamp-2 min-w-0 flex-1 text-[var(--text-secondary)]">
             {showTicks && item.last_message_status ? (
@@ -468,7 +469,6 @@ export default function Conversations() {
   const [queueFilter, setQueueFilter] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [pendingOnly, setPendingOnly] = useState(false);
-  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selected, setSelected] = useState("");
@@ -565,13 +565,15 @@ export default function Conversations() {
   const canQueueEvaluation = Boolean(session && canAccessRootWorkspace(session));
   const hasWorkspaceScope = Boolean(session && hasWorkspaceWideCaseScope(session));
   const effectiveFilter = hasWorkspaceScope ? filter : "mine";
-  const advancedFilterCount = [
-    connectionFilter,
-    queueFilter,
-    hasWorkspaceScope && (filter === "mine" || filter === "unassigned") ? filter : "",
-    unreadOnly ? "unread" : "",
-    pendingOnly ? "pending" : ""
-  ].filter(Boolean).length;
+  // Filtros no padrão único (ListFiltersBar, igual a /contatos): o objeto é a
+  // projeção do estado existente — mesma query server-side de antes.
+  const conversationFilters = {
+    fila: queueFilter,
+    escopo: hasWorkspaceScope && (filter === "mine" || filter === "unassigned") ? filter : "",
+    nao_lidas: unreadOnly ? "true" : "",
+    pendencias: pendingOnly ? "true" : "",
+    numero: connectionFilter
+  };
   const listKey = session
     ? `/conversations?filter=${effectiveFilter}${debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ""}${queueFilter ? `&queue_id=${queueFilter}` : ""}${connectionFilter ? `&session_id=${connectionFilter}` : ""}${unreadOnly ? "&unread=true" : ""}${pendingOnly ? "&pending_action=true" : ""}`
     : null;
@@ -642,6 +644,27 @@ export default function Conversations() {
   const connections = useMemo(() => connectionsData?.connections ?? [], [connectionsData?.connections]);
   const { data: queueData, mutate: mutateQueues } = useSWR<{ queues: Array<{ id: string; name: string; color: string; is_resolved: boolean; conversation_count: number; archived_at: string | null }> }>(session ? "/conversation-queues" : null, fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
   const showConnectionFilter = shouldShowConversationConnectionFilter(connections);
+  const setConversationFilter = (key: keyof typeof conversationFilters & string, value: string) => {
+    if (key === "fila") setQueueFilter(value);
+    else if (key === "escopo") setFilter(value || (hasWorkspaceScope ? "human" : "mine"));
+    else if (key === "nao_lidas") setUnreadOnly(value === "true");
+    else if (key === "pendencias") setPendingOnly(value === "true");
+    else if (key === "numero") setConnectionFilter(value);
+  };
+  const clearConversationFilters = () => {
+    setConnectionFilter("");
+    setQueueFilter("");
+    setFilter(hasWorkspaceScope ? "human" : "mine");
+    setUnreadOnly(false);
+    setPendingOnly(false);
+  };
+  const conversationFilterDefs: Array<ListFilterDef<typeof conversationFilters>> = [
+    { key: "fila", label: "Fila", kind: "option", options: (queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => ({ id: queue.id, nome: queue.name })) },
+    { key: "nao_lidas", label: "Não lidas", kind: "option", options: [{ id: "true", nome: "Não lidas" }] },
+    { key: "pendencias", label: "Pendências", kind: "option", options: [{ id: "true", nome: "Pendências" }] }
+  ];
+  if (hasWorkspaceScope) conversationFilterDefs.push({ key: "escopo", label: "Escopo", kind: "option", options: [{ id: "mine", nome: "Minhas conversas" }, { id: "unassigned", nome: "Sem responsável" }] });
+  if (showConnectionFilter) conversationFilterDefs.push({ key: "numero", label: "Número", kind: "option", options: connections.map((item) => ({ id: item.id, nome: item.label })) });
   const allItems = useMemo(() => {
     const fresh = listData?.conversations ?? [];
     if (olderConversations.length === 0) return fresh;
@@ -684,6 +707,14 @@ export default function Conversations() {
   useEffect(() => {
     if (!showConnectionFilter && connectionFilter) setConnectionFilter("");
   }, [connectionFilter, showConnectionFilter]);
+
+  // Fila filtrada que deixou de existir (arquivada/resolvida/apagada) não pode
+  // ficar presa como chip com id cru — limpa quando o catálogo atual a desconhece.
+  useEffect(() => {
+    if (!queueFilter || !queueData) return;
+    const known = (queueData.queues ?? []).some((queue) => queue.id === queueFilter && !queue.archived_at && !queue.is_resolved);
+    if (!known) setQueueFilter("");
+  }, [queueData, queueFilter]);
 
   useEffect(() => {
     selectedRef.current = selected;
@@ -1401,11 +1432,6 @@ export default function Conversations() {
         >
         <aside className="conversation-list flex min-h-0 flex-col border-r border-[var(--border)] bg-transparent">
           <header className="conversation-list__header shrink-0 border-b border-[var(--border)] px-3.5 py-3">
-            <div className="conversation-list__meta mb-3 flex items-start justify-between gap-3">
-              <span className="mono shrink-0 rounded-full border border-[var(--border)] bg-transparent px-2 py-0.5 text-xs text-[var(--text-muted)]">
-                {items.length}
-              </span>
-            </div>
             <label className="conversation-list__search search-field">
               <MagnifyingGlass className="shrink-0 text-[var(--text-muted)]" size={16} aria-hidden="true" />
               <span className="sr-only">Buscar conversa</span>
@@ -1422,40 +1448,9 @@ export default function Conversations() {
                 </button>
               ) : null}
             </label>
-            <button
-              type="button"
-              className="btn mb-2 flex w-full items-center justify-between"
-              aria-expanded={advancedFiltersOpen}
-              aria-controls="conversation-advanced-filters"
-              onClick={() => setAdvancedFiltersOpen((value) => !value)}
-            >
-              <span>Filtros{advancedFilterCount ? ` (${advancedFilterCount})` : ""}</span>
-              <span aria-hidden="true">{advancedFiltersOpen ? "⌃" : "⌄"}</span>
-            </button>
-            {advancedFiltersOpen ? (
-              <div id="conversation-advanced-filters" aria-label="Filtros avançados" className="mb-2 space-y-2">
-                {showConnectionFilter ? (
-                  <label className="field">
-                    <span className="label">Número</span>
-                    <select className="input py-2 text-xs" value={connectionFilter} onChange={(event) => setConnectionFilter(event.target.value)} aria-label="Número">
-                      <option value="">Todos os números</option>
-                      {connections.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                    </select>
-                  </label>
-                ) : null}
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filas de atendimento">
-                  <button type="button" aria-pressed={!queueFilter} className={`btn ${!queueFilter ? "primary" : ""}`} onClick={() => setQueueFilter("")}>Todas</button>
-                  {(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <button type="button" aria-pressed={queueFilter === queue.id} key={queue.id} className={`btn ${queueFilter === queue.id ? "primary" : ""}`} onClick={() => setQueueFilter(queue.id)}><span className="mr-1 inline-block size-2 rounded-full" style={{ backgroundColor: queue.color }} aria-hidden="true" />{queue.name} <span className="mono">{queue.conversation_count}</span></button>)}
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <button type="button" disabled={!hasWorkspaceScope} aria-pressed={hasWorkspaceScope && filter === "mine"} className={`btn ${!hasWorkspaceScope || filter === "mine" ? "primary" : ""}`} onClick={() => { if (hasWorkspaceScope) setFilter(filter === "mine" ? "human" : "mine"); }}>Minhas conversas</button>
-                  {hasWorkspaceScope ? <button type="button" aria-pressed={filter === "unassigned"} className={`btn ${filter === "unassigned" ? "primary" : ""}`} onClick={() => setFilter(filter === "unassigned" ? "human" : "unassigned")}>Sem responsável</button> : null}
-                  <button type="button" aria-pressed={unreadOnly} className={`btn ${unreadOnly ? "primary" : ""}`} onClick={() => setUnreadOnly((value) => !value)}>Não lidas</button>
-                  <button type="button" aria-pressed={pendingOnly} className={`btn ${pendingOnly ? "primary" : ""}`} onClick={() => setPendingOnly((value) => !value)}>Pendências</button>
-                </div>
-                <button type="button" className="btn" onClick={() => { setConnectionFilter(""); setQueueFilter(""); setFilter(hasWorkspaceScope ? "human" : "mine"); setUnreadOnly(false); setPendingOnly(false); setAdvancedFiltersOpen(false); }}>Limpar filtros</button>
-              </div>
-            ) : null}
+            <div className="mb-2" data-testid="conversation-list-filters">
+              <ListFiltersBar filters={conversationFilters} defs={conversationFilterDefs} onSet={setConversationFilter} onClearAll={clearConversationFilters} />
+            </div>
 
             {hasWorkspaceScope ? (
               <div className="conversation-filter-tabs">

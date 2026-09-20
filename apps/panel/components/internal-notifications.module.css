@@ -1,26 +1,21 @@
 /* Sino de notificações internas (R2 v6). Classes próprias — o cascade
    unlayered de CSS module vence Tailwind; nada de utilities na marcação.
 
-   ONDA 1 (SPEC v7): visual do donor (crm-whatsapp notification-bell) —
-   gatilho FLUTUANTE fixo no canto inferior direito (48px, pill, sombra),
-   badge de contagem e painel acima do gatilho. APENAS apresentação: dados
-   (/me/internal-notifications), aria-labels e comportamento intactos. */
+   SINO ÚNICO (spec sino-unico-topbar): o gatilho é um controle INLINE da
+   topbar (pill na altura de --control-height-sm, sem position:fixed) — o FAB
+   flutuante do canto inferior direito foi aposentado junto com o antigo FAB
+   de contatos. Badge de contagem e painel do PopoverMenu intactos. */
 
 .trigger {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  z-index: var(--z-toast);
   display: grid;
-  width: 48px;
-  height: 48px;
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
   place-items: center;
   padding: 0;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-pill);
-  background: var(--bg);
+  background: transparent;
   color: var(--text-secondary);
-  box-shadow: var(--shadow-drag);
   transition: var(--transition-control);
 }
 
@@ -77,7 +72,8 @@
 
 /* donor: painel w-[min(20rem,100vw-3rem)] max-h-[28rem] rounded-2xl border
    border-border/70 bg-background shadow-xl — ancorado pelo PopoverMenu, que
-   o vira para cima do gatilho (posição fixa, canto inferior direito). */
+   posiciona o painel a partir do rect do gatilho (alinhado à direita; abre
+   abaixo e vira para cima perto do fim da viewport). */
 .panel {
   display: grid;
   width: min(20rem, calc(100vw - 3rem));

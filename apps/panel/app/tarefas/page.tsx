@@ -12,9 +12,10 @@ import { Check, Plus, Trash, X } from "@phosphor-icons/react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
-import { Badge, Button, Dialog, EmptyState, Field, Input, Select, Textarea } from "@/components/ui";
+import { Badge, Button, Dialog, EmptyState, Field, Input, Segmented, Select, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
 import { canAccessWithSession, type PanelSession } from "@/lib/session";
+import { groupTasksByDay, type AgendaGroup } from "./tasks-agenda";
 import styles from "./tarefas.module.css";
 
 type TaskStatus = "aberta" | "em_andamento" | "concluida";
@@ -51,6 +52,26 @@ const PRIORITY_TONES: Record<TaskPriority, "neutral" | "warning" | "danger"> = {
 
 const STATUS_FILTER_OPTIONS: TaskStatus[] = ["aberta", "em_andamento", "concluida"];
 const PRIORITY_FILTER_OPTIONS: TaskPriority[] = ["baixa", "media", "alta"];
+
+/** Visão "Agenda pessoal" (spec tarefas-agenda-pessoal): Lista | Agenda. */
+const TASKS_VIEW_KEY = "atendon-tasks-view";
+type TasksView = "lista" | "agenda";
+
+function readTasksView(): TasksView {
+  try {
+    return localStorage.getItem(TASKS_VIEW_KEY) === "agenda" ? "agenda" : "lista";
+  } catch {
+    return "lista";
+  }
+}
+
+function storeTasksView(view: TasksView) {
+  try {
+    localStorage.setItem(TASKS_VIEW_KEY, view);
+  } catch {
+    // Sem storage, sem persistência.
+  }
+}
 
 const dateTimeFormatter = (timezone?: string) => new Intl.DateTimeFormat("pt-BR", {
   dateStyle: "short",
@@ -297,6 +318,61 @@ function TaskDialog({
   );
 }
 
+/** Card de tarefa compartilhado pela visão Lista e pela Agenda (mesmo markup). */
+function TaskCard({
+  task,
+  timezone,
+  onToggle,
+  onEdit,
+  onRemove
+}: {
+  task: Task;
+  timezone?: string;
+  onToggle: (task: Task) => void;
+  onEdit: (task: Task) => void;
+  onRemove: (task: Task) => void;
+}) {
+  return (
+    <article className={`${styles.task}${task.status === "concluida" ? ` ${styles.taskDone}` : ""}`} data-task-id={task.id}>
+      <div className={styles.taskBody}>
+        <h3 className={styles.taskTitle}>{task.title}</h3>
+        {task.description ? <p className={styles.taskDescription}>{task.description}</p> : null}
+        <div className={styles.taskMeta}>
+          <Badge tone={STATUS_TONES[task.status]} variant="pill">{STATUS_LABELS[task.status]}</Badge>
+          <Badge tone={PRIORITY_TONES[task.priority]} variant="outline">Prioridade {PRIORITY_LABELS[task.priority]}</Badge>
+          {task.lead ? (
+            <span className={styles.taskMetaItem}>
+              {task.lead.name?.trim() || "Contato sem nome"}{task.lead.phone ? ` · ${task.lead.phone}` : ""}
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <div className={styles.taskSide}>
+        <span className={styles.taskMetaItem}>Resp.: {task.assignee ? displayName(task.assignee.name, "sem nome") : "Sem responsável"}</span>
+        {task.due_at ? (
+          <span className={`${styles.due}${isOverdue(task) ? ` ${styles.dueOverdue}` : ""}`}>
+            Prazo: {formatDue(task.due_at, timezone)}
+          </span>
+        ) : null}
+        <div className={styles.taskActions}>
+          <Button
+            size="sm"
+            tone={task.status === "concluida" ? "quiet" : "primary"}
+            onClick={() => onToggle(task)}
+            aria-label={task.status === "concluida" ? `Reabrir tarefa: ${task.title}` : `Concluir tarefa: ${task.title}`}
+          >
+            <Check size={14} aria-hidden="true" />{task.status === "concluida" ? "Reabrir" : "Concluir"}
+          </Button>
+          <Button size="sm" onClick={() => onEdit(task)} aria-label={`Editar tarefa: ${task.title}`}>Editar</Button>
+          <Button size="sm" tone="danger" onClick={() => onRemove(task)} aria-label={`Excluir tarefa: ${task.title}`}>
+            <Trash size={14} aria-hidden="true" />Excluir
+          </Button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export default function TasksPage() {
   const { data: session } = useSWR<PanelSession>("/me", fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
   const currentUserId = session?.user.id ?? "";
@@ -306,6 +382,15 @@ export default function TasksPage() {
   const [scope, setScope] = useState<"mine" | "team">("mine");
   const [statusFilter, setStatusFilter] = useState<"" | TaskStatus>("");
   const [priorityFilter, setPriorityFilter] = useState<"" | TaskPriority>("");
+  const [view, setView] = useState<TasksView>("lista");
+  // Preferência lida APÓS a hidratação (mesmo padrão da sidebar no shell):
+  // o SSR renderiza "lista" e o client adota o valor persistido sem mismatch.
+  useEffect(() => { setView(readTasksView()); }, []);
+
+  function changeView(next: TasksView) {
+    setView(next);
+    storeTasksView(next);
+  }
 
   const listKey = useMemo(() => {
     const params = new URLSearchParams({ scope, limit: String(PAGE_SIZE) });
@@ -353,6 +438,18 @@ export default function TasksPage() {
     }
     return merged;
   }, [data?.items, extraTasks]);
+
+  // Agenda agrupa a MESMA lista carregada — nenhum fetch novo ao trocar de visão.
+  const agendaGroups = useMemo<AgendaGroup<Task>[]>(
+    () => view === "agenda" ? groupTasksByDay(tasks, new Date(), timezone) : [],
+    [view, tasks, timezone]
+  );
+  const openEditor = (task: Task) => setDialog({ open: true, task });
+  const loadMoreControl = pageState.hasMore ? (
+    <div className={styles.loadMore}>
+      <Button onClick={() => void loadMore()} disabled={loadingMore}>{loadingMore ? "Carregando…" : "Carregar mais"}</Button>
+    </div>
+  ) : null;
 
   async function loadMore() {
     if (loadingMore || !pageState.cursor) return;
@@ -413,6 +510,10 @@ export default function TasksPage() {
             <h1>Tarefas</h1>
           </div>
           <div className={styles.toolbar}>
+            <Segmented aria-label="Visualização de tarefas">
+              <Button type="button" aria-pressed={view === "lista"} onClick={() => changeView("lista")}>Lista</Button>
+              <Button type="button" aria-pressed={view === "agenda"} onClick={() => changeView("agenda")}>Agenda</Button>
+            </Segmented>
             <span className={styles.toolbarSpacer} />
             <Button tone="primary" onClick={() => setDialog({ open: true, task: null })}>
               <Plus size={15} aria-hidden="true" />Nova tarefa
@@ -459,52 +560,26 @@ export default function TasksPage() {
         ) : null}
 
         {tasks.length ? (
-          <div className={styles.list}>
-            {tasks.map((task) => (
-              <article key={task.id} className={`${styles.task}${task.status === "concluida" ? ` ${styles.taskDone}` : ""}`} data-task-id={task.id}>
-                <div className={styles.taskBody}>
-                  <h3 className={styles.taskTitle}>{task.title}</h3>
-                  {task.description ? <p className={styles.taskDescription}>{task.description}</p> : null}
-                  <div className={styles.taskMeta}>
-                    <Badge tone={STATUS_TONES[task.status]} variant="pill">{STATUS_LABELS[task.status]}</Badge>
-                    <Badge tone={PRIORITY_TONES[task.priority]} variant="outline">Prioridade {PRIORITY_LABELS[task.priority]}</Badge>
-                    {task.lead ? (
-                      <span className={styles.taskMetaItem}>
-                        {task.lead.name?.trim() || "Contato sem nome"}{task.lead.phone ? ` · ${task.lead.phone}` : ""}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-                <div className={styles.taskSide}>
-                  <span className={styles.taskMetaItem}>Resp.: {task.assignee ? displayName(task.assignee.name, "sem nome") : "Sem responsável"}</span>
-                  {task.due_at ? (
-                    <span className={`${styles.due}${isOverdue(task) ? ` ${styles.dueOverdue}` : ""}`}>
-                      Prazo: {formatDue(task.due_at, timezone)}
-                    </span>
-                  ) : null}
-                  <div className={styles.taskActions}>
-                    <Button
-                      size="sm"
-                      tone={task.status === "concluida" ? "quiet" : "primary"}
-                      onClick={() => void toggleDone(task)}
-                      aria-label={task.status === "concluida" ? `Reabrir tarefa: ${task.title}` : `Concluir tarefa: ${task.title}`}
-                    >
-                      <Check size={14} aria-hidden="true" />{task.status === "concluida" ? "Reabrir" : "Concluir"}
-                    </Button>
-                    <Button size="sm" onClick={() => setDialog({ open: true, task })} aria-label={`Editar tarefa: ${task.title}`}>Editar</Button>
-                    <Button size="sm" tone="danger" onClick={() => void removeTask(task)} aria-label={`Excluir tarefa: ${task.title}`}>
-                      <Trash size={14} aria-hidden="true" />Excluir
-                    </Button>
-                  </div>
-                </div>
-              </article>
-            ))}
-            {pageState.hasMore ? (
-              <div className={styles.loadMore}>
-                <Button onClick={() => void loadMore()} disabled={loadingMore}>{loadingMore ? "Carregando…" : "Carregar mais"}</Button>
-              </div>
-            ) : null}
-          </div>
+          view === "agenda" ? (
+            <div className={styles.agenda}>
+              {agendaGroups.map((group) => (
+                <section key={group.key} className={styles.agendaDay}>
+                  <h2 className={styles.agendaDayTitle}>{group.label}</h2>
+                  {group.tasks.map((task) => (
+                    <TaskCard key={task.id} task={task} timezone={timezone} onToggle={toggleDone} onEdit={openEditor} onRemove={removeTask} />
+                  ))}
+                </section>
+              ))}
+              {loadMoreControl}
+            </div>
+          ) : (
+            <div className={styles.list}>
+              {tasks.map((task) => (
+                <TaskCard key={task.id} task={task} timezone={timezone} onToggle={toggleDone} onEdit={openEditor} onRemove={removeTask} />
+              ))}
+              {loadMoreControl}
+            </div>
+          )
         ) : null}
 
         <TaskDialog

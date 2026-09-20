@@ -8,7 +8,6 @@ import useSWR from "swr";
 import { BrandMark } from "@/components/brand-mark";
 import { CommandPalette, type PaletteItem } from "@/components/command-palette";
 import { MessageNotifications } from "@/components/message-notifications";
-import { NotificationCenter } from "@/components/notification-center";
 import { InternalNotifications } from "@/components/internal-notifications";
 import { NavRail, splitRailItems, type RailMenuItem, type RailMoreGroup, type RailPrimaryItem } from "@/components/nav-rail";
 import { ContextPanel } from "@/components/context-panel";
@@ -511,10 +510,6 @@ export function Shell({
         tenantId={session.activeWorkspace?.id}
         activeConversationId={activeConversationId}
         onOpenConversation={onOpenConversation}
-      />
-      <NotificationCenter
-        enabled={canReadConversations && !path.startsWith("/conversas")}
-        avoidBottomComposer={path.startsWith("/tripz-ai")}
       />
     </div>
   );

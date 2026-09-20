@@ -104,6 +104,28 @@
   padding: var(--space-2) 0;
 }
 
+/* Visão "Agenda pessoal": seções por dia (Atrasadas / Hoje / "ter, 23 set" /
+   Sem prazo) com o mesmo card da lista — só o agrupamento muda. */
+.agenda {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.agendaDay {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.agendaDayTitle {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-overline);
+}
+
 .leadSearch {
   position: relative;
 }

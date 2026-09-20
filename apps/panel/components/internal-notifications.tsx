@@ -17,11 +17,9 @@ import { PopoverMenu } from "@/components/popover-menu";
 import styles from "@/components/internal-notifications.module.css";
 
 /**
- * Sino de notificações internas (R2, v6) — user-scoped e independente do
- * centro de alertas de gestores (NotificationCenter): funciona em TODAS as
- * páginas, inclusive /conversas, onde aquele é desligado. Sem realtime v1:
- * SWR com poll de 30s. Falhas são silenciosas (a API pode 404 até o backend
- * integrar) — o sino vira um sino vazio, nunca um toast de erro.
+ * Sino de notificações internas (R2 v6) — user-scoped, inline na topbar.
+ * Sem realtime v1: SWR com poll de 30s. Falhas são silenciosas (a API pode
+ * 404 até o backend integrar) — o sino vira um sino vazio, nunca um toast.
  */
 
 const fetcher = (url: string) => api<InternalNotificationsResponse>(url, undefined, { reportErrors: false });

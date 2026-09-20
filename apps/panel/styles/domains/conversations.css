@@ -82,7 +82,6 @@
   border-bottom: 1px solid var(--border-subtle);
   background: var(--surface);
 }
-.conversation-list__meta { color: var(--text-secondary); }
 .conversation-list__search { margin-bottom: var(--space-2); }
 .conversation-list__search .input { min-height: var(--control-height); font-size: var(--text-control); }
 
@@ -137,7 +136,7 @@
 .conversation-list__avatar { flex: 0 0 30px; }
 .conversation-list__name { color: var(--text); font-size: var(--text-control); font-weight: var(--weight-semibold); }
 .conversation-list__time { flex: none; color: var(--text-muted); font-size: var(--text-micro); }
-.conversation-list__company { margin-top: 1px; color: var(--text-muted); font-size: var(--text-micro); }
+.conversation-list__company { margin-top: 1px; color: var(--text-muted); font-size: var(--text-micro); overflow-wrap: anywhere; }
 .conversation-list__preview-row { margin-top: var(--space-1); }
 .conversation-list__preview { color: var(--text-secondary); font-size: var(--text-meta); line-height: 1.45; }
 .conversation-list__unread {

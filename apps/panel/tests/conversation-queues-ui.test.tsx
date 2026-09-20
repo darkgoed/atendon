@@ -31,6 +31,8 @@ const queues = [
   { id: "q-instagram", name: "Instagram", color: "#db2777", is_resolved: false, conversation_count: 1, archived_at: null },
   { id: "q-done", name: "Resolvido", color: "#64748b", is_resolved: true, conversation_count: 0, archived_at: null }
 ];
+const settleAfterPick = () => new Promise((resolve) => setTimeout(resolve, 250));
+
 type FixtureConversation = {
   id: string; session_id: string; lead_id: string; contact_phone: string | null; contact_name: string | null; ai_active: boolean;
   last_message: string; last_message_at: string; status: "open" | "closed"; unread_count: number;
@@ -132,20 +134,29 @@ describe("inbox de filas e canais", () => {
   it("compõe chips de fila e filtros na query server-side", async () => {
     await renderInbox();
     await screen.findByText("Ana");
-    await userEvent.setup().click(screen.getByRole("button", { name: /Filtros/ }));
-    const queueBar = screen.getByLabelText("Filas de atendimento");
-    await userEvent.setup().click(within(queueBar).getByRole("button", { name: /Instagram/ }));
-    await userEvent.setup().click(screen.getByRole("button", { name: "Não lidas" }));
-    await userEvent.setup().click(screen.getByRole("button", { name: "Pendências" }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Filtros" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Campos de filtro" })).getByRole("option", { name: "Fila" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Valores de Fila" })).getByRole("option", { name: "Instagram" }));
+    await settleAfterPick();
+    await user.click(screen.getByRole("button", { name: "Filtros" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Campos de filtro" })).getByRole("option", { name: "Não lidas" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Valores de Não lidas" })).getByRole("option", { name: "Não lidas" }));
+    await settleAfterPick();
+    await user.click(screen.getByRole("button", { name: "Filtros" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Campos de filtro" })).getByRole("option", { name: "Pendências" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Valores de Pendências" })).getByRole("option", { name: "Pendências" }));
+    await settleAfterPick();
     await waitFor(() => {
       const urls = calls.map(([url]) => url);
       expect(urls.some((url) => url.includes("queue_id=q-instagram") && url.includes("unread=true") && url.includes("pending_action=true"))).toBe(true);
     });
-    expect(screen.getByRole("button", { name: "Não lidas" })).toHaveClass("primary");
-    expect(screen.getByRole("button", { name: "Pendências" })).toHaveClass("primary");
+    expect(screen.getByRole("button", { name: "Remover filtro Fila" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remover filtro Não lidas" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remover filtro Pendências" })).toBeInTheDocument();
   });
 
-  it("mantém as quatro abas visíveis, fecha filtros avançados inicialmente e expõe contador e estados aria", async () => {
+  it("mantém as quatro abas visíveis e expõe estados aria dos filtros", async () => {
     await renderInbox();
     await screen.findByText("Ana");
 
@@ -153,31 +164,41 @@ describe("inbox de filas e canais", () => {
     expect(screen.getByRole("button", { name: "IA" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Agendadas" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Resolvidas" })).toBeVisible();
-    const filters = screen.getByRole("button", { name: /Filtros/ });
+    const filters = screen.getByRole("button", { name: "Filtros" });
     expect(filters).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByLabelText("Filtros avançados")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remover filtro Não lidas" })).not.toBeInTheDocument();
 
     await userEvent.setup().click(filters);
     expect(filters).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByLabelText("Filtros avançados")).toBeVisible();
+    expect(screen.getByRole("listbox", { name: "Campos de filtro" })).toBeVisible();
     expect(screen.getByRole("button", { name: /^Abertas/ })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "Não lidas" })).toHaveAttribute("aria-pressed", "false");
   });
 
   it("preserva a composição server-side ao abrir, selecionar e limpar filtros", async () => {
     await renderInbox();
     await screen.findByText("Ana");
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /Filtros/ }));
-    await user.click(screen.getByRole("button", { name: /Instagram/ }));
-    await user.click(screen.getByRole("button", { name: "Não lidas" }));
-    await user.click(screen.getByRole("button", { name: "Pendências" }));
+    await user.click(screen.getByRole("button", { name: "Filtros" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Campos de filtro" })).getByRole("option", { name: "Fila" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Valores de Fila" })).getByRole("option", { name: "Instagram" }));
+    await settleAfterPick();
+    await user.click(screen.getByRole("button", { name: "Filtros" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Campos de filtro" })).getByRole("option", { name: "Não lidas" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Valores de Não lidas" })).getByRole("option", { name: "Não lidas" }));
+    await settleAfterPick();
+    await user.click(screen.getByRole("button", { name: "Filtros" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Campos de filtro" })).getByRole("option", { name: "Pendências" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Valores de Pendências" })).getByRole("option", { name: "Pendências" }));
+    await settleAfterPick();
     await waitFor(() => expect(calls.map(([url]) => url).some((url) => url.includes("filter=human") && url.includes("queue_id=q-instagram") && url.includes("unread=true") && url.includes("pending_action=true"))).toBe(true));
-    expect(screen.getByRole("button", { name: /Filtros \(3\)/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remover filtro Fila" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remover filtro Não lidas" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remover filtro Pendências" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Limpar filtros" }));
+    await user.click(screen.getByRole("button", { name: "Limpar" }));
     await waitFor(() => expect(calls.map(([url]) => url).some((url) => url.endsWith("/conversations?filter=human"))).toBe(true));
-    expect(screen.getByRole("button", { name: /Filtros$/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Remover filtro Fila" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Limpar" })).not.toBeInTheDocument();
   });
 
   it("aplica resolve otimista somente à conversa selecionada", async () => {
@@ -226,35 +247,41 @@ describe("inbox de filas e canais", () => {
     expect(screen.getByText(/Próxima ação: Ligar para Ana/)).toHaveTextContent(/Próxima ação: Ligar para Ana/);
     expect(screen.getByText(/Próxima ação: Ligar para Ana/)).toHaveTextContent(/\d{2}\/\d{2}/);
 
-    await userEvent.setup().click(screen.getByRole("button", { name: /Filtros/ }));
-    const queueBar = screen.getByLabelText("Filas de atendimento");
-    expect(within(queueBar).queryByRole("button", { name: /Resolvido/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "Resolvido" })).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Filtros" }));
+    await userEvent.setup().click(within(screen.getByRole("listbox", { name: "Campos de filtro" })).getByRole("option", { name: "Fila" }));
+    const queueValues = screen.getByRole("listbox", { name: "Valores de Fila" });
+    expect(within(queueValues).queryByRole("option", { name: /Resolvido/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Filas de atendimento" })).not.toBeInTheDocument();
     expect(screen.queryByText("Nova conversa")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Filtros/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filtros" })).toBeInTheDocument();
   });
 
-  it("mantém os filtros próprios para operador mine e oculta somente sem responsável", async () => {
+  it("mantém os filtros próprios para operador mine e oculta o filtro de escopo", async () => {
     sessionRole = "OPERADOR";
     await renderInbox();
     await screen.findByText("Ana");
-    const filters = screen.getByRole("button", { name: "Filtros" });
-    expect(filters).not.toHaveTextContent("(1)");
     expect(screen.queryByRole("button", { name: /^Abertas/ })).not.toBeInTheDocument();
     expect(screen.getByText("Minhas conversas abertas")).toBeInTheDocument();
-    await userEvent.setup().click(filters);
-
-    expect(screen.getByRole("button", { name: "Minhas conversas" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Sem responsável" })).not.toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Filas de atendimento" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Não lidas" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Pendências" })).toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.click(within(screen.getByLabelText("Filas de atendimento")).getByRole("button", { name: /Instagram/ }));
-    await user.click(screen.getByRole("button", { name: "Não lidas" }));
-    await user.click(screen.getByRole("button", { name: "Pendências" }));
+    await user.click(screen.getByRole("button", { name: "Filtros" }));
+    const fields = screen.getByRole("listbox", { name: "Campos de filtro" });
+    expect(within(fields).queryByRole("option", { name: "Escopo" })).not.toBeInTheDocument();
+    expect(within(fields).getByRole("option", { name: "Fila" })).toBeInTheDocument();
+    expect(within(fields).getByRole("option", { name: "Não lidas" })).toBeInTheDocument();
+    expect(within(fields).getByRole("option", { name: "Pendências" })).toBeInTheDocument();
+
+    await user.click(within(fields).getByRole("option", { name: "Fila" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Valores de Fila" })).getByRole("option", { name: "Instagram" }));
+    await settleAfterPick();
+    await user.click(screen.getByRole("button", { name: "Filtros" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Campos de filtro" })).getByRole("option", { name: "Não lidas" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Valores de Não lidas" })).getByRole("option", { name: "Não lidas" }));
+    await settleAfterPick();
+    await user.click(screen.getByRole("button", { name: "Filtros" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Campos de filtro" })).getByRole("option", { name: "Pendências" }));
+    await user.click(within(screen.getByRole("listbox", { name: "Valores de Pendências" })).getByRole("option", { name: "Pendências" }));
+    await settleAfterPick();
     await waitFor(() => {
       expect(calls.map(([url]) => url).some((url) => url.includes("filter=mine") && url.includes("queue_id=q-instagram") && url.includes("unread=true") && url.includes("pending_action=true"))).toBe(true);
     });

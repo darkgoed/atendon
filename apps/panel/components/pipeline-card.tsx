@@ -1,8 +1,9 @@
 "use client";
 
 import { ArrowRight, CalendarBlank, Clock, WhatsappLogo } from "@phosphor-icons/react";
+import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
-import type { DragEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 
 import {
   formatPipelineAge,
@@ -12,6 +13,11 @@ import {
   type PipelinePreferences
 } from "@/lib/pipeline";
 
+/*
+  Mesma mola dos vizinhos no quadro (referência): cards deslizam para o lugar
+  com FLOW_SPRING; reduce-motion troca mola por duração zero.
+*/
+const FLOW_SPRING = { type: "spring", stiffness: 420, damping: 36, mass: 0.9 } as const;
 
 function formatDateTime(value: string, timezone?: string): string {
   try {
@@ -52,10 +58,12 @@ export function PipelineCard({
   pending,
   preferences,
   timezone,
+  grabbed = false,
+  floating = false,
   onToggleSelected,
   onMove,
-  onDragStart,
-  onDragEnd
+  onGrabPointerDown,
+  onGrabKeyDown
 }: {
   lead: PipelineLead;
   selected: boolean;
@@ -64,10 +72,14 @@ export function PipelineCard({
   pending: boolean;
   preferences: PipelinePreferences;
   timezone?: string;
+  /** Captura por teclado em curso (anel de destaque). */
+  grabbed?: boolean;
+  /** Cópia no overlay que segue o cursor (sem foco, sem handlers). */
+  floating?: boolean;
   onToggleSelected: () => void;
   onMove: () => void;
-  onDragStart: (event: DragEvent<HTMLElement>) => void;
-  onDragEnd: () => void;
+  onGrabPointerDown?: (event: ReactPointerEvent<HTMLElement>) => void;
+  onGrabKeyDown?: (event: ReactKeyboardEvent<HTMLElement>) => void;
 }) {
   const visible = (field: PipelinePreferences["visibleFields"][number]) => preferences.visibleFields.includes(field);
   const badgeVisible = (badge: PipelinePreferences["auxiliaryBadges"][number]) => preferences.auxiliaryBadges.includes(badge);
@@ -80,15 +92,24 @@ export function PipelineCard({
   const compact = preferences.density === "compact";
   const score = qualificationScore(lead.qualificacao?.estrelas);
   const actionStatus = actionTiming(lead.proxima_acao_em);
-
+  const localReduceMotion = useReducedMotion() ?? false;
+  const interactive = canMove && !pending && !floating;
 
   return (
-    <article
-      draggable={canMove && !pending}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      aria-busy={pending}
-      className={`pipeline-card group border ${selected ? "border-[var(--primary)]" : "border-[var(--border)]"} ${canMove && !pending ? "cursor-grab active:cursor-grabbing" : ""} ${pending ? "opacity-60" : ""} ${compact ? "p-2" : "p-2.5"}`}
+    <motion.article
+      layout={!floating}
+      data-pipeline-card={lead.id}
+      tabIndex={interactive ? 0 : undefined}
+      aria-roledescription={interactive ? "Card arrastável" : undefined}
+      aria-grabbed={interactive ? grabbed : undefined}
+      aria-label={interactive ? `${lead.nome ?? "Lead"}. Pressione espaço para pegar, use as setas para escolher a etapa e espaço para soltar.` : undefined}
+      aria-busy={pending || undefined}
+      aria-hidden={floating || undefined}
+      onPointerDown={interactive ? onGrabPointerDown : undefined}
+      onKeyDown={onGrabKeyDown}
+      transition={localReduceMotion ? { duration: 0 } : FLOW_SPRING}
+      whileHover={interactive && !localReduceMotion ? { y: -1 } : undefined}
+      className={`pipeline-card group border ${selected ? "border-[var(--primary)]" : "border-[var(--border)]"} ${interactive ? "cursor-grab active:cursor-grabbing touch-none" : ""} ${pending ? "opacity-60" : ""} ${grabbed ? "pipeline-card--grabbed" : ""} ${floating ? "pipeline-card--floating" : ""} ${compact ? "p-2" : "p-2.5"}`}
     >
       <div className="flex min-w-0 items-start gap-2">
         {canSelect ? <input type="checkbox" checked={selected} onChange={onToggleSelected} aria-label={`Selecionar ${lead.nome ?? lead.telefone}`} disabled={pending} /> : null}
@@ -151,6 +172,6 @@ export function PipelineCard({
         </span>
         {visible("stalled") ? <time className="pipeline-card__age" dateTime={lead.atualizado_em}><Clock size={10} aria-hidden="true" />{formatPipelineAge(lead.atualizado_em)}</time> : <span />}
       </div>
-    </article>
+    </motion.article>
   );
 }

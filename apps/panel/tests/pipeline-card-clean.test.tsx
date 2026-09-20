@@ -54,9 +54,7 @@ const cardProps = {
   pending: false,
   timezone: "UTC",
   onToggleSelected: vi.fn(),
-  onMove: vi.fn(),
-  onDragStart: vi.fn(),
-  onDragEnd: vi.fn()
+  onMove: vi.fn()
 };
 
 function renderCard(preferences: PipelinePreferences = DEFAULT_PIPELINE_PREFERENCES) {

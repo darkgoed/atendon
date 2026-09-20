@@ -3,7 +3,7 @@ import React from "react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { PipelineBoard, PipelineColumn } from "../components/pipeline-board";
 import { PipelineList } from "../components/pipeline-list";
@@ -43,11 +43,8 @@ function columnElement(stageValue: PipelineStage) {
     dragging: null,
     droppable: false,
     dropActive: false,
-    onDragStart: noop,
-    onDragEnd: noop,
-    onDragEnter: noop,
-    onDragLeave: noop,
-    onDrop: noop,
+    onGrabPointerDown: noop,
+    onGrabKeyDown: noop,
     onToggleSelected: noop,
     onMoveRequest: noop
   });
@@ -74,10 +71,13 @@ function BoardHarness(props: { from: PipelineStage; stages: PipelineStage[]; all
   });
 }
 
-function dragFirstLead() {
-  const card = screen.getByText("Lead l1").closest("div");
-  const draggable = ((card ?? document.body) as HTMLElement).querySelector("[draggable='true']") ?? card;
-  fireEvent.dragStart(draggable as HTMLElement, { dataTransfer: { setData: vi.fn(), effectAllowed: "move" } });
+// O drag agora é por pointer events (referência); um clique sintático de
+// pointerdown com botão esquerdo é a captura. MouseEvent carrega button/
+// clientX mesmo onde jsdom não define PointerEvent.
+function grabFirstLead() {
+  const card = document.querySelector('[data-pipeline-card="l1"]') as HTMLElement;
+  expect(card).toBeTruthy();
+  fireEvent(card, new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, clientX: 100, clientY: 100 }));
 }
 
 describe("pipeline free movement UI (R3/R4/R5)", () => {
@@ -104,7 +104,7 @@ describe("pipeline free movement UI (R3/R4/R5)", () => {
     const aiStage = stage({ id: "ai", name: "Follow-up 1", operational_kind: "ai_follow_up" });
     // Sabotage guard: even granting the edge explicitly, the AI column must refuse the drop.
     const { container } = render(React.createElement(BoardHarness, { from: sourceStage, stages: [sourceStage, aiStage], allowed: new Set(["src:ai"]) }));
-    dragFirstLead();
+    grabFirstLead();
     const aiColumn = container.querySelector('[aria-label="Follow-up 1, 0 lead(s)"]');
     expect(aiColumn).toBeTruthy();
     expect(aiColumn!.getAttribute("data-drop-state")).not.toBe("available");
@@ -115,7 +115,7 @@ describe("pipeline free movement UI (R3/R4/R5)", () => {
     // Manual stage under the same harness IS droppable (free mode edge granted).
     const manualStage = stage({ id: "manual", name: "Fechado" });
     const { container: container2 } = render(React.createElement(BoardHarness, { from: sourceStage, stages: [sourceStage, manualStage], allowed: new Set(["src:manual"]) }));
-    dragFirstLead();
+    grabFirstLead();
     const manualColumn = container2.querySelector('[aria-label="Fechado, 0 lead(s)"]');
     expect(manualColumn).toBeTruthy();
     expect(manualColumn!.getAttribute("data-drop-state")).toBe("available");
