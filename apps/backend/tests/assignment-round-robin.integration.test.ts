@@ -340,11 +340,10 @@ describe("strict attendant round robin", () => {
   it("rotates a returning closed conversation and synchronizes its lead and active meeting", async () => {
     const item = await createCase();
     expect((await assignCase({ leadId: item.leadId }))?.memberId).toBe(betoMemberId);
+    // SEM reunião concluída no lead: a trava de attendance
+    // (assignmentIsLockedByAttendance) devolveria o caso a Beto — isso é
+    // coberto no teste seguinte. Aqui o retorno de conversa encerrada rotaciona.
     const activeAppointmentId = await createAppointment(item.leadId, { assignedMemberId: betoMemberId });
-    const completedAppointmentId = await createAppointment(item.leadId, {
-      assignedMemberId: betoMemberId,
-      status: "concluido"
-    });
     await pool.query("UPDATE conversations SET status='closed' WHERE id=$1", [item.conversationId]);
 
     const returned = await assignCase(
@@ -357,19 +356,47 @@ describe("strict attendant round robin", () => {
       memberIds: [juliaMemberId],
       userIds: [juliaUserId]
     });
-    const appointments = await pool.query<{ id: string; assigned_member_id: string }>(
-      "SELECT id,assigned_member_id FROM scheduling_appointments WHERE id=ANY($1::uuid[])",
-      [[activeAppointmentId, completedAppointmentId]]
-    );
-    const byId = Object.fromEntries(appointments.rows.map((row) => [row.id, row.assigned_member_id]));
-    expect(byId[activeAppointmentId]).toBe(juliaMemberId);
-    expect(byId[completedAppointmentId]).toBe(betoMemberId);
+    expect((await pool.query<{ assigned_member_id: string }>(
+      "SELECT assigned_member_id FROM scheduling_appointments WHERE id=$1",
+      [activeAppointmentId]
+    )).rows[0].assigned_member_id).toBe(juliaMemberId);
     expect((await pool.query<{ event_type: string }>(
       "SELECT event_type FROM scheduling_lead_events WHERE lead_id=$1 ORDER BY created_at,id",
       [item.leadId]
     )).rows.map((row) => row.event_type)).toEqual([
       "responsavel_atribuido_automaticamente",
       "responsavel_reatribuido_retorno"
+    ]);
+  });
+
+  it("keeps the case with its closer when attendance is concluded even with forceRotation", async () => {
+    // Regra de 2026-08-27: lead com reunião concluída/no_show fica travado
+    // (assignmentIsLockedByAttendance) — o retorno de conversa encerrada NÃO
+    // rouba o caso do closer que concluiu o atendimento, mesmo com
+    // forceRotation=true.
+    const item = await createCase();
+    expect((await assignCase({ leadId: item.leadId }))?.memberId).toBe(betoMemberId);
+    await createAppointment(item.leadId, {
+      assignedMemberId: betoMemberId,
+      status: "concluido"
+    });
+    await pool.query("UPDATE conversations SET status='closed' WHERE id=$1", [item.conversationId]);
+
+    const returned = await assignCase(
+      { conversationId: item.conversationId },
+      { reason: "retorno_conversa_encerrada", forceRotation: true }
+    );
+
+    expect(returned?.memberId).toBe(betoMemberId);
+    expect(await caseAssignments(item.phone)).toEqual({
+      memberIds: [betoMemberId],
+      userIds: [betoUserId]
+    });
+    expect((await pool.query<{ event_type: string }>(
+      "SELECT event_type FROM scheduling_lead_events WHERE lead_id=$1 ORDER BY created_at,id",
+      [item.leadId]
+    )).rows.map((row) => row.event_type)).toEqual([
+      "responsavel_atribuido_automaticamente"
     ]);
   });
 

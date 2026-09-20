@@ -48,6 +48,7 @@ async function state() {
 
 beforeAll(async () => {
   globalThis.fetch = (async (input: URL | RequestInfo) => {
+    if ((globalThis as { __mpFail?: boolean }).__mpFail) throw new Error("MP API indisponível");
     const id = String(input).split("/").pop();
     const status = id === paymentId ? (globalThis as { __mpStatus?: string }).__mpStatus ?? "pending" : "pending";
     return new Response(JSON.stringify({ id, status, transaction_amount: 897, currency_id: "BRL", external_reference: tenantId, external_invoice_id: `invoice-${suffix}` }), { status: 200, headers: { "content-type": "application/json" } });
@@ -112,7 +113,7 @@ describe("Mercado Pago webhook com payload real", () => {
     expect(approved.json().status).toBe("processed");
     expect((await state()).invoice).toBe("paid");
     expect((await state()).subscription.status).toBe("ACTIVE");
-    expect((await pool.query("SELECT 1 FROM billing_events WHERE provider_id=$1 AND external_event_id IN ('1001','1002')", [providerId])).rowCount).toBe(2);
+    expect((await pool.query("SELECT 1 FROM billing_events WHERE provider_id=$1 AND external_event_id IN ($2,$3)", [providerId, `payment.updated:${paymentId}:pending`, `payment.updated:${paymentId}:approved`])).rowCount).toBe(2);
   });
 
   it("atualiza payment pending pré-existente para paid sem violar a unique parcial", async () => {
@@ -136,6 +137,63 @@ describe("Mercado Pago webhook com payload real", () => {
     expect(response.json().status).toBe("processed");
     // Reversals have explicit states for auditability and downstream handling.
     expect((await state()).invoice).toBe("refunded");
+    expect((await pool.query<{ status: string }>("SELECT status FROM payments WHERE provider_id=$1 AND external_id=$2", [providerId, paymentId])).rows[0].status).toBe("refunded");
+  });
+
+  it("evento assinado sem refetch autenticado não tem efeito financeiro (F2)", async () => {
+    // HMAC do MP não cobre o corpo: com a API do provedor indisponível, o
+    // evento é gravado e IGNORADO — status/valores do body nunca movem fatura.
+    const before = await state();
+    (globalThis as { __mpFail?: boolean }).__mpFail = true;
+    const response = await deliver("1004", "approved");
+    (globalThis as { __mpFail?: boolean }).__mpFail = false;
+    expect(response.statusCode).toBe(200);
+    expect(response.json().status).toBe("ignored");
+    expect(await state()).toEqual(before);
+  });
+
+  it("declaração de vínculo divergente no body é rejeitada como tamper (F2)", async () => {
+    // Assinatura legítima capturada + body adulterado apontando para outra
+    // fatura: o gate de mesmo-tipo rejeita o evento sem efeito algum.
+    const before = await state();
+    (globalThis as { __mpStatus?: string }).__mpStatus = "approved";
+    const requestId = "req-1005";
+    const ts = String(Math.floor(Date.now() / 1000));
+    const response = await app.inject({
+      method: "POST",
+      url: "/webhooks/billing/mercadopago",
+      headers: {
+        "content-type": "application/json",
+        "x-request-id": requestId,
+        "x-signature": `ts=${ts},v1=${signature("1005", requestId, ts)}`
+      },
+      payload: JSON.stringify({ id: "1005-b", live_mode: true, type: "payment", action: "payment.updated", data: { id: "1005" }, external_invoice_id: "outra-fatura" })
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json().code).toBe("WEBHOOK_TAMPERED_LINK");
+    expect(await state()).toEqual(before);
+  });
+
+  it("approved atrasado não desfaz refund nem reativa a assinatura (F1)", async () => {
+    // Sequência real de incidente: refund processa; um 'approved' atrasado
+    // com NOVA identidade de evento (action diferente) chega depois. O guard
+    // de estados terminais impede o un-refund.
+    const before = await state();
+    (globalThis as { __mpStatus?: string }).__mpStatus = "approved";
+    const requestId = "req-1006";
+    const ts = String(Math.floor(Date.now() / 1000));
+    const response = await app.inject({
+      method: "POST",
+      url: "/webhooks/billing/mercadopago",
+      headers: {
+        "content-type": "application/json",
+        "x-request-id": requestId,
+        "x-signature": `ts=${ts},v1=${signature(paymentId, requestId, ts)}`
+      },
+      payload: JSON.stringify({ id: "1006", live_mode: true, type: "payment", action: "payment.created", data: { id: paymentId } })
+    });
+    expect(response.json().status).toBe("processed");
+    expect(await state()).toEqual(before);
     expect((await pool.query<{ status: string }>("SELECT status FROM payments WHERE provider_id=$1 AND external_id=$2", [providerId, paymentId])).rows[0].status).toBe("refunded");
   });
 });

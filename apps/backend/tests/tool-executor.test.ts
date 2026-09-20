@@ -190,7 +190,7 @@ describe("scheduling tool executor", () => {
     expect(tools).toEqual(["verificar_horarios_reuniao", "reagendar_reuniao"]);
     expect(result.agendamento).toMatchObject({
       id: active.id,
-      status: "reagendado",
+      status: "confirmado",
       start: "2030-01-09T16:00:00.000Z"
     });
 
@@ -660,7 +660,7 @@ describe("scheduling tool executor", () => {
     })));
     expect(target.horario_solicitado).toMatchObject({ disponivel: true });
     const moved = JSON.parse(await executeTool("reagendar_reuniao", JSON.stringify({ start: target.horario_solicitado.start })));
-    expect(moved.agendamento).toMatchObject({ id: meeting.agendamento.id, status: "reagendado" });
+    expect(moved.agendamento).toMatchObject({ id: meeting.agendamento.id, status: "confirmado" });
     const cancelled = JSON.parse(await executeTool("cancelar_reuniao", "{}"));
     expect(cancelled.agendamento).toMatchObject({ id: meeting.agendamento.id, status: "cancelado" });
 

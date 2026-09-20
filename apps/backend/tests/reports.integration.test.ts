@@ -281,6 +281,40 @@ describe("B1 — produtividade de agentes", () => {
     // Ordenado por mensagens enviadas DESC: a operadora vem primeiro.
     expect(items[0].user_id).toBe(operatorA);
   });
+
+  it("mensagens do mesmo user em OUTRO tenant não entram no agregado (tenancy)", async () => {
+    // Regressão AT-TEN-001: user membro de dois workspaces — as mensagens que
+    // ele enviou no tenant C nunca podem entrar nos agregados do tenant A.
+    let tenantC = "";
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      tenantC = (await client.query<Row>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id", [`Reports C ${randomUUID()}`])).rows[0].id;
+      await ensureWorkspaceDefaultRoles(client, tenantC);
+      await client.query(
+        `INSERT INTO workspace_members(workspace_id,user_id,role_id,status,joined_at)
+         SELECT $1,$2,id,'active',now() FROM workspace_roles WHERE workspace_id=$1 AND name='OWNER'`,
+        [tenantC, ownerA]
+      );
+      const sessionC = (await client.query<Row>("INSERT INTO whatsapp_sessions(tenant_id,status) VALUES($1,'connected') RETURNING id", [tenantC])).rows[0].id;
+      const leadCross = await leadFixture(client, tenantC, { status: "qualificado", createdAt: `${D1}T12:00:00.000Z` });
+      const convCross = await conversationFixture(client, tenantC, sessionC, leadCross, "5511800000099", ownerA, `${D1}T12:00:00.000Z`, "open");
+      await messageFixture(client, convCross, "agent", ownerA, `${D1}T12:05:00.000Z`);
+      await messageFixture(client, convCross, "agent", ownerA, `${D1}T12:10:00.000Z`);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const response = await get(ownerA, tenantA, "/reports/agent-productivity", windowQuery);
+    expect(response.statusCode).toBe(200);
+    const items = response.json().items as Array<{ user_id: string; answered: number; messages_sent: number }>;
+    expect(items.find((item) => item.user_id === ownerA)).toMatchObject({ answered: 0, messages_sent: 0 });
+    await pool.query("DELETE FROM tenants WHERE id=$1", [tenantC]);
+  });
 });
 
 describe("B1 — fluxo de status", () => {

@@ -15,6 +15,7 @@ vi.mock("../src/db/client.js", () => ({
 }));
 
 import { fireFlowWebhooks } from "../src/modules/qualification/service.js";
+import { OutboundUrlError, publicHttpsFetch } from "../src/security/outbound-url.js";
 
 const ctx = {
   tenantId: "00000000-0000-0000-0000-000000000000",
@@ -66,9 +67,8 @@ describe("fireFlowWebhooks — SSRF", () => {
   it("redirect 3xx falha com motivo 'redirect' e não é seguido", async () => {
     lookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
     const fetchMock = vi.fn(async () => ({ ok: false, status: 302 }));
-    vi.stubGlobal("fetch", fetchMock);
 
-    const results = await fireFlowWebhooks([hook], ctx);
+    const results = await fireFlowWebhooks([hook], ctx, { fetchImpl: fetchMock });
 
     expect(results[0].status).toBe("failed");
     expect(results[0].detail.http_status).toBe(302);
@@ -79,12 +79,22 @@ describe("fireFlowWebhooks — SSRF", () => {
   it("host público que resolve externo e responde 200 completa", async () => {
     lookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
 
-    const results = await fireFlowWebhooks([hook], ctx);
+    const results = await fireFlowWebhooks([hook], ctx, { fetchImpl: fetchMock });
 
     expect(results[0].status).toBe("completed");
     expect(results[0].detail.http_status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fetch padrão (publicHttpsFetch) revalida e nunca disca IP interno", async () => {
+    lookupMock.mockResolvedValue([{ address: "10.1.2.3", family: 4 }]);
+    const error = await publicHttpsFetch(
+      "https://public.example.com/hook",
+      {},
+      lookupMock as unknown as Parameters<typeof publicHttpsFetch>[2]
+    ).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(OutboundUrlError);
+    expect((error as Error).message).toMatch(/publicly/i);
   });
 });

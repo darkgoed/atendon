@@ -46,72 +46,11 @@ afterAll(async () => {
 });
 
 describe("AI follow-up settings API", () => {
-  it("returns the agent quality summary", async () => {
-    const response = await app.inject({ url: "/agent/quality/summary", headers: { cookie: rootCookie } });
-
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
-      summary: { evaluations: 0 },
-      trend: [],
-      dimensions: [],
-      violations: []
-    });
-  });
-
-  it("persists and audits evaluator settings", async () => {
-    const invalid = await app.inject({
-      method: "PUT",
-      url: "/agent/evaluator-settings",
-      headers: { cookie: rootCookie },
-      payload: {
-        evaluatorModel: null,
-        automaticEnabled: true,
-        proposalsEnabled: false,
-        publicationEnabled: false
-      }
-    });
-    expect(invalid.statusCode).toBe(400);
-
-    const updated = await app.inject({
-      method: "PUT",
-      url: "/agent/evaluator-settings",
-      headers: { cookie: rootCookie },
-      payload: {
-        evaluatorModel: "openai/gpt-5-mini",
-        automaticEnabled: true,
-        proposalsEnabled: true,
-        publicationEnabled: false
-      }
-    });
-    expect(updated.statusCode).toBe(200);
-    expect(updated.json().settings).toEqual({
-      evaluator_model: "openai/gpt-5-mini",
-      ai_evaluations_enabled: true,
-      ai_proposals_enabled: true,
-      ai_publication_enabled: false
-    });
-
-    const persisted = await pool.query(
-      `SELECT evaluator_model,ai_evaluations_enabled,ai_proposals_enabled,ai_publication_enabled
-       FROM tenant_ai_settings WHERE tenant_id=$1`,
-      [tenantId]
-    );
-    expect(persisted.rows[0]).toEqual(updated.json().settings);
-    const audit = await pool.query<{ resource_id: string; metadata: Record<string, unknown> }>(
-      `SELECT resource_id,metadata FROM audit_logs
-       WHERE workspace_id=$1 AND action='agent.evaluator.updated'`,
-      [tenantId]
-    );
-    expect(audit.rows).toEqual([{
-      resource_id: tenantId,
-      metadata: {
-        evaluatorModel: "openai/gpt-5-mini",
-        automaticEnabled: true,
-        proposalsEnabled: true,
-        publicationEnabled: false
-      }
-    }]);
-  });
+  // NOTA (auditoria 2026-09): os testes de GET /agent/quality/summary e
+  // PUT /agent/evaluator-settings foram REMOVIDOS — os endpoints nunca foram
+  // portados (grep em src/* não encontra as rotas; nenhum cliente do painel
+  // as consome). Se o avaliador de qualidade da IA for portado um dia,
+  // recriar os testes junto com as rotas.
 
   it("validates, persists and audits the workspace cadence", async () => {
     const initial = await app.inject({ url: "/ai-follow-ups/settings", headers: { cookie: rootCookie } });

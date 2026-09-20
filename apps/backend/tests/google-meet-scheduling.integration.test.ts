@@ -370,7 +370,7 @@ describe("Google Meet scheduling automation", () => {
       });
       expect(moved.statusCode).toBe(200);
       expect(moved.json().agendamento).toMatchObject({
-        status: "reagendado",
+        status: "confirmado",
         meet_link: "https://meet.google.com/atn-donx-link"
       });
 

@@ -17,6 +17,8 @@ export interface PaymentInput {
 export interface ProviderResult { externalId: string; status?: string; payload?: BillingPayload; }
 export interface WebhookResult {
   externalEventId: string; eventType: string; signatureValid: boolean;
+  /** true só quando o status/valores vêm do refetch autenticado na API do provedor. */
+  authenticated: boolean;
   amountCents?: number; currency?: string; externalInvoiceId?: string;
   externalReference?: string; externalPaymentId?: string; tenantHint?: string; status?: string; payload: unknown;
 }

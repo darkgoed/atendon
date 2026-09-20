@@ -84,3 +84,39 @@ export function publicHttpsAgent(lookup: LookupAll = systemLookup): https.Agent 
   };
   return new https.Agent({ lookup: controlled });
 }
+
+export type PublicHttpFetchResponse = { ok: boolean; status: number };
+export type PublicHttpFetch = (
+  url: string,
+  init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }
+) => Promise<PublicHttpFetchResponse>;
+
+/**
+ * fetch pinado por DNS para outbound com URL influenciável por tenant: revalida
+ * ANTES (erro claro, zero socket) e conecta com publicHttpsAgent — o lookup do
+ * PROPRIO socket recusa IP interno, fechando a janela de DNS rebinding
+ * (TOCTOU) entre um dns.lookup prévio e a conexão do fetch padrão (undici
+ * re-resolve o host). Nunca segue 3xx (o destino do redirect não passou pelo
+ * mesmo gate). Só consome status/ok — corpo é drenado e descartado.
+ */
+export async function publicHttpsFetch(
+  url: string,
+  init: Parameters<PublicHttpFetch>[1] = {},
+  lookup: LookupAll = systemLookup
+): Promise<PublicHttpFetchResponse> {
+  const target = await resolvePublicHttpsUrl(url, lookup);
+  return new Promise<PublicHttpFetchResponse>((resolve, reject) => {
+    const request = https.request(
+      target,
+      { method: init.method ?? "GET", headers: init.headers, agent: publicHttpsAgent(lookup), signal: init.signal },
+      (response) => {
+        response.resume();
+        const code = response.statusCode ?? 0;
+        resolve({ ok: code >= 200 && code < 300, status: code });
+      }
+    );
+    request.on("error", reject);
+    if (init.body != null) request.write(init.body);
+    request.end();
+  });
+}

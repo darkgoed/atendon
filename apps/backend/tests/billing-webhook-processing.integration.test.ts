@@ -192,7 +192,9 @@ describe("webhook de cobrança (§18)", () => {
     // Exatamente 1 evento, 1 pagamento e 1 fatura paga.
     const events = await pool.query(
       "SELECT 1 FROM billing_events WHERE provider_id=$1 AND external_event_id=$2",
-      [providerId, `pay-${suffix}`]
+      // Chave de dedupe nova (action:resource:status): o id da notificação não
+      // é assinado pelo MP e não pode servir de identidade de idempotência.
+      [providerId, `payment:pay-${suffix}:approved`]
     );
     expect(events.rowCount).toBe(1);
     const payments = await pool.query("SELECT 1 FROM payments WHERE invoice_id=$1", [invoiceId]);

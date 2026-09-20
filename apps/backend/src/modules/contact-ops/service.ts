@@ -528,7 +528,7 @@ export async function exportLeadsCsv(
         pageParams
       );
       if (!page.rows.length) break;
-      const customMap = await loadCustomValues(page.rows.map((row) => row.id), defs.map((def) => def.id));
+      const customMap = await loadCustomValues(tenantId, page.rows.map((row) => row.id), defs.map((def) => def.id));
       for (const row of page.rows) {
         if (emitted >= EXPORT_ROW_LIMIT) break;
         const tags = (row.tags ?? []).map((tag) => tag.name).join(", ");
@@ -566,12 +566,16 @@ function leadReadScopeCondition(scope: CaseScope, alias: string, memberParameter
   return `(${alias}.assigned_member_id=${memberParameter} OR ${alias}.sdr_member_id=${memberParameter} OR ${alias}.closer_member_id=${memberParameter} OR ${alias}.recovery_member_id=${memberParameter})`;
 }
 
-async function loadCustomValues(leadIds: string[], fieldIds: string[]): Promise<Map<string, unknown>> {
+async function loadCustomValues(tenantId: string, leadIds: string[], fieldIds: string[]): Promise<Map<string, unknown>> {
   const map = new Map<string, unknown>();
   if (!leadIds.length || !fieldIds.length) return map;
+  // Defesa em profundidade: os ids chegam de páginas já escopadas por tenant,
+  // mas a própria consulta reafirma o escopo via JOIN no lead (a tabela
+  // lead_custom_values NÃO tem coluna tenant_id — o dono do escopo é o lead).
+  // Reuso futuro com id do cliente não pode virar IDOR.
   const rows = await db.query<{ lead_id: string; field_id: string; value: unknown }>(
-    "SELECT lead_id,field_id,value FROM lead_custom_values WHERE lead_id=ANY($1::uuid[]) AND field_id=ANY($2::uuid[])",
-    [leadIds, fieldIds]
+    "SELECT v.lead_id,v.field_id,v.value FROM lead_custom_values v JOIN scheduling_leads l ON l.id=v.lead_id AND l.tenant_id=$1 WHERE v.lead_id=ANY($2::uuid[]) AND v.field_id=ANY($3::uuid[])",
+    [tenantId, leadIds, fieldIds]
   );
   for (const row of rows.rows) map.set(`${row.lead_id}:${row.field_id}`, row.value);
   return map;

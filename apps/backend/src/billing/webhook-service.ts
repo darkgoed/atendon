@@ -146,7 +146,11 @@ async function applyApproved(client: PoolClient, provider: ProviderRow, result: 
       LIMIT 1 FOR UPDATE`,
     [provider.id, row.id, externalId]
   );
-  if (existing.rows[0]?.status === "paid") return;
+  // Estados liquidados são terminais: um 'approved' atrasado (retry do
+  // provedor depois de um 5xx transiente) NÃO pode desfazer um refund ou
+  // chargeback já processado, nem reescrever uma fatura já paga.
+  const settled = ["paid", "refunded", "charged_back"];
+  if (existing.rowCount && settled.includes(existing.rows[0].status)) return;
   if (existing.rowCount) {
     await client.query("UPDATE payments SET external_id=$1,status='paid',paid_at=now(),updated_at=now() WHERE id=$2", [externalId, existing.rows[0].id]);
   } else {
@@ -156,7 +160,7 @@ async function applyApproved(client: PoolClient, provider: ProviderRow, result: 
       [row.tenant_id, row.id, provider.id, externalId, row.amount_cents, row.currency, "webhook"]
     );
   }
-  await client.query("UPDATE invoices SET status='paid',paid_at=now(),updated_at=now() WHERE id=$1", [row.id]);
+  await client.query("UPDATE invoices SET status='paid',paid_at=now(),updated_at=now() WHERE id=$1 AND status NOT IN ('refunded','charged_back')", [row.id]);
 
   const subscription = await client.query<SubscriptionRow>(
     `SELECT s.id,s.status,s.current_period_end,s.plan_id,p.billing_period_months,p.grace_period_days
@@ -248,11 +252,14 @@ async function applyRejected(client: PoolClient, provider: ProviderRow, result: 
   if (!row) throw httpError(422, "Fatura do webhook não encontrada", "UNRECONCILED_WEBHOOK");
 
   const existing = await client.query<{ status: string }>("SELECT status FROM payments WHERE provider_id=$1 AND external_id=$2 FOR UPDATE", [provider.id, externalId]);
-  if (existing.rows[0]?.status === "rejected") return;
+  // Estados terminais: 'rejected' já aplicado (idempotência) ou pagamento
+  // liquidado — um 'rejected' atrasado não reabre fatura paga nem desfaz
+  // estorno (reversal é evento próprio, não rejected).
+  if (existing.rows[0] && ["rejected", "paid", "refunded", "charged_back"].includes(existing.rows[0].status)) return;
   if (existing.rowCount) {
     await client.query("UPDATE payments SET status='rejected',paid_at=NULL WHERE provider_id=$1 AND external_id=$2", [provider.id, externalId]);
     if (existing.rows[0].status === "paid") {
-      await client.query("UPDATE invoices SET status='open',paid_at=NULL,updated_at=now() WHERE id=$1", [row.id]);
+      await client.query("UPDATE invoices SET status='open',paid_at=NULL,updated_at=now() WHERE id=$1 AND status NOT IN ('paid','refunded','charged_back')", [row.id]);
     }
   } else {
     await client.query(
@@ -296,10 +303,12 @@ export async function processBillingWebhook(
 
   // Assinatura inválida: registra a tentativa para auditoria, sem QUALQUER efeito financeiro.
   if (!result.signatureValid) {
+    // NÃO persistir o payload do atacante (corpo de até 1MB, sem dedupe): grava
+    // apenas um resumo limitado — a própria rejeição é a evidência.
     await db.query(
       `INSERT INTO billing_events(provider_id,external_event_id,event_type,payload,signature_valid)
        VALUES($1,$2,$3,$4,false) ON CONFLICT (provider_id,external_event_id) DO NOTHING`,
-      [provider.id, `invalid:${result.externalEventId}:${Date.now()}`, result.eventType, result.payload]
+      [provider.id, `invalid:${result.externalEventId}:${Date.now()}`, result.eventType, { rejected: true, payload_bytes: rawBody.length }]
     );
     throw httpError(401, "Assinatura de webhook inválida", "INVALID_WEBHOOK_SIGNATURE");
   }
@@ -335,6 +344,16 @@ export async function processBillingWebhook(
     eventId = inserted.rows[0].id;
 
     const kind = classify(result);
+    // Assinatura válida mas sem recurso autenticado (refetch falhou ou o evento
+    // não veio de /v1/payments): registra e encerra SEM efeito financeiro — o
+    // HMAC do Mercado Pago não cobre o corpo, então status/valores do body não
+    // podem mover fatura, pagamento ou assinatura.
+    if (!result.authenticated) {
+      await client.query("UPDATE billing_events SET processed_at=now() WHERE id=$1", [eventId]);
+      await client.query("UPDATE billing_providers SET last_event_at=now() WHERE id=$1", [provider.id]);
+      await client.query("COMMIT");
+      return { status: "ignored", eventId, eventType: result.eventType };
+    }
     if (kind === "approved") await applyApproved(client, provider, result);
     else if (kind === "rejected") await applyRejected(client, provider, result);
     else if (kind === "pending") await applyPending(client, provider, result);

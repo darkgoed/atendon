@@ -199,7 +199,7 @@ describe("webhook refunds and ordering", () => {
     // Exatamente 1 evento e 1 pagamento, mesmo após duas entregas.
     const events = await pool.query(
       "SELECT 1 FROM billing_events WHERE provider_id=$1 AND external_event_id=$2",
-      [providerId, eventId]
+      [providerId, `payment:${eventId}:approved`]
     );
     expect(events.rowCount).toBe(1);
     const payments = await pool.query("SELECT 1 FROM payments WHERE invoice_id=$1", [invoiceId]);

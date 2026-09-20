@@ -111,6 +111,7 @@ export async function loadAgentProductivity(tenantId: string, scope: CaseScope, 
             u.email,
             (SELECT count(DISTINCT msg.conversation_id)::int FROM messages msg
               WHERE msg.sent_by_user_id=m.user_id
+                AND msg.tenant_id=m.workspace_id
                 AND msg.created_at >= $2::timestamptz AND msg.created_at < $3::timestamptz) answered,
             (SELECT count(*)::int FROM audit_logs a
               WHERE a.workspace_id=m.workspace_id AND a.actor_user_id=m.user_id
@@ -118,6 +119,7 @@ export async function loadAgentProductivity(tenantId: string, scope: CaseScope, 
                 AND a.created_at >= $2::timestamptz AND a.created_at < $3::timestamptz) closed,
             (SELECT count(*)::int FROM messages msg
               WHERE msg.sent_by_user_id=m.user_id
+                AND msg.tenant_id=m.workspace_id
                 AND msg.created_at >= $2::timestamptz AND msg.created_at < $3::timestamptz) messages_sent
      FROM workspace_members m
      JOIN users u ON u.id=m.user_id
@@ -356,13 +358,15 @@ export async function loadQualityReport(tenantId: string, scope: CaseScope, rang
   const [idle, queue, firstResponse, bottlenecks] = await Promise.all([
     db.query<{ user_id: string; name: string; email: string; last_message_at: Date | null }>(
       `SELECT m.user_id, COALESCE(NULLIF(u.name,''),u.email) name, u.email,
-              (SELECT max(msg.created_at) FROM messages msg WHERE msg.sent_by_user_id=m.user_id) last_message_at
+              (SELECT max(msg.created_at) FROM messages msg
+                WHERE msg.sent_by_user_id=m.user_id AND msg.tenant_id=m.workspace_id) last_message_at
        FROM workspace_members m
        JOIN users u ON u.id=m.user_id
        WHERE m.workspace_id=$1 AND m.status='active'
          AND NOT EXISTS (
            SELECT 1 FROM messages msg
            WHERE msg.sent_by_user_id=m.user_id
+             AND msg.tenant_id=m.workspace_id
              AND msg.created_at >= $2::timestamptz AND msg.created_at < $3::timestamptz
          )
        ORDER BY name

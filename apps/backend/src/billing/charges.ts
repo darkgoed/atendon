@@ -9,7 +9,7 @@ import { CHARGEABLE_SUBSCRIPTION_STATUSES } from "./types.js";
 
 type ProviderRow = { credentials_encrypted: string; webhook_secret_encrypted: string | null };
 type InvoiceRow = { id: string; tenant_id: string; subscription_id: string | null; amount_cents: number | string; currency: string; status: string; external_id: string | null; provider_id: string | null };
-type PaymentRow = { external_id: string; status: string; metadata: Record<string, unknown> | null };
+type PaymentRow = { external_id: string; status: string; created_at: Date; metadata: Record<string, unknown> | null };
 type ProviderConfigRow = ProviderRow & { id: string; code: string; enabled: boolean; environment: string; status: string; homologated: boolean; accepted_methods: string[] | null; commercial_config: Record<string, unknown> | null };
 type PayerRow = { document?: string; email?: string };
 export type ChargeResult = { invoiceId: string; externalId: string; status: string; reference: string; qr_code?: string; ticket_url?: string; payload?: Record<string, unknown> };
@@ -48,8 +48,18 @@ async function createChargeForInvoiceUncoalesced(invoiceId: string, method: stri
       if (!sub || !chargeable) throw Object.assign(new Error("Assinatura não permite cobrança"), { code: "SUBSCRIPTION_NOT_CHARGEABLE", statusCode: 409 });
     }
     if (inv.external_id) {
-      const payment = (await c.query<PaymentRow>(`SELECT external_id,status,metadata FROM payments WHERE invoice_id=$1 AND external_id IS NOT NULL ORDER BY created_at DESC LIMIT 1`, [invoiceId])).rows[0];
-      if (payment && ["paid", "approved", "pending", "in_process", "authorized"].includes(payment.status)) return { done: true as const, result: safeCharge({ invoiceId, externalId: payment.external_id, status: payment.status, reference: inv.external_id!, payload: payment.metadata ?? undefined }) };
+      const payment = (await c.query<PaymentRow>(`SELECT external_id,status,metadata,created_at FROM payments WHERE invoice_id=$1 AND external_id IS NOT NULL ORDER BY created_at DESC LIMIT 1`, [invoiceId])).rows[0];
+      if (payment) {
+        // paid/approved são terminais. Uma pendência (PIX não pago) só trava a
+        // criação de um NOVO pagamento enquanto for recente — QR pendente velho
+        // já expirou no provider, e bloquear para sempre faria o dunning
+        // "esgotar" tentativas sem NENHUM retry real (residual do B2).
+        const PENDING_FRESH_MS = 12 * 60 * 60 * 1000;
+        const settledLike = ["paid", "approved"].includes(payment.status);
+        const freshPending = ["pending", "in_process", "authorized"].includes(payment.status)
+          && (Date.now() - new Date(payment.created_at).getTime()) < PENDING_FRESH_MS;
+        if (settledLike || freshPending) return { done: true as const, result: safeCharge({ invoiceId, externalId: payment.external_id, status: payment.status, reference: inv.external_id!, payload: payment.metadata ?? undefined }) };
+      }
     }
     if (!["pending", "open", "overdue"].includes(String(inv.status).toLowerCase())) throw new Error("Fatura não está aberta para cobrança");
     const amount = Number(inv.amount_cents); if (!Number.isFinite(amount) || amount <= 0) throw new Error("Valor da fatura inválido");

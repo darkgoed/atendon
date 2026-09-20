@@ -113,7 +113,9 @@ describe("billing providers", () => {
       "x-signature": `ts=1,v1=${signatureFor("request-id:req;ts:1;", "secret")}`,
     }, "secret");
     expect(result.signatureValid).toBe(true);
-    expect(result.externalEventId).toBe("");
+    // Chave de dedupe nova (action:resource:status) — sem data.id o evento é
+    // gravado como no-op (gate !authenticated), mas a chave permanece estável.
+    expect(result.externalEventId).toBe("payment::unknown");
     expect(calls).toEqual([]);
   });
 

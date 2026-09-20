@@ -59,23 +59,57 @@ export class MercadoPagoProvider implements BillingProvider {
     const supplied = parts.v1 ?? "";
     const valid = timestampOk && /^[0-9a-f]{64}$/i.test(supplied) && timingSafeEqual(Buffer.from(expected), Buffer.from(supplied.toLowerCase()));
     let source: Record<string, unknown> = {};
+    let authenticated = false;
     if (valid && resourceId) {
-      const fetched = await this.getPayment(resourceId);
-      source = (fetched.payload ?? {}) as Record<string, unknown>;
+      try {
+        const fetched = await this.getPayment(resourceId);
+        source = (fetched.payload ?? {}) as Record<string, unknown>;
+        authenticated = Object.keys(source).length > 0;
+      } catch {
+        authenticated = false;
+      }
     }
-    const data = Object.keys(source).length ? source : ((payload.data as Record<string, unknown> | undefined) ?? payload);
+    // Sem refetch autenticado, o corpo do webhook NÃO pode fundamentar efeito
+    // financeiro: campos como payload.id/action/invoice_id ficam FORA do HMAC
+    // do Mercado Pago (que cobre apenas id:<data.id>;request-id;ts) e um
+    // replay da assinatura legítima pode vir acompanhado de body forjado.
+    const data = authenticated ? source : ((payload.data as Record<string, unknown> | undefined) ?? payload);
     const reference = data.external_reference ?? payload.external_reference;
     const amount = data.amount_cents ?? payload.amount_cents ?? data.transaction_amount ?? data.amount ?? payload.transaction_amount;
     const amountCents = typeof amount === "number" && Number.isFinite(amount)
       ? (data.amount_cents != null || payload.amount_cents != null ? amount : Math.round(amount * 100))
       : undefined;
     const currency = data.currency_id ?? data.currency ?? payload.currency_id;
-    const invoiceReference = data.invoice_id ?? data.external_invoice_id ?? payload.invoice_id ?? payload.external_invoice_id;
+    // Vínculo com a fatura vem SOMENTE do refetch autenticado. external_reference
+    // só conta como vínculo quando tem o formato canônico do charges.ts
+    // (`invoice:<uuid>`) — caso contrário é hint de tenant (preapproval) e o
+    // vínculo vem de external_invoice_id/invoice_id. Declaração do MESMO TIPO
+    // presente no body é aceita apenas se CONFIRMAR o dado autenticado;
+    // divergência = evento adulterado (nem processa).
+    const asInvoiceReference = (value: unknown): string | undefined => {
+      const text = value == null ? undefined : String(value);
+      return text && /^invoice:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text) ? text : undefined;
+    };
+    const referenceLink = asInvoiceReference(data.external_reference);
+    const trustedLink = authenticated
+      ? referenceLink
+        ?? [data.external_invoice_id, data.invoice_id].find((v) => v != null && String(v).length > 0)
+      : undefined;
+    if (authenticated && trustedLink != null) {
+      const trusted = String(trustedLink);
+      const trustedFromReference = referenceLink === trustedLink;
+      const declared = trustedFromReference ? payload.external_reference : (payload.invoice_id ?? payload.external_invoice_id);
+      if (declared != null && String(declared).toLowerCase() !== trusted.toLowerCase()) {
+        throw Object.assign(new Error("Webhook adulterado: vínculo declarado diverge do recurso autenticado"), { code: "WEBHOOK_TAMPERED_LINK", statusCode: 422 });
+      }
+    }
+    const invoiceReference = trustedLink;
     return {
-      externalEventId: String(payload.id ?? (action && resourceId ? `${action}:${resourceId}` : resourceId)),
+      externalEventId: `${action ?? payload.type ?? "event"}:${resourceId}:${typeof data.status === "string" ? data.status.toLowerCase() : "unknown"}`,
       eventType: action ?? String(payload.type ?? "unknown"),
       status: typeof data.status === "string" ? data.status.toLowerCase() : undefined,
       signatureValid: valid,
+      authenticated,
       amountCents,
       currency: typeof currency === "string" ? currency : undefined,
       externalInvoiceId: invoiceReference == null ? undefined : String(invoiceReference),

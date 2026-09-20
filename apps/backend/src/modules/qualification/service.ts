@@ -14,6 +14,7 @@ import { classifyBoolean, matchAnswer, matchAnswerCandidates, normalizeText } fr
 import { ensureCaseAssignment } from "../assignments/service.js";
 import { isWhatsAppSendRejectedError } from "../whatsapp/errors.js";
 import { enqueueQualificationWait, type QualificationWaitJob } from "../../queue/qualification-wait-queue.js";
+import { publicHttpsFetch, type PublicHttpFetch } from "../../security/outbound-url.js";
 
 export interface QualificationInbound {
   tenantId: string;
@@ -297,8 +298,10 @@ function isInternalResolvedAddress(entry: { address: string; family: number }): 
 
 export async function fireFlowWebhooks(
   webhooks: WalkWebhook[],
-  ctx: WalkContext
+  ctx: WalkContext,
+  deps: { fetchImpl?: PublicHttpFetch } = {}
 ): Promise<Array<{ stepId: string; status: ExecutionStatus; detail: Record<string, unknown> }>> {
+  const doFetch = deps.fetchImpl ?? publicHttpsFetch;
   const results: Array<{ stepId: string; status: ExecutionStatus; detail: Record<string, unknown> }> = [];
   for (const hook of webhooks) {
     let status: ExecutionStatus = "completed";
@@ -308,17 +311,18 @@ export async function fireFlowWebhooks(
       // bloqueio em runtime (falha = log "failed", sem fetch).
       assertPublicWebhookUrl(hook.url);
       // SSRF residual (DNS rebinding/TOFU): host público no snapshot pode
-      // resolver para IP interno. Resolve antes do fetch e rejeita se QUALQUER
-      // endereço cair em faixa interna — o fetch nem começa.
+      // resolver para IP interno. O doFetch padrão (publicHttpsFetch) revalida
+      // ANTES e conecta com lookup pinado no socket (sem janela de rebinding
+      // entre validação e conexão — o fetch padrão re-resolve o host). O
+      // dns.lookup prévio continua como fast-fail com mensagem clara.
       const resolved = await dnsPromises.lookup(new URL(hook.url).hostname, { all: true });
       if (resolved.some(isInternalResolvedAddress)) throw new Error("Webhook bloqueado: host resolve para IP interno");
-      const response = await fetch(hook.url, {
+      const response = await doFetch(hook.url, {
         method: hook.method,
         headers: hook.body ? { "content-type": "application/json" } : undefined,
         body: hook.body ?? undefined,
         // 3xx nunca é seguido: o destino do redirect não passou pelo mesmo
         // bloqueio e poderia apontar para host interno.
-        redirect: "manual",
         signal: AbortSignal.timeout(10_000)
       });
       detail = { ...detail, http_status: response.status };

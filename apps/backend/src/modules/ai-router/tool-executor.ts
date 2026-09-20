@@ -307,7 +307,10 @@ function transactionalOutcome(
   if (!facts) return failedOutcome(journal, action, "invalid_result");
   const expectedStatus = action.startsWith("cancel")
     ? "cancelado"
-    : action.startsWith("reschedule") ? "reagendado" : "confirmado";
+    // O domínio re-confirma no reagendamento (scheduling/service.ts grava
+    // status='confirmado' desde 2026-08-27) — esperar 'reagendado' aqui
+    // journalizava TODO reschedule da IA como inconsistent_result.
+    : "confirmado";
   if (facts.appointmentStatus !== expectedStatus) {
     return failedOutcome(journal, action, "inconsistent_result");
   }
