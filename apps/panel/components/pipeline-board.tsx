@@ -184,6 +184,9 @@ export function PipelineBoard({
   const pointerStartRef = useRef({ x: 0, y: 0 });
   const snapRef = useRef(new Map<string, number[]>());
   const autoScrollRef = useRef(0);
+  // Autoscroll vertical do corpo da coluna sob o ponteiro (o HTML5 DnD fazia
+  // nativo; pointer events precisam de loop próprio).
+  const verticalAutoScrollRef = useRef<{ list: HTMLElement; delta: number } | null>(null);
   const rafRef = useRef<number | null>(null);
   const onMoveRequestRef = useRef(onMoveRequest);
   onMoveRequestRef.current = onMoveRequest;
@@ -311,6 +314,12 @@ export function PipelineBoard({
     const colId = inside || nearestId;
     if (!colId) return null;
 
+    // Limite vertical: soltar fora do quadro (mesmo dentro do X da coluna)
+    // devolve o card à origem — não commita movimento fantasma.
+    const colEl = colRefs.current.get(colId);
+    const colRect = colEl?.getBoundingClientRect();
+    if (colRect && (clientY < colRect.top - 12 || clientY > colRect.bottom + 12)) return null;
+
     // A coluna de origem sempre aceita o próprio slot de devolução.
     if (colId === d.fromStageId) return { stageId: colId, index: d.originIndex };
     const stage = stageByIdRef.current.get(colId);
@@ -351,6 +360,7 @@ export function PipelineBoard({
     dragRef.current = null;
     slotRef.current = null;
     autoScrollRef.current = 0;
+    verticalAutoScrollRef.current = null;
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
     setDrag(null);
@@ -391,6 +401,16 @@ export function PipelineBoard({
         autoScrollRef.current =
           event.clientX < r.left + AUTOSCROLL_EDGE ? -AUTOSCROLL_STEP : event.clientX > r.right - AUTOSCROLL_EDGE ? AUTOSCROLL_STEP : 0;
       }
+
+      // autoscroll vertical da lista sob o ponteiro (perto das bordas do corpo)
+      const hoveredList = next ? listRefs.current.get(next.stageId) : null;
+      let verticalDelta = 0;
+      if (hoveredList) {
+        const lr = hoveredList.getBoundingClientRect();
+        if (event.clientY < lr.top + 24) verticalDelta = -10;
+        else if (event.clientY > lr.bottom - 24) verticalDelta = 10;
+      }
+      verticalAutoScrollRef.current = hoveredList && verticalDelta !== 0 ? { list: hoveredList, delta: verticalDelta } : null;
     };
 
     const onUp = (event: PointerEvent) => {
@@ -412,6 +432,9 @@ export function PipelineBoard({
     const tick = () => {
       if (autoScrollRef.current && trackRef.current) {
         trackRef.current.scrollLeft += autoScrollRef.current;
+      }
+      if (verticalAutoScrollRef.current) {
+        verticalAutoScrollRef.current.list.scrollTop += verticalAutoScrollRef.current.delta;
       }
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -738,6 +761,9 @@ export function PipelineColumn({
   const tone = stageTone(stage);
   const items = visibleItems ?? leads;
   const shownCount = count ?? leads.length;
+  // No drag por teclado o card preso continua na lista: o placeholder na
+  // PRÓPRIA posição dele duplicaria o visual (card com anel + tracejado).
+  const grabbedIndex = grabbedLeadId ? items.findIndex((lead) => lead.id === grabbedLeadId) : -1;
   const density = preferences.density;
   return (
     <section
@@ -783,7 +809,7 @@ export function PipelineColumn({
           <>
             {items.map((lead, i) => (
               <Fragment key={lead.id}>
-                {dropActive && slotIndex === i ? <Placeholder height={placeholderHeight} reduceMotion={reduceMotion} /> : null}
+                {dropActive && slotIndex === i && i !== grabbedIndex ? <Placeholder height={placeholderHeight} reduceMotion={reduceMotion} /> : null}
                 <PipelineCard
                   lead={lead}
                   selected={selectedIds.has(lead.id)}
@@ -829,7 +855,6 @@ function Placeholder({ height, reduceMotion }: { height: number; reduceMotion: b
       data-pipeline-placeholder=""
       initial={{ opacity: 0, scaleY: 0.7 }}
       animate={{ opacity: 1, scaleY: 1 }}
-      exit={{ opacity: 0, scaleY: 0.7 }}
       transition={reduceMotion ? { duration: 0 } : FLOW_SPRING}
       style={{ height }}
       aria-hidden="true"

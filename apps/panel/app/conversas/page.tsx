@@ -658,8 +658,17 @@ export default function Conversations() {
     setUnreadOnly(false);
     setPendingOnly(false);
   };
+  const activeQueues = (queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved);
+  const activeQueue = activeQueues.find((queue) => queue.id === queueFilter);
   const conversationFilterDefs: Array<ListFilterDef<typeof conversationFilters>> = [
-    { key: "fila", label: "Fila", kind: "option", options: (queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => ({ id: queue.id, nome: queue.name })) },
+    {
+      key: "fila",
+      label: "Fila",
+      kind: "option",
+      // dot de cor da fila ativa no chip (paridade com os botões antigos)
+      icon: activeQueue ? <span className="inline-block size-2 shrink-0 rounded-full" style={{ backgroundColor: activeQueue.color }} aria-hidden="true" /> : undefined,
+      options: activeQueues.map((queue) => ({ id: queue.id, nome: queue.name }))
+    },
     { key: "nao_lidas", label: "Não lidas", kind: "option", options: [{ id: "true", nome: "Não lidas" }] },
     { key: "pendencias", label: "Pendências", kind: "option", options: [{ id: "true", nome: "Pendências" }] }
   ];

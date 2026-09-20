@@ -164,6 +164,23 @@ describe("PipelineBoard kanban (mecânica da referência)", () => {
     expect(aBody.querySelector('[data-pipeline-card="l1"]')).toBeTruthy();
   });
 
+  it("soltar fora dos limites verticais do quadro devolve o card à origem", () => {
+    const onMoveRequest = vi.fn();
+    render(React.createElement(BoardHarness, { onMoveRequest }));
+
+    grabLead("l1");
+    movePointer(440, 300); // sobre B — placeholder aparece
+    expect(document.querySelector('[data-pipeline-list="B"] [data-pipeline-placeholder]')).toBeTruthy();
+    movePointer(440, 700); // abaixo do quadro — slot nulo (limite vertical)
+    expect(document.querySelector('[data-pipeline-list="B"] [data-pipeline-placeholder]')).toBeNull();
+    releasePointer(440, 700);
+
+    expect(onMoveRequest).not.toHaveBeenCalled();
+    expect(liveAnnouncement()).toContain("permanece em Novo");
+    const aBody = document.querySelector('[data-pipeline-list="A"]') as HTMLElement;
+    expect(aBody.querySelector('[data-pipeline-card="l1"]')).toBeTruthy();
+  });
+
   it("soltar em coluna não permitida devolve o card à origem e anuncia cancelamento", () => {
     const onMoveRequest = vi.fn();
     render(React.createElement(BoardHarness, { onMoveRequest, allowed: new Set<string>() }));
