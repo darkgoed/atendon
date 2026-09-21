@@ -438,6 +438,22 @@ const qualificationWaitReconciler = setInterval(() => {
   void reconcileQualificationWaits()
     .catch((error) => logger.error({ error }, "Qualification wait reconciliation failed"));
 }, 30_000);
+
+// Pump da outbox do robô de fluxos (R22): entrega as mensagens que NÃO vão
+// inline no pipeline de inbound — mensagens 2..N de um caminho, retomadas de
+// delay/wait_for_reply e nós interactive. Estado vive no banco (status/claimed_
+// at/backoff em qualification_message_outbox), então um restart retoma sozinho;
+// o intervalo age como reconciliador e entregador.
+const pumpQualificationOutbox = async (): Promise<void> => {
+  await qualificationService.pumpOutbox(gateway);
+};
+const qualificationOutboxPumpTimer = setInterval(() => {
+  void pumpQualificationOutbox()
+    .catch((error) => logger.error({ error }, "Qualification outbox pump failed"));
+}, 5_000);
+qualificationOutboxPumpTimer.unref();
+void pumpQualificationOutbox()
+  .catch((error) => logger.error({ error }, "Initial qualification outbox pump failed"));
 // Retenção de 90 dias do histórico de execução dos fluxos (0174).
 const purgeFlowExecutionLogsJob = (): void => {
   void purgeFlowExecutionLogs()
@@ -741,6 +757,7 @@ async function shutdown(): Promise<void> {
   clearInterval(heartbeatTimer);
   clearInterval(tripzAiReconciler);
   clearInterval(qualificationWaitReconciler);
+  clearInterval(qualificationOutboxPumpTimer);
   clearInterval(flowLogRetentionTimer);
   await instagramScheduler.stop();
   try {

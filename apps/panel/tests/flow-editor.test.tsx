@@ -256,6 +256,90 @@ describe("modelo puro (flow-model)", () => {
     expect(parseTrace(null).steps).toEqual([]);
   });
 
+  it("parseTrace lê o contrato REAL do backend (kind/result) — simulação deixa de aparecer vazia", () => {
+    const trace = parseTrace({
+      trace: [
+        { node_id: "B1", kind: "branch", result: "tipo_negocio eq loja → yes", next: "M1" },
+        { node_id: "M1", kind: "message", result: "Perfil de loja!", next: "F1" },
+        { node_id: "F1", kind: "final", result: "Obrigado!" },
+      ],
+    });
+    expect(trace.steps[0]).toMatchObject({ nodeId: "B1", label: "branch", output: "tipo_negocio eq loja → yes" });
+    expect(trace.steps[2]).toMatchObject({ nodeId: "F1", label: "final", output: "Obrigado!" });
+  });
+
+  it("kinds SPEC v7 (branch/finalize/interactive) são válidos e salvos — sem falso-positivo de pergunta/opções", () => {
+    const valid: FlowDefinition = normalizeDefinition({
+      start: "M1",
+      origem: "facebook",
+      triggers: { ctwa: false, session_ids: [], keywords: ["robo"] },
+      steps: {
+        M1: { kind: "message", message: "Olá!", next: "B1" },
+        B1: {
+          kind: "branch",
+          variable_name: "tipo",
+          operator: "eq",
+          value: "loja",
+          transitions: { yes: "I1", no: "FZ1" },
+        },
+        I1: {
+          kind: "interactive",
+          interactive_type: "buttons",
+          message: "Escolha:",
+          options: [{ value: "Falar com humano" }],
+          transitions: { "Falar com humano": "FZ2" },
+        },
+        FZ1: { kind: "finalize", end_reason: "perfil_servico" },
+        FZ2: { kind: "finalize", end_reason: "transferido_humano" },
+      },
+    });
+    expect(validateDefinition(valid)).toEqual([]);
+
+    const { nodes, edges } = graphFromDefinition(valid);
+    const branch = nodes.find((node) => node.id === "B1")!;
+    expect(branch.options).toEqual(["yes", "no"]); // chips/handles Sim/Não no canvas
+    expect(edges.find((edge) => edge.id === "B1:opt:yes")?.target).toBe("I1");
+    const interactive = nodes.find((node) => node.id === "I1")!;
+    expect(interactive.options).toEqual(["Falar com humano"]);
+    expect(edges.find((edge) => edge.id === "I1:opt:Falar com humano")?.target).toBe("FZ2");
+
+    const broken = normalizeDefinition({
+      ...valid,
+      steps: {
+        ...valid.steps,
+        B1: { kind: "branch", variable_name: "tipo", operator: "eq", transitions: { yes: "I1", no: "FZ1" } },
+        FZ1: { kind: "finalize" },
+        I1: { kind: "interactive", interactive_type: "buttons", options: [{ value: "A" }, { value: "B" }, { value: "C" }, { value: "D" }], next: "FZ2" },
+      },
+    });
+    const messages = validateDefinition(broken).map((issue) => issue.message);
+    expect(messages.some((message) => message.includes("precisa de value"))).toBe(true);
+    expect(messages.some((message) => message.includes("end_reason"))).toBe(true);
+    expect(messages.some((message) => message.includes("no máximo 3 botões"))).toBe(true);
+  });
+
+  it("removeStep limpa on_timeout/on_invalid_reply órfãos (antes bloqueava o save sem pista)", () => {
+    const withWaits = normalizeDefinition({
+      start: "W1",
+      origem: "facebook",
+      triggers: { ctwa: false, session_ids: [], keywords: ["oi"] },
+      steps: {
+        W1: { kind: "wait_for_reply", timeout_minutes: 30, on_timeout: "E1", on_invalid_reply: "E1", next: "E2" },
+        E1: { kind: "finalize", end_reason: "timeout" },
+        E2: { kind: "finalize", end_reason: "fim" },
+      },
+    });
+    const next = removeStep(withWaits, "E1");
+    expect(next?.steps.E1).toBeUndefined();
+    expect(next?.steps.W1.on_timeout).toBeUndefined();
+    expect(next?.steps.W1.on_invalid_reply).toBeUndefined();
+    // Sem destino a validação agora aponta o CAMPO faltante (acionável), não
+    // mais "aponta para etapa inexistente" sem pista de onde quebrou.
+    const messages = validateDefinition(next!).map((issue) => issue.message);
+    expect(messages.some((message) => message.includes("precisa de on_timeout"))).toBe(true);
+    expect(messages.every((message) => !message.includes("inexistente"))).toBe(true);
+  });
+
   it("id de fluxo novo é slug válido para o backend", () => {
     expect(newFlowId()).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
   });

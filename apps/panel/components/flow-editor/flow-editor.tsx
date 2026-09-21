@@ -174,7 +174,16 @@ function StepNode({ data, selected }: NodeProps) {
               style={{ left: `${((index + 1) / (node.options.length + 1)) * 100}%` }}
             />
           ))
-        : <Handle id="out" type="source" position={Position.Bottom} />}
+        : node.options.length === 1
+          /* Etapa com 1 opção: além do "out" (next), renderiza o handle da
+             opção — antes a aresta transitions[opção] ficava invisível. */
+          ? (
+            <>
+              <Handle id={node.options[0]} type="source" position={Position.Bottom} style={{ left: "25%" }} />
+              <Handle id="out" type="source" position={Position.Bottom} />
+            </>
+          )
+          : <Handle id="out" type="source" position={Position.Bottom} />}
     </div>
   );
 }

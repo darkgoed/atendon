@@ -14,16 +14,23 @@ export type FlowStepKind =
   | "message"
   | "delay"
   | "wait_for_reply"
-  | "action";
+  | "action"
+  /* SPEC v7 C1 — mesmos kinds do zod do backend (flow.ts:3-15). */
+  | "branch"
+  | "condition"
+  | "finalize"
+  | "interactive";
 
 /* action_type: enum EXATA do backend (flowActionType em modules/qualification/flow.ts). */
 export type FlowAction = "tag_add" | "tag_remove" | "stage_move" | "assign_agent" | "webhook";
+
+export type FlowInteractiveSection = { title: string; rows: Array<{ text: string; description?: string }> };
 
 export type FlowStep = {
   kind: FlowStepKind;
   question?: string;
   field?: string;
-  options?: Array<{ value: string; keywords?: string[] }>;
+  options?: Array<{ value: string; keywords?: string[]; url?: string }>;
   next?: string;
   transitions?: Record<string, string>;
   message?: string;
@@ -40,6 +47,16 @@ export type FlowStep = {
   stage_id?: string;
   agent_id?: string;
   webhook_url?: string;
+  /* SPEC v7 C1: branch/condition, finalize, interactive, webhook method/template. */
+  operator?: "eq" | "neq" | "contains" | "not_contains" | "starts_with" | "is_empty" | "is_not_empty";
+  value?: string;
+  end_reason?: string;
+  interactive_type?: "buttons" | "list";
+  interactive_button_text?: string;
+  interactive_section_title?: string;
+  interactive_sections?: FlowInteractiveSection[];
+  method?: "GET" | "POST" | "PUT";
+  template?: string;
 };
 
 export type FlowTriggers = { ctwa: boolean; session_ids: string[]; keywords: string[] };
@@ -176,14 +193,39 @@ export type GraphNode = {
 export type GraphEdge = { id: string; source: string; target: string; sourceHandle: string; label?: string };
 
 export function optionLabel(value: string): string {
-  if (value.toUpperCase() === "SIM") return "Sim";
-  if (value.toUpperCase() === "NÃO" || value.toUpperCase() === "NAO") return "Não";
+  if (value.toUpperCase() === "SIM" || value.toUpperCase() === "YES") return "Sim";
+  if (value.toUpperCase() === "NÃO" || value.toUpperCase() === "NAO" || value.toUpperCase() === "NO") return "Não";
   return value;
+}
+
+/** Rótulo legível dos operadores de condição (branch/condition). */
+export function operatorLabel(operator: FlowStep["operator"]): string {
+  switch (operator) {
+    case "eq": return "=";
+    case "neq": return "≠";
+    case "contains": return "contém";
+    case "not_contains": return "não contém";
+    case "starts_with": return "começa com";
+    case "is_empty": return "vazio";
+    case "is_not_empty": return "preenchido";
+    default: return "?";
+  }
 }
 
 const OPTION_KINDS: FlowStepKind[] = ["years", "revenue", "options", "boolean"];
 
+/** Escolhas de um nó interactive — mesma regra de interactiveChoices do backend (flow.ts:371-377). */
+export function interactiveChoices(step: FlowStep): string[] {
+  if (step.interactive_type === "list") {
+    return (step.interactive_sections ?? []).flatMap((section) =>
+      section.rows.map((row) => row.text)).filter(Boolean);
+  }
+  return (step.options ?? []).map((option) => option.value).filter(Boolean);
+}
+
 export function stepOptions(step: FlowStep): string[] {
+  if (step.kind === "branch" || step.kind === "condition") return ["yes", "no"];
+  if (step.kind === "interactive") return interactiveChoices(step);
   if (!OPTION_KINDS.includes(step.kind)) return [];
   return (step.options ?? []).map((option) => option.value).filter(Boolean);
 }
@@ -204,6 +246,15 @@ export function nodePreview(step: FlowStep): string {
         case "webhook": return `Webhook: ${cut(step.webhook_url, 40)}`;
         default: return "Ação CRM";
       }
+    case "branch":
+    case "condition": {
+      const value = step.operator === "is_empty" || step.operator === "is_not_empty"
+        ? "(sem valor)"
+        : step.value ?? "?";
+      return `${step.variable_name ?? "?"} ${operatorLabel(step.operator)} ${value}`;
+    }
+    case "finalize": return `Encerra: ${cut(step.end_reason ?? "", 40)}`;
+    case "interactive": return cut(step.message ?? interactiveChoices(step).join(" · "), 60);
     default: return cut(step.question);
   }
 }
@@ -306,6 +357,8 @@ export function removeStep(def: FlowDefinition, id: string): FlowDefinition | nu
     if (stepId === id) continue;
     const next = { ...source };
     if (next.next === id) delete next.next;
+    if (next.on_timeout === id) delete next.on_timeout;
+    if (next.on_invalid_reply === id) delete next.on_invalid_reply;
     if (next.transitions && Object.values(next.transitions).includes(id)) {
       const transitions = { ...next.transitions };
       for (const [value, target] of Object.entries(transitions)) {
@@ -469,6 +522,49 @@ export function validateDefinition(def: FlowDefinition): ValidationIssue[] {
       if (!step.next) issues.push({ stepId: id, message: `Etapa "${id}" precisa de destino (aresta de saída)` });
       continue;
     }
+    /* SPEC v7 C1 — mesmas regras do zod do backend (flow.ts:200-242).
+       Sem estes casos o editor recusava salvamento de fluxos válidos
+       (falso-positivo "precisa de pergunta/opções" em nós de desvio). */
+    if (kind === "branch" || kind === "condition") {
+      if (!step.variable_name?.trim()) {
+        issues.push({ stepId: id, message: `Etapa "${id}" (${kind}) precisa de variable_name` });
+      }
+      if (!step.operator) {
+        issues.push({ stepId: id, message: `Etapa "${id}" (${kind}) precisa de operator` });
+      } else if (step.operator === "is_empty" || step.operator === "is_not_empty") {
+        if (step.value) issues.push({ stepId: id, message: `Etapa "${id}" (${step.operator}) não aceita valor (campo oculto)` });
+      } else if (!step.value?.trim()) {
+        issues.push({ stepId: id, message: `Etapa "${id}" (${step.operator}) precisa de value` });
+      }
+      if (!step.transitions?.yes) issues.push({ stepId: id, message: `Etapa "${id}" (${kind}) precisa de saída "yes"` });
+      if (!step.transitions?.no) issues.push({ stepId: id, message: `Etapa "${id}" (${kind}) precisa de saída "no"` });
+      continue;
+    }
+    if (kind === "finalize") {
+      if (!step.end_reason?.trim()) issues.push({ stepId: id, message: `Etapa de finalização "${id}" precisa de end_reason` });
+      continue;
+    }
+    if (kind === "interactive") {
+      if (!step.interactive_type) {
+        issues.push({ stepId: id, message: `Etapa interativa "${id}" precisa de interactive_type` });
+      } else if (step.interactive_type === "buttons") {
+        if (!step.options?.length) issues.push({ stepId: id, message: `Etapa interativa "${id}" (buttons) precisa de opções` });
+        else if (step.options.length > 3) issues.push({ stepId: id, message: `Etapa interativa "${id}" (buttons) aceita no máximo 3 botões` });
+      } else {
+        if (!step.interactive_sections?.length) {
+          issues.push({ stepId: id, message: `Etapa interativa "${id}" (list) precisa de interactive_sections` });
+        } else {
+          const totalRows = step.interactive_sections.reduce((total, section) => total + section.rows.length, 0);
+          if (totalRows > 10) issues.push({ stepId: id, message: `Etapa interativa "${id}" (list) aceita no máximo 10 linhas somadas (hoje: ${totalRows})` });
+        }
+      }
+      for (const choice of interactiveChoices(step)) {
+        if (!(step.transitions?.[choice] ?? step.next)) {
+          issues.push({ stepId: id, message: `Escolha "${choice}" da etapa interativa "${id}" não tem etapa seguinte` });
+        }
+      }
+      continue;
+    }
     // years / revenue / options / boolean
     if (!step.question?.trim()) issues.push({ stepId: id, message: `Etapa "${id}" precisa de pergunta` });
     if (!step.options?.length) issues.push({ stepId: id, message: `Etapa "${id}" precisa de opções` });
@@ -497,8 +593,13 @@ export function parseTrace(payload: unknown): Trace {
     const item = (raw ?? {}) as Record<string, unknown>;
     steps.push({
       nodeId: String(item.nodeId ?? item.node_id ?? item.node ?? ""),
-      label: String(item.label ?? item.name ?? ""),
-      output: item.output != null ? String(item.output).slice(0, 400) : undefined,
+      /* Contrato real do backend (routes.ts:447 → service.ts FlowSimulateTraceItem):
+         kind = tipo do nó, result = o que aconteceria. label/name/output eram
+         chaves que o backend nunca envia — o traço aparecia vazio. */
+      label: String(item.label ?? item.kind ?? item.name ?? ""),
+      output: (item.output ?? item.result) != null
+        ? String(item.output ?? item.result).slice(0, 400)
+        : undefined,
     });
   }
   const endReason = body.endReason ?? body.end_reason;

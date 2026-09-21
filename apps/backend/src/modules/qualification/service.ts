@@ -770,6 +770,35 @@ export class QualificationService {
   }
 
   /**
+   * Pump da outbox do robô: entrega TODAS as mensagens pendentes elegíveis
+   * (mensagens 2..N de um walk, retomadas de delay/wait_for_reply e nós
+   * interactive). A primeira mensagem do caminho de inbound sai inline via
+   * process-message; todo o resto SÓ existe aqui — sem este pump nada além da
+   * primeira mensagem chega ao contato. deliverOutbox re-clama a linha com
+   * guard de claimed_at/status (at-least-once; erro marca attempts/backoff).
+   * Chamado pelo worker em intervalo (e útil para reconciliação pós-restart,
+   * pois o estado pendente vive no banco, não na fila).
+   */
+  async pumpOutbox(gateway: MessageGateway, limit = 50): Promise<number> {
+    const pending = await this.listPendingOutbox(limit);
+    let delivered = 0;
+    for (const row of pending) {
+      try {
+        const externalId = await this.deliverOutbox(row, gateway);
+        if (externalId) delivered += 1;
+      } catch (error) {
+        // deliverOutbox já registrou attempts/next_attempt_at; o pump segue
+        // para a próxima linha (erros transientes voltam pelo backoff).
+        logger.warn(
+          { error, outboxId: row.id, tenantId: row.tenant_id, qualificationId: row.qualification_id },
+          "Qualification outbox delivery failed; will retry with backoff"
+        );
+      }
+    }
+    return delivered;
+  }
+
+  /**
    * Log do executor (flow_execution_log) para a entrega da mensagem interativa.
    * Best-effort: a outbox não depende desta linha; conversa resolvida não fica
    * disponível aqui (row não a carrega) — lead/fluxo vêm da qualificação.
@@ -1278,15 +1307,22 @@ export class QualificationService {
     kind: OutboxKind,
     message: string
   ): Promise<QualificationOutcome> {
-    const queued = await client.query<{ id: string }>(
-      `INSERT INTO qualification_message_outbox
-         (tenant_id,qualification_id,session_id,contact_phone,contact_jid,step_id,inbound_external_id,message_kind,message)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       ON CONFLICT (qualification_id,step_id,inbound_external_id,message_kind) DO UPDATE SET message=EXCLUDED.message
-       RETURNING id`,
-      [input.tenantId, qualificationId, input.sessionId, input.contactPhone, input.contactJid ?? null, stepId, input.externalId, kind, message]
-    );
-    return { reply: message, outboxId: queued.rows[0]?.id };
+    try {
+      const queued = await client.query<{ id: string }>(
+        `INSERT INTO qualification_message_outbox
+           (tenant_id,qualification_id,session_id,contact_phone,contact_jid,step_id,inbound_external_id,message_kind,message)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT (qualification_id,step_id,inbound_external_id,message_kind) DO UPDATE SET message=EXCLUDED.message
+         RETURNING id`,
+        [input.tenantId, qualificationId, input.sessionId, input.contactPhone, input.contactJid ?? null, stepId, input.externalId, kind, message]
+      );
+      return { reply: message, outboxId: queued.rows[0]?.id };
+    } catch (error) {
+      // Corrida de redelivery (23505 inclusive na unique de 3 colunas, 0040):
+      // outro walk/turn enfileirou esta entrada — no-op para não duplicar envio.
+      if ((error as { code?: string }).code !== "23505") throw error;
+      return { reply: null };
+    }
   }
 
   /**
