@@ -116,6 +116,13 @@
 .conversation-list__items { padding: 0; background: var(--surface); }
 .conversation-list__items > div { gap: 0; }
 
+/* ------------------------------------------------------------ LISTA ==
+   Cards de dimensões fixas (pedido do usuário): TODAS as linhas têm altura
+   fixa e cortam com ellipsis — nome, @identificador, prévia (1 linha) e
+   rodapé. Nenhum texto (nome, @username, última mensagem, status, próxima
+   ação, etiquetas) pode alterar altura/largura do card: o excesso é
+   truncado. min-width:0 + flex preservam avatar e hora no lugar, na base
+   (linhas inteiras) e no donor ≥1280px (cartões com borda/margem). */
 .conversation-list__item {
   position: relative;
   display: flex;
@@ -127,6 +134,7 @@
   border-radius: 0;
   background: var(--surface);
   text-align: left;
+  overflow: hidden;
   transition: background-color var(--duration-fast) var(--ease);
 }
 .conversation-list__item::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 2px; background: transparent; }
@@ -134,12 +142,18 @@
 .conversation-list__item[aria-pressed="true"] { background: var(--surface-selected); }
 .conversation-list__item[aria-pressed="true"]::before { background: var(--primary); }
 .conversation-list__avatar { flex: 0 0 30px; }
-.conversation-list__name { color: var(--text); font-size: var(--text-control); font-weight: var(--weight-semibold); }
-.conversation-list__time { flex: none; color: var(--text-muted); font-size: var(--text-micro); }
-.conversation-list__company { margin-top: 1px; color: var(--text-muted); font-size: var(--text-micro); overflow-wrap: anywhere; }
-.conversation-list__preview-row { margin-top: var(--space-1); }
-.conversation-list__preview { color: var(--text-secondary); font-size: var(--text-meta); line-height: 1.45; }
+.conversation-list__body { min-width: 0; flex: 1 1 auto; overflow: hidden; }
+.conversation-list__row { display: flex; min-width: 0; align-items: center; overflow: hidden; }
+.conversation-list__row--title { height: 18px; gap: var(--space-2); justify-content: space-between; }
+.conversation-list__name { min-width: 0; flex: 0 1 auto; overflow: hidden; color: var(--text); font-size: var(--text-control); font-weight: var(--weight-semibold); line-height: 18px; white-space: nowrap; text-overflow: ellipsis; }
+.conversation-list__time { flex: none; color: var(--text-muted); font-size: var(--text-micro); line-height: 18px; }
+.conversation-list__row--identity { height: 14px; margin-top: 1px; }
+.conversation-list__company { min-width: 0; flex: 1 1 auto; overflow: hidden; color: var(--text-muted); font-size: var(--text-micro); line-height: 14px; white-space: nowrap; text-overflow: ellipsis; }
+.conversation-list__row--preview { height: 16px; margin-top: var(--space-1); gap: var(--space-2); }
+.conversation-list__preview { min-width: 0; flex: 1 1 auto; overflow: hidden; color: var(--text-secondary); font-size: var(--text-meta); line-height: 16px; white-space: nowrap; text-overflow: ellipsis; }
+.conversation-list__tick { flex: none; display: inline-flex; align-items: center; height: 16px; vertical-align: top; }
 .conversation-list__unread {
+  flex: none;
   display: grid;
   width: 16px;
   min-width: 16px;
@@ -151,9 +165,19 @@
   color: var(--primary-foreground);
   font-size: var(--text-micro);
   font-weight: var(--weight-semibold);
+  line-height: 16px;
 }
-.conversation-list__footer { margin-top: var(--space-2); }
-.conversation-list__ai-status { flex-wrap: wrap; white-space: normal; line-height: var(--leading-tight); }
+.conversation-list__row--footer { height: 16px; margin-top: var(--space-2); gap: var(--space-1); }
+/* Chip de IA em UMA linha (sem wrap): a razão de handoff encolhe/ellipsis
+   em vez de empilhar uma segunda linha. */
+.conversation-list__ai-status { min-width: 0; flex: 0 1 auto; display: inline-flex; align-items: center; overflow: hidden; gap: var(--space-1); color: var(--text-muted); font-size: var(--text-meta); font-weight: var(--weight-medium); line-height: 16px; }
+.conversation-list__ai-dot { flex: none; width: 6px; height: 6px; border-radius: var(--radius-pill); }
+.conversation-list__ai-label { flex: none; white-space: nowrap; }
+.conversation-list__ai-reason { min-width: 0; flex: 0 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.conversation-list__info { min-width: 0; flex: 1 1 auto; display: flex; align-items: center; overflow: hidden; gap: var(--space-1); color: var(--text-muted); font-size: var(--text-meta); line-height: 16px; }
+.conversation-list__info-chunk { min-width: 0; flex: 0 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.conversation-list__info-sla { color: var(--danger-text); }
+.conversation-list__info-due { color: var(--warning-text); font-weight: var(--weight-semibold); }
 
 /* =============================================================== THREAD == */
 

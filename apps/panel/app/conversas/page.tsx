@@ -224,13 +224,13 @@ function MessageTicks({ status }: { status: string }) {
 function ConversationBadge({ item }: { item: Conversation }) {
   const active = item.ai_active;
   return (
-    <span className="conversation-list__ai-status inline-flex min-w-0 shrink-0 items-center gap-1 text-xs font-medium">
-      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-[var(--primary)]" : "bg-[var(--warning)]"}`} aria-hidden="true" />
-      <span className={`shrink-0 whitespace-nowrap ${active ? "text-[var(--primary-text)]" : "text-[var(--warning-text)]"}`}>
+    <span className="conversation-list__ai-status">
+      <span className={`conversation-list__ai-dot ${active ? "bg-[var(--primary)]" : "bg-[var(--warning)]"}`} aria-hidden="true" />
+      <span className={`conversation-list__ai-label ${active ? "text-[var(--primary-text)]" : "text-[var(--warning-text)]"}`}>
         {active ? "IA ativa" : "IA pausada"}
       </span>
       {!active && item.handoff_reason ? (
-        <span className="truncate text-[var(--text-muted)]">· {handoffReasonLabel(item.handoff_reason)}</span>
+        <span className="conversation-list__ai-reason">· {handoffReasonLabel(item.handoff_reason)}</span>
       ) : null}
     </span>
   );
@@ -241,6 +241,11 @@ function ConversationItem({ item, selected, showLeadTags, onClick }: { item: Con
   const title = item.channel === "instagram"
     ? instagramDisplayName(item.contact_name, item.instagram_username, item.contact_identifier, item.contact_phone)
     : item.contact_name ?? item.contact_phone ?? "Contato sem identificação";
+  const identity = item.contact_name
+    ? (item.channel === "instagram"
+      ? instagramDisplayIdentity(item.instagram_username, item.contact_identifier)
+      : item.contact_phone ?? "")
+    : "";
   const unread = item.unread_count ?? 0;
   const showTicks = item.last_message_sender === "agent" || item.last_message_sender === "human";
 
@@ -264,43 +269,45 @@ function ConversationItem({ item, selected, showLeadTags, onClick }: { item: Con
         />
         {item.channel !== "instagram" && contactIsOnline(item) ? <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full border-2 border-[var(--surface)] bg-[var(--success)]" aria-hidden="true" /> : null}
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-baseline justify-between gap-2">
-          <strong data-unread={unread > 0 ? "true" : undefined} className={`conversation-list__name min-w-0 truncate text-[var(--text)] ${unread > 0 ? "font-semibold" : ""}`}>{title}</strong>
-          <time className="conversation-list__time mono shrink-0 text-[var(--text-muted)]">{formatClock(item.last_message_at)}</time>
+      <div className="conversation-list__body">
+        <div className="conversation-list__row conversation-list__row--title">
+          <strong data-unread={unread > 0 ? "true" : undefined} className={`conversation-list__name ${unread > 0 ? "font-semibold" : ""}`}>{title}</strong>
+          <time className="conversation-list__time mono">{formatClock(item.last_message_at)}</time>
         </div>
-        {item.contact_name ? <p className="conversation-list__company mono text-[var(--text-muted)]" dir="ltr">{item.channel === "instagram" ? instagramDisplayIdentity(item.instagram_username, item.contact_identifier) : item.contact_phone}</p> : null}
-        <div className="conversation-list__preview-row flex min-w-0 items-start justify-between gap-2">
-          <p className="conversation-list__preview line-clamp-2 min-w-0 flex-1 text-[var(--text-secondary)]">
+        <div className="conversation-list__row conversation-list__row--identity">
+          <p className="conversation-list__company mono" dir="ltr">{identity}</p>
+        </div>
+        <div className="conversation-list__row conversation-list__row--preview">
+          <p className="conversation-list__preview">
             {showTicks && item.last_message_status ? (
-              <span className="mr-1 inline-flex align-middle"><MessageTicks status={item.last_message_status} /></span>
+              <span className="conversation-list__tick"><MessageTicks status={item.last_message_status} /></span>
             ) : null}
             {item.last_message ?? "Sem mensagens ainda"}
           </p>
           {unread > 0 ? (
-            <span className="conversation-list__unread mono flex shrink-0 items-center justify-center rounded-full bg-[var(--primary)] font-semibold text-[var(--primary-foreground)]">
+            <span className="conversation-list__unread mono">
               {unread > 99 ? "99+" : unread}
             </span>
           ) : null}
         </div>
-        <div className="conversation-list__footer flex min-w-0 items-center gap-1.5 overflow-hidden">
+        <div className="conversation-list__row conversation-list__row--footer">
           <ChannelBadge channel={item.channel === "instagram" ? "instagram" : "whatsapp"} size={12} />
           <ConversationBadge item={item} />
-          <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-[var(--text-muted)]">
-            {item.assigned_user_first_name ? <span className="truncate">{item.assigned_user_first_name}</span> : null}
+          <span className="conversation-list__info">
+            {item.assigned_user_first_name ? <span className="conversation-list__info-chunk">{item.assigned_user_first_name}</span> : null}
             {!item.ai_active && item.status === "open" && item.handoff_reason !== "manually_paused" ? (
-              <span className={`mono shrink-0 ${Number(item.waiting_minutes) >= 15 ? "text-[var(--danger-text)]" : "text-[var(--text-muted)]"}`}>
+              <span className={`conversation-list__info-chunk mono ${Number(item.waiting_minutes) >= 15 ? "conversation-list__info-sla" : ""}`}>
                 {waitingLabel(Number(item.waiting_minutes))}{Number(item.waiting_minutes) >= 15 ? " · SLA" : ""}
               </span>
             ) : null}
+            {item.next_action ? (
+              <span className={`conversation-list__info-chunk ${item.next_action_due || (item.next_action_at && new Date(item.next_action_at).getTime() <= Date.now()) ? "conversation-list__info-due" : ""}`}>
+                Próxima ação: {item.next_action}{item.next_action_at ? ` · ${new Date(item.next_action_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}
+              </span>
+            ) : null}
           </span>
+          {showLeadTags ? <LeadTagChips tags={item.tags} compact singleLine /> : null}
         </div>
-        {item.next_action ? (
-          <p className={`mt-1 truncate text-xs ${item.next_action_due || (item.next_action_at && new Date(item.next_action_at).getTime() <= Date.now()) ? "font-semibold text-[var(--warning-text)]" : "text-[var(--text-muted)]"}`}>
-            Próxima ação: {item.next_action}{item.next_action_at ? ` · ${new Date(item.next_action_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}
-          </p>
-        ) : null}
-        {showLeadTags ? <LeadTagChips tags={item.tags} compact /> : null}
       </div>
     </button>
   );

@@ -88,10 +88,14 @@ export function LeadTagMenuItems({
   );
 }
 
-export function LeadTagChips({ tags, compact = false }: { tags?: LeadTag[]; compact?: boolean }) {
+export function LeadTagChips({ tags, compact = false, singleLine = false }: { tags?: LeadTag[]; compact?: boolean; singleLine?: boolean }) {
   if (!tags?.length) return null;
   return (
-    <span className="flex min-w-0 flex-wrap items-center gap-1" role="group" aria-label="Etiquetas do lead">
+    <span
+      className={singleLine ? "lead-tag-chips" : "flex min-w-0 flex-wrap items-center gap-1"}
+      role="group"
+      aria-label="Etiquetas do lead"
+    >
       {tags.map((tag) => (
         <span
           key={tag.id}

@@ -279,6 +279,10 @@
   }
   .shell--conversas .conversation-list__header,
   .shell--conversas .conversation-list__items { background: transparent; }
+  /* Coluna flex: <button> com width:auto é shrink-to-fit (fit-content) e,
+     com linhas nowrap, explodia além do painel. Como flex item em coluna o
+     card estica de novo para a largura fixa da lista. */
+  .shell--conversas .conversation-list__items > div { display: flex; flex-direction: column; }
   .shell--conversas .conversation-list__item {
     /* width:auto (não 100%): o w-full do markup + margens laterais vazava 16px
        e criava scrollbar horizontal na lista (comments.md L5). */

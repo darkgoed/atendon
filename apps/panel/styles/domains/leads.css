@@ -601,6 +601,11 @@
   font-size: var(--text-micro);
 }
 
+/* Container em UMA linha (card do inbox — comments.md: o card não pode
+   crescer por conteúdo). Sem wrap: chips encolhem com ellipsis próprio. */
+.lead-tag-chips { min-width: 0; flex: 0 1 auto; display: flex; align-items: center; overflow: hidden; gap: var(--space-1); }
+.lead-tag-chips .lead-tag-chip { flex: 0 1 auto; max-width: none; }
+
 /* ======================================================= AÇÕES EM LOTE == */
 
 .bulk-lead-actions {
