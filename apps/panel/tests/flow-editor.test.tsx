@@ -51,7 +51,10 @@ vi.mock("@phosphor-icons/react", () => ({
   ArrowsDownUp: () => null,
   ChatText: () => null,
   Clock: () => null,
+  CursorClick: () => null,
   Eye: () => null,
+  Flag: () => null,
+  GitBranch: () => null,
   GitFork: () => null,
   Hourglass: () => null,
   Kanban: () => null,
@@ -122,6 +125,29 @@ const NEW_SHAPES: FlowDefinition = normalizeDefinition({
   },
 });
 
+/* Kinds SPEC v7 (branch/finalize/interactive) — válido no zod do backend
+   (superRefine flow.ts:200-242): branch exige yes/no, interactive buttons
+   roteia por transitions[value] ou next, finalize exige end_reason. */
+const V7_SHAPES: FlowDefinition = normalizeDefinition({
+  start: "M1",
+  origem: "facebook",
+  triggers: { ctwa: false, session_ids: [], keywords: ["robo"] },
+  steps: {
+    M1: { kind: "message", message: "Olá!", next: "B1" },
+    B1: { kind: "branch", variable_name: "tipo", operator: "eq", value: "loja", transitions: { yes: "I1", no: "FZ1" } },
+    I1: {
+      kind: "interactive",
+      interactive_type: "buttons",
+      message: "Escolha:",
+      interactive_button_text: "Escolher",
+      options: [{ value: "Falar com humano" }],
+      transitions: { "Falar com humano": "FZ2" },
+    },
+    FZ1: { kind: "finalize", end_reason: "perfil_servico" },
+    FZ2: { kind: "finalize", end_reason: "transferido_humano" },
+  },
+});
+
 const baseProps = {
   flowId: "fluxo-teste",
   nome: "Fluxo de teste",
@@ -163,6 +189,16 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
+
+/* O <label> do Field embute o hint — o nome acessível do campo inclui o
+   texto do hint; este helper casa pelo texto do span.label (sem o hint). */
+function panelField(panel: HTMLElement, labelText: string): HTMLElement {
+  const label = Array.from(panel.querySelectorAll("label")).find(
+    (candidate) => (candidate.querySelector("span.label")?.textContent ?? "").startsWith(labelText),
+  );
+  if (!label) throw new Error(`campo não encontrado no painel: ${labelText}`);
+  return label.querySelector("input, textarea, select") as HTMLElement;
+}
 
 describe("modelo puro (flow-model)", () => {
   it("converte definition em nós/edges com handles por opção e gatilho→start", () => {
@@ -433,6 +469,181 @@ describe("FlowEditor", () => {
     const region = screen.getByRole("region", { name: "Resultado da simulação" });
     expect(region.textContent).toContain("P1");
     expect(region.textContent).toContain("aguardando");
+  });
+});
+
+describe("forms por kind SPEC v7 (branch/finalize/interactive) — M2", () => {
+  it("painel do branch: variable_name sanitiza, operator tem as 7 opções e value OCULTA+LIMPA em is_empty; saídas yes/no são selects", () => {
+    const onDefinition = vi.fn();
+    render(<InteractiveEditor initialDefinition={V7_SHAPES} onDefinition={onDefinition} />);
+    fireEvent.click(screen.getByTestId("flow-node-B1"));
+    const panel = screen.getByRole("complementary", { name: "Propriedades da etapa" });
+
+    const variable = panelField(panel, "Variável") as HTMLInputElement;
+    expect(variable.value).toBe("tipo");
+    fireEvent.change(variable, { target: { value: "Tipo Loja" } });
+    let next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.B1.variable_name).toBe("tipoloja"); // regex ^[a-z0-9_]+$ (max 100)
+
+    const operator = panelField(panel, "Operador") as HTMLSelectElement;
+    expect(Array.from(operator.options).map((option) => option.value)).toEqual(
+      ["eq", "neq", "contains", "not_contains", "starts_with", "is_empty", "is_not_empty"],
+    );
+    const value = panelField(panel, "Valor") as HTMLInputElement;
+    expect(value.value).toBe("loja");
+    expect((panelField(panel, "Saída Sim") as HTMLSelectElement).value).toBe("I1");
+    expect((panelField(panel, "Saída Não") as HTMLSelectElement).value).toBe("FZ1");
+
+    fireEvent.change(operator, { target: { value: "is_empty" } });
+    next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.B1.operator).toBe("is_empty");
+    expect(next.steps.B1.value).toBeUndefined(); // value LIMPO quando o operador esconde o campo
+    expect(screen.queryByLabelText(/^Valor/)).toBeNull(); // campo oculto (superRefine flow.ts:204-205)
+
+    fireEvent.change(panelField(panel, "Saída Sim"), { target: { value: "FZ1" } });
+    next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.B1.transitions?.yes).toBe("FZ1");
+    expect(next.steps.B1.transitions?.no).toBe("FZ1"); // saída "Não" preservada
+  });
+
+  it("painel do finalize edita end_reason (1-200)", () => {
+    const onDefinition = vi.fn();
+    render(<InteractiveEditor initialDefinition={V7_SHAPES} onDefinition={onDefinition} />);
+    fireEvent.click(screen.getByTestId("flow-node-FZ1"));
+    const panel = screen.getByRole("complementary", { name: "Propriedades da etapa" });
+    const reason = panelField(panel, "Motivo do encerramento") as HTMLInputElement;
+    expect(reason.value).toBe("perfil_servico");
+    fireEvent.change(reason, { target: { value: "novo_motivo" } });
+    const next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.FZ1.end_reason).toBe("novo_motivo");
+  });
+
+  it("painel do interactive: mensagem, interactive_button_text e botão com URL http(s) ≤500 validada inline", () => {
+    const onDefinition = vi.fn();
+    render(<InteractiveEditor initialDefinition={V7_SHAPES} onDefinition={onDefinition} />);
+    fireEvent.click(screen.getByTestId("flow-node-I1"));
+    const panel = screen.getByRole("complementary", { name: "Propriedades da etapa" });
+
+    const message = panelField(panel, "Mensagem") as HTMLTextAreaElement;
+    expect(message.value).toBe("Escolha:");
+    fireEvent.change(message, { target: { value: "Escolha uma opção:" } });
+    let next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.I1.message).toBe("Escolha uma opção:");
+
+    const buttonText = panelField(panel, "Texto do botão") as HTMLInputElement;
+    expect(buttonText.value).toBe("Escolher");
+    fireEvent.change(buttonText, { target: { value: "Responder" } });
+    next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.I1.interactive_button_text).toBe("Responder");
+
+    // renomear o botão preserva o roteamento (renameOption carrega transitions)
+    const rowInput = panel.querySelector('input[aria-label="Texto do botão Falar com humano"]') as HTMLInputElement;
+    fireEvent.change(rowInput, { target: { value: "Quero atendimento" } });
+    next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.I1.options?.[0]?.value).toBe("Quero atendimento");
+    expect(next.steps.I1.transitions?.["Quero atendimento"]).toBe("FZ2");
+
+    // URL inválida mostra erro acionável; válida some e grava
+    const urlInput = () => panel.querySelector('input[aria-label="URL do botão Quero atendimento"]') as HTMLInputElement;
+    fireEvent.change(urlInput(), { target: { value: "ftp://exemplo.com/x" } });
+    expect(screen.getByText("URL precisa usar http(s)")).toBeTruthy();
+    next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.I1.options?.[0]?.url).toBe("ftp://exemplo.com/x");
+    fireEvent.change(urlInput(), { target: { value: `https://exemplo.com/${"a".repeat(500)}` } });
+    expect(screen.getByText("URL excede 500 caracteres")).toBeTruthy();
+    fireEvent.change(urlInput(), { target: { value: "https://exemplo.com/promo" } });
+    expect(screen.queryByText("URL precisa usar http(s)")).toBeNull();
+    next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.I1.options?.[0]?.url).toBe("https://exemplo.com/promo");
+  });
+
+  it("painel do interactive: roteamento por escolha (transitions[value]) + destino padrão (next); botões 1-3", () => {
+    const onDefinition = vi.fn();
+    render(<InteractiveEditor initialDefinition={V7_SHAPES} onDefinition={onDefinition} />);
+    fireEvent.click(screen.getByTestId("flow-node-I1"));
+    const panel = screen.getByRole("complementary", { name: "Propriedades da etapa" });
+
+    // destino do botão gravado em transitions[value]
+    const choiceTarget = panel.querySelector('select[aria-label="Destino do botão Falar com humano"]') as HTMLSelectElement;
+    expect(choiceTarget.value).toBe("FZ2"); // herda o transitions do definition
+    fireEvent.change(choiceTarget, { target: { value: "FZ1" } });
+    let next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.I1.transitions?.["Falar com humano"]).toBe("FZ1");
+
+    // destino padrão gravado em next
+    const nextTarget = panelField(panel, "Destino padrão") as HTMLSelectElement;
+    expect(nextTarget.value).toBe("");
+    fireEvent.change(nextTarget, { target: { value: "FZ2" } });
+    next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.I1.next).toBe("FZ2");
+    expect(next.steps.I1.transitions?.["Falar com humano"]).toBe("FZ1"); // escolha específica intacta
+
+    // adicionar botões até o teto de 3; remover volta a 1
+    const addButton = () => screen.getByRole("button", { name: "+ botão" });
+    fireEvent.click(addButton());
+    next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.I1.options).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Remover botão Opção 2" }));
+    next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.I1.options?.[0]?.value).toBe("Falar com humano");
+    fireEvent.click(addButton());
+    fireEvent.click(addButton());
+    next = onDefinition.mock.calls.at(-1)?.[0] as FlowDefinition;
+    expect(next.steps.I1.options).toHaveLength(3);
+    expect(screen.queryByRole("button", { name: "+ botão" })).toBeNull(); // máx 3 (flow.ts:223-224)
+  });
+
+  it("issue clicável seleciona/foca o nó no canvas (R4)", () => {
+    const broken: FlowDefinition = {
+      ...V7_SHAPES,
+      steps: { ...V7_SHAPES.steps, B1: { kind: "branch", variable_name: "tipo", operator: "eq", transitions: { yes: "I1", no: "FZ1" } } },
+    };
+    render(<FlowEditor {...editorProps()} definition={broken} />);
+    expect(screen.getByTestId("flow-node-B1").getAttribute("data-error")).toBe("true");
+    expect(screen.getByRole("alert").textContent).toContain("precisa de value");
+    fireEvent.click(screen.getByTestId("flow-issue-B1"));
+    expect(screen.getByTestId("flow-node-B1").getAttribute("data-selected")).toBe("true");
+    expect(screen.getByRole("complementary", { name: "Propriedades da etapa" }).textContent).toContain("Condição");
+  });
+
+  it("modal 409 abre com Recarregar e botão de Histórico que chama onOpenHistory (não navega); fechar dispensa", () => {
+    const onReload = vi.fn();
+    const onOpenHistory = vi.fn();
+    render(<FlowEditor {...editorProps()} definition={FIXTURE} conflict={{ revisao: 7 }} onReload={onReload} onOpenHistory={onOpenHistory} />);
+    const dialog = screen.getByRole("dialog", { name: "Fluxo alterado por outro salvamento" });
+    expect(dialog.textContent).toContain("revisão");
+    expect(dialog.textContent).toContain("7");
+    expect(screen.getByTestId("flow-conflict-reload").textContent).toContain("Recarregar");
+    const historyButton = screen.getByTestId("flow-conflict-history");
+    expect(historyButton.tagName).toBe("BUTTON"); // Histórico é drawer da página, não rota: nada de <a href>
+    fireEvent.click(historyButton);
+    expect(onOpenHistory).toHaveBeenCalledTimes(1);
+    expect(onReload).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("flow-conflict-reload"));
+    expect(onReload).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+    expect(screen.queryByRole("dialog", { name: "Fluxo alterado por outro salvamento" })).toBeNull();
+  });
+
+  it("save bloqueado: branch sem valor não dispara PUT e o alert lista o problema acionável", async () => {
+    mocks.flowId = "fluxo-branch-quebrado";
+    const flowPath = `/qualification/flows/${mocks.flowId}`;
+    const broken: FlowDefinition = normalizeDefinition({
+      ...V7_SHAPES,
+      steps: { ...V7_SHAPES.steps, B1: { kind: "branch", variable_name: "tipo", operator: "eq", transitions: { yes: "I1", no: "FZ1" } } },
+    });
+    mocks.api.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === flowPath && (!init || !init.method)) {
+        return Promise.resolve({ flow: { id: mocks.flowId, nome: "Fluxo quebrado", ativo: true, definition: broken, atualizado_em: null } });
+      }
+      return Promise.resolve({});
+    });
+    render(<FluxoEditorPage />);
+    await waitFor(() => expect(screen.getByTestId("flow-node-B1")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("precisa de value"));
+    expect(mocks.api.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
+    mocks.flowId = "fluxo-teste"; // restaura o default — os testes de página dependem dele
   });
 });
 

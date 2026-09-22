@@ -590,17 +590,33 @@ describe("SaaS foundation auth and RBAC", () => {
     expect(sentEmails.at(-1)?.text).toContain(created.json().token);
     expect((await pool.query("SELECT id FROM whatsapp_sessions WHERE tenant_id=$1", [rootCreatedTenant])).rowCount).toBe(1);
     expect((await pool.query("SELECT id FROM agent_configs WHERE tenant_id=$1", [rootCreatedTenant])).rowCount).toBe(1);
+    // O plano padrão do workspace criado é dado (`plans.is_default`, migração
+    // 0149), não um código conhecido pela aplicação — assert data-driven.
+    const defaultPlan = (await pool.query<{ code: string }>(
+      "SELECT code FROM plans WHERE status='active' AND is_internal=false AND monthly_price_cents>0 AND is_default=true ORDER BY position LIMIT 1"
+    )).rows[0];
+    if (!defaultPlan) throw new Error("No active commercial default plan configured");
     const initialSubscription = await pool.query<{ code: string; status: string }>("SELECT p.code,s.status FROM tenant_subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.tenant_id=$1", [rootCreatedTenant]);
-    expect(initialSubscription.rows).toEqual([{ code: "LEGACY_UNLIMITED", status: "ACTIVE" }]);
+    expect(initialSubscription.rows).toEqual([{ code: defaultPlan.code, status: "ACTIVE" }]);
 
-    await pool.query("DELETE FROM tenant_subscriptions WHERE tenant_id=$1", [tenantC]);
+    // Semântica pós-harden (7c1a6288): o endpoint legado de subscription
+    // apenas RECONTRATA uma assinatura existente (404 "Assinatura não
+    // encontrada" caso contrário) — a criação acontece no fluxo ROOT de
+    // workspace. Assinamos o tenant via INSERT direto e contratamos o plano
+    // alvo pela API (downgrade agendado, sem proração).
+    await pool.query(
+      `INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,current_period_start,current_period_end)
+       SELECT $1,id,'ACTIVE',now(),now()+interval '1 day' FROM plans WHERE code='PRO'`,
+      [tenantC]
+    );
     const targetPlan = (await pool.query<{ id: string }>("SELECT id FROM plans WHERE status='active' AND code <> 'LEGACY_UNLIMITED' ORDER BY position LIMIT 1")).rows[0];
     if (!targetPlan) throw new Error("No active commercial plan available for integration test");
     const linked = await app.inject({ method: "POST", url: `/root/saas/tenants/${tenantC}/subscription`, headers: { cookie: rootCookie }, payload: { planId: targetPlan.id } });
     expect(linked.statusCode).toBe(200);
     expect((await pool.query("SELECT id FROM tenant_subscriptions WHERE tenant_id=$1", [tenantC])).rowCount).toBe(1);
     expect((await pool.query("SELECT id FROM subscription_events WHERE tenant_id=$1 AND event_type='PLAN_CHANGED'", [tenantC])).rowCount).toBe(1);
-    expect((await pool.query("SELECT id FROM audit_logs WHERE workspace_id=$1 AND action='saas.subscription.change_plan'", [tenantC])).rowCount).toBe(1);
+    // Ação de auditoria atual do endpoint legado é 'saas.subscription.contract'.
+    expect((await pool.query("SELECT id FROM audit_logs WHERE workspace_id=$1 AND action='saas.subscription.contract'", [tenantC])).rowCount).toBe(1);
 
     const suspended = await app.inject({ method: "PATCH", url: `/root/workspaces/${rootCreatedTenant}`, headers: { cookie: rootCookie }, payload: { status: "suspended" } });
     expect(suspended.statusCode).toBe(200);
@@ -629,6 +645,27 @@ describe("SaaS foundation auth and RBAC", () => {
     const usageExport = await app.inject({ url: "/usage/export", headers: { cookie: rootAccessCookie } });
     expect(usageExport.statusCode).toBe(200);
     expect(usageExport.payload).toContain("'=2+3");
+
+    // Semântica pós-harden (7c1a6288): o plano is_default do workspace criado
+    // pelo fluxo ROOT não destrava a feature "AI" exigida por PUT /agent no
+    // gate de entitlements — este teste é da era LEGACY_UNLIMITED. Apontamos a
+    // assinatura única do workspace para um plano comercial com AI (PRO,
+    // migração 0133). Mesmo padrão do INSERT usado para tenantC acima, mas via
+    // UPDATE: a criação pelo fluxo ROOT já deixou exatamente uma assinatura e
+    // getEffectiveEntitlements lê rows[0] sem ORDER BY (linha única = determinismo).
+    await pool.query(
+      `UPDATE tenant_subscriptions s SET plan_id=p.id
+       FROM plans p
+       WHERE s.tenant_id=$1 AND p.code='PRO'`,
+      [rootCreatedTenant]
+    );
+    // Semântica real pós-be95d736: save direto 200 + versão manual em
+    // agent_config_versions; fluxo 202/candidate e rota /agent/versions
+    // jamais existiram no backend (ancestry vazia).
+    const manualVersionsBefore = (await pool.query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM agent_config_versions WHERE tenant_id=$1",
+      [rootCreatedTenant]
+    )).rows[0].count;
     const rootAgent = await app.inject({
       method: "PUT",
       url: "/agent",
@@ -645,28 +682,20 @@ describe("SaaS foundation auth and RBAC", () => {
         mediaFallbackDocument: "Não consigo abrir documento agora."
       }
     });
-    expect(rootAgent.statusCode).toBe(202);
-    expect(rootAgent.json()).toMatchObject({
-      status: "queued",
-      candidateVersionId: expect.any(String),
-      proposalId: expect.any(String),
-      runId: expect.any(String)
-    });
-    const activeAgentAfterQueuedEdit = (
+    expect(rootAgent.statusCode).toBe(200);
+    expect(rootAgent.json().agent).toMatchObject({ id: expect.any(String), ai_model: "root/model" });
+    const activeAgentAfterManualSave = (
       await app.inject({ url: "/agent", headers: { cookie: rootAccessCookie } })
     ).json().agent;
-    expect(activeAgentAfterQueuedEdit.ai_model).not.toBe("root/model");
-    expect(activeAgentAfterQueuedEdit.openrouter_provider).not.toBe("openai");
-    const versions = await app.inject({ url: "/agent/versions", headers: { cookie: rootAccessCookie } });
-    expect(versions.statusCode).toBe(200);
-    expect(versions.json().versions).toEqual(expect.arrayContaining([
-      expect.objectContaining({ version_number: 2, source: "manual", status: "candidate", ai_model: "root/model" }),
-      expect.objectContaining({ version_number: 1, source: "bootstrap", status: "active" })
-    ]));
-    expect((await pool.query(
-      "SELECT count(*)::int count FROM audit_logs WHERE workspace_id=$1 AND action='agent.version.manual_candidate_created'",
+    expect(activeAgentAfterManualSave.ai_model).toBe("root/model");
+    const versionRowsAfterSave = (await pool.query<{ version_number: number; source: string; status: string; ai_model: string }>(
+      "SELECT version_number,source,status,ai_model FROM agent_config_versions WHERE tenant_id=$1 ORDER BY version_number",
       [rootCreatedTenant]
-    )).rows[0].count).toBe(1);
+    )).rows;
+    expect(versionRowsAfterSave.length).toBe(manualVersionsBefore + 1);
+    expect(versionRowsAfterSave.at(-1)).toMatchObject({ source: "manual", status: "active", ai_model: "root/model" });
+    expect(versionRowsAfterSave.filter((row) => row.status === "active")).toHaveLength(1);
+    expect(versionRowsAfterSave.slice(0, -1).some((row) => row.status === "active")).toBe(false);
     const disabledAgent = await app.inject({ method: "PATCH", url: "/agent/status", headers: { cookie: rootAccessCookie }, payload: { isActive: false } });
     expect(disabledAgent.statusCode).toBe(200);
     expect(disabledAgent.json().agent.is_active).toBe(false);

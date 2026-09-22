@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
+import { seedTenantCapabilities } from "./helpers/capability-seed.js";
 import { OpenRouterClient } from "../src/modules/ai-router/openrouter.js";
 import { QualificationService } from "../src/modules/qualification/service.js";
 import { WhatsAppSessionManager } from "../src/modules/whatsapp/session-manager.js";
@@ -15,11 +16,17 @@ const app=buildApp();
 let tenantId="";let otherTenantId="";let sessionId="";let foreignSessionId="";let cookie="";let readCookie="";let ownerUserId="";let testEmails:string[]=[];
 let phoneSequence=Number(Date.now().toString().slice(-8));
 const nextPhone=(ddd="11")=>`55${ddd}${String(++phoneSequence).slice(-8).padStart(8,"0")}`;
+// F5 (CAS fallout): ler a revisão viva logo antes de cada PUT de edição — o
+// trigger da migration 0182 incrementa a revision a QUALQUER update (nasce em 1).
+async function currentRevision(id:string):Promise<number>{
+  return (await pool.query<{revision:number}>("SELECT revision FROM qualification_flows WHERE tenant_id=$1 AND id=$2",[tenantId,id])).rows[0]?.revision??0;
+}
 
 beforeAll(async()=>{
   await app.ready();
   tenantId=(await pool.query<{id:string}>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id",[`Qualification routes ${randomUUID()}`])).rows[0].id;
   otherTenantId=(await pool.query<{id:string}>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id",[`Qualification foreign ${randomUUID()}`])).rows[0].id;
+  await seedTenantCapabilities(pool,[tenantId,otherTenantId]);
   sessionId=(await pool.query<{id:string}>("INSERT INTO whatsapp_sessions(tenant_id,status) VALUES($1,'connected') RETURNING id",[tenantId])).rows[0].id;
   foreignSessionId=(await pool.query<{id:string}>("INSERT INTO whatsapp_sessions(tenant_id,status) VALUES($1,'connected') RETURNING id",[otherTenantId])).rows[0].id;
   const email=`qualification-${randomUUID()}@test.local`;const readEmail=`qualification-read-${randomUUID()}@test.local`;const password="qualification-password";
@@ -130,9 +137,9 @@ describe("API de configuração Newave",()=>{
   });
 
   it("salva incompleto desativado e valida requisitos antes de ativar",async()=>{
-    const inactive=await app.inject({method:"PUT",url:"/qualification/flows/newave",headers:{cookie},payload:{nome:"Fluxo Newave",ativo:false}});
+    const inactive=await app.inject({method:"PUT",url:"/qualification/flows/newave",headers:{cookie},payload:{nome:"Fluxo Newave",ativo:false,revisao_base:0}});
     expect(inactive.statusCode).toBe(201);expect(inactive.json().flow.ativo).toBe(false);
-    const invalid=await app.inject({method:"PUT",url:"/qualification/flows/newave",headers:{cookie},payload:{nome:"Fluxo Newave",ativo:true}});
+    const invalid=await app.inject({method:"PUT",url:"/qualification/flows/newave",headers:{cookie},payload:{nome:"Fluxo Newave",ativo:true,revisao_base:await currentRevision("newave")}});
     expect(invalid.statusCode).toBe(400);expect(invalid.json().error).toContain("gatilho");
   });
 
@@ -150,7 +157,7 @@ describe("API de configuração Newave",()=>{
       expect(sessions.statusCode).toBe(200);
       expect(sessions.json().sessions.map((item:{id:string})=>item.id)).toContain(sessionId);
       expect(sessions.json().sessions.map((item:{id:string})=>item.id)).not.toContain(instagram);
-      const rejected=await app.inject({method:"PUT",url:"/qualification/flows/instagram-trigger",headers:{cookie},payload:{nome:"Instagram",ativo:false,sessoes:[instagram]}});
+      const rejected=await app.inject({method:"PUT",url:"/qualification/flows/instagram-trigger",headers:{cookie},payload:{nome:"Instagram",ativo:false,sessoes:[instagram],revisao_base:0}});
       expect(rejected.statusCode).toBe(400);
       expect(rejected.json().error).toContain("WhatsApp");
     } finally {
@@ -159,7 +166,7 @@ describe("API de configuração Newave",()=>{
   });
 
   it("mantém qualificações do mesmo telefone isoladas por sessão e canal",async()=>{
-    await app.inject({method:"PUT",url:"/qualification/flows/channel-isolation",headers:{cookie},payload:{nome:"Isolamento",ativo:true,ctwa:true}});
+    await app.inject({method:"PUT",url:"/qualification/flows/channel-isolation",headers:{cookie},payload:{nome:"Isolamento",ativo:true,ctwa:true,revisao_base:0}});
     const instagram=(await pool.query<{id:string}>(
       "INSERT INTO whatsapp_sessions(tenant_id,status,channel) VALUES($1,'connected','instagram') RETURNING id",[tenantId]
     )).rows[0].id;
@@ -213,16 +220,16 @@ describe("API de configuração Newave",()=>{
   });
 
   it("valida sessões no tenant e expõe somente configuração própria",async()=>{
-    const foreign=await app.inject({method:"PUT",url:"/qualification/flows/newave",headers:{cookie},payload:{nome:"Fluxo Newave",ativo:false,sessoes:[foreignSessionId]}});
+    const foreign=await app.inject({method:"PUT",url:"/qualification/flows/newave",headers:{cookie},payload:{nome:"Fluxo Newave",ativo:false,sessoes:[foreignSessionId],revisao_base:await currentRevision("newave")}});
     expect(foreign.statusCode).toBe(400);
-    const active=await app.inject({method:"PUT",url:"/qualification/flows/newave",headers:{cookie},payload:{nome:"Fluxo Newave",ativo:true,sessoes:[sessionId],ctwa:true,palavras_chave:["newave"]}});
+    const active=await app.inject({method:"PUT",url:"/qualification/flows/newave",headers:{cookie},payload:{nome:"Fluxo Newave",ativo:true,sessoes:[sessionId],ctwa:true,palavras_chave:["newave"],revisao_base:await currentRevision("newave")}});
     expect(active.statusCode).toBe(200);expect(active.json().flow).toMatchObject({ativo:true,gatilhos:{ctwa:true,session_ids:[sessionId],keywords:["newave"]}});
     const sessions=await app.inject({url:"/qualification/sessions",headers:{cookie}});
     expect(sessions.json().sessions.map((item:{id:string})=>item.id)).toEqual([sessionId]);
   });
 
   it("mantém somente um fluxo ativo por organização",async()=>{
-    const second=await app.inject({method:"PUT",url:"/qualification/flows/newave-v2",headers:{cookie},payload:{nome:"Fluxo Newave v2",ativo:true,ctwa:true}});
+    const second=await app.inject({method:"PUT",url:"/qualification/flows/newave-v2",headers:{cookie},payload:{nome:"Fluxo Newave v2",ativo:true,ctwa:true,revisao_base:0}});
     expect(second.statusCode).toBe(201);
     const active=await pool.query("SELECT id FROM qualification_flows WHERE tenant_id=$1 AND active",[tenantId]);
     expect(active.rows).toEqual([{id:"newave-v2"}]);

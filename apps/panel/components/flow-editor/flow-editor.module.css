@@ -427,6 +427,56 @@
   color: var(--text-muted);
 }
 
+/* ---- issues clicáveis (R4): issue seleciona a etapa no canvas ---- */
+.issueLink {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.issueLink:hover { color: var(--text); }
+
+/* ---- linhas dos botões interactive (texto, url, destino, remover) ---- */
+.buttonRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+.buttonRemove {
+  align-self: flex-end;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-body);
+  line-height: 1;
+  cursor: pointer;
+}
+.buttonRemove:hover { color: var(--danger-text); border-color: var(--danger-border); }
+.fieldError { margin: 0; font-size: var(--text-micro); color: var(--danger-text); }
+
+/* ---- modal 409 FLOW_VERSION_CONFLICT ---- */
+.conflictDialog { --action-dialog-width: 460px; }
+.conflictTitle {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+}
+.conflictText { margin: 0; font-size: var(--text-label); color: var(--text-secondary); }
+.conflictActions { display: flex; flex-wrap: wrap; gap: 8px; }
+
 .optionRow { display: flex; align-items: center; gap: 6px; }
 .optionRow .input { flex: 1; min-width: 0; }
 

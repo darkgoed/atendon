@@ -22,6 +22,12 @@
 .catalogLayoutManaged { grid-template-columns: minmax(0, 1fr) minmax(18rem, 26rem); }
 .catalogTable { width: 100%; min-width: 32rem; text-align: left; }
 .editorPlaceholder { min-height: 16rem; display: grid; place-items: center; text-align: center; color: var(--text-muted); }
+/* R3 (SPEC settings-search): chassi ÚNICO de configuração — um card, o mesmo
+   cabeçalho (ícone phosphor num círculo + h2 + sub opcional) e os mesmos
+   estados (busy/skeleton). Forms, tabelas e grids internos permanecem. */
+.panel { display: grid; gap: var(--space-5); min-width: 0; padding: var(--space-5); }
+.panelHead { display: flex; align-items: start; gap: var(--space-3); }
+.panelIcon { display: grid; flex: none; height: 2.5rem; width: 2.5rem; place-items: center; border: 1px solid var(--border); border-radius: 9999px; color: var(--primary-text); }
 .surface { display: grid; gap: var(--space-5); min-width: 0; }
 .form { display: grid; gap: var(--space-5); max-width: 48rem; }
 .section { display: grid; gap: var(--space-4); padding-block: var(--space-5); border-block: 1px solid var(--border); }

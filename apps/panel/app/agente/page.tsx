@@ -3,6 +3,7 @@
 import { Power } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Shell } from "@/components/shell";
+import { PageHeader } from "@/components/ui/layout";
 import { api } from "@/lib/api";
 import { usePermission } from "@/lib/use-permission";
 import styles from "../channels-ai.module.css";
@@ -179,11 +180,10 @@ export default function Agent() {
 
   return (
     <Shell><div className={`${styles.channelsAiPage} channels-ai-page`}>
-      <header className="pagehead">
-        <div>
-          <h1>Agente principal</h1>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-3">
+      <PageHeader
+        title="Agente principal"
+        actions={
+          <div className="flex flex-wrap items-center justify-end gap-3">
           {connections.length > 1 ? (
             <label className="flex items-center gap-2 text-sm">
               <span className="label">Prompt de</span>
@@ -212,8 +212,9 @@ export default function Agent() {
           <button type="button" className="btn primary active:scale-[.98]" disabled={!canManage || !dirty || !form || form.enabledTools.length === 0} onClick={() => void save()}>
             Salvar alterações
           </button>
-        </div>
-      </header>
+          </div>
+        }
+      />
 
       {target && connections.length > 1 ? (
         <p className="sub mb-4" role="status">

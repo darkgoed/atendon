@@ -14,7 +14,10 @@ import {
   ArrowsDownUp,
   ChatText,
   Clock,
+  CursorClick,
   Eye,
+  Flag,
+  GitBranch,
   GitFork,
   Hourglass,
   Kanban,
@@ -47,6 +50,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   TRIGGER_ID,
+  PALETTE_GROUPS,
   graphFromDefinition,
   layoutDefinition,
   newStepFor,
@@ -63,6 +67,7 @@ import {
   type PaletteItem,
   type Position as XYPos,
 } from "./flow-model";
+import { FlowConflictModal, type FlowConflict } from "./FlowConflictModal";
 import styles from "./flow-editor.module.css";
 
 export type SimTrace = {
@@ -82,6 +87,11 @@ type FlowEditorProps = {
   saved: boolean;
   serverError: string | null;
   trace: SimTrace | null;
+  /** 409 FLOW_VERSION_CONFLICT do save (M3 popula; aqui só a exibição). */
+  conflict?: FlowConflict | null;
+  onReload?: () => void;
+  /** "Ver histórico" do modal: abre o drawer de Histórico da página (não é rota). */
+  onOpenHistory?: () => void;
   onNome: (nome: string) => void;
   onDefinition: (definition: FlowDefinition) => void;
   onSave: () => void;
@@ -102,6 +112,9 @@ const NT: Record<string, string> = {
   final: "var(--nt-finalize)",
   delay: "var(--nt-delay)",
   wait_for_reply: "var(--nt-wait)",
+  branch: "var(--nt-condition)",
+  finalize: "var(--nt-finalize)",
+  interactive: "var(--nt-message)",
   tag_add: "var(--nt-tag)",
   tag_remove: "var(--nt-tag)",
   stage_move: "var(--nt-stage)",
@@ -120,6 +133,9 @@ const NODE_ICONS: Record<string, typeof ChatText> = {
   final: Power,
   delay: Clock,
   wait_for_reply: Hourglass,
+  branch: GitBranch,
+  finalize: Flag,
+  interactive: CursorClick,
   tag_add: Tag,
   tag_remove: Tag,
   stage_move: Kanban,
@@ -261,6 +277,74 @@ function renameOption(step: FlowStep, oldValue: string, newValue: string): FlowS
   return next;
 }
 
+/* ─── kinds SPEC v7 (branch/finalize/interactive) — espelho do zod ─────── */
+
+type FlowConditionOperator = NonNullable<FlowStep["operator"]>;
+
+/** Mesmos 7 operadores do flowConditionOperator do backend (flow.ts:79-81). */
+const BRANCH_OPERATORS: Array<{ value: FlowConditionOperator; label: string }> = [
+  { value: "eq", label: "igual a" },
+  { value: "neq", label: "diferente de" },
+  { value: "contains", label: "contém" },
+  { value: "not_contains", label: "não contém" },
+  { value: "starts_with", label: "começa com" },
+  { value: "is_empty", label: "está vazio" },
+  { value: "is_not_empty", label: "está preenchido" },
+];
+
+/** is_empty/is_not_empty não levam valor (conditionValueHidden do backend, flow.ts:337-339). */
+function branchValueHidden(operator: FlowStep["operator"]): boolean {
+  return operator === "is_empty" || operator === "is_not_empty";
+}
+
+/** Troca o operador e LIMPA o value quando o novo operador esconde o campo
+    (o zod rejeita value presente com is_empty/is_not_empty — flow.ts:204-205). */
+function setBranchOperator(step: FlowStep, operator: string): FlowStep {
+  const next = { ...step, operator: operator as FlowStep["operator"] } as FlowStep;
+  if (branchValueHidden(next.operator)) delete next.value;
+  return next;
+}
+
+function addInteractiveButton(step: FlowStep): FlowStep {
+  const total = step.options?.length ?? 0;
+  return { ...step, options: [...(step.options ?? []), { value: `Opção ${total + 1}` }] } as FlowStep;
+}
+
+function removeInteractiveButton(step: FlowStep, value: string): FlowStep {
+  const options = (step.options ?? []).filter((option) => option.value !== value);
+  const transitions = { ...(step.transitions ?? {}) };
+  delete transitions[value];
+  const next = { ...step, options, transitions: Object.keys(transitions).length ? transitions : undefined } as FlowStep;
+  if (!Object.keys(transitions).length) delete next.transitions;
+  return next;
+}
+
+function setOptionUrl(step: FlowStep, value: string, url: string): FlowStep {
+  const trimmed = url.trim();
+  const options = (step.options ?? []).map((option) => {
+    if (option.value !== value) return option;
+    const nextOption = { ...option };
+    if (trimmed) nextOption.url = trimmed;
+    else delete nextOption.url;
+    return nextOption;
+  });
+  return { ...step, options } as FlowStep;
+}
+
+/** Espelha a url do flowOptionSchema do backend (flow.ts:24): opcional,
+    URL completa, ≤500 e http(s). Mensagem acionável para o painel. */
+function optionUrlIssue(url: string | undefined): string | null {
+  const trimmed = (url ?? "").trim();
+  if (!trimmed) return null;
+  if (trimmed.length > 500) return "URL excede 500 caracteres";
+  try {
+    if (!["http:", "https:"].includes(new URL(trimmed).protocol)) return "URL precisa usar http(s)";
+  } catch {
+    return "URL inválida";
+  }
+  return null;
+}
+
 type PropertiesProps = {
   node: GraphNode;
   definition: FlowDefinition;
@@ -281,6 +365,13 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
 
   function setTrigger(patch: Partial<FlowDefinition["triggers"]>) {
     onDefinition({ ...definition, triggers: { ...definition.triggers, ...patch } });
+  }
+
+  /** Outras etapas (alvos possíveis de roteamento) e escrita de destino por
+      handle — MESMA semântica das arestas do canvas (setEdgeTarget). */
+  const otherSteps = Object.keys(definition.steps).filter((id) => id !== node.id);
+  function setHandle(handle: string, target: string) {
+    onDefinition(setEdgeTarget(definition, node.id, handle, target || null));
   }
 
   return (
@@ -490,6 +581,168 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
               </>
             ) : null}
 
+            {step.kind === "branch" ? (
+              <>
+                <Field label="Variável" hint="Nome interno da variável comparada (a-z0-9_, até 100).">
+                  <input
+                    className="input"
+                    value={step.variable_name ?? ""}
+                    maxLength={100}
+                    disabled={!canManage}
+                    onChange={(event) => setStep(assignField(step, "variable_name", event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")))}
+                  />
+                </Field>
+                <Field label="Operador">
+                  <select
+                    className="input"
+                    value={step.operator ?? "eq"}
+                    disabled={!canManage}
+                    onChange={(event) => setStep(setBranchOperator(step, event.target.value))}
+                  >
+                    {BRANCH_OPERATORS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </Field>
+                {!branchValueHidden(step.operator) ? (
+                  <Field label="Valor" hint="Comparado à variável (até 200 caracteres).">
+                    <input
+                      className="input"
+                      value={step.value ?? ""}
+                      maxLength={200}
+                      disabled={!canManage}
+                      onChange={(event) => setStep(assignField(step, "value", event.target.value))}
+                    />
+                  </Field>
+                ) : null}
+                <Field label="Saída Sim" hint="Etapa destino quando a condição vale (obrigatória).">
+                  <select
+                    className="input"
+                    value={step.transitions?.yes ?? ""}
+                    disabled={!canManage}
+                    onChange={(event) => setHandle("yes", event.target.value)}
+                  >
+                    <option value="">— selecionar —</option>
+                    {otherSteps.map((id) => <option key={id} value={id}>{id}</option>)}
+                  </select>
+                </Field>
+                <Field label="Saída Não" hint="Etapa destino quando a condição não vale (obrigatória).">
+                  <select
+                    className="input"
+                    value={step.transitions?.no ?? ""}
+                    disabled={!canManage}
+                    onChange={(event) => setHandle("no", event.target.value)}
+                  >
+                    <option value="">— selecionar —</option>
+                    {otherSteps.map((id) => <option key={id} value={id}>{id}</option>)}
+                  </select>
+                </Field>
+              </>
+            ) : null}
+
+            {step.kind === "finalize" ? (
+              <Field label="Motivo do encerramento" hint="Código interno do motivo (1-200 caracteres).">
+                <input
+                  className="input"
+                  value={step.end_reason ?? ""}
+                  maxLength={200}
+                  disabled={!canManage}
+                  onChange={(event) => setStep(assignField(step, "end_reason", event.target.value))}
+                />
+              </Field>
+            ) : null}
+
+            {step.kind === "interactive" ? (
+              <>
+                <Field label="Mensagem" hint="Texto enviado junto com os botões.">
+                  <textarea
+                    className="input"
+                    rows={3}
+                    value={step.message ?? ""}
+                    disabled={!canManage}
+                    onChange={(event) => setStep(assignField(step, "message", event.target.value))}
+                  />
+                </Field>
+                <Field label="Texto do botão" hint="Rótulo curto do botão de resposta (1-60 caracteres).">
+                  <input
+                    className="input"
+                    value={step.interactive_button_text ?? ""}
+                    maxLength={60}
+                    disabled={!canManage}
+                    onChange={(event) => setStep(assignField(step, "interactive_button_text", event.target.value))}
+                  />
+                </Field>
+                <div>
+                  <span className="label">Botões (1-3)</span>
+                  <div className={styles.optionList}>
+                    {(step.options ?? []).map((option) => {
+                      const urlIssue = optionUrlIssue(option.url);
+                      return (
+                        <div key={option.value} className={styles.buttonRow}>
+                          <input
+                            className="input"
+                            value={option.value}
+                            maxLength={200}
+                            aria-label={`Texto do botão ${option.value}`}
+                            disabled={!canManage}
+                            onChange={(event) => setStep(renameOption(step, option.value, event.target.value))}
+                          />
+                          <input
+                            className="input"
+                            value={option.url ?? ""}
+                            maxLength={500}
+                            placeholder="https:// (opcional)"
+                            aria-label={`URL do botão ${option.value}`}
+                            disabled={!canManage}
+                            onChange={(event) => setStep(setOptionUrl(step, option.value, event.target.value))}
+                          />
+                          {urlIssue ? <p className={styles.fieldError}>{urlIssue}</p> : null}
+                          <select
+                            className="input"
+                            aria-label={`Destino do botão ${option.value}`}
+                            value={step.transitions?.[option.value] ?? step.next ?? ""}
+                            disabled={!canManage}
+                            onChange={(event) => setHandle(option.value, event.target.value)}
+                          >
+                            <option value="">— destino padrão —</option>
+                            {otherSteps.map((id) => <option key={id} value={id}>{id}</option>)}
+                          </select>
+                          {(step.options?.length ?? 0) > 1 ? (
+                            <button
+                              type="button"
+                              className={styles.buttonRemove}
+                              aria-label={`Remover botão ${option.value}`}
+                              disabled={!canManage}
+                              onClick={() => setStep(removeInteractiveButton(step, option.value))}
+                            >
+                              ×
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {(step.options?.length ?? 0) < 3 ? (
+                    <button type="button" className={styles.optionAdd} disabled={!canManage} onClick={() => setStep(addInteractiveButton(step))}>
+                      + botão
+                    </button>
+                  ) : null}
+                  <small className={styles.propertiesHint}>Até 3 botões; URL vira botão de link (http(s), ≤500). Roteamento: destino do botão (transitions) ou destino padrão (next).</small>
+                </div>
+                <Field label="Destino padrão (next)" hint="Usado por botões sem destino próprio.">
+                  <select
+                    className="input"
+                    value={step.next ?? ""}
+                    disabled={!canManage}
+                    onChange={(event) => setHandle("out", event.target.value)}
+                  >
+                    <option value="">— nenhum —</option>
+                    {otherSteps.map((id) => <option key={id} value={id}>{id}</option>)}
+                  </select>
+                </Field>
+              </>
+            ) : null}
+
             {step.kind === "action" ? (
               <>
                 <Field label="Tipo de ação">
@@ -561,6 +814,7 @@ function FlowEditorInner(props: FlowEditorProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [positions, setPositions] = useState<Map<string, XYPos>>(() => layoutDefinition(definition));
   const didFitRef = useRef(false);
+  const [conflictDismissed, setConflictDismissed] = useState(false);
 
   const graph = useMemo(() => graphFromDefinition(definition), [definition]);
 
@@ -600,6 +854,12 @@ function FlowEditorInner(props: FlowEditorProps) {
     const timer = window.setTimeout(() => reactFlow.fitView({ padding: 0.25, duration: 0 }), 60);
     return () => window.clearTimeout(timer);
   }, [reactFlow]);
+
+  /* Conflito NOVO (revisão diferente) reabre o modal mesmo após "Continuar
+     editando" — identidade do objeto decide, não um contador. */
+  useEffect(() => {
+    setConflictDismissed(false);
+  }, [props.conflict]);
 
   const selectedNode = selectedId ? graph.nodes.find((node) => node.id === selectedId) ?? null : null;
 
@@ -659,6 +919,13 @@ function FlowEditorInner(props: FlowEditorProps) {
   const shownIssues = clientIssues.slice(0, 4);
   const extraIssues = clientIssues.length - shownIssues.length;
 
+  /* R4: issue clicável seleciona/foca a etapa no canvas (abre o painel de
+     propriedades e destaca o nó). Etapas com error também ficam marcadas. */
+  const handleIssueClick = useCallback((id: string) => {
+    setSelectedId(id);
+    document.querySelector<HTMLElement>(`[data-testid="flow-node-${id}"]`)?.scrollIntoView?.({ block: "center" });
+  }, []);
+
   return (
     <div className={styles.editor}>
       <header className={styles.header}>
@@ -690,7 +957,23 @@ function FlowEditorInner(props: FlowEditorProps) {
         <div className={styles.editorError} role="alert">
           <strong>{clientIssues.length} problema(s) no fluxo:</strong>
           <ul className={styles.errorList}>
-            {shownIssues.map((issue, index) => <li key={`${issue.stepId ?? "flow"}-${index}`}>{issue.message}</li>)}
+            {shownIssues.map((issue, index) => (
+              <li key={`${issue.stepId ?? "flow"}-${index}`}>
+                {issue.stepId ? (
+                  <button
+                    type="button"
+                    className={styles.issueLink}
+                    data-testid={`flow-issue-${issue.stepId}`}
+                    title="Seleciona a etapa no canvas"
+                    onClick={() => handleIssueClick(issue.stepId as string)}
+                  >
+                    {issue.message}
+                  </button>
+                ) : (
+                  issue.message
+                )}
+              </li>
+            ))}
             {extraIssues > 0 ? <li>… e mais {extraIssues}</li> : null}
           </ul>
         </div>
@@ -785,6 +1068,15 @@ function FlowEditorInner(props: FlowEditorProps) {
           </div>
         </section>
       ) : null}
+
+      {props.conflict && !conflictDismissed ? (
+        <FlowConflictModal
+          conflict={props.conflict}
+          onReload={() => props.onReload?.()}
+          onOpenHistory={props.onOpenHistory ? () => props.onOpenHistory?.() : undefined}
+          onClose={() => setConflictDismissed(true)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -807,42 +1099,15 @@ const MINIMAP_COLORS: Record<string, string> = {
   final: "#e94646",
   delay: "#de9c31",
   wait_for_reply: "#e67339",
+  branch: "#c9a90c",
+  finalize: "#e94646",
+  interactive: "#2389e2",
   tag_add: "#df5ba2",
   tag_remove: "#df5ba2",
   stage_move: "#6572e4",
   assign_agent: "#c35bca",
   webhook: "#74889e",
 };
-
-const PALETTE_GROUPS: Array<{ group: string; items: PaletteItem[] }> = [
-  {
-    group: "Mensagens",
-    items: [
-      { id: "message", kind: "message", label: "Mensagem", hint: "Envia um texto", icon: "ChatText" },
-      { id: "options", kind: "options", label: "Opções", hint: "Pergunta com ramificações", icon: "ListBullets" },
-      { id: "boolean", kind: "boolean", label: "Sim/Não", hint: "Dois caminhos", icon: "GitFork" },
-      { id: "text", kind: "text", label: "Texto livre", hint: "Resposta digitada", icon: "Keyboard" },
-      { id: "final", kind: "final", label: "Finalizar", hint: "Encerra o fluxo", icon: "Power" },
-    ],
-  },
-  {
-    group: "Controle",
-    items: [
-      { id: "delay", kind: "delay", label: "Espera", hint: "Aguarda N minutos", icon: "Clock" },
-      { id: "wait_for_reply", kind: "wait_for_reply", label: "Aguardar resposta", hint: "Pausa até responder", icon: "Hourglass" },
-    ],
-  },
-  {
-    group: "Ações CRM",
-    items: [
-      { id: "tag_add", kind: "action", action: "tag_add", label: "Adicionar tag", hint: "Aplica etiqueta", icon: "Tag" },
-      { id: "tag_remove", kind: "action", action: "tag_remove", label: "Remover tag", hint: "Remove etiqueta", icon: "Tag" },
-      { id: "stage_move", kind: "action", action: "stage_move", label: "Mover de etapa", hint: "Move no pipeline", icon: "Kanban" },
-      { id: "assign_agent", kind: "action", action: "assign_agent", label: "Atribuir agente", hint: "Designa responsável", icon: "UserFocus" },
-      { id: "webhook", kind: "action", action: "webhook", label: "Webhook", hint: "Chama URL externa", icon: "WebhooksLogo" },
-    ],
-  },
-];
 
 export function FlowEditor(props: FlowEditorProps) {
   return (

@@ -189,6 +189,7 @@ export function MeetRoom({ endpoint, publicAccess = false }: { endpoint: string;
 
       <section className="meet-room__stage" aria-label="Sala de videochamada">
         <div ref={parentRef} className="meet-room__frame" />
+        {phase === "ready" ? <h1 className="sr-only">Sala de videochamada</h1> : null}
         {phase === "loading" ? (
           <div className="meet-room__overlay" role="status" aria-live="polite">
             <div className="meet-room__message">

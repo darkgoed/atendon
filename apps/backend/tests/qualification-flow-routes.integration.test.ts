@@ -16,6 +16,7 @@ import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { createSessionToken } from "../src/auth/session.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
+import { seedTenantCapabilities } from "./helpers/capability-seed.js";
 import { flowDefinitionSchema, type FlowDefinition } from "../src/modules/qualification/flow.js";
 import { QualificationService } from "../src/modules/qualification/service.js";
 import { withTransaction } from "../src/modules/scheduling/service.js";
@@ -215,6 +216,15 @@ async function activateFlow(tenantId: string, id: string): Promise<void> {
   await pool.query("UPDATE qualification_flows SET active=true WHERE tenant_id=$1 AND id=$2", [tenantId, id]);
 }
 
+// F4-r1 (CAS): token obrigatório em toda mutação de fluxo. Ler a revisão viva
+// logo antes de cada chamada mantém o teste correto mesmo com o trigger
+// incrementando a cada UPDATE intermediário.
+async function currentRevision(tenantId: string, id: string): Promise<number> {
+  return (await pool.query<{ revision: number }>(
+    "SELECT revision FROM qualification_flows WHERE tenant_id=$1 AND id=$2", [tenantId, id]
+  )).rows[0]?.revision ?? 0;
+}
+
 async function ensureConversation(phone: string): Promise<string> {
   return (await pool.query<{ id: string }>(
     "INSERT INTO conversations(tenant_id,session_id,contact_phone) VALUES($1,$2,$3) RETURNING id",
@@ -306,6 +316,7 @@ beforeAll(async () => {
     for (const tenantId of [tenantQ, tenantV, tenantT, tenantT2, tenantA]) {
       await ensureWorkspaceDefaultRoles(client, tenantId);
     }
+    await seedTenantCapabilities(client, [tenantQ, tenantV, tenantT, tenantT2, tenantA]);
     sessionIdQ = (await client.query<{ id: string }>(
       "INSERT INTO whatsapp_sessions(tenant_id,channel,status) VALUES($1,'whatsapp','connected') RETURNING id",
       [tenantQ]
@@ -543,36 +554,36 @@ describe("Gating por allowed_role_ids (C1-c, fail-closed)", () => {
       [tenantV, `W2C V-DENY ${randomUUID()}`]
     )).rows[0].id;
     expect((await app.inject({
-      method: "PATCH", url: "/qualification/flows/versoes", payload: { allowed_role_ids: [allowRoleId] }
+      method: "PATCH", url: "/qualification/flows/versoes", payload: { allowed_role_ids: [allowRoleId], revisao_base: 1 }
     })).statusCode).toBe(401);
     expect((await app.inject({
       method: "PATCH", url: "/qualification/flows/versoes",
       headers: { cookie: await cookieFor(readV, tenantV) },
-      payload: { allowed_role_ids: [] }
+      payload: { allowed_role_ids: [], revisao_base: 1 }
     })).statusCode).toBe(403);
     const badRole = await app.inject({
       method: "PATCH", url: "/qualification/flows/versoes",
       headers: { cookie: await cookieFor(ownerV, tenantV) },
-      payload: { allowed_role_ids: [randomUUID()] }
+      payload: { allowed_role_ids: [randomUUID()], revisao_base: 1 }
     });
     expect(badRole.statusCode).toBe(400);
     expect(badRole.json().error).toContain("não pertencem à organização");
     expect((await app.inject({
       method: "PATCH", url: "/qualification/flows/inexistente",
       headers: { cookie: await cookieFor(ownerV, tenantV) },
-      payload: { allowed_role_ids: [] }
+      payload: { allowed_role_ids: [], revisao_base: 1 }
     })).statusCode).toBe(404);
     const patched = await app.inject({
       method: "PATCH", url: "/qualification/flows/versoes-patch",
       headers: { cookie: await cookieFor(ownerV, tenantV) },
-      payload: { allowed_role_ids: [allowGroupId, denyGroupId] }
+      payload: { allowed_role_ids: [allowGroupId, denyGroupId], revisao_base: await currentRevision(tenantV, "versoes-patch") }
     });
     expect(patched.statusCode).toBe(200);
     expect(patched.json().flow.allowed_role_ids).toEqual([allowGroupId, denyGroupId]);
     const cleared = await app.inject({
       method: "PATCH", url: "/qualification/flows/versoes-patch",
       headers: { cookie: await cookieFor(ownerV, tenantV) },
-      payload: { allowed_role_ids: [] }
+      payload: { allowed_role_ids: [], revisao_base: await currentRevision(tenantV, "versoes-patch") }
     });
     expect(cleared.json().flow.allowed_role_ids).toEqual([]);
   });
@@ -581,7 +592,7 @@ describe("Gating por allowed_role_ids (C1-c, fail-closed)", () => {
     const patched = await app.inject({
       method: "PATCH", url: "/qualification/flows/robot-gate",
       headers: { cookie: await cookieFor(ownerQ, tenantQ) },
-      payload: { allowed_role_ids: [gateOnlyRoleId] } // papel sem nenhum membro
+      payload: { allowed_role_ids: [gateOnlyRoleId], revisao_base: await currentRevision(tenantQ, "robot-gate") } // papel sem nenhum membro
     });
     expect(patched.statusCode).toBe(200);
     await activateFlow(tenantQ, "robot-gate");
@@ -602,7 +613,7 @@ describe("Gating por allowed_role_ids (C1-c, fail-closed)", () => {
     await app.inject({
       method: "PATCH", url: "/qualification/flows/robot-branch",
       headers: { cookie: await cookieFor(ownerQ, tenantQ) },
-      payload: { allowed_role_ids: [] }
+      payload: { allowed_role_ids: [], revisao_base: await currentRevision(tenantQ, "robot-branch") }
     });
     const restrictedPhone = nextPhone();
     await startRobot(restrictedPhone);
@@ -612,7 +623,7 @@ describe("Gating por allowed_role_ids (C1-c, fail-closed)", () => {
     await app.inject({
       method: "PATCH", url: "/qualification/flows/robot-branch",
       headers: { cookie: await cookieFor(ownerQ, tenantQ) },
-      payload: { allowed_role_ids: [allowRoleId] }
+      payload: { allowed_role_ids: [allowRoleId], revisao_base: await currentRevision(tenantQ, "robot-branch") }
     });
 
     // Papel fora da allowlist: robô calado + log skipped role_not_allowed.
@@ -652,12 +663,12 @@ describe("Versions — snapshot, diff e restore (C1-b)", () => {
     expect((await app.inject({ method: "GET", url: "/qualification/flows/versoes/versions" })).statusCode).toBe(401);
     const first = await app.inject({
       method: "PUT", url: "/qualification/flows/versoes", headers: { cookie },
-      payload: { nome: "Versões", ativo: true, definition: versionsFlowV1 }
+      payload: { nome: "Versões", ativo: true, definition: versionsFlowV1, revisao_base: 0 }
     });
     expect(first.statusCode).toBe(201);
     const second = await app.inject({
       method: "PUT", url: "/qualification/flows/versoes", headers: { cookie },
-      payload: { nome: "Versões", ativo: true, definition: versionsFlowV2 }
+      payload: { nome: "Versões", ativo: true, definition: versionsFlowV2, revisao_base: await currentRevision(tenantV, "versoes") }
     });
     expect(second.statusCode).toBe(200);
 
@@ -686,18 +697,22 @@ describe("Versions — snapshot, diff e restore (C1-b)", () => {
       method: "GET", url: "/qualification/flows/versoes/versions/diff?from=1&to=99", headers: { cookie }
     })).statusCode).toBe(404);
 
+    const revisionBeforeRestore = await currentRevision(tenantV, "versoes");
     const restore = await app.inject({
-      method: "POST", url: `/qualification/flows/versoes/versions/${versions[1].id}/restore`, headers: { cookie }
+      method: "POST", url: `/qualification/flows/versoes/versions/${versions[1].id}/restore`,
+      headers: { cookie }, payload: { revisao_base: revisionBeforeRestore }
     });
     expect(restore.statusCode).toBe(200);
     expect(restore.json()).toMatchObject({ restored_from: 1, version: 3 });
+    expect(restore.json().flow.revisao).toBe(revisionBeforeRestore + 1); // trigger bumpa a revisão no restore
     expect(restore.json().flow.definition.steps.M1.message).toBe("Olá!");
     expect(restore.json().flow.definition.steps.B1).toBeUndefined();
     const afterRestore = await app.inject({ method: "GET", url: "/qualification/flows/versoes/versions", headers: { cookie } });
     expect(afterRestore.json().versions.map((version: { version: number }) => version.version)).toEqual([3, 2, 1]);
 
     expect((await app.inject({
-      method: "POST", url: `/qualification/flows/versoes/versions/${randomUUID()}/restore`, headers: { cookie }
+      method: "POST", url: `/qualification/flows/versoes/versions/${randomUUID()}/restore`,
+      headers: { cookie }, payload: { revisao_base: await currentRevision(tenantV, "versoes") }
     })).statusCode).toBe(404);
     expect((await app.inject({
       method: "GET", url: "/qualification/flows/versoes/versions", headers: { cookie: await cookieFor(readV, tenantV) }

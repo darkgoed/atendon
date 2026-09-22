@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
+import { seedTenantCapabilities } from "./helpers/capability-seed.js";
 import { listLossReasons, resolveLossReason } from "../src/modules/commercial-journey/loss-reasons.js";
 import { markLeadDisqualified } from "../src/modules/scheduling/service.js";
 
@@ -27,6 +28,7 @@ beforeAll(async () => {
     "INSERT INTO tenants(name,status,slug) VALUES($1,'active',$2) RETURNING id",
     [`Loss reasons foreign ${randomUUID()}`, `loss-foreign-${randomUUID().slice(0, 8)}`]
   )).rows[0].id;
+  await seedTenantCapabilities(pool, [tenantId, otherTenantId]);
   const email = `loss-reason-${randomUUID()}@test.local`;
   const password = "loss-reason-password";
   testEmails = [email];

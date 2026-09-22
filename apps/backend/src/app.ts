@@ -64,6 +64,7 @@ import { registerSecurityRoutes } from "./auth/security-routes.js";
 import { registerReportsRoutes } from "./modules/reports/routes.js";
 import { registerOrganizationStorageRoutes } from "./modules/organization/storage.js";
 import { registerMessagingRoutes } from "./modules/messaging/routes.js";
+import { registerChangelogRoutes } from "./modules/changelog/routes.js";
 import { registerContactOpsRoutes } from "./modules/contact-ops/routes.js";
 import { registerOperationsRoutes } from "./modules/operations/routes.js";
 import { isCapabilityEnabled, isFeatureFlagEnabled, type FeatureFlagKey } from "./modules/operations/feature-flags.js";
@@ -2902,6 +2903,7 @@ export function buildApp(options: {
     renderPdf: async ({ scope, proposal }: TripzDocumentRenderContext) => tripzDocuments.renderPdf(scope, proposal)
   });
   void app.register(registerConversationQueueRoutes);
+  void app.register(registerChangelogRoutes);
   void app.register(registerMessagingRoutes, { gateway: messageGateway });
 
   return app;

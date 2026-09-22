@@ -20,7 +20,7 @@ import { ModalDialog } from "@/components/modal-dialog";
 import { PostSalesChecklist } from "@/components/post-sales-checklist";
 import { PostSalesSummaryStrip } from "@/components/post-sales-summary";
 import { Shell } from "@/components/shell";
-import { Input, Select, Textarea } from "@/components/ui";
+import { Input, PageHeader, Select, Textarea } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import {
   buildPostSaleQuery,
@@ -191,16 +191,17 @@ export default function PostSalesPage() {
   return (
     <Shell fitViewport>
       <div className="post-sales-page">
-        <header className="pagehead post-sales-head">
-          <div>
-            <h1>Carteira de pós-venda</h1>
-          </div>
-          <div className="post-sales-head__actions">
-            <Link className="btn" href="/pos-venda/cobranca">Cobranças de crediário</Link>
-            {canManage ? <Link className="btn" href="/pos-venda/configurar"><ClipboardText size={16} aria-hidden="true" /> Configurar checklist</Link> : null}
-            <button className="btn primary" type="button" onClick={() => setCreateOpen(true)}><Plus size={16} aria-hidden="true" /> Novo cliente</button>
-          </div>
-        </header>
+        <PageHeader
+          className="post-sales-head"
+          title="Carteira de pós-venda"
+          actions={
+            <div className="post-sales-head__actions">
+              <Link className="btn" href="/pos-venda/cobranca">Cobranças de crediário</Link>
+              {canManage ? <Link className="btn" href="/pos-venda/configurar"><ClipboardText size={16} aria-hidden="true" /> Configurar checklist</Link> : null}
+              <button className="btn primary" type="button" onClick={() => setCreateOpen(true)}><Plus size={16} aria-hidden="true" /> Novo cliente</button>
+            </div>
+          }
+        />
 
         {data?.summary ? <PostSalesSummaryStrip summary={data.summary} /> : (
           <div className="post-sales-summary-wrap"><div className="post-sales-summary post-sales-summary--loading" role="status" aria-label="Carregando resumo">

@@ -5,6 +5,7 @@ import { redisConnection } from "./queue/connection.js";
 import { enqueueInbound, ensureInboundAiTurn, INBOUND_QUEUE, type InboundJobData } from "./queue/message-queue.js";
 import { HUMAN_OUTBOUND_QUEUE, type HumanOutboundJob } from "./queue/human-message-queue.js";
 import { db } from "./db/client.js";
+import { publishScheduledChangelogPosts } from "./modules/changelog/repository.js";
 import { ConversationBusyRetryError, isAutomaticAiRecoveryError } from "./modules/messages/process-message.js";
 import { HANDOFF_NOTIFICATION_QUEUE, enqueueHandoffNotification, type HandoffNotificationJob } from "./queue/handoff-notification-queue.js";
 import {
@@ -698,6 +699,15 @@ const changelogAiTimer = setInterval(() => {
     .catch((error) => logger.error({ error }, "Changelog AI reconciliation failed"));
 }, Number(process.env.CHANGELOG_AI_RECONCILIATION_INTERVAL_MS ?? 120_000));
 changelogAiTimer.unref();
+// F3-r1: worker de agendamento do changelog editorial (só posts; nunca releases; sem sync).
+const changelogPublishTimer = setInterval(() => {
+  void publishScheduledChangelogPosts(db)
+    .then((publishedIds) => {
+      if (publishedIds.length > 0) logger.info({ postIds: publishedIds }, "Scheduled changelog posts published");
+    })
+    .catch((error) => logger.error({ error }, "Changelog scheduled publish failed"));
+}, Number(process.env.CHANGELOG_PUBLISH_INTERVAL_MS ?? 60_000));
+changelogPublishTimer.unref();
 const recordHeartbeat = async (): Promise<void> => {
   const redis = await worker.client;
   const value = String(Date.now());
@@ -712,6 +722,7 @@ const heartbeatTimer = setInterval(() => {
 }, 10_000);
 void recordHeartbeat().catch((error) => logger.error({ error }, "Initial worker heartbeat failed"));
 void reconcileChangelogAiGeneration().catch((error) => logger.error({ error }, "Initial changelog AI reconciliation failed"));
+void publishScheduledChangelogPosts(db).catch((error) => logger.error({ error }, "Initial changelog scheduled publish failed"));
 void reconcileHandoffNotifications().catch((error) => logger.error({ error }, "Initial handoff outbox reconciliation failed"));
 void reconcileAiFollowUps().catch((error) => logger.error({ error }, "Initial AI follow-up reconciliation failed"));
 void reconcileSchedulingNotifications()
@@ -754,6 +765,7 @@ async function shutdown(): Promise<void> {
   clearInterval(subscriptionLifecycleTimer);
   clearInterval(scheduledDowngradeTimer);
   clearInterval(oauthTokenRenewalTimer);
+  clearInterval(changelogPublishTimer);
   clearInterval(heartbeatTimer);
   clearInterval(tripzAiReconciler);
   clearInterval(qualificationWaitReconciler);

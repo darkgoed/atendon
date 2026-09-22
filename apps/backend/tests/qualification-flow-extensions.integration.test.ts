@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
+import { seedTenantCapabilities } from "./helpers/capability-seed.js";
 import { DEFAULT_QUALIFICATION_FLOW, activationIssues, flowDefinitionSchema, type FlowDefinition } from "../src/modules/qualification/flow.js";
 import { QualificationService } from "../src/modules/qualification/service.js";
 import { MessageProcessor } from "../src/modules/messages/process-message.js";
@@ -101,6 +102,7 @@ async function dueNow(qualificationId: string) {
 beforeAll(async () => {
   await app.ready();
   tenantId = (await pool.query<{ id: string }>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id", [`Qualification W3A ${randomUUID()}`])).rows[0].id;
+  await seedTenantCapabilities(pool, [tenantId]);
   sessionId = (await pool.query<{ id: string }>("INSERT INTO whatsapp_sessions(tenant_id,status) VALUES($1,'connected') RETURNING id", [tenantId])).rows[0].id;
   tagId = (await pool.query<{ id: string }>("INSERT INTO lead_tags(tenant_id,name,color) VALUES($1,'W3A Robô','#123456') RETURNING id", [tenantId])).rows[0].id;
   await pool.query("INSERT INTO qualification_flows(tenant_id,id,name,active,definition) VALUES($1,'robot-ext','Robô W3A',false,$2)", [tenantId, robotFlowDefinition(tagId)]);
@@ -146,20 +148,21 @@ describe("W3A fechamento — fluxos de robô", () => {
     expect(parsed.success).toBe(true);
     const withTrigger = { ...(parsed.data as FlowDefinition), triggers: { ...(parsed.data as FlowDefinition).triggers, ctwa: true } };
     expect(activationIssues(withTrigger)).toEqual([]);
-    const activated = await app.inject({ method: "PUT", url: "/qualification/flows/padrao-w3a", headers: { cookie }, payload: { nome: "Fluxo padrão", ativo: true, ctwa: true } });
+    const activated = await app.inject({ method: "PUT", url: "/qualification/flows/padrao-w3a", headers: { cookie }, payload: { nome: "Fluxo padrão", ativo: true, ctwa: true, revisao_base: 0 } });
     expect(activated.statusCode).toBe(201);
-    expect(activated.json().flow).toMatchObject({ ativo: true });
+    expect(activated.json().flow).toMatchObject({ ativo: true, revisao: 1 }); // criação: revision nasce em 1
     // Volta a inativar: o fluxo do robô assume os testes seguintes.
-    const deactivated = await app.inject({ method: "PUT", url: "/qualification/flows/padrao-w3a", headers: { cookie }, payload: { nome: "Fluxo padrão", ativo: false } });
+    const deactivated = await app.inject({ method: "PUT", url: "/qualification/flows/padrao-w3a", headers: { cookie }, payload: { nome: "Fluxo padrão", ativo: false, revisao_base: 1 } });
     expect(deactivated.statusCode).toBe(200);
     expect(deactivated.json().flow.ativo).toBe(false);
+    expect(deactivated.json().flow.revisao).toBe(2); // trigger incrementa em qualquer UPDATE
   });
 
   it("rejeita ciclo sem saída na ativação", async () => {
     const loop = await app.inject({
       method: "PUT", url: "/qualification/flows/robot-loop", headers: { cookie },
       payload: {
-        nome: "Loop", ativo: true, ctwa: true,
+        nome: "Loop", ativo: true, ctwa: true, revisao_base: 0,
         definition: {
           start: "A", origem: "facebook",
           triggers: { ctwa: true, session_ids: [], keywords: [] },

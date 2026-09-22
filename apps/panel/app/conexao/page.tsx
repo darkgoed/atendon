@@ -22,6 +22,7 @@ import {
 } from "@/lib/connections";
 import { usePermission } from "@/lib/use-permission";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/layout";
 import { PopoverMenu } from "@/components/popover-menu";
 import { InstagramConnections } from "@/components/instagram-connections";
 import styles from "../channels-ai.module.css";
@@ -360,9 +361,10 @@ export default function Connection() {
 
   return (
     <Shell><div className={`${styles.channelsAiPage} channels-ai-page`}>
-      <header className="pagehead">
-        <div><h1>Conexão</h1></div>
-        <div className="flex flex-wrap items-center gap-3">
+      <PageHeader
+        title="Conexão"
+        actions={
+          <div className="flex flex-wrap items-center gap-3">
           {loaded && whatsappConnections.length ? (
             <span className="mono rounded-md border border-[var(--primary-border)] px-3 py-2 type-caption text-[var(--primary-text)]">
               {connectedCount} de {whatsappConnections.length} conectado{whatsappConnections.length === 1 ? "" : "s"}
@@ -380,8 +382,9 @@ export default function Connection() {
               Adicionar número
             </Button>
           ) : <span className="text-sm text-[var(--text-secondary)]" role="status">Acesso somente leitura. O gerenciamento das conexões está indisponível.</span>}
-        </div>
-      </header>
+          </div>
+        }
+      />
 
       {addOpen && canManageConnection ? (
         <section className="channels-ai-section channels-ai-form-grid mb-5" role="dialog" aria-labelledby="add-connection-title">

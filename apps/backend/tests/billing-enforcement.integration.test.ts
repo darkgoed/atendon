@@ -4,6 +4,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
+import { seedTenantCapabilities } from "./helpers/capability-seed.js";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
@@ -32,6 +33,7 @@ beforeAll(async () => {
   try {
     await client.query("BEGIN");
     tenant = (await client.query<{ id: string }>("INSERT INTO tenants(name,slug,status) VALUES($1,$2,'active') RETURNING id", [`Enforcement ${suffix}`, `enforcement-${suffix}`])).rows[0].id;
+    await seedTenantCapabilities(client, [tenant]);
     await ensureWorkspaceDefaultRoles(client, tenant);
     const passwordHash = await hash(password, 4);
     user = (await client.query<{ id: string }>("INSERT INTO users(email,password_hash,status) VALUES($1,$2,'active') RETURNING id", [email, passwordHash])).rows[0].id;

@@ -14,6 +14,9 @@ export const ROOT_ROUTE_CONTRACTS = {
   "/workspace/members": populated("Membros", "Ana QA|Bruno QA", "table tbody tr"),
   "/workspace/roles": populated("Funções e permissões", "Administrador|Operador", ".admin-list-item"),
   "/workspace/audit": populated("Auditoria do workspace", "workspace.viewed|AtendON QA", "table tbody tr"),
+  // F6a (changelog editorial ROOT): lista semeada com post QA — marker é o título
+  // renderizado na linha da tabela (fixture em design-audit.mjs payload()).
+  "/root/changelog": populated("Changelog editorial", "Lançamento QA do changelog", "main table tbody tr"),
   "/uso": populated("Uso", "Total usado|Histórico mensal", "section.card")
 };
 export function rootContractFor(route) { return ROOT_ROUTE_CONTRACTS[route]; }

@@ -4,6 +4,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
+import { seedTenantCapabilities } from "./helpers/capability-seed.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const app = buildApp();
@@ -19,6 +20,7 @@ beforeAll(async () => {
     [`Follow-up settings ${randomUUID()}`]
   );
   tenantId = tenant.rows[0].id;
+  await seedTenantCapabilities(pool, [tenantId]);
   await pool.query(
     "INSERT INTO users(email,password_hash,status,is_root) VALUES($1,$2,'active',true)",
     [rootEmail, await hash(password, 4)]

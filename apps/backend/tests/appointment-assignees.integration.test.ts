@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
+import { seedTenantCapabilities } from "./helpers/capability-seed.js";
 import { SchedulingNotificationRepository } from "../src/modules/scheduling/notification-repository.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
@@ -23,6 +24,7 @@ const phone = () => `5511${++sequence}`;
 beforeAll(async () => {
   await app.ready();
   tenantId = (await pool.query<{ id: string }>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id", [`Assignees ${randomUUID()}`])).rows[0].id;
+  await seedTenantCapabilities(pool, [tenantId]);
   const ownerEmail = `assignee-owner-${randomUUID()}@test.local`;
   const operatorEmail = `closer-a-${randomUUID()}@test.local`;
   const password = "assignee-password";

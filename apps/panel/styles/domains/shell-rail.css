@@ -52,6 +52,14 @@
 
 .nav-rail { display: none; }
 
+/* Painel de contexto e backdrop existem SÓ em /conversas ≥1280px: o hide base
+   fica FORA do media — abaixo de 1280px o painel vazava estático no fluxo
+   (sem estilo) e, em ≤700px, entrava como primeiro filho do grid do shell,
+   desalinhando as linhas e colapsando o .content de /conversas (bug 360/768,
+   REPASSE-D2 P2). O ≥1280 reexibe via .shell--conversas .context-panel. */
+.context-panel__backdrop,
+.context-panel { display: none; }
+
 @media (min-width: 1280px) {
   .nav-rail {
     position: fixed;
@@ -135,6 +143,10 @@
     background: var(--primary-subtle);
     background: color-mix(in srgb, var(--primary) 10%, transparent);
     color: var(--primary-text);
+      /* P1/D2: --primary-text puro dá 4.12–4.29:1 sobre o tint 10% da marca no light
+     (13px exige 4.5:1). Mix local de TOKENS (--primary-text × --text) chega a
+     ~5.0:1 sem cor hardcoded; sem color-mix o fallback mantém --primary-text. */
+    color: color-mix(in srgb, var(--primary-text) 85%, var(--text));
   }
 
   /* Contador do handoff (dado AtendON): pill sólida da marca no canto. */
@@ -203,8 +215,6 @@
 
   /* ===================================================== CONTEXT PANEL == */
 
-  .context-panel__backdrop { display: none; }
-  .context-panel { display: none; }
 
   .shell--conversas .context-panel__backdrop {
     position: fixed;
@@ -346,7 +356,17 @@
 .rail-more__item > svg { flex: none; }
 .rail-more__item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rail-more__item:hover { background: var(--surface-hover); color: var(--text); text-decoration: none; }
-.rail-more__item.active { background: var(--primary-subtle); color: var(--primary-text); font-weight: var(--weight-semibold); }
+.rail-more__item.active {
+  background: var(--primary-subtle);
+  color: var(--primary-text);
+   /* P1/D2: --primary-text puro dá 4.12–4.29:1 sobre o tint 10% da marca no light
+     (13px exige 4.5:1). Mix local de TOKENS (--primary-text × --text) chega a
+     ~5.0:1 sem cor hardcoded; sem color-mix o fallback mantém --primary-text.
+     D2-r3: a declaração estava FORA das chaves da regra (CSS inválido, descartado
+     no build) — movida para dentro do bloco. */
+  color: color-mix(in srgb, var(--primary-text) 85%, var(--text));
+  font-weight: var(--weight-semibold);
+}
 
 /* ============================================= SETTINGS (idioma do rail) == */
 
@@ -384,9 +404,13 @@
   background: var(--primary-subtle);
   background: color-mix(in srgb, var(--primary) 10%, transparent);
   color: var(--primary-text);
+    /* P1/D2: --primary-text puro dá 4.12–4.29:1 sobre o tint 10% da marca no light
+     (13px exige 4.5:1). Mix local de TOKENS (--primary-text × --text) chega a
+     ~5.0:1 sem cor hardcoded; sem color-mix o fallback mantém --primary-text. */
+  color: color-mix(in srgb, var(--primary-text) 85%, var(--text));
   font-weight: var(--weight-semibold);
 }
-.settings-rail__tab[aria-pressed="true"] > svg { color: var(--primary-text); }
+.settings-rail__tab[aria-pressed="true"] > svg { color: var(--primary-text); color: color-mix(in srgb, var(--primary-text) 85%, var(--text)); }
 
 @media (min-width: 960px) {
   /* Nav lateral: coluna fixa à esquerda, conteúdo ao lado. Float + sticky
@@ -414,11 +438,29 @@
    ativo com tint da marca (sem barra lateral), hover de superfície. */
 .shell--rail .nav a { border-radius: var(--radius-md); }
 .shell--rail .nav a:hover { background: var(--surface-hover); color: var(--text); }
-.shell--rail .nav a.active { background: var(--primary-subtle); background: color-mix(in srgb, var(--primary) 10%, transparent); color: var(--primary-text); }
+.shell--rail .nav a.active {
+  background: var(--primary-subtle);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary-text);
+   /* P1/D2: --primary-text puro dá 4.12–4.29:1 sobre o tint 10% da marca no light
+     (13px exige 4.5:1). Mix local de TOKENS (--primary-text × --text) chega a
+     ~5.0:1 sem cor hardcoded; sem color-mix o fallback mantém --primary-text.
+     D2-r3: a declaração estava FORA das chaves da regra (CSS inválido, descartado
+     no build) — causava 4.12:1 auditado no tint 10% transparente (achata #dde5f4);
+     movida para dentro do bloco. */
+  color: color-mix(in srgb, var(--primary-text) 85%, var(--text));
+}
 .shell--rail .nav a.active::before { display: none; }
 
 @media (max-width: 700px) {
   .shell--rail .nav a { border-radius: var(--radius-lg); }
-  .shell--rail .nav a[aria-current="page"] { background: var(--primary-subtle); background: color-mix(in srgb, var(--primary) 10%, transparent); color: var(--primary-text); }
+  .shell--rail .nav a[aria-current="page"] {
+    background: var(--primary-subtle);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--primary-text);
+     /* P1/D2 + D2-r3: mesma correção da regra .active acima — a declaração do mix
+        estava fora das chaves (CSS inválido) e o fallback cru auditava 4.12:1. */
+    color: color-mix(in srgb, var(--primary-text) 85%, var(--text));
+  }
   .shell--rail .mobile-nav-panel { border-radius: var(--radius-lg); }
 }

@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
+import { seedTenantCapabilities } from "./helpers/capability-seed.js";
 
 const password = "fields-password";
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
@@ -57,6 +58,7 @@ beforeAll(async () => {
     await client.query("BEGIN");
     tenantA = (await client.query<{ id: string }>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id", [`Fields A ${randomUUID()}`])).rows[0].id;
     tenantB = (await client.query<{ id: string }>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id", [`Fields B ${randomUUID()}`])).rows[0].id;
+    await seedTenantCapabilities(client, [tenantA, tenantB]);
     await ensureWorkspaceDefaultRoles(client, tenantA);
     await ensureWorkspaceDefaultRoles(client, tenantB);
     ownerA = await createUser(client, tenantA, await roleIdOf(client, tenantA, "OWNER"), `fields-a-owner-${randomUUID()}@test.local`);

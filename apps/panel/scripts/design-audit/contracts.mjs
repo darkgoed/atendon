@@ -35,7 +35,9 @@ export const ROUTE_CONTRACTS = {
   "/root/saas/gateways": populated("Gateways", "Stripe Test|sandbox", "/root/saas/gateways"),
   "/root/saas/metricas": populated("Métricas SaaS", "Receita|Transações|Tenant ID", "/root/saas/metricas"),
   "/root/versions": { expectedPath: null, heading: "Versões e changelogs", headingRole: "heading", marker: "v2\\.1\\.0|qa-release|Release \\(major\\)", entitySelector: "table tbody tr", state: "populated" },
-  "/changelog": { expectedPath: "/changelog", heading: "Changelog público", headingRole: "heading", marker: "Changelog público|AtendON 2\\.1\\.0", entitySelector: "main .card", state: "public" },
+  // F6a: /changelog virou "Novidades" (feed editorial global + read-state por
+  // usuário). Marker = título do post semeado no fixture /panel/changelog/feed.
+  "/changelog": { expectedPath: "/changelog", heading: "Novidades", headingRole: "heading", marker: "Novidades de setembro no AtendON", entitySelector: "main .card", state: "populated" },
   "/privacidade": { expectedPath: "/privacidade", heading: "Política de privacidade", headingRole: "heading", marker: "privacidade|dados", entitySelector: "main", state: "public" },
   "/termos": { expectedPath: "/termos", heading: "Termos de uso", headingRole: "heading", marker: "termos|usuário", entitySelector: "main", state: "public" },
   "/root/saas/planos": populated("Planos e cobrança", "Profissional|qa-plan", "/root/saas/planos"),
@@ -44,17 +46,36 @@ export const ROUTE_CONTRACTS = {
   "/alterar-senha": { expectedPath: "/alterar-senha", heading: "Crie uma nova senha", headingRole: "heading", marker: "nova senha", entitySelector: "main > section", state: "public" },
   "/403": { expectedPath: "/403", heading: "Você não tem permissão para abrir esta área\\.", headingRole: "heading", marker: "permissão para abrir esta área", entitySelector: ".denied-card", state: "error" },
   "/offline": { expectedPath: "/offline", heading: "Sem conexão no momento", headingRole: "heading", marker: "conexão", entitySelector: "main > section", state: "error" },
-  "/login": { expectedPath: "/login", heading: "Boas-vindas", headingRole: "heading", marker: "senha|e-mail|email", entitySelector: "main > section", state: "public" },
+  // D1-r2 (drift-check): "main > section" pegava a seção hero (marketing) — o
+  // formulário de login (E-mail/Senha) vive em <form> dentro de main. O runner
+  // não pegava isso porque estado "public" não valida entity no measure().
+  "/login": { expectedPath: "/login", heading: "Boas-vindas", headingRole: "heading", marker: "senha|e-mail|email", entitySelector: "main form", state: "public" },
   "/convite": { expectedPath: "/convite", heading: "Aceitar convite", headingRole: "heading", marker: "AtendON QA Workspace|guest@example.test", entitySelector: ".invitation-summary", state: "public" },
   "/invitations/[token]": { expectedPath: "/invitations/qa-token", heading: "Aceitar convite", headingRole: "heading", marker: "AtendON QA Workspace|guest@example.test|Operador", entitySelector: ".invitation-summary", state: "public" },
-  "/meet/[roomId]": { expectedPath: "/meet/qa-room", heading: "Não foi possível entrar na sala|Sala de videochamada", headingRole: "heading", marker: "qa-room|Tentar novamente|Preparando sua sala", entitySelector: "main > section", state: "public" },
-  "/reuniao/[code]": { expectedPath: "/reuniao/qa-code", heading: "Não foi possível entrar na sala|Sala de videochamada", headingRole: "heading", marker: "qa-code|Tentar novamente|Preparando sua sala", entitySelector: "main > section", state: "public" },
+  // R5 (Astra): estado expected-error — o 503 do provedor é o comportamento
+  // CORRETO em QA. O registro nunca recebe status "passed" (o runner marca
+  // "expected-error"); a variante "#sucesso" (mock do provedor no harness) é
+  // quem audita o estado funcional e pode receber "passed".
+  "/meet/[roomId]": { expectedPath: "/meet/qa-room", heading: "Não foi possível entrar na sala", headingRole: "heading", marker: "Não foi possível entrar na sala|Falha na conexão", entitySelector: "main [role=alert]", state: "expected-error" },
+  "/reuniao/[code]": { expectedPath: "/reuniao/qa-code", heading: "Não foi possível entrar na sala", headingRole: "heading", marker: "Não foi possível entrar na sala|Falha na conexão", entitySelector: "main [role=alert]", state: "expected-error" },
+  // Variantes de SUCESSO (mock do provedor: token 200 + stub de window.JitsiMeetExternalAPI
+  // servido como /external_api.js). A página entra em phase "ready" e o stub renderiza
+  // texto exclusivo dentro de .meet-room__frame. headingOptional: o MeetRoom em ready
+  // não renderiza h1/h2 próprios (achado R2 — repasse ao D2 em design-spec-review).
+  "/meet/[roomId]#sucesso": { expectedPath: "/meet/qa-room", heading: null, headingOptional: true, marker: "Sala QA pronta", entitySelector: "main .meet-room__frame", state: "populated" },
+  "/reuniao/[code]#sucesso": { expectedPath: "/reuniao/qa-code", heading: null, headingOptional: true, marker: "Sala QA pronta", entitySelector: "main .meet-room__frame", state: "populated" },
   "/agente/figurinhas": { expectedPath: "/follow-ups", heading: "Follow-ups", headingRole: "heading", marker: "Atraso|mídias|120", entitySelector: ".channels-ai-page, form, input", state: "populated" },
-  "/tarefas": { expectedPath: null, heading: "Tarefas", headingRole: "heading", marker: "Prioridade", entitySelector: "main article[data-task-id]", state: "populated" },
+  // R5 (Astra): marker exclusivo da task Semeada (fixture panels-v6.mjs: task.title
+  // = "Tarefa QA", renderizado como h3 dentro de article[data-task-id]). O marker
+  // antigo ("Prioridade") aparece em qualquer card e não prova seeding.
+  "/tarefas": { expectedPath: null, heading: "Tarefas", headingRole: "heading", marker: "Tarefa QA", entitySelector: "main article[data-task-id]", state: "populated" },
   "/contatos/campos": { expectedPath: null, heading: "Campos personalizados", headingRole: "heading", marker: "chave:", entitySelector: "main article[data-field-id]", state: "populated" },
   "/contatos/lixeira": { expectedPath: null, heading: "Lixeira", headingRole: "heading", marker: "Excluído em", entitySelector: "main article[data-trash-id]", state: "populated" },
   "/contatos/importar": { expectedPath: null, heading: "Importar contatos", headingRole: "heading", marker: "Histórico de importações", entitySelector: "main [aria-labelledby='import-history-title']", state: "populated" },
   "/fluxos": { expectedPath: null, heading: "Fluxos", headingRole: "heading", marker: "Fluxo QA de qualificação", entitySelector: "main .card ul li", state: "populated" },
-  "/fluxos/[id]": { expectedPath: "/fluxos/qa-flow-0001", heading: "Fluxo QA de qualificação", headingRole: "heading", marker: "Olá QA", entitySelector: "main .react-flow__node", state: "populated" }
+  "/fluxos/[id]": { expectedPath: "/fluxos/qa-flow-0001", heading: "Fluxo QA de qualificação", headingRole: "heading", marker: "Olá QA", entitySelector: "main .react-flow__node", state: "populated" },
+  // R1(a): estado de rota not-found.tsx audita como ENTRADA PRÓPRIA — o runner
+  // navega para uma URL inexistente; Next responde HTTP 404 e renderiza este UI.
+  "/__not-found": { expectedPath: "/__rota-audit-inexistente", heading: "Não encontramos esta página\\.", headingRole: "heading", marker: "Erro 404|Não encontramos", entitySelector: "main .denied-card", state: "not-found" }
 };
 export function contractFor(route) { return ROUTE_CONTRACTS[route]; }

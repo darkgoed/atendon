@@ -15,7 +15,10 @@ const flowUpsertBody = z.object({
   ctwa: z.boolean().optional(),
   sessoes: z.array(uuid).max(100).optional(),
   palavras_chave: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
-  definition: z.record(z.string(), z.unknown()).optional()
+  definition: z.record(z.string(), z.unknown()).optional(),
+  // F4-r1 (WP-B, B2/B5): CAS obrigatório em TODA mutação. 0 = criação nova;
+  // ≥1 precisa igualar a revisão viva da linha.
+  revisao_base: z.number().int().min(0)
 }).strict();
 
 function flowMapper(row: Record<string, unknown>) {
@@ -25,8 +28,67 @@ function flowMapper(row: Record<string, unknown>) {
     origem: definition?.origem,
     gatilhos: definition?.triggers ?? { ctwa: false, session_ids: [], keywords: [] },
     allowed_role_ids: row.allowed_role_ids ?? [],
-    definition: row.definition, atualizado_em: row.updated_at
+    definition: row.definition, revisao: row.revision, atualizado_em: row.updated_at
   };
+}
+
+// F4-r1 (WP-B, decisões B1-B6): CAS por revisão de linha. O token é a coluna
+// qualification_flows.revision (trigger BEFORE UPDATE incrementa em QUALQUER
+// UPDATE — migration 0182), nunca derivado de snapshot. Toda mutação exige
+// revisao_base: 0 só cria (fluxo existente ⇒ 409); ≥1 precisa igualar a revisão
+// viva; divergente ⇒ 409 FLOW_VERSION_CONFLICT com a revisão corrente, sem
+// gravar nada (nem snapshot fantasma).
+class FlowVersionConflict extends Error {
+  constructor(readonly revisao: number) {
+    super("Conflito de versão do fluxo — recarregue a revisão atual e tente novamente");
+  }
+}
+
+/** CAS (B2/B4): compara revisao_base com a revisão viva LIDA DENTRO do lock por tenant. */
+function assertFlowCas(existing: { revision: number } | undefined, revisaoBase: number): void {
+  const current = existing?.revision;
+  if (revisaoBase === 0) {
+    if (current !== undefined) throw new FlowVersionConflict(current);
+    return;
+  }
+  if (current === undefined || current !== revisaoBase) throw new FlowVersionConflict(current ?? 0);
+}
+
+/** B3: serialização transacional por tenant (padrão billing/ledger.ts:17) —
+ *  criação concorrente, upsert, ativação, restore e PATCH passam por este lock,
+ *  tomado como PRIMEIRO statement da transação (guards desde o começo da tx). */
+async function lockTenantFlows(client: PoolClient, tenantId: string): Promise<void> {
+  await client.query("SELECT pg_advisory_xact_lock(hashtext('flow:' || $1))", [tenantId]);
+}
+
+/** Referências do tenant em triggers (sessões) e steps action (tags/estágios/
+ *  agentes) — validadas DENTRO da tx no PUT e no RESTORE (400 acionável). */
+async function assertDefinitionTenantRefs(client: PoolClient, tenantId: string, definition: FlowDefinition): Promise<void> {
+  const sessionIds = definition.triggers.session_ids;
+  if (sessionIds.length) {
+    const valid = await client.query<{ id: string }>(
+      "SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL AND id=ANY($2::uuid[])",
+      [tenantId, sessionIds]
+    );
+    if (valid.rowCount !== sessionIds.length) throw httpError(400, "Uma ou mais sessões não pertencem à organização ou não são WhatsApp");
+  }
+  const tagIds = [...new Set(Object.values(definition.steps).flatMap((step) => step.tag_ids ?? []))];
+  if (tagIds.length) {
+    const valid = await client.query<{ id: string }>("SELECT id FROM lead_tags WHERE tenant_id=$1 AND id=ANY($2::uuid[])", [tenantId, tagIds]);
+    if (valid.rowCount !== tagIds.length) throw httpError(400, "Uma ou mais tags não pertencem à organização");
+  }
+  const stageIds = [...new Set(Object.values(definition.steps).map((step) => step.stage_id).filter((stageId): stageId is string => Boolean(stageId)))];
+  if (stageIds.length) {
+    const valid = await client.query<{ id: string }>("SELECT id FROM pipeline_stages WHERE tenant_id=$1 AND id=ANY($2::uuid[])", [tenantId, stageIds]);
+    if (valid.rowCount !== stageIds.length) throw httpError(400, "Um ou mais estágios não pertencem à organização");
+  }
+  const agentIds = [...new Set(Object.values(definition.steps).map((step) => step.agent_id).filter((agentId): agentId is string => Boolean(agentId)))];
+  if (agentIds.length) {
+    const valid = await client.query<{ id: string }>(
+      "SELECT id FROM workspace_members WHERE workspace_id=$1 AND id=ANY($2::uuid[]) AND status='active'", [tenantId, agentIds]
+    );
+    if (valid.rowCount !== agentIds.length) throw httpError(400, "Um ou mais agentes não pertencem à organização");
+  }
 }
 
 /** Versão nova por salvamento/restauração: snapshot serializado sob lock do fluxo. */
@@ -81,70 +143,104 @@ export async function registerQualificationRoutes(app: FastifyInstance) {
     const session = await requirePermission(request, "agent.manage");
     const { id } = z.object({ id: slug }).parse(request.params);
     const body = flowUpsertBody.parse(request.body);
-    const existing = body.definition ? null : await db.query<{ definition: Record<string, unknown> }>(
-      "SELECT definition FROM qualification_flows WHERE tenant_id=$1 AND id=$2", [session.tenantId, id]
-    );
-    const base = (body.definition ?? existing?.rows[0]?.definition ?? DEFAULT_QUALIFICATION_FLOW) as Record<string, unknown>;
-    const previousTriggers = typeof base.triggers === "object" && base.triggers ? base.triggers as Record<string, unknown> : {};
-    const triggers = {
-      ...previousTriggers,
-      ...(body.ctwa !== undefined ? { ctwa: body.ctwa } : {}),
-      ...(body.sessoes !== undefined ? { session_ids: body.sessoes } : {}),
-      ...(body.palavras_chave !== undefined ? { keywords: body.palavras_chave } : {})
-    };
-    const definition = flowDefinitionSchema.parse({ ...base, triggers });
-    if (definition.triggers.session_ids.length) {
-      const valid = await db.query<{ id: string }>(
-        "SELECT id FROM whatsapp_sessions WHERE tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL AND id=ANY($2::uuid[])",
-        [session.tenantId, definition.triggers.session_ids]
-      );
-      if (valid.rowCount !== definition.triggers.session_ids.length) throw httpError(400, "Uma ou mais sessões não pertencem à organização ou não são WhatsApp");
-    }
-    if (body.ativo) {
-      const issues = activationIssues(definition);
-      if (issues.length) throw httpError(400, issues.join("; "));
-    }
-    const result = await withTransaction(async (client) => {
-      // Lock do fluxo serializa o número da versão entre salvamentos concorrentes
-      // (o snapshot da versão é gravado na MESMA transação do upsert).
-      if (body.definition) {
-        await client.query("SELECT id FROM qualification_flows WHERE tenant_id=$1 AND id=$2 FOR UPDATE", [session.tenantId, id]);
+    try {
+      const result = await withTransaction(async (client) => {
+        // B3/B4: lock por tenant ANTES de qualquer leitura; a definition do fluxo
+        // vivo é lida e mesclada DENTRO do lock (stale-read eliminado) e o
+        // snapshot da versão é gravado na MESMA transação do upsert.
+        await lockTenantFlows(client, session.tenantId);
+        const existing = await client.query<{ definition: Record<string, unknown>; revision: number }>(
+          "SELECT definition,revision FROM qualification_flows WHERE tenant_id=$1 AND id=$2", [session.tenantId, id]
+        );
+        assertFlowCas(existing.rows[0], body.revisao_base);
+        const base = (body.definition ?? existing.rows[0]?.definition ?? DEFAULT_QUALIFICATION_FLOW) as Record<string, unknown>;
+        const previousTriggers = typeof base.triggers === "object" && base.triggers ? base.triggers as Record<string, unknown> : {};
+        const triggers = {
+          ...previousTriggers,
+          ...(body.ctwa !== undefined ? { ctwa: body.ctwa } : {}),
+          ...(body.sessoes !== undefined ? { session_ids: body.sessoes } : {}),
+          ...(body.palavras_chave !== undefined ? { keywords: body.palavras_chave } : {})
+        };
+        const definition = flowDefinitionSchema.parse({ ...base, triggers });
+        await assertDefinitionTenantRefs(client, session.tenantId, definition);
+        if (body.ativo) {
+          const issues = activationIssues(definition);
+          if (issues.length) throw httpError(400, issues.join("; "));
+        }
+        if (body.ativo) await client.query("UPDATE qualification_flows SET active=false,updated_at=now() WHERE tenant_id=$1 AND id<>$2 AND active", [session.tenantId, id]);
+        const upserted = await client.query(
+          `INSERT INTO qualification_flows(tenant_id,id,name,active,definition) VALUES($1,$2,$3,$4,$5)
+           ON CONFLICT (tenant_id,id) DO UPDATE SET name=EXCLUDED.name,active=EXCLUDED.active,definition=EXCLUDED.definition,updated_at=now()
+           RETURNING *,(xmax=0) AS created`, [session.tenantId, id, body.nome, body.ativo, definition]
+        );
+        if (body.definition) {
+          await insertFlowVersion(client, session.tenantId, id, definition, body.nome, session.userId);
+        }
+        return upserted;
+      });
+      return reply.status(result.rows[0].created ? 201 : 200).send({ flow: flowMapper(result.rows[0]) });
+    } catch (error) {
+      if (error instanceof FlowVersionConflict) {
+        return reply.status(409).send({ error: error.message, code: "FLOW_VERSION_CONFLICT", revisao: error.revisao });
       }
-      if (body.ativo) await client.query("UPDATE qualification_flows SET active=false,updated_at=now() WHERE tenant_id=$1 AND id<>$2 AND active", [session.tenantId, id]);
-      const upserted = await client.query(
-        `INSERT INTO qualification_flows(tenant_id,id,name,active,definition) VALUES($1,$2,$3,$4,$5)
-         ON CONFLICT (tenant_id,id) DO UPDATE SET name=EXCLUDED.name,active=EXCLUDED.active,definition=EXCLUDED.definition,updated_at=now()
-         RETURNING *,(xmax=0) AS created`, [session.tenantId, id, body.nome, body.ativo, definition]
-      );
-      if (body.definition) {
-        await insertFlowVersion(client, session.tenantId, id, definition, body.nome, session.userId);
-      }
-      return upserted;
-    });
-    return reply.status(result.rows[0].created ? 201 : 200).send({ flow: flowMapper(result.rows[0]) });
+      throw error;
+    }
   });
 
   // C1-c: restrição opcional de execução por papel (vazio = sem restrição).
-  const flowPatchBody = z.object({ allowed_role_ids: z.array(uuid).max(100) }).strict();
+  // B5: nome/ativo também por PATCH — bypass REMOVIDO, toda mutação é
+  // CAS-guardada (revisao_base obrigatório) e o trigger incrementa a revisão.
+  const flowPatchBody = z.object({
+    allowed_role_ids: z.array(uuid).max(100).optional(),
+    nome: z.string().trim().min(1).max(200).optional(),
+    ativo: z.boolean().optional(),
+    revisao_base: z.number().int().min(0)
+  }).strict().refine(
+    (body) => body.allowed_role_ids !== undefined || body.nome !== undefined || body.ativo !== undefined,
+    { message: "Informe ao menos um campo: allowed_role_ids, nome ou ativo" }
+  );
 
   app.patch("/qualification/flows/:id", async (request, reply) => {
     const session = await requirePermission(request, "agent.manage");
     const { id } = z.object({ id: slug }).parse(request.params);
-    const { allowed_role_ids } = flowPatchBody.parse(request.body);
-    const roles = [...new Set(allowed_role_ids)];
-    if (roles.length) {
-      const valid = await db.query<{ id: string }>(
-        "SELECT id FROM workspace_roles WHERE workspace_id=$1 AND id=ANY($2::uuid[])",
-        [session.tenantId, roles]
-      );
-      if (valid.rowCount !== roles.length) throw httpError(400, "Um ou mais papéis não pertencem à organização");
+    const body = flowPatchBody.parse(request.body);
+    const roles = body.allowed_role_ids !== undefined ? [...new Set(body.allowed_role_ids)] : undefined;
+    try {
+      const updated = await withTransaction(async (client) => {
+        await lockTenantFlows(client, session.tenantId);
+        if (roles?.length) {
+          const valid = await client.query<{ id: string }>(
+            "SELECT id FROM workspace_roles WHERE workspace_id=$1 AND id=ANY($2::uuid[])",
+            [session.tenantId, roles]
+          );
+          if (valid.rowCount !== roles.length) throw httpError(400, "Um ou mais papéis não pertencem à organização");
+        }
+        const current = await client.query<{ revision: number; active: boolean; definition: unknown }>(
+          "SELECT revision,active,definition FROM qualification_flows WHERE tenant_id=$1 AND id=$2", [session.tenantId, id]
+        );
+        if (!current.rows[0]) throw httpError(404, "Fluxo não encontrado");
+        assertFlowCas(current.rows[0], body.revisao_base);
+        // Ativação via PATCH passa pelo mesmo gate do PUT (grafo válidos + 1 ativo/tenant).
+        if (body.ativo && !current.rows[0].active) {
+          const issues = activationIssues(flowDefinitionSchema.parse(current.rows[0].definition));
+          if (issues.length) throw httpError(400, issues.join("; "));
+        }
+        if (body.ativo === true) await client.query("UPDATE qualification_flows SET active=false,updated_at=now() WHERE tenant_id=$1 AND id<>$2 AND active", [session.tenantId, id]);
+        const result = await client.query(
+          `UPDATE qualification_flows SET
+             name=COALESCE($3,name),active=COALESCE($4,active),allowed_role_ids=COALESCE($5,allowed_role_ids),updated_at=now()
+           WHERE tenant_id=$1 AND id=$2 RETURNING *`,
+          [session.tenantId, id, body.nome ?? null, body.ativo ?? null, roles ?? null]
+        );
+        return result.rows[0];
+      });
+      return { flow: flowMapper(updated) };
+    } catch (error) {
+      if (error instanceof FlowVersionConflict) {
+        return reply.status(409).send({ error: error.message, code: "FLOW_VERSION_CONFLICT", revisao: error.revisao });
+      }
+      throw error;
     }
-    const updated = await db.query(
-      "UPDATE qualification_flows SET allowed_role_ids=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2 RETURNING *",
-      [session.tenantId, id, roles]
-    );
-    if (!updated.rows[0]) return reply.status(404).send({ error: "Fluxo não encontrado" });
-    return { flow: flowMapper(updated.rows[0]) };
   });
 
   // C1-b: histórico de versões (snapshot por salvamento/restauração).
@@ -242,23 +338,33 @@ export async function registerQualificationRoutes(app: FastifyInstance) {
   });
 
   // C1-b: restauração — definição da versão volta ao fluxo e um snapshot NOVO
-  // é criado (a versão restaurada permanece no histórico).
+  // é criado (a versão restaurada permanece no histórico). B6: revalida refs do
+  // tenant E ativação (mesmo gate do PUT); CAS revisao_base obrigatório.
+  const restoreBody = z.object({ revisao_base: z.number().int().min(0) }).strict();
+
   app.post("/qualification/flows/:id/versions/:versionId/restore", async (request, reply) => {
     const session = await requirePermission(request, "agent.manage");
     const { id, versionId } = z.object({ id: slug, versionId: uuid }).parse(request.params);
-    const flow = await db.query<{ name: string; active: boolean }>(
-      "SELECT name,active FROM qualification_flows WHERE tenant_id=$1 AND id=$2", [session.tenantId, id]
-    );
-    if (!flow.rows[0]) return reply.status(404).send({ error: "Fluxo não encontrado" });
+    const body = restoreBody.parse(request.body);
     try {
       const result = await withTransaction(async (client) => {
-        await client.query("SELECT id FROM qualification_flows WHERE tenant_id=$1 AND id=$2 FOR UPDATE", [session.tenantId, id]);
+        await lockTenantFlows(client, session.tenantId);
+        const flow = await client.query<{ name: string; active: boolean; revision: number }>(
+          "SELECT name,active,revision FROM qualification_flows WHERE tenant_id=$1 AND id=$2", [session.tenantId, id]
+        );
+        if (!flow.rows[0]) throw httpError(404, "Fluxo não encontrado");
+        assertFlowCas(flow.rows[0], body.revisao_base);
         const version = await client.query<{ definition: unknown; version: number }>(
           "SELECT definition,version FROM flow_versions WHERE tenant_id=$1 AND flow_id=$2 AND id=$3",
           [session.tenantId, id, versionId]
         );
         if (!version.rows[0]) throw httpError(404, "Versão não encontrada");
         const definition = flowDefinitionSchema.parse(version.rows[0].definition);
+        await assertDefinitionTenantRefs(client, session.tenantId, definition);
+        if (flow.rows[0].active) {
+          const issues = activationIssues(definition);
+          if (issues.length) throw httpError(400, issues.join("; "));
+        }
         const updated = await client.query(
           "UPDATE qualification_flows SET definition=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2 RETURNING *",
           [session.tenantId, id, definition]
@@ -268,6 +374,9 @@ export async function registerQualificationRoutes(app: FastifyInstance) {
       });
       return reply.status(200).send({ flow: flowMapper(result.flow), restored_from: result.restored_from, version: result.version });
     } catch (error) {
+      if (error instanceof FlowVersionConflict) {
+        return reply.status(409).send({ error: error.message, code: "FLOW_VERSION_CONFLICT", revisao: error.revisao });
+      }
       if (error instanceof z.ZodError) throw httpError(409, "A versão armazenada não é mais válida para o schema atual");
       throw error;
     }

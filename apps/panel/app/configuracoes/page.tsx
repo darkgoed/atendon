@@ -1,8 +1,8 @@
 "use client";
 
-import { BellRinging, ChartBar, CheckCircle, ChatCircleDots, ClockCountdown, Cpu, FloppyDisk, GlobeHemisphereWest, GoogleLogo, Link as LinkIcon, LinkBreak, PencilSimple, Plus, ShieldCheck, Sticker, Trash, UsersThree, VideoCamera, WarningCircle, Watch } from "@phosphor-icons/react";
+import { BellRinging, BellSimple, Buildings, CalendarCheck, ChartBar, CheckCircle, ChatCircleDots, ClockCountdown, Cpu, FloppyDisk, GlobeHemisphereWest, GoogleLogo, Handshake, HardDrives, Link as LinkIcon, LinkBreak, PencilSimple, Plus, Queue, ShieldCheck, SlidersHorizontal, Sticker, TagSimple, Trash, UserList, UsersThree, VideoCamera, WarningCircle, Watch, type Icon } from "@phosphor-icons/react";
 import Link from "next/link";
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { Empty } from "@/components/page-state";
 import { Shell } from "@/components/shell";
@@ -38,6 +38,7 @@ import { WorkspaceLogoSection } from "@/components/workspace-logo";
 import { StorageSettingsPanel } from "@/components/storage-settings";
 import { SETTINGS_COLOR_DEFAULTS } from "@/components/settings-colors";
 import { Button, Field as UiField, Input } from "@/components/ui";
+import { settingsNavGroups } from "@/lib/panel-manifest";
 import styles from "@/components/settings-panels.module.css";
 
 type CatalogResource = "categorias" | "parceiros" | "unidades";
@@ -92,23 +93,75 @@ const COMMON_TIMEZONES = [
 type SettingsDestination = {
   href: string;
   label: string;
-  description: string;
   Icon: typeof LinkIcon;
   permission?: string;
   rootWorkspaceOnly?: boolean;
 };
 
+// R2 (SPEC settings-search): destinos sem `description` — a navegação mostra
+// só ícone + label. Gating por chave preservado (o mesmo de antes).
 const settingsDestinations: readonly SettingsDestination[] = [
-  { href: "/alertas", label: "Alertas", description: "Central operacional exclusiva do ROOT", Icon: BellRinging, rootWorkspaceOnly: true },
-  { href: "/conexao", label: "Conexão", description: "Sessão e estado do WhatsApp", Icon: LinkIcon, permission: "connection.read" },
-  { href: "/workspace/members", label: "Membros", description: "Equipe e convites do workspace", Icon: UsersThree, permission: "members.read" },
-  { href: "/workspace/audit", label: "Auditoria", description: "Histórico de alterações e acessos", Icon: Watch, permission: "audit.read" },
-  { href: "/workspace/roles", label: "Funções", description: "Papéis e permissões da equipe", Icon: ShieldCheck, rootWorkspaceOnly: true },
-  { href: "/agente", label: "Agente", description: "Modelo, instruções e publicação", Icon: Cpu, rootWorkspaceOnly: true },
-  { href: "/follow-ups", label: "Follow-ups da IA", description: "Cadência e biblioteca de mídia", Icon: Sticker, rootWorkspaceOnly: true },
-  { href: "/humanizacao", label: "Humanização", description: "Ritmo, presença e comportamento", Icon: ClockCountdown, rootWorkspaceOnly: true },
-  { href: "/uso", label: "Uso", description: "Consumo e custos do workspace", Icon: ChartBar, rootWorkspaceOnly: true }
+  { href: "/alertas", label: "Alertas", Icon: BellRinging, rootWorkspaceOnly: true },
+  { href: "/conexao", label: "Conexão", Icon: LinkIcon, permission: "connection.read" },
+  { href: "/workspace/members", label: "Membros", Icon: UsersThree, permission: "members.read" },
+  { href: "/workspace/audit", label: "Auditoria", Icon: Watch, permission: "audit.read" },
+  { href: "/workspace/roles", label: "Funções", Icon: ShieldCheck, rootWorkspaceOnly: true },
+  { href: "/agente", label: "Agente", Icon: Cpu, rootWorkspaceOnly: true },
+  { href: "/follow-ups", label: "Follow-ups da IA", Icon: Sticker, rootWorkspaceOnly: true },
+  { href: "/humanizacao", label: "Humanização", Icon: ClockCountdown, rootWorkspaceOnly: true },
+  { href: "/uso", label: "Uso", Icon: ChartBar, rootWorkspaceOnly: true }
 ];
+
+const resourceIcons: Record<Resource, Icon> = {
+  workspace: SlidersHorizontal,
+  categorias: TagSimple,
+  parceiros: Handshake,
+  unidades: Buildings,
+  attendants: UserList,
+  "conversation-queues": Queue,
+  "atendon-meet": VideoCamera,
+  "google-meet": GoogleLogo,
+  signature: ChatCircleDots,
+  "panel-notifications": BellSimple,
+  "agenda-notifications": CalendarCheck,
+  armazenamento: HardDrives
+};
+
+const settingsGroupSlug = (label: string) =>
+  label.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+// R3 (SPEC settings-search): chassi ÚNICO de configuração — mesmo card, mesmo
+// cabeçalho (ícone da família phosphor num círculo + h2 + sub opcional), mesmo
+// estado de carregamento. O conteúdo interno (forms, tabelas, grids) de cada
+// painel permanece como está.
+function PanelChassi({ headId, Icon, title, sub, busy, busyLabel, children }: {
+  headId: string;
+  Icon: Icon;
+  title: string;
+  sub?: string;
+  busy?: boolean;
+  busyLabel?: string;
+  // children é opcional: os skeletons de loading usam <PanelChassi ... busy /> sem children.
+  children?: ReactNode;
+}) {
+  return (
+    <section className={`card ${styles.panel}`} aria-labelledby={headId}>
+      <header className={styles.panelHead}>
+        <span className={styles.panelIcon}><Icon size={19} aria-hidden="true" /></span>
+        <div className="min-w-0">
+          <h2 id={headId} className="m-0 text-base font-semibold text-[var(--text)]">{title}</h2>
+          {sub ? <p className="sub mt-1">{sub}</p> : null}
+        </div>
+      </header>
+      {busy ? (
+        <div className="grid gap-4" aria-busy="true" aria-label={busyLabel}>
+          <div className="skeleton h-8 w-2/5" />
+          <div className="skeleton h-28" />
+        </div>
+      ) : children}
+    </section>
+  );
+}
 
 export default function ConfigPage() {
   const { isEnabled } = useCapabilities();
@@ -145,11 +198,71 @@ export default function ConfigPage() {
   const canManageAttendants = attendantAccess.canManage;
   const canReadAttendants = attendantAccess.canRead;
   const canManageQueues = usePermission("conversations.queues.manage");
-  const visibleSettingsDestinations = session
-    ? settingsDestinations.filter((destination) => destination.rootWorkspaceOnly
-      ? canAccessRootWorkspace(session)
-      : Boolean(destination.permission && canAccessWithSession(session, [destination.permission])))
-    : [];
+  const visibleSettingsGroups = useMemo(() => {
+    const destinationByHref = new Map(settingsDestinations.map((destination) => [destination.href, destination]));
+    const destinationVisible = (href: string) => {
+      if (!session) return false;
+      const destination = destinationByHref.get(href);
+      if (!destination) return false;
+      return destination.rootWorkspaceOnly
+        ? canAccessRootWorkspace(session)
+        : Boolean(destination.permission && canAccessWithSession(session, [destination.permission]));
+    };
+    // Mesmo gating de antes, agora tab por chave (deep-links ?resource= cobrem
+    // todas as 12 chaves com as MESMAS condições).
+    const tabVisible: Partial<Record<Resource, boolean>> = {
+      workspace: canUpdateWorkspace,
+      categorias: leadsEnabled && canReadCategories,
+      parceiros: leadsEnabled && canReadPartners,
+      unidades: leadsEnabled && canReadUnits,
+      attendants: canReadAttendants,
+      "conversation-queues": canManageQueues,
+      "atendon-meet": appointmentsEnabled && canReadUnits,
+      "google-meet": appointmentsEnabled && canReadUnits,
+      signature: canReadSignature,
+      "panel-notifications": Boolean(session?.activeWorkspace),
+      "agenda-notifications": canReadAgendaNotifications,
+      armazenamento: canManageStorage
+    };
+    type NavEntry =
+      | { kind: "tab"; key: Resource; label: string; Icon: Icon; onClick: () => void; active: boolean }
+      | { kind: "destination"; key: string; href: string; label: string; Icon: Icon };
+    return settingsNavGroups
+      .map((group) => ({
+        label: group.label,
+        entries: group.keys.flatMap((key): NavEntry[] => {
+          if (key.startsWith("/")) {
+            const destination = destinationByHref.get(key);
+            if (!destination || !destinationVisible(key)) return [];
+            return [{ kind: "destination", key, href: destination.href, label: destination.label, Icon: destination.Icon }];
+          }
+          if (!tabVisible[key as Resource]) return [];
+          return [{
+            kind: "tab",
+            key: key as Resource,
+            label: resourceLabels[key as Resource],
+            Icon: resourceIcons[key as Resource],
+            onClick: () => setResource(key as Resource),
+            active: resource === key
+          }];
+        })
+      }))
+      .filter((group) => group.entries.length > 0);
+  }, [
+    appointmentsEnabled,
+    canManageQueues,
+    canManageStorage,
+    canReadAgendaNotifications,
+    canReadAttendants,
+    canReadCategories,
+    canReadPartners,
+    canReadSignature,
+    canReadUnits,
+    canUpdateWorkspace,
+    leadsEnabled,
+    resource,
+    session
+  ]);
   const canManage = resource === "workspace" ? canUpdateWorkspace
        : resource === "attendants" ? canManageAttendants
     : resource === "conversation-queues" ? canManageQueues
@@ -190,15 +303,41 @@ export default function ConfigPage() {
     if (visibleTabs.length > 0 && !visibleTabs.includes(resource)) setResource(visibleTabs[0]);
   }, [resource, visibleTabs]);
 
+  // Deep-link ?resource= — paridade das 12 chaves (SPEC settings-search):
+  // cada chave entra apenas se o usuário tem o MESMO acesso que a aba exigiria;
+  // sem permissão, mantém o comportamento atual de cair no primeiro tab visível.
   useEffect(() => {
     const requested = new URL(window.location.href).searchParams.get("resource");
-    if (requested === "google-meet" && canReadUnits) setResource("google-meet");
-    if (requested === "atendon-meet" && canReadUnits) setResource("atendon-meet");
-    if (requested === "attendants" && canReadAttendants) setResource("attendants");
-    if (requested === "conversation-queues" && canManageQueues) setResource("conversation-queues");
-    if (requested === "workspace" && canUpdateWorkspace) setResource("workspace");
-    if (requested === "armazenamento" && canManageStorage) setResource("armazenamento");
-  }, [canManageQueues, canManageStorage, canReadAttendants, canReadUnits, canUpdateWorkspace]);
+    if (!requested) return;
+    const access: Partial<Record<Resource, boolean>> = {
+      workspace: canUpdateWorkspace,
+      categorias: leadsEnabled && canReadCategories,
+      parceiros: leadsEnabled && canReadPartners,
+      unidades: leadsEnabled && canReadUnits,
+      attendants: canReadAttendants,
+      "conversation-queues": canManageQueues,
+      "atendon-meet": appointmentsEnabled && canReadUnits,
+      "google-meet": appointmentsEnabled && canReadUnits,
+      signature: canReadSignature,
+      "panel-notifications": Boolean(session?.activeWorkspace),
+      "agenda-notifications": canReadAgendaNotifications,
+      armazenamento: canManageStorage
+    };
+    if (requested in access && access[requested as Resource]) setResource(requested as Resource);
+  }, [
+    appointmentsEnabled,
+    canManageQueues,
+    canManageStorage,
+    canReadAgendaNotifications,
+    canReadAttendants,
+    canReadCategories,
+    canReadPartners,
+    canReadSignature,
+    canReadUnits,
+    canUpdateWorkspace,
+    leadsEnabled,
+    session?.activeWorkspace
+  ]);
 
   const load = useCallback(() => {
     setError("");
@@ -251,46 +390,43 @@ export default function ConfigPage() {
         ) : null}
       </header>
 
-      {visibleSettingsDestinations.length > 0 || visibleTabs.length > 0 ? (
-        /* ONDA 1 (SPEC v7): navegação interna de configurações no idioma do
-           rail (components/nav-rail.tsx) — nav lateral com os MESMOS destinos
-           (settingsDestinations, gating intacto) e as MESMAS abas
-           (visibleTabs); só a apresentação muda (styles/domains/shell-rail.css). */
-        <div className="settings-rail">
-          {visibleSettingsDestinations.length > 0 ? (
-            <section className="settings-rail__group" aria-labelledby="settings-destinations-title">
-              <div className="settings-rail__grouphead">
-                <h2 id="settings-destinations-title">Áreas de configuração</h2>
-                <span className="settings-rail__count mono">{visibleSettingsDestinations.length} área(s)</span>
-              </div>
-              <nav className="settings-rail__nav" aria-label="Áreas de configuração">
-                {visibleSettingsDestinations.map(({ href, label, description, Icon }) => (
-                  <Link key={href} href={href} className="settings-rail__link">
-                    <Icon size={18} aria-hidden="true" />
-                    <span>
-                      <strong>{label}</strong>
-                      <small>{description}</small>
-                    </span>
-                  </Link>
-                ))}
-              </nav>
-            </section>
-          ) : null}
-
-          {visibleTabs.length > 0 ? <nav className="settings-rail__group" aria-label="Configurações operacionais">
-            {visibleTabs.map((tab) => (
-              <button
-                type="button"
-                aria-pressed={resource === tab}
-                key={tab}
-                onClick={() => setResource(tab)}
-                className="settings-rail__tab"
-              >
-                {resourceLabels[tab]}
-              </button>
-            ))}
-          </nav> : null}
-        </div>
+      {visibleSettingsGroups.length > 0 ? (
+        /* R1/R4 (SPEC settings-search): navegação ÚNICA de configurações —
+           "Geral" primeiro + categorias semânticas, as 21 chaves (12 abas +
+           9 destinos) cada uma exatamente uma vez (settingsNavGroups é a
+           fonte única da ordem/grupo). Gating por chave intacto; sem
+           descrições (R2). O idioma é o mesmo do rail (settings-rail). */
+        <nav className="settings-rail" aria-label="Configurações">
+          {visibleSettingsGroups.map((group) => {
+            const headId = `settings-group-${settingsGroupSlug(group.label)}`;
+            return (
+              <section key={group.label} className="settings-rail__group" aria-labelledby={headId}>
+                <div className="settings-rail__grouphead">
+                  <h2 id={headId}>{group.label}</h2>
+                </div>
+                <div className="settings-rail__nav">
+                  {group.entries.map((entry) => entry.kind === "tab" ? (
+                    <button
+                      key={entry.key}
+                      type="button"
+                      aria-pressed={entry.active}
+                      onClick={entry.onClick}
+                      className="settings-rail__tab"
+                    >
+                      <entry.Icon size={18} aria-hidden="true" />
+                      {entry.label}
+                    </button>
+                  ) : (
+                    <Link key={entry.key} href={entry.href} className="settings-rail__link">
+                      <entry.Icon size={18} aria-hidden="true" />
+                      <span><strong>{entry.label}</strong></span>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </nav>
       ) : null}
 
       {resource === "workspace" ? (
@@ -311,17 +447,20 @@ export default function ConfigPage() {
         <AgendaNotificationSettingsPanel canManage={canManageAgendaNotifications} />
       ) : resource === "armazenamento" ? (
         <StorageSettingsPanel canManage={canManageStorage} />
-      ) : <>
-        {error ? <p className="error mb-4" role="alert">{error}</p> : null}
-        {!canManage && !loading ? <p className="sub mb-4" role="status">Esta seção está disponível somente para consulta.</p> : null}
+      ) : (
+        <PanelChassi
+          headId="settings-catalog"
+          Icon={resourceIcons[resource]}
+          title={resourceLabels[resource]}
+          busy={loading}
+          busyLabel="Carregando catálogo"
+        >
+          {error ? <p className="error" role="alert">{error}</p> : null}
+          {!canManage && !loading ? <p className="sub" role="status">Esta seção está disponível somente para consulta.</p> : null}
 
-        <div className={`${styles.catalogLayout} ${canManage ? styles.catalogLayoutManaged : ""}`}>
-        <section className="card responsive-table-wrap" aria-label={resourceLabels[resource]}>
-          {loading ? (
-            <div className="grid gap-2 p-4" aria-busy="true" aria-label="Carregando catálogo">
-              {[1, 2, 3].map((item) => <div key={item} className="skeleton h-12" />)}
-            </div>
-          ) : items.length === 0 ? (
+          <div className={`${styles.catalogLayout} ${canManage ? styles.catalogLayoutManaged : ""}`}>
+          <section className="responsive-table-wrap" aria-label={resourceLabels[resource]}>
+          {items.length === 0 ? (
             <Empty>Nenhum cadastro nesta seção.</Empty>
           ) : (
             <table className={`responsive-table ${styles.catalogTable}`}>
@@ -375,7 +514,8 @@ export default function ConfigPage() {
           </aside>
         ) : null}
         </div>
-      </>}
+        </PanelChassi>
+      )}
     </Shell>
   );
 }
@@ -428,20 +568,13 @@ function WorkspaceSettingsPanel({ canManageLogo }: { canManageLogo: boolean }) {
 
   if (isLoading) {
     return (
-      <div className="grid max-w-2xl gap-4" aria-busy="true" aria-label="Carregando configurações gerais">
-        <div className="skeleton h-8 w-2/5" />
-        <div className="skeleton h-28" />
-      </div>
+      <PanelChassi headId="settings-workspace" Icon={GlobeHemisphereWest} title="Geral" busy busyLabel="Carregando configurações gerais" />
     );
   }
 
   return (
-    <>
-      <form className="max-w-2xl border-t border-[var(--border)] pt-6" onSubmit={submit}>
-        <div className="grid gap-5 sm:grid-cols-[40px_minmax(0,1fr)]">
-          <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--primary-text)]">
-            <GlobeHemisphereWest size={19} aria-hidden="true" />
-          </span>
+    <PanelChassi headId="settings-workspace" Icon={GlobeHemisphereWest} title="Geral">
+      <form className="grid gap-5" onSubmit={submit}>
         <div className="grid gap-5">
           <div>
             <h2 className="m-0 text-base font-semibold text-[var(--text)]">Fuso horário</h2>
@@ -506,10 +639,9 @@ function WorkspaceSettingsPanel({ canManageLogo }: { canManageLogo: boolean }) {
             </button>
           </div>
         </div>
-      </div>
       </form>
       <WorkspaceLogoSection canManage={canManageLogo} />
-    </>
+    </PanelChassi>
   );
 }
 
@@ -566,27 +698,19 @@ function SignatureSettingsPanel({ canManage }: { canManage: boolean }) {
 
   if (isLoading) {
     return (
-      <div className="grid max-w-2xl gap-4" aria-busy="true" aria-label="Carregando configuração de assinatura">
-        <div className="skeleton h-8 w-2/5" />
-        <div className="skeleton h-28" />
-      </div>
+      <PanelChassi headId="settings-signature" Icon={ChatCircleDots} title="Assinatura do atendente" busy busyLabel="Carregando configuração de assinatura" />
     );
   }
 
   return (
-    <form className="max-w-2xl border-t border-[var(--border)] pt-6" onSubmit={submit}>
-      <div className="grid gap-5 sm:grid-cols-[40px_minmax(0,1fr)]">
-        <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--primary-text)]">
-          <ChatCircleDots size={19} aria-hidden="true" />
-        </span>
+    <PanelChassi
+      headId="settings-signature"
+      Icon={ChatCircleDots}
+      title="Assinatura do atendente"
+      sub="Identifica quem enviou a mensagem para o cliente no WhatsApp. Aplica-se somente a mensagens enviadas por atendentes humanos — mensagens da IA nunca recebem assinatura."
+    >
+      <form className="grid gap-5" onSubmit={submit}>
         <div className="grid gap-5">
-          <div>
-            <h2 className="m-0 text-base font-semibold text-[var(--text)]">Assinatura do atendente</h2>
-            <p className="sub mt-1">
-              Identifica quem enviou a mensagem para o cliente no WhatsApp. Aplica-se somente a mensagens enviadas por
-              atendentes humanos — mensagens da IA nunca recebem assinatura.
-            </p>
-          </div>
           {error || saveError ? (
             <p className="error" role="alert">{saveError || (error instanceof Error ? error.message : "Não foi possível carregar a configuração.")}</p>
           ) : null}
@@ -635,8 +759,8 @@ function SignatureSettingsPanel({ canManage }: { canManage: boolean }) {
             </div>
           ) : null}
         </div>
-      </div>
-    </form>
+      </form>
+    </PanelChassi>
   );
 }
 
@@ -717,18 +841,17 @@ function PanelNotificationSettingsPanel() {
 
   if (isLoading) {
     return (
-      <div className="grid max-w-2xl gap-4" aria-busy="true" aria-label="Carregando preferências de notificação">
-        <div className="skeleton h-8 w-2/5" />
-        <div className="skeleton h-28" />
-      </div>
+      <PanelChassi headId="settings-panel-notifications" Icon={BellSimple} title="Notificações do painel" busy busyLabel="Carregando preferências de notificação" />
     );
   }
   return (
-    <div className="grid max-w-3xl gap-6 border-t border-[var(--border)] pt-6">
-      <div>
-        <h2 className="m-0 text-base font-semibold text-[var(--text)]">Notificações do painel</h2>
-        <p className="sub mt-1">Controla somente novas mensagens recebidas de contatos. Alertas críticos, operacionais e de reuniões não são alterados. Os avisos de agendamento enviados ao grupo de WhatsApp ficam na seção separada “Notificações de agendamento”.</p>
-      </div>
+    <PanelChassi
+      headId="settings-panel-notifications"
+      Icon={BellSimple}
+      title="Notificações do painel"
+      sub="Controla somente novas mensagens recebidas de contatos. Alertas críticos, operacionais e de reuniões não são alterados. Os avisos de agendamento enviados ao grupo de WhatsApp ficam na seção separada “Notificações de agendamento”."
+    >
+      <div className="grid gap-6">
       {error || saveError ? <p className="error" role="alert">{saveError || (error instanceof Error ? error.message : "Falha ao carregar preferências.")}</p> : null}
       <div className="grid gap-3 sm:grid-cols-3">
         {([
@@ -815,7 +938,8 @@ function PanelNotificationSettingsPanel() {
         ) : <p className="mt-4 text-sm text-[var(--text-secondary)]">Nenhuma conversa silenciada.</p>}
       </section>
       <WebPushSettings />
-    </div>
+      </div>
+    </PanelChassi>
   );
 }
 
@@ -866,27 +990,19 @@ function AgendaNotificationSettingsPanel({ canManage }: { canManage: boolean }) 
 
   if (isLoading) {
     return (
-      <div className="grid max-w-2xl gap-4" aria-busy="true" aria-label="Carregando notificações de agendamento">
-        <div className="skeleton h-8 w-2/5" />
-        <div className="skeleton h-28" />
-      </div>
+      <PanelChassi headId="settings-agenda-notifications" Icon={CalendarCheck} title="Notificações de agendamento" busy busyLabel="Carregando notificações de agendamento" />
     );
   }
 
   return (
-    <form className="max-w-2xl border-t border-[var(--border)] pt-6" onSubmit={submit}>
-      <div className="grid gap-5 sm:grid-cols-[40px_minmax(0,1fr)]">
-        <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--primary-text)]">
-          <UsersThree size={19} aria-hidden="true" />
-        </span>
+    <PanelChassi
+      headId="settings-agenda-notifications"
+      Icon={CalendarCheck}
+      title="Notificações de agendamento"
+      sub="Envia um aviso para um grupo de WhatsApp sempre que um novo agendamento for confirmado. Exclusivo para agendamentos — nenhum outro alerta do sistema usa este grupo."
+    >
+      <form className="grid gap-5" onSubmit={submit}>
         <div className="grid gap-5">
-          <div>
-            <h2 className="m-0 text-base font-semibold text-[var(--text)]">Notificações de agendamento</h2>
-            <p className="sub mt-1">
-              Envia um aviso para um grupo de WhatsApp sempre que um novo agendamento for confirmado. Exclusivo para
-              agendamentos — nenhum outro alerta do sistema usa este grupo.
-            </p>
-          </div>
           {error || saveError ? (
             <p className="error" role="alert">{saveError || (error instanceof Error ? error.message : "Não foi possível carregar a configuração.")}</p>
           ) : null}
@@ -942,8 +1058,8 @@ function AgendaNotificationSettingsPanel({ canManage }: { canManage: boolean }) 
             </div>
           ) : null}
         </div>
-      </div>
-    </form>
+      </form>
+    </PanelChassi>
   );
 }
 
@@ -1066,23 +1182,19 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
 
   if (panelState === "loading") {
     return (
-      <section className="grid gap-3 border-y border-[var(--border)] py-6" aria-busy="true" aria-label="Carregando equipe de atendimento">
-        <div className="skeleton h-8 w-2/5" />
-        <div className="skeleton h-16" />
-        <div className="skeleton h-16" />
-      </section>
+      <PanelChassi headId="settings-attendants" Icon={UserList} title="Equipe de atendimento" busy busyLabel="Carregando equipe de atendimento" />
     );
   }
 
   return (
-    <form className="border-y border-[var(--border)] py-6" onSubmit={savePool}>
-      <header className="mb-5">
-        <div className="flex items-center gap-2 text-base font-semibold text-[var(--text)]"><UsersThree size={20} aria-hidden="true" /> Equipe de atendimento e distribuição</div>
-        <p className="sub mt-2 max-w-[76ch] text-sm">
-          Os membros selecionados recebem novos contatos em rodízio estrito, na ordem de entrada no pool. O status Disponível/Indisponível é apenas informativo e não altera a distribuição.
-        </p>
-      </header>
-      {loadError || error ? <p className="error mb-4" role="alert">{error || (loadError instanceof Error ? loadError.message : "Falha ao carregar a equipe")}</p> : null}
+    <PanelChassi
+      headId="settings-attendants"
+      Icon={UserList}
+      title="Equipe de atendimento"
+      sub="Os membros selecionados recebem novos contatos em rodízio estrito, na ordem de entrada no pool. O status Disponível/Indisponível é apenas informativo e não altera a distribuição."
+    >
+      <form className="grid gap-5" onSubmit={savePool}>
+      {loadError || error ? <p className="error" role="alert">{error || (loadError instanceof Error ? loadError.message : "Falha ao carregar a equipe")}</p> : null}
       {feedback ? <p className="mb-4 text-sm text-[var(--primary-text)]" role="status">{feedback}</p> : null}
       {data?.attendants.length ? (
         <div className="responsive-table-wrap">
@@ -1175,7 +1287,8 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
         <span className="sub max-w-[76ch] text-xs">Ao remover alguém do pool, leads e conversas ativas e suas reuniões ativas são redistribuídos. Alterar a disponibilidade não remove o membro do rodízio.</span>
         {canManage ? <button className="btn primary" disabled={saving}><FloppyDisk size={16} aria-hidden="true" />{saving ? "Salvando…" : "Salvar equipe"}</button> : null}
       </div>
-    </form>
+      </form>
+    </PanelChassi>
   );
 }
 
@@ -1231,25 +1344,20 @@ function AtendonMeetSettingsPanel({ canManage }: { canManage: boolean }) {
 
   if (loading) {
     return (
-      <section className="grid max-w-3xl gap-4 border-y border-[var(--border)] py-6" aria-busy="true" aria-label="Carregando configuração do AtendON Meet">
-        <div className="skeleton h-8 w-2/5" />
-        <div className="skeleton h-24" />
-      </section>
+      <PanelChassi headId="settings-atendon-meet" Icon={VideoCamera} title="Sala própria do AtendON" busy busyLabel="Carregando configuração do AtendON Meet" />
     );
   }
 
   return (
-    <form className="max-w-3xl border-y border-[var(--border)] py-6" onSubmit={submit}>
-      <div className="grid gap-6 sm:grid-cols-[40px_minmax(0,1fr)]">
-        <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--primary-text)]">
-          <VideoCamera size={19} aria-hidden="true" />
-        </span>
+    <PanelChassi
+      headId="settings-atendon-meet"
+      Icon={VideoCamera}
+      title="Sala própria do AtendON"
+      sub="Cria uma sala protegida assim que o agendamento é confirmado. Participantes entram pelo link recebido e a equipe acessa pelo painel."
+    >
+      <form className="grid gap-6" onSubmit={submit}>
         <div className="min-w-0">
           <div className="flex flex-wrap items-start justify-between gap-5 border-b border-[var(--border)] pb-5">
-            <div>
-              <h2 className="m-0 text-base font-semibold text-[var(--text)]">Sala própria do AtendON</h2>
-              <p className="sub mt-2 max-w-[65ch] text-sm">Cria uma sala protegida assim que o agendamento é confirmado. Participantes entram pelo link recebido e a equipe acessa pelo painel.</p>
-            </div>
             <label className="flex items-center gap-3 text-sm font-medium text-[var(--text-secondary)]">
               <input type="checkbox" checked={enabled} disabled={!available || !canManage || saving} onChange={(event) => { setEnabled(event.target.checked); setSaved(false); }} />
               {enabled ? "Ativo" : "Inativo"}
@@ -1272,8 +1380,8 @@ function AtendonMeetSettingsPanel({ canManage }: { canManage: boolean }) {
             {canManage ? <button className="btn primary active:scale-[.98]" disabled={!available || saving}><FloppyDisk size={16} aria-hidden="true" />{saving ? "Salvando…" : "Salvar AtendON Meet"}</button> : <span className="sub text-xs">Disponível somente para consulta.</span>}
           </div>
         </div>
-      </div>
-    </form>
+      </form>
+    </PanelChassi>
   );
 }
 
@@ -1387,10 +1495,7 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
 
   if (loading) {
     return (
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)]" aria-busy="true" aria-label="Carregando configuração do Google Meet">
-        <div className="grid gap-4 border-y border-[var(--border)] py-6"><div className="skeleton h-8 w-2/5" /><div className="skeleton h-20" /><div className="skeleton h-28" /></div>
-        <div className="grid gap-3 border-t border-[var(--border)] py-6 lg:border-l lg:border-t-0 lg:pl-6"><div className="skeleton h-6 w-1/2" /><div className="skeleton h-16" /><div className="skeleton h-16" /></div>
-      </div>
+      <PanelChassi headId="settings-google-meet" Icon={GoogleLogo} title="Google Meet" busy busyLabel="Carregando configuração do Google Meet" />
     );
   }
 
@@ -1399,13 +1504,15 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
   const activationBlocked = enabled && (!oauthConnected || !data?.settings.closer_member_ids.length);
 
   return (
-    <form className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)]" onSubmit={submit}>
-      <section className="border-y border-[var(--border)] py-6">
+    <PanelChassi
+      headId="settings-google-meet"
+      Icon={GoogleLogo}
+      title="Google Meet"
+      sub="Cria uma sala pela API do Google Meet assim que o agendamento é confirmado. O fluxo não cria nem consulta eventos no Google Calendar."
+    >
+      <form className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)]" onSubmit={submit}>
+      <section className="border-b border-[var(--border)] pb-6 lg:border-b-0">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-5 border-b border-[var(--border)] pb-5">
-          <div>
-            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text)]"><VideoCamera size={19} aria-hidden="true" /> Sala automática</div>
-            <p className="sub mt-2 max-w-[68ch]">Cria uma sala pela API do Google Meet assim que o agendamento é confirmado. O fluxo não cria nem consulta eventos no Google Calendar.</p>
-          </div>
           <label className="flex items-center gap-3 text-sm font-medium text-[var(--text-secondary)]">
             <input type="checkbox" checked={enabled} disabled={!canManage} onChange={(event) => { setEnabled(event.target.checked); setSaved(false); }} />
             {enabled ? "Ativo" : "Inativo"}
@@ -1466,7 +1573,7 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
       </section>
 
       <aside className="border-t border-[var(--border)] pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-1" aria-label="Estado da integração com Google Meet">
-        <h2 className="text-sm font-semibold text-[var(--text)]">Pré-requisitos da integração</h2>
+        <h3 className="text-sm font-semibold text-[var(--text)]">Pré-requisitos da integração</h3>
         <div className="mt-5 grid gap-5">
           <div className="grid grid-cols-[32px_1fr] gap-3">
             <span className={`grid h-8 w-8 place-items-center rounded-full border ${oauthConnected ? "border-[var(--primary-border)] text-[var(--primary-text)]" : "border-[var(--warning-border)] text-[var(--warning-text)]"}`}>
@@ -1484,7 +1591,8 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
           </div>
         </div>
       </aside>
-    </form>
+      </form>
+    </PanelChassi>
   );
 }
 

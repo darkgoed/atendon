@@ -101,7 +101,11 @@ export type FlowNodeType =
   | "tag_remove"
   | "stage_move"
   | "assign_agent"
-  | "webhook";
+  | "webhook"
+  /* SPEC v7 C1 — palette ids para kinds de desvio/finalização/interativo. */
+  | "branch"
+  | "finalize"
+  | "interactive";
 
 export type PaletteItem = {
   id: FlowNodeType;
@@ -121,6 +125,8 @@ export const PALETTE: Array<{ group: string; items: PaletteItem[] }> = [
       { id: "boolean", kind: "boolean", label: "Sim/Não", hint: "Pergunta com Sim ou Não", icon: "GitFork" },
       { id: "text", kind: "text", label: "Texto livre", hint: "Pergunta aberta, resposta digitada", icon: "Keyboard" },
       { id: "final", kind: "final", label: "Finalizar", hint: "Encerra o fluxo com uma mensagem", icon: "Power" },
+      { id: "interactive", kind: "interactive", label: "Interativo", hint: "Mensagem com botões ou lista", icon: "CursorClick" },
+      { id: "finalize", kind: "finalize", label: "Encerramento", hint: "Encerra o fluxo com motivo interno", icon: "Flag" },
     ],
   },
   {
@@ -128,6 +134,7 @@ export const PALETTE: Array<{ group: string; items: PaletteItem[] }> = [
     items: [
       { id: "delay", kind: "delay", label: "Espera", hint: "Aguarda antes da próxima etapa", icon: "Clock" },
       { id: "wait_for_reply", kind: "wait_for_reply", label: "Aguardar resposta", hint: "Pausa até o contato responder", icon: "Hourglass" },
+      { id: "branch", kind: "branch", label: "Condição", hint: "Desvia por variável (sim/não)", icon: "GitBranch" },
     ],
   },
   {
@@ -141,6 +148,10 @@ export const PALETTE: Array<{ group: string; items: PaletteItem[] }> = [
     ],
   },
 ];
+
+/* Fonte única dos grupos da paleta — o flow-editor.tsx importa daqui
+   (consolidação da PALETTE_GROUPS que vivia duplicada no componente). */
+export const PALETTE_GROUPS = PALETTE;
 
 /* Kinds legados (years/revenue) são apenas renderizados, não ofertados na paleta. */
 export function newStepFor(item: PaletteItem): FlowStep {
@@ -157,6 +168,13 @@ export function newStepFor(item: PaletteItem): FlowStep {
     case "stage_move": return { kind: "action", action_type: "stage_move" };
     case "assign_agent": return { kind: "action", action_type: "assign_agent" };
     case "webhook": return { kind: "action", action_type: "webhook" };
+    /* SPEC v7 C1 — defaults espelham o zod do backend (flow.ts:117-127, :122, :124):
+       branch sem value pré-preenchido (operator eq exige value); interactive
+       buttons com 1 opção (máx 3, roteamento por transitions[value] ou next). */
+    case "branch": return { kind: "branch", variable_name: "", operator: "eq", value: "" };
+    case "finalize": return { kind: "finalize", end_reason: "" };
+    case "interactive":
+      return { kind: "interactive", interactive_type: "buttons", message: "", options: [{ value: "Opção 1" }] };
     default: return { kind: "text", question: "", field: "" };
   }
 }

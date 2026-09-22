@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
+import { seedTenantCapabilities } from "./helpers/capability-seed.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const app = buildApp();
@@ -63,6 +64,7 @@ beforeAll(async () => {
     "INSERT INTO tenants(name,status,timezone) VALUES($1,'active','UTC') RETURNING id",
     [`Attendant Availability ${randomUUID()}`]
   )).rows[0].id;
+  await seedTenantCapabilities(pool, [tenantId]);
   whatsappSessionId = (await pool.query<{ id: string }>(
     "INSERT INTO whatsapp_sessions(tenant_id,label,is_primary) VALUES($1,'Principal',true) RETURNING id",
     [tenantId]

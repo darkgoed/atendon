@@ -22,7 +22,7 @@ describe("corrected browser audit contracts", () => {
     const record = { route: "/agenda", requested: "/agenda", finalUrl: "/403", theme: { requested: "dark", dataset: "light", background: "rgb(0, 0, 0)" }, heading: { matched: true }, entity: { matched: false }, loading: true, gaps: [], consoleErrors: ["boom"], pageErrors: [], axe: { violations: [{ id: "color-contrast" }] }, errorText: null };
     const result = validateRecord(record, contract);
     expect(result.valid).toBe(false);
-    expect(result.errors).toEqual(expect.arrayContaining(["theme dataset mismatch", "missing seeded nonempty entity marker", "loading state", "console/page errors", "axe violations"]));
+    expect(result.errors).toEqual(expect.arrayContaining(["theme dataset mismatch", "missing seeded entity marker", "loading state", "console/page errors", "axe violations"]));
     expect(result.errors.some((error) => error.includes("landed URL"))).toBe(true);
   });
   it("rejects duplicate route/theme/viewport keys while merging", () => {

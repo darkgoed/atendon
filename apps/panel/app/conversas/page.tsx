@@ -1,5 +1,5 @@
 "use client";
-import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowsLeftRight, BellRinging, BellSlash, CalendarDots, CheckCircle, Checks, Check, DotsThreeVertical, Flask, MagnifyingGlass, Pause, Robot, UserPlus, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowsLeftRight, BellRinging, BellSlash, CalendarDots, CheckCircle, Checks, Check, DotsThreeVertical, Flask, Pause, Robot, UserPlus, X } from "@phosphor-icons/react";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { ConversationComposer } from "@/components/conversation-composer";
@@ -476,8 +476,6 @@ export default function Conversations() {
   const [queueFilter, setQueueFilter] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [pendingOnly, setPendingOnly] = useState(false);
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selected, setSelected] = useState("");
   const [error, setError] = useState("");
   const [assignmentNotice, setAssignmentNotice] = useState("");
@@ -545,11 +543,6 @@ export default function Conversations() {
     contactAssetsRequestIdRef.current += 1;
   }, [selected]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 250);
-    return () => window.clearTimeout(timer);
-  }, [query]);
-
   const { data: session } = useSWR<PanelSession>("/me", fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
   const { data: connectionsData } = useSWR<ConnectionsResponse>(
     session ? "/connections" : null,
@@ -582,7 +575,7 @@ export default function Conversations() {
     numero: connectionFilter
   };
   const listKey = session
-    ? `/conversations?filter=${effectiveFilter}${debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ""}${queueFilter ? `&queue_id=${queueFilter}` : ""}${connectionFilter ? `&session_id=${connectionFilter}` : ""}${unreadOnly ? "&unread=true" : ""}${pendingOnly ? "&pending_action=true" : ""}`
+    ? `/conversations?filter=${effectiveFilter}${queueFilter ? `&queue_id=${queueFilter}` : ""}${connectionFilter ? `&session_id=${connectionFilter}` : ""}${unreadOnly ? "&unread=true" : ""}${pendingOnly ? "&pending_action=true" : ""}`
     : null;
   const { data: listData, error: listError, isLoading: listLoading, mutate: mutateList } = useSWR<ConversationsResponse>(listKey, fetcher, {
     refreshInterval: 10_000,
@@ -1448,22 +1441,6 @@ export default function Conversations() {
         >
         <aside className="conversation-list flex min-h-0 flex-col border-r border-[var(--border)] bg-transparent">
           <header className="conversation-list__header shrink-0 border-b border-[var(--border)] px-3.5 py-3">
-            <label className="conversation-list__search search-field">
-              <MagnifyingGlass className="shrink-0 text-[var(--text-muted)]" size={16} aria-hidden="true" />
-              <span className="sr-only">Buscar conversa</span>
-              <input
-                className="input min-w-0"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Buscar por nome, telefone ou tag"
-                aria-label="Buscar conversa por nome ou telefone"
-              />
-              {query ? (
-                <button type="button" onClick={() => setQuery("")} className="search-clear" aria-label="Limpar busca">
-                  <X size={15} />
-                </button>
-              ) : null}
-            </label>
             <div className="mb-2" data-testid="conversation-list-filters">
               <ListFiltersBar filters={conversationFilters} defs={conversationFilterDefs} onSet={setConversationFilter} onClearAll={clearConversationFilters} />
             </div>
@@ -1519,7 +1496,7 @@ export default function Conversations() {
                 ))}
               </div>
             ) : items.length === 0 ? (
-              <Empty>{debouncedQuery ? "Nenhuma conversa corresponde à busca." : "Nenhuma conversa neste filtro."}</Empty>
+              <Empty>Nenhuma conversa neste filtro.</Empty>
             ) : (
               <div className="space-y-1.5">
                 {items.map((item: Conversation) => (

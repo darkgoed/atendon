@@ -130,3 +130,33 @@ export function firstEnabledModulePath(
     && canAccessManifestItem(session, item)
     && (!item.capability || enabled(item.capability)))?.href ?? "/conversas";
 }
+
+export type SettingsNavKey =
+  | "workspace" | "signature" | "armazenamento" | "/uso"
+  | "/workspace/members" | "attendants" | "/workspace/roles" | "/workspace/audit"
+  | "categorias" | "parceiros" | "unidades" | "conversation-queues"
+  | "atendon-meet" | "google-meet" | "/conexao"
+  | "/agente" | "/humanizacao" | "/follow-ups"
+  | "panel-notifications" | "agenda-notifications" | "/alertas";
+
+export type SettingsNavGroup = { label: string; keys: readonly SettingsNavKey[] };
+
+/**
+ * R4 da SPEC settings-search: inventário completo e ÚNICO da navegação de
+ * Configurações — 9 grupos semânticos com as 21 chaves (12 abas do hub +
+ * 9 destinos), "Geral" primeiro, cada chave exatamente uma vez, sem rota
+ * órfã. A ordem aqui É a ordem da navegação. O gating de cada chave fica no
+ * hub (usePermission/attendantPoolAccess) e nas rotas do manifest — este
+ * array é só a estrutura/grupo, não concede acesso.
+ */
+export const settingsNavGroups: readonly SettingsNavGroup[] = [
+  { label: "Geral", keys: ["workspace", "signature", "armazenamento", "/uso"] },
+  { label: "Equipe e acesso", keys: ["/workspace/members", "attendants", "/workspace/roles", "/workspace/audit"] },
+  { label: "CRM/catálogos", keys: ["categorias", "parceiros", "unidades"] },
+  { label: "Atendimento", keys: ["conversation-queues"] },
+  { label: "Agenda e integrações", keys: ["atendon-meet", "google-meet"] },
+  { label: "Canais", keys: ["/conexao"] },
+  { label: "IA", keys: ["/agente", "/humanizacao", "/follow-ups"] },
+  { label: "Notificações", keys: ["panel-notifications", "agenda-notifications"] },
+  { label: "ROOT", keys: ["/alertas"] }
+];

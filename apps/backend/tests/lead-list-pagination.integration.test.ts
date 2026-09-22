@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
+import { seedTenantCapabilities } from "./helpers/capability-seed.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const app = buildApp();
@@ -37,6 +38,7 @@ beforeAll(async () => {
   await app.ready();
   tenantId = (await pool.query<{ id: string }>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id", [`Lead pagination ${randomUUID()}`])).rows[0].id;
   foreignTenantId = (await pool.query<{ id: string }>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id", [`Lead pagination foreign ${randomUUID()}`])).rows[0].id;
+  await seedTenantCapabilities(pool, [tenantId, foreignTenantId]);
   sessionId = (await pool.query<{ id: string }>("INSERT INTO whatsapp_sessions(tenant_id,status) VALUES($1,'connected') RETURNING id", [tenantId])).rows[0].id;
   foreignSessionId = (await pool.query<{ id: string }>("INSERT INTO whatsapp_sessions(tenant_id,status) VALUES($1,'connected') RETURNING id", [foreignTenantId])).rows[0].id;
   const email = `lead-pagination-${randomUUID()}@test.local`;

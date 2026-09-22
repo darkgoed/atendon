@@ -20,8 +20,12 @@ export function validateRecord(record, contract) {
   if (record.theme?.dataset !== requestedTheme) errors.push("theme dataset mismatch");
   const backgrounds = knownBackgrounds[requestedTheme] ?? [];
   if (!record.theme?.background || (backgrounds.length > 0 && !backgrounds.includes(record.theme.background))) errors.push("missing computed theme background");
-  if (!record.heading?.matched) errors.push("missing unique route heading");
-  if (contract?.state === "populated" && !record.entity?.matched) errors.push("missing seeded nonempty entity marker");
+  if (!record.heading?.matched && !contract?.headingOptional) errors.push("missing unique route heading");
+  // R5: "populated" e "expected-error" exigem marker dentro da entidade —
+  // sem isso a rota não pode ser declarada populated/auditada em erro esperado.
+  // D2/P3: alinhado ao drift-check — contrato com entitySelector+marker valida a
+  // entidade em QUALQUER estado (antes só populated/expected-error eram exigidos).
+  if (contract?.entitySelector && contract?.marker && !record.entity?.matched) errors.push("missing seeded entity marker");
   if (record.loading) errors.push("loading state");
   if (record.gaps?.length) errors.push("unhandled API request");
   if (record.pageErrors?.length || record.consoleErrors?.length) errors.push("console/page errors");
@@ -30,7 +34,12 @@ export function validateRecord(record, contract) {
   if (record.metrics?.horizontalOverflow) errors.push("horizontal overflow");
   if (record.metrics?.clippedButtons) errors.push("clipped buttons");
   if (record.metrics?.postSalesDisclosure?.attempted && !record.metrics.postSalesDisclosure.reachable) errors.push("post-sales disclosure unreachable");
-  if (!Number.isInteger(record.httpStatus) || record.httpStatus < 200 || record.httpStatus >= 400) errors.push(`HTTP status ${record.httpStatus ?? "missing"}`);
+  // R1(a): estado "not-found" EXIGE HTTP 404 (rota inexistente renderizando o boundary).
+  const notFoundState = contract?.state === "not-found";
+  const statusOk = notFoundState
+    ? record.httpStatus === 404
+    : Number.isInteger(record.httpStatus) && record.httpStatus >= 200 && record.httpStatus < 400;
+  if (!statusOk) errors.push(`HTTP status ${record.httpStatus ?? "missing"}${notFoundState ? " (not-found state requires 404)" : ""}`);
   if (!record.assets?.js?.length || !record.assets?.css?.length) errors.push("missing loaded JS/CSS assets");
   return { valid: errors.length === 0, errors };
 }

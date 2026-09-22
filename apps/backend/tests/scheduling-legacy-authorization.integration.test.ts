@@ -6,6 +6,7 @@ import type { InjectOptions } from "fastify";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
+import { seedTenantCapabilities } from "./helpers/capability-seed.js";
 import { atualizarStatusLead } from "../src/modules/scheduling/service.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
@@ -28,6 +29,7 @@ beforeAll(async () => {
   await app.ready();
   tenantA = (await row<{ id: string }>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id", [`legacy-a-${suffix}`])).id;
   tenantB = (await row<{ id: string }>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id", [`legacy-b-${suffix}`])).id;
+  await seedTenantCapabilities(pool, [tenantA, tenantB]);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
