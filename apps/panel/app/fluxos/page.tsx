@@ -6,7 +6,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import useSWR from "swr";
 import { ArrowsClockwise, CopySimple, PencilSimple, Plus, Plugs } from "@/components/icons";
 import { Shell } from "@/components/shell";
@@ -16,7 +16,9 @@ import { formatPanelDateTime } from "@/lib/format";
 import { usePermission } from "@/lib/use-permission";
 import { newFlowId, starterDefinition, triggerSummary, type FlowSummary } from "@/components/flow-editor/flow-model";
 
-type FlowsResponse = { flows: Array<FlowSummary & { atualizado_em: string | null }> };
+/* F4-r1 CAS: a listagem traz o token de revisão da linha (revisao: row.revision). */
+type FlowRow = FlowSummary & { revisao?: number };
+type FlowsResponse = { flows: FlowRow[] };
 
 const listFetcher = (url: string) => api<FlowsResponse>(url);
 
@@ -27,18 +29,31 @@ export default function FluxosPage() {
   const { data, error, isLoading, mutate } = useSWR(canRead ? "/qualification/flows" : null, listFetcher);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const busyRef = useRef(false);
 
   const flows = data?.flows ?? [];
 
   async function run(flowId: string, action: () => Promise<unknown>) {
+    if (busyRef.current) return; // trava síncrona: 2º clique morre antes de qualquer render
+    busyRef.current = true;
     setBusyId(flowId);
     setActionError(null);
     try {
       await action();
       await mutate();
     } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : "Falha na operação");
+      const conflictBody = cause instanceof ApiError && cause.status === 409
+        ? cause.body as { code?: unknown }
+        : null;
+      if (conflictBody?.code === "FLOW_VERSION_CONFLICT") {
+        // Sem auto-retry: recarrega a listagem (revisões frescas) e orienta revisar.
+        await mutate();
+        setActionError("Este fluxo foi alterado por outra pessoa. A lista foi atualizada — revise o estado atual e tente novamente.");
+      } else {
+        setActionError(cause instanceof Error ? cause.message : "Falha na operação");
+      }
     } finally {
+      busyRef.current = false;
       setBusyId(null);
     }
   }
@@ -48,13 +63,13 @@ export default function FluxosPage() {
     void run(id, async () => {
       await api(`/qualification/flows/${id}`, {
         method: "PUT",
-        body: JSON.stringify({ nome: "Novo fluxo", ativo: false, definition: starterDefinition() }),
+        body: JSON.stringify({ nome: "Novo fluxo", ativo: false, definition: starterDefinition(), revisao_base: 0 }),
       });
       router.push(`/fluxos/${id}`);
     });
   }
 
-  function duplicar(flow: FlowSummary) {
+  function duplicar(flow: FlowRow) {
     void run(flow.id, async () => {
       try {
         // Endpoint oficial (POST /qualification/flows/:id/duplicate, body {name}).
@@ -68,17 +83,24 @@ export default function FluxosPage() {
         // Fallback: clona via PUT (upsert por id) com definition copiada.
         await api(`/qualification/flows/${newFlowId()}`, {
           method: "PUT",
-          body: JSON.stringify({ nome: `${flow.nome} (cópia)`, ativo: false, definition: flow.definition }),
+          body: JSON.stringify({ nome: `${flow.nome} (cópia)`, ativo: false, definition: flow.definition, revisao_base: 0 }),
         });
       }
     });
   }
 
-  function alternarAtivo(flow: FlowSummary) {
+  function alternarAtivo(flow: FlowRow) {
     void run(flow.id, async () => {
+      // CAS: o token vem da linha (revision nasce em 1); sem token válido,
+      // bloqueia e revalida a listagem — nunca busca a revisão sozinho.
+      if (typeof flow.revisao !== "number" || !Number.isInteger(flow.revisao) || flow.revisao < 1) {
+        await mutate();
+        throw new Error("A lista estava desatualizada e foi recarregada — revise o estado e tente novamente.");
+      }
+      // PATCH oficial: muda só o ativo, sem reescrever nome (routes.ts flowPatchBody).
       await api(`/qualification/flows/${flow.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ nome: flow.nome, ativo: !flow.ativo }),
+        method: "PATCH",
+        body: JSON.stringify({ ativo: !flow.ativo, revisao_base: flow.revisao }),
       });
     });
   }
@@ -114,7 +136,7 @@ export default function FluxosPage() {
           <p className="label">Nenhum fluxo</p>
           <p className="sub">Crie um fluxo para automatizar o atendimento por WhatsApp.</p>
           {canManage ? (
-            <Button type="button" tone="primary" onClick={novoFluxo}>
+            <Button type="button" tone="primary" disabled={!canManage || busyId !== null} onClick={novoFluxo}>
               <Plus size={16} aria-hidden="true" /> Novo fluxo
             </Button>
           ) : null}

@@ -56,7 +56,7 @@ import {
 } from "../tripz-ai/zulu.js";
 import { extractSchedulingTimes, hasSchedulingTime } from "./scheduling-time.js";
 import { workspaceClockNote } from "./turn-clock.js";
-import { markQualificationOutboxSent, type QualificationInbound, type QualificationOutcome } from "../qualification/service.js";
+import { QualificationService, type QualificationInbound, type QualificationOutcome } from "../qualification/service.js";
 import { buscarDisponibilidade, markLeadDisqualified, verificarHorarios } from "../scheduling/service.js";
 import {
   buildAiTurnPreview,
@@ -2554,23 +2554,35 @@ export class MessageProcessor {
       }
       if (robotOutcome) {
         if (robotOutcome.reply) {
-          const sent = await this.gateway.sendText(message.sessionId, destination, robotOutcome.reply);
+          // deliverOutboxById reivindica a mesma linha da outbox do pump (guard
+          // claimed_at/status); sent null = pump entregou ou falha capturada.
+          let sent: { externalId: string } | null = null;
           if (robotOutcome.outboxId) {
-            await markQualificationOutboxSent(robotOutcome.outboxId, sent.externalId).catch((error) =>
-              logger.warn({ err: error, outboxId: robotOutcome?.outboxId, externalId: message.externalId }, "Failed to mark inline qualification message as sent"));
+            const externalId = await new QualificationService().deliverOutboxById(robotOutcome.outboxId, this.gateway).catch((error) => {
+              logger.warn({ err: error, outboxId: robotOutcome?.outboxId, externalId: message.externalId }, "Failed to deliver inline qualification message via outbox");
+              return null;
+            });
+            if (externalId) sent = { externalId };
           }
-          await this.repository.recordAgentReply({
-            tenantId: message.tenantId,
-            sessionId: message.sessionId,
-            conversationId: context.conversationId,
-            agentConfigVersionId: context.agentConfigVersionId,
-            text: robotOutcome.reply,
-            model: "qualification-flow",
-            externalId: sent.externalId,
-            inboundExternalId: message.externalId,
-            inboundExternalIds: [...processingExternalIds]
-          });
-          logger.info({ externalId: message.externalId, conversationId: context.conversationId, reason: "qualification_robot_reply" }, "Qualification flow robot replied; AI turn skipped");
+          if (!sent && !robotOutcome.outboxId) {
+            sent = await this.gateway.sendText(message.sessionId, destination, robotOutcome.reply);
+          }
+          if (sent) {
+            await this.repository.recordAgentReply({
+              tenantId: message.tenantId,
+              sessionId: message.sessionId,
+              conversationId: context.conversationId,
+              agentConfigVersionId: context.agentConfigVersionId,
+              text: robotOutcome.reply,
+              model: "qualification-flow",
+              externalId: sent.externalId,
+              inboundExternalId: message.externalId,
+              inboundExternalIds: [...processingExternalIds]
+            });
+            logger.info({ externalId: message.externalId, conversationId: context.conversationId, reason: "qualification_robot_reply" }, "Qualification flow robot replied; AI turn skipped");
+          } else {
+            logger.info({ externalId: message.externalId, conversationId: context.conversationId, reason: "qualification_robot_reply_via_pump" }, "Qualification flow delivery handled by outbox; no inline delivery confirmed");
+          }
         }
         await this.repository.markInboundProcessed(message, processingExternalIds);
         return robotOutcome.reply ? "answered" : "ignored";

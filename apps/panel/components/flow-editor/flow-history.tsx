@@ -11,7 +11,7 @@
    FlowConflictModal e recarrega via SWR mutate. */
 
 import { useCallback, useState } from "react";
-import useSWR from "swr";
+import useSWRInfinite from "swr/infinite";
 import { ModalDialog } from "@/components/modal-dialog";
 import { SaveButton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
@@ -73,8 +73,22 @@ export function FlowHistory({
   onConflict: (conflict: FlowConflict) => void;
   onClose: () => void;
 }) {
-  const { data, error, isLoading } = useSWR(`/qualification/flows/${flowId}/versions`, versionsFetcher);
-  const versions = data?.versions ?? [];
+  /* Paginação keyset (next_cursor) via useSWRInfinite: página 0 usa o endpoint
+     puro; as demais anexam ?cursor= (encodeURIComponent) quando há próxima
+     página — null para a SWR não buscar. Páginas têm key próprio por flowId
+     (troca de fluxo zera o tamanho e recomeça da página 0). */
+  const { data: pages, error, isLoading, isValidating, size, setSize, mutate } = useSWRInfinite(
+    (index, previousPageData: VersionsResponse | null) => {
+      if (index > 0 && (!previousPageData || previousPageData.next_cursor === null)) return null;
+      const endpoint = `/qualification/flows/${flowId}/versions`;
+      return index === 0 ? endpoint : `${endpoint}?cursor=${encodeURIComponent(previousPageData!.next_cursor!)}`;
+    },
+    versionsFetcher,
+  );
+  /* Flatten com dedupe por id (overlap teórico entre páginas não duplica linha). */
+  const versions = Array.from(
+    new Map((pages ?? []).flatMap((page) => page?.versions ?? []).map((row) => [row.id, row])).values(),
+  );
   const newest = versions[0]; // keyset version DESC — a primeira linha é a mais recente
 
   const [target, setTarget] = useState<FlowVersionRow | null>(null);
@@ -107,12 +121,19 @@ export function FlowHistory({
   const restore = useCallback(async () => {
     const row = target;
     if (!row) return;
+    /* CAS exige revisao_base inteiro ≥ 1: sem fallback 0. Se a página perdeu a
+       revisão viva (ex.: montagem antes do GET), o POST seria rejeitado —
+       bloqueia aqui com instrução útil em vez de enviar lixo. */
+    if (typeof revisao !== "number" || !Number.isInteger(revisao) || revisao < 1) {
+      setRestoreError("Não foi possível restaurar: a revisão atual do fluxo ainda não foi carregada. Recarregue a página e tente novamente.");
+      return;
+    }
     setRestoring(true);
     setRestoreError(null);
     try {
       await api<RestoreResponse>(`/qualification/flows/${flowId}/versions/${row.id}/restore`, {
         method: "POST",
-        body: JSON.stringify({ revisao_base: revisao ?? 0 }),
+        body: JSON.stringify({ revisao_base: revisao }),
       });
       onRestored();
     } catch (cause) {
@@ -201,6 +222,19 @@ export function FlowHistory({
           </li>
         ))}
       </ul>
+      {/* Paginação: última página com next_cursor OU falha de rede → botão único
+          (carregar mais / tentar novamente). Desabilitado durante revalidação. */}
+      {(pages?.[pages.length - 1]?.next_cursor ?? null) !== null || error ? (
+        <button
+          type="button"
+          className="btn"
+          data-testid="flow-history-more"
+          disabled={isValidating}
+          onClick={() => (error ? void mutate() : void setSize(size + 1))}
+        >
+          {error ? "Tentar novamente" : isValidating ? "Carregando…" : "Carregar mais"}
+        </button>
+      ) : null}
     </ModalDialog>
   );
 }

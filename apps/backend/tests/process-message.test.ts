@@ -3,6 +3,7 @@ import { NonRetryableAiError } from "../src/modules/ai-router/openrouter.js";
 import { audioTranscriptionPrompt, canonicalMeetingSlotDuration, generationTurnId, classifySchedulingPeriodPreference, composeMeetingAvailabilityFallback, deferredAvailabilityPromiseCorrection, classifySpecificSchedulingIntent, ConversationBusyRetryError, deduplicateReplyBubbles, extractStickerDirective, extractUnknownCommercialTerm, internalCorrectionDisclosureCorrection, isAmbiguousSchedulingConfirmation, isConfirmedSchedulingTurn, isNearDuplicateBubble, mediaAnalysisContext, mentionsSpecificProductModel, MessageProcessor, pendingSchedulingPeriodPreference, refreshContextWithinTurn, repeatedRecentQuestionCorrection, schedulingOfferEvidenceCorrection, schedulingPeriodOfferCorrection, semanticOfferRepetitionCorrection, shouldForceLeadRegistration, stickerCatalogPrompt, transcriptionAudioFormat, turnConcernsScheduling, unsolicitedSchedulingOfferCorrection, workspaceClockNote } from "../src/modules/messages/process-message.js";
 import type { ConversationContext } from "../src/modules/messages/repository.js";
 import { needsObjectionRecovery, objectionRecoveryCorrection } from "../src/modules/messages/objection-recovery.js";
+import { QualificationService } from "../src/modules/qualification/service.js";
 import { meetingInvitationContextCorrection, schedulingPeriodQuestionCorrection } from "../src/modules/messages/prefilled-context.js";
 import { TRIPZ_DEFAULT_OFFERS_GROUP_LINK, TRIPZ_ZULU_OWNER_NAME, TRIPZ_ZULU_OWNER_REFERRAL_REPLY, TRIPZ_ZULU_SYSTEM_PROMPT } from "../src/modules/tripz-ai/zulu.js";
 
@@ -180,6 +181,40 @@ describe("MessageProcessor", () => {
     releaseConversationLockMock.mockResolvedValue(undefined);
     markLeadDisqualifiedMock.mockReset();
     markLeadDisqualifiedMock.mockResolvedValue({ status: "perdido" });
+  });
+
+  it.each<[string, string | null | "reject"]>([
+    ["resolves an externalId", "outbound-1"],
+    ["resolves null", null],
+    ["rejects with an error", "reject"]
+  ])("qualification outbox inline delivery when deliverOutboxById %s", async (_label, mode) => {
+    // Regressão: com outboxId presente a entrega é OBRIGatoriamente via
+    // deliverOutboxById (pump reivindica a mesma linha); sendText inline só
+    // existe quando NÃO há outboxId. Voltar ao sendText inline quebra aqui.
+    const { repository, gateway, ai } = setup();
+    const processor = new MessageProcessor(repository as never, gateway, ai, undefined, 15, undefined, undefined, async () => ({ reply: "Pergunta robô", outboxId: "outbound-1" }));
+    const deliver = vi.spyOn(QualificationService.prototype, "deliverOutboxById");
+    try {
+      if (mode === "reject") deliver.mockRejectedValueOnce(new Error("ambiguous"));
+      else deliver.mockResolvedValueOnce(mode);
+
+      await expect(processor.process({ ...message, text: "Pergunta robô" })).resolves.toBe("answered");
+
+      expect(deliver).toHaveBeenCalledTimes(1);
+      expect(deliver).toHaveBeenCalledWith("outbound-1", gateway);
+      expect(gateway.sendText).not.toHaveBeenCalled();
+      expect(ai.complete).not.toHaveBeenCalled();
+      expect(repository.markInboundProcessed).toHaveBeenCalledTimes(1);
+      if (mode === "outbound-1") {
+        expect(repository.recordAgentReply).toHaveBeenCalledTimes(1);
+        const reply = repository.recordAgentReply.mock.calls[0][0] as { externalId?: string | null };
+        expect(reply.externalId).toBe("outbound-1");
+      } else {
+        expect(repository.recordAgentReply).not.toHaveBeenCalled();
+      }
+    } finally {
+      deliver.mockRestore();
+    }
   });
 
   it("adds the official Tripz group invitation only on an exclusive-offers turn", async () => {

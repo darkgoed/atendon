@@ -632,7 +632,7 @@ describe("página do editor (/fluxos/:id)", () => {
   function mockGet() {
     mocks.api.mockImplementation((path: string, init?: RequestInit) => {
       if (path === "/qualification/flows/fluxo-teste" && (!init || !init.method)) {
-        return Promise.resolve({ flow: { id: "fluxo-teste", nome: "Fluxo de teste", ativo: true, definition: FIXTURE, atualizado_em: null } });
+        return Promise.resolve({ flow: { id: "fluxo-teste", nome: "Fluxo de teste", ativo: true, definition: FIXTURE, revisao: 1, atualizado_em: null } });
       }
       if (path === "/qualification/flows/fluxo-teste/simulate") {
         return Promise.resolve({ steps: [{ nodeId: "P1", label: "Opções" }, { nodeId: "P2", label: "Sim/Não" }], end_reason: "aguardando" });
@@ -669,7 +669,7 @@ describe("página do editor (/fluxos/:id)", () => {
     const flowPath = `/qualification/flows/${mocks.flowId}`;
     mocks.api.mockImplementation((path: string, init?: RequestInit) => {
       if (path === flowPath && (!init || !init.method)) {
-        return Promise.resolve({ flow: { id: mocks.flowId, nome: "Fluxo de teste", ativo: true, definition: NEW_SHAPES, atualizado_em: null } });
+        return Promise.resolve({ flow: { id: mocks.flowId, nome: "Fluxo de teste", ativo: true, definition: NEW_SHAPES, revisao: 1, atualizado_em: null } });
       }
       return Promise.resolve({});
     });

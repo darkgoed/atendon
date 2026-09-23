@@ -9,7 +9,12 @@
    Guarda dirty: beforeunload + bloqueio da navegação interna com descarte
    explícito; o id do fluxo é capturado no closure do save — resposta tardia
    após trocar de rota não toca em outro fluxo. A validação client mostra os
-   problemas antes de salvar; erros do servidor são autoridade final. */
+   problemas antes de salvar; erros do servidor são autoridade final.
+   Concorrência (WP-E1): o Recarregar adota revisão+documento como UNIDADE só
+   da resposta NOVA (falha de recarga preserva rascunho e proteção dirty);
+   resposta do save não marca rascunho editado em voo como salvo; simulação
+   tardia não contamina o fluxo da tela; revisão ausente/inválida nunca vira
+   revisao_base 0 (0 = criação na política backend — routes.ts:38). */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
@@ -57,7 +62,7 @@ export default function FluxoEditorPage() {
   const flowId = typeof params.id === "string" ? params.id : "";
   const canManage = usePermission("agent.manage");
   const canRead = usePermission("agent.read");
-  const { data, error, isLoading, mutate } = useSWR(canRead ? `/qualification/flows/${flowId}` : null, flowFetcher);
+  const { data, isLoading, mutate } = useSWR(canRead ? `/qualification/flows/${flowId}` : null, flowFetcher);
 
   const [nome, setNome] = useState<string | null>(null);
   const [ativo] = useState<boolean | null>(null);
@@ -69,10 +74,17 @@ export default function FluxoEditorPage() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  /* Trava síncrona do save/recarga (ref: o state `saving` só aparece no
+     próximo render — reentrada no MESMO tick não teria botão desabilitado). */
+  const savingRef = useRef(false);
+  /* Edições em voo: onNome/onDefinition incrementam o nonce; a resposta do
+     PUT só marca salvo/limpa dirty se o rascunho NÃO mudou desde o clique —
+     com edição B durante o PUT de A, o "Salvo" mentiria sobre B (WP-E1). */
+  const editNonceRef = useRef(0);
   /* Padrão de salvar DS v2 (§2): SaveButton idle→busy→done + SaveToast 2,6s.
      A página tem flag `saving` própria (o save captura o flowId no closure),
-     então usa markDone() no sucesso com o MESMO guarda de resposta tardia —
-     save.run() marcaria done mesmo com outro fluxo na tela (R5). */
+     então usa markDone() no ramo de sucesso guardado — save.run() marcaria
+     done mesmo com outro fluxo na tela ou rascunho editado em voo (R5). */
   const saveFeedback = useSaveFeedback();
   const { markDone: markSaveDone, reset: resetSaveFeedback } = saveFeedback;
   const [trace, setTrace] = useState<SimTrace | null>(null);
@@ -96,6 +108,7 @@ export default function FluxoEditorPage() {
     setDirty(false);
     setServerError(null);
     setSaving(false);
+    savingRef.current = false;
     setSaved(false);
     resetSaveFeedback();
     setTrace(null);
@@ -143,11 +156,20 @@ export default function FluxoEditorPage() {
   const currentDefinition = definition ?? (loaded ? normalizeDefinition(loaded.definition) : null);
 
   const save = useCallback(async () => {
-    if (!currentDefinition || !canManage) return;
+    if (!currentDefinition || !canManage || savingRef.current) return; // trava síncrona: nada de save duplo
     setServerError(null);
     if (validateDefinition(currentDefinition).length > 0) return; // o editor lista os problemas
+    /* Fluxo EXISTENTE sem revisão viva (ausente/inválida) NUNCA envia
+       revisao_base 0: 0 é CRIAÇÃO na política backend (routes.ts:38; fluxo
+       existente ⇒ 409 em cascata). Erro recuperável: recarregar. */
+    if (typeof revisao !== "number" || !Number.isInteger(revisao) || revisao < 1) {
+      setServerError("Revisão do fluxo indisponível — recarregue a página e tente salvar novamente.");
+      return;
+    }
     const targetId = flowId; // capturado no closure (R5)
     const baseRevisao = revisao; // token CAS vivo no momento do clique
+    const nonceNoClique = editNonceRef.current; // rascunho do clique: edições em voo não são desta resposta
+    savingRef.current = true;
     setSaving(true);
     setSaved(false);
     try {
@@ -157,14 +179,19 @@ export default function FluxoEditorPage() {
           nome: currentNome,
           ativo: currentAtivo,
           definition: currentDefinition,
-          revisao_base: baseRevisao ?? 0,
+          revisao_base: baseRevisao,
         }),
       });
       if (flowIdRef.current !== targetId) return; // resposta tardia: outro fluxo na tela
+      /* A resposta é autoridade do token CAS: a revisão nova é adotada MESMO
+         com edições em voo — mas só marca salvo/limpa dirty se o rascunho não
+         mudou desde o clique (a edição B ainda é rascunho real). */
       if (typeof response.flow?.revisao === "number") setRevisao(response.flow.revisao);
-      setSaved(true);
-      markSaveDone(); // SaveButton "Salvo" + SaveToast "Fluxo salvo" por 2,6s
-      setDirty(false);
+      if (editNonceRef.current === nonceNoClique) {
+        setSaved(true);
+        markSaveDone(); // SaveButton "Salvo" + SaveToast "Fluxo salvo" por 2,6s
+        setDirty(false);
+      }
     } catch (cause) {
       if (flowIdRef.current !== targetId) return;
       resetSaveFeedback(); // em erro o botão volta a "Salvar"
@@ -175,34 +202,75 @@ export default function FluxoEditorPage() {
       }
       setServerError(cause instanceof ApiError ? cause.message : "Falha ao salvar o fluxo");
     } finally {
-      if (flowIdRef.current === targetId) setSaving(false);
+      if (flowIdRef.current === targetId) {
+        savingRef.current = false;
+        setSaving(false);
+      }
     }
   }, [canManage, currentAtivo, currentDefinition, currentNome, flowId, revisao, markSaveDone, resetSaveFeedback]);
 
-  /* Recarregar (modal de conflito) e pós-restore: descarta o shadow state e
-     revalida — a revisão volta a ser a viva do GET, senão o token stale
-     causaria 409 em todo save seguinte (R2/R3). */
-  const reloadFromServer = useCallback(() => {
-    setNome(null);
-    setDefinition(null);
-    setRevisao(null);
+  /* Recarregar (modal de conflito) e pós-restore: aguarda a revalidação e
+     adota revisão+documento como UNIDADE, só da resposta NOVA — nunca da
+     resposta GET antiga que ainda está no cache (R2/R3). Enquanto a recarga
+     está pendente o save fica desabilitado (saving → SaveButton busy, sem
+     mentir sucesso). A FALHA da recarga NÃO descarta o rascunho nem a
+     proteção dirty: token e documento do clique permanecem e o próximo save
+     pode reabrir o 409 (nunca sobrescreve silenciosamente). */
+  const reloadFromServer = useCallback(async () => {
+    const targetId = flowIdRef.current;
+    const nonceNaRecarga = editNonceRef.current; // rascunho do clique em Recarregar
     setConflict(null);
     setSaved(false);
-    setDirty(false);
-    void mutate();
+    setServerError(null);
+    savingRef.current = true; // trava síncrona + visual (botão busy)
+    setSaving(true);
+    try {
+      /* mutate FUNCIONAL (revalidate: false): o fetch é o próprio updater —
+         1 chamada e o erro PROPAGA. O mutate() sem updater resolve com o dado
+         STALE quando a revalidação falha (o que descartaria o rascunho por
+         engano — por isso a adoção é decidida pela resposta nova aqui). */
+      const fresh = await mutate<FlowResponse>(async () => api<FlowResponse>(`/qualification/flows/${targetId}`), { revalidate: false });
+      if (flowIdRef.current !== targetId) return; // resposta tardia: outro fluxo na tela
+      const serverFlow = fresh?.flow;
+      if (!serverFlow?.id) { // revalidação falhou (ou veio sem fluxo): preserva rascunho/dirty/token
+        setServerError("Não foi possível recarregar o fluxo — tente novamente.");
+        return;
+      }
+      if (editNonceRef.current !== nonceNaRecarga) {
+        // Edição DURANTE a recarga: não descarta o rascunho nem adota o token novo;
+        // revision anterior fica para o próximo save tomar 409 seguro (não mascarar alteração alheia).
+        setServerError("Há alterações feitas durante a recarga. Revise o rascunho antes de salvar.");
+        return;
+      }
+      /* Sucesso: descarta o shadow e adota documento+token da MESMA resposta. */
+      setNome(null);
+      setDefinition(null);
+      setRevisao(typeof serverFlow.revisao === "number" ? serverFlow.revisao : null);
+      setDirty(false);
+    } catch {
+      if (flowIdRef.current === targetId) setServerError("Não foi possível recarregar o fluxo — tente novamente.");
+    } finally {
+      if (flowIdRef.current === targetId) {
+        savingRef.current = false;
+        setSaving(false);
+      }
+    }
   }, [mutate]);
 
   const simulate = useCallback(async () => {
     if (!currentDefinition) return;
+    const targetId = flowId; // identidade da requisição (R5)
     setTrace({ running: true, steps: [] });
     setServerError(null);
     try {
-      const payload = await api<unknown>(`/qualification/flows/${flowId}/simulate`, {
+      const payload = await api<unknown>(`/qualification/flows/${targetId}/simulate`, {
         method: "POST",
         body: JSON.stringify({ definition: currentDefinition, maxSteps: 40 }),
       });
+      if (flowIdRef.current !== targetId) return; // resposta tardia: não contamina o fluxo da tela
       setTrace({ running: false, ...parseTrace(payload) });
     } catch (cause) {
+      if (flowIdRef.current !== targetId) return;
       const message = cause instanceof ApiError
         ? cause.status === 404 || cause.status === 405
           ? "Simulação indisponível neste servidor. Salve o fluxo e tente novamente quando o endpoint for liberado."
@@ -213,16 +281,18 @@ export default function FluxoEditorPage() {
   }, [currentDefinition, flowId]);
 
   const updateDefinition = useCallback((next: FlowDefinition) => {
+    editNonceRef.current += 1; // rascunho mudou: resposta de save em voo não pode marcá-lo como salvo
+    resetSaveFeedback(); // rascunho mudou: feedback "Salvo" anterior não vale mais
     setDefinition(next);
     setSaved(false);
     setDirty(true);
-  }, []);
+  }, [resetSaveFeedback]);
 
   return (
     <Shell flush>
       {isLoading ? (
         <div className="grid gap-3 p-4"><div className="skeleton h-10 w-72" aria-hidden="true" /><div className="skeleton h-80 w-full" aria-hidden="true" /></div>
-      ) : error || !loaded ? (
+      ) : !loaded ? (
         <div className="p-4"><p className="error" role="alert">Fluxo não encontrado.</p></div>
       ) : currentDefinition ? (
         <div style={{ height: "100%", position: "relative" }}>
@@ -241,7 +311,7 @@ export default function FluxoEditorPage() {
             conflict={conflict}
             onReload={reloadFromServer}
             onOpenHistory={() => setHistoryOpen(true)}
-            onNome={(value) => { setNome(value); setSaved(false); setDirty(true); }}
+            onNome={(value) => { editNonceRef.current += 1; resetSaveFeedback(); setNome(value); setSaved(false); setDirty(true); }}
             onDefinition={updateDefinition}
             onSave={() => void save()}
             onSimulate={() => void simulate()}
@@ -254,7 +324,7 @@ export default function FluxoEditorPage() {
               canManage={canManage}
               onRestored={() => {
                 setHistoryOpen(false);
-                reloadFromServer();
+                void reloadFromServer();
               }}
               onConflict={(next) => {
                 setHistoryOpen(false);
