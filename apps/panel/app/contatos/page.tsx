@@ -1,6 +1,6 @@
 "use client";
 
-import { DotsThreeVertical, DownloadSimple, Eye, MagicWand, MagnifyingGlass, UploadSimple } from "@/components/icons";
+import { DotsThreeVertical, DownloadSimple, Eye, MagicWand, MagnifyingGlass, Plus, UploadSimple } from "@/components/icons";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
@@ -8,6 +8,7 @@ import { BulkLeadActions } from "@/components/bulk-lead-actions";
 import { ContactChatLink } from "@/components/contact-chat-link";
 import { ContactAvatar } from "@/components/contact-avatar";
 import { Empty } from "@/components/page-state";
+import { NewLeadDialog } from "@/components/new-lead-dialog";
 import { LeadTagChips, LeadTagMenuItems, type LeadTag } from "@/components/lead-tag-picker";
 import { PopoverMenu } from "@/components/popover-menu";
 import { SavedViewsControl } from "@/components/saved-views-control";
@@ -21,7 +22,7 @@ import { applyLeadSavedViewFilters, leadFiltersForSavedView, useCaseOrganization
 import { useRealtimeSignals } from "@/lib/realtime";
 import { hasWorkspaceWideCaseScope, type PanelSession } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
-import { Button, IconButton } from "@/components/ui";
+import { Button, IconButton, SaveToast } from "@/components/ui";
 import { ListFiltersBar, type ListFilterDef } from "@/components/ui/filters";
 
 type Option = { id: string; nome: string };
@@ -55,6 +56,7 @@ const fetcher = <T,>(url: string) => api<T>(url);
 export default function LeadsPage() {
   const canReadFollowUp = usePermission("leads.follow_up.read");
   const canQualifyLeads = usePermission("leads.update_status");
+  const canCreateLeads = usePermission("leads.create");
   const organizationEnabled = useCaseOrganizationEnabled();
   const [filters, setFilters] = useState<LeadFilters>({
     status: "", unidade_id: "", categoria_id: "", parceiro_id: "", busca: "", estrelas: "", fila_humana: ""
@@ -66,6 +68,8 @@ export default function LeadsPage() {
   const [qualifyingLeadId, setQualifyingLeadId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createToast, setCreateToast] = useState(false);
   const { data: session } = useSWR<PanelSession>("/me", fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 10_000
@@ -201,6 +205,7 @@ export default function LeadsPage() {
     <header className="leads-page__header">
       <div><h1>{hasWorkspaceScope ? "Contatos" : "Meus contatos"}</h1></div>
       <div className="leads-page__actions flex min-h-8 flex-wrap items-center gap-2">
+        {canCreateLeads ? <Button className="crm-compact-button" tone="primary" onClick={() => setCreateOpen(true)}><Plus size={14} aria-hidden="true" />Novo contato</Button> : null}
         <Link className="btn primary crm-compact-button" href="/contatos/importar"><UploadSimple size={14} aria-hidden="true" />Importar</Link>
         {canReadFollowUp ? (
           <IconButton
@@ -278,6 +283,14 @@ export default function LeadsPage() {
           </table>}
         {!loading && pageState.hasMore ? <div className="flex justify-center p-3"><Button onClick={() => void loadMoreLeads()} disabled={loadingMore}>{loadingMore ? "Carregando…" : "Carregar mais contatos"}</Button></div> : null}
     </section>
+    {canCreateLeads ? (
+      <NewLeadDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={async () => { await mutate(); setCreateToast(true); window.setTimeout(() => setCreateToast(false), 2600); }}
+      />
+    ) : null}
+    <SaveToast show={createToast}>Contato criado</SaveToast>
     </div>
   </Shell>;
 }
