@@ -115,14 +115,18 @@ export function ListFiltersBar<T extends Record<string, string>>({
         }}
       >
         <RadixPopover.Trigger asChild>
+          {/* DS v2 §4: gatilho só-ícone; o rótulo segue como nome acessível e
+              title. A contagem de filtros ativos já aparece nos chips ao lado. */}
           <button
             type="button"
-            className="btn h-6 rounded-sm px-2 text-xs"
+            className="btn icon-button icon-button--sm"
             aria-expanded={addOpen}
             aria-haspopup="dialog"
+            aria-label={label}
+            title={label}
+            data-active={active.length > 0 || undefined}
           >
-            <Funnel size={12} aria-hidden="true" className="text-[var(--text-secondary)]" />
-            {label}
+            <Funnel size={14} aria-hidden="true" />
           </button>
         </RadixPopover.Trigger>
         <RadixPopover.Portal>

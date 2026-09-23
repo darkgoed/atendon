@@ -9,8 +9,9 @@ describe('font mono token', () => {
   it('uses the replacement token and removes the legacy mono family from CSS', () => {
     // Intenção: existe UM token mono do sistema e ele não carrega a família legada.
     // A lista exata de fallbacks é detalhe de implementação, então asseguramos a
-    // forma (ui-monospace primeiro, termina em monospace) em vez da string literal.
-    expect(css).toMatch(/--font-mono:\s*ui-monospace,[^;]*monospace;/);
+    // forma (Geist Mono opcional do DS v2, depois ui-monospace, termina em
+    // monospace) em vez da string literal.
+    expect(css).toMatch(/--font-mono:\s*(?:"Geist Mono",\s*)?ui-monospace,[^;]*monospace;/);
     expect(css).not.toContain(['IBM', 'Plex', 'Mono'].join(' '));
   });
 

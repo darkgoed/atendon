@@ -90,3 +90,30 @@
   .overview-queue__item { grid-template-columns: auto minmax(0, 1fr); row-gap: var(--space-2); }
   .overview-queue__item > .btn { grid-column: 1 / -1; }
 }
+
+/* ======================================================= DS v2 — PAINEL ==
+   Entrada escalonada (KPIs/cards entram com .on-enter; --i vem do JSX) e
+   funil: os estágios crescem no mount e acendem no hover. O funil real é o
+   SVG de ui/funnel.tsx (classes .funnel-chart*), então o "width" da
+   referência entra como scaleX do próprio estágio — transform não força
+   layout e o valor final é o natural da silhueta. */
+.overview-realtime .panel,
+.grid-main > .panel,
+.overview-metrics__item,
+.ds-dashboard .card,
+.ds-dashboard .kpi-card { animation-delay: calc(var(--i, 0) * 40ms); }
+
+.funnel-chart__svg > g polygon {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: filter .2s var(--ease);
+  animation: funnel-grow .4s var(--ease-spring) both;
+}
+.funnel-chart__svg > g:nth-of-type(2) polygon { animation-delay: 40ms; }
+.funnel-chart__svg > g:nth-of-type(3) polygon { animation-delay: 80ms; }
+.funnel-chart__svg > g:nth-of-type(4) polygon { animation-delay: 120ms; }
+.funnel-chart__svg > g:nth-of-type(5) polygon { animation-delay: 160ms; }
+.funnel-chart__svg > g:nth-of-type(6) polygon { animation-delay: 200ms; }
+.funnel-chart__svg > g polygon:hover { filter: brightness(1.35); }
+
+@keyframes funnel-grow { from { transform: scaleX(0); } }

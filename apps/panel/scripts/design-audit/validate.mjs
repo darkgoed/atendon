@@ -10,7 +10,7 @@ export function expectedPathFor(route, requested, contract) { return contract?.e
 const baseline = process.env.AUDIT_PHASE !== "final";
 // Backgrounds computados aceitos por tema: tokens vigentes (tokens.css) primeiro,
 // valores históricos mantidos para comparabilidade com auditorias antigas.
-const knownBackgrounds = { dark: ["#0f1115", "rgb(15, 17, 21)", "#101719", "rgb(16, 23, 25)", "#0e1315"], light: baseline ? ["#f7f8fa", "rgb(247, 248, 250)", "#f7f7f5", "#F7F7F5", "#f4f3ee", "rgb(244, 243, 238)"] : ["#f7f8fa", "rgb(247, 248, 250)", "#f4f3ee", "rgb(244, 243, 238)"] };
+const knownBackgrounds = { dark: ["#0a0a0a", "rgb(10, 10, 10)", "#0f1115", "rgb(15, 17, 21)", "#101719", "rgb(16, 23, 25)", "#0e1315"], light: baseline ? ["#f5f5f5", "rgb(245, 245, 245)", "#f7f8fa", "rgb(247, 248, 250)", "#f7f7f5", "#F7F7F5", "#f4f3ee", "rgb(244, 243, 238)"] : ["#f5f5f5", "rgb(245, 245, 245)", "#f7f8fa", "rgb(247, 248, 250)", "#f4f3ee", "rgb(244, 243, 238)"] };
 export function validateRecord(record, contract) {
   const errors = [];
   if (!contract) errors.push("missing route fixture contract");

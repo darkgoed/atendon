@@ -8,6 +8,7 @@ import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { canAccessWithSession, type PanelSession } from "@/lib/session";
 import { AdminButton, AdminPage, AdminPageHeader } from "@/components/admin";
+import { IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 
 
 type Role = {
@@ -63,6 +64,7 @@ export default function WorkspaceRolesPage() {
   const [editor, setEditor] = useState<EditorState>(buildEditor());
   const [selectedId, setSelectedId] = useState<string | "new">("new");
   const [saving, setSaving] = useState(false);
+  const save = useSaveFeedback();
   const [message, setMessage] = useState("");
 
   const roles = data?.roles ?? [];
@@ -122,6 +124,7 @@ export default function WorkspaceRolesPage() {
       const nextRoles = next?.roles ?? [];
       const selected = nextRoles.find((role) => role.id === selectedRoleId);
       selectRole(selected);
+      save.markDone();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Falha ao salvar função");
     } finally {
@@ -259,15 +262,15 @@ export default function WorkspaceRolesPage() {
 
           <div className="admin-actions admin-actions--end">
             {editor.id ? (
-              <button type="button" className="btn warn" disabled={!canDelete || saving || editingProtectedRole || editor.memberCount > 0} onClick={() => void removeRole()}>
+              <IconButton type="button" label="Excluir" disabled={!canDelete || saving || editingProtectedRole || editor.memberCount > 0} onClick={() => void removeRole()}>
                 <Trash size={16} aria-hidden="true" />
-                Excluir
-              </button>
+              </IconButton>
             ) : null}
-            <button type="submit" className="btn primary" disabled={saving || editingProtectedRole || (!editor.id && !canCreate) || (Boolean(editor.id) && !canUpdate)}>
-              {saving ? "Salvando…" : "Salvar função"}
-            </button>
+            <SaveButton type="submit" state={saving ? "busy" : save.state} disabled={saving || editingProtectedRole || (!editor.id && !canCreate) || (Boolean(editor.id) && !canUpdate)}>
+              Salvar função
+            </SaveButton>
           </div>
+          <SaveToast show={save.done}>Função salva</SaveToast>
         </form>
       </section>
     </AdminPage></Shell>

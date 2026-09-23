@@ -37,7 +37,7 @@ function WorkspaceEmpty({ creating, onCreate, onOpenHistory }: { creating: boole
       </button>
       <div className="grid w-full max-w-[48rem] grid-cols-1 gap-8 md:grid-cols-[minmax(0,1fr)_12rem] md:items-end">
         <div className="border-l-2 border-[var(--primary)] pl-6 sm:pl-9">
-          <span className="font-mono text-[9px] uppercase tracking-[.2em] text-[var(--primary)]">Copiloto de propostas</span>
+          <span className="font-mono text-[9px] uppercase tracking-[.2em] text-[var(--primary-text)]">Copiloto de propostas</span>
           <h1 className="mb-0 mt-4 text-3xl font-semibold leading-[1.08] tracking-[-.045em] text-[var(--text)] sm:text-4xl">Da conversa ao PDF,<br />sem perder o contexto.</h1>
           <p className="mb-0 mt-5 max-w-[50ch] text-[13px] leading-6 text-[var(--text-secondary)]">Organize voos, hospedagem, imagens, valores e roteiro em uma sessão independente do atendimento.</p>
           <button type="button" className="btn primary mt-7 min-h-10 px-4" onClick={onCreate} disabled={creating}>

@@ -9,12 +9,12 @@
  */
 
 import { type FormEvent, useState } from "react";
-import { Plus } from "@phosphor-icons/react";
+import { ArrowUUpLeft, CalendarX, Eye, PaperPlaneTilt, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
 import useSWR from "swr";
 import { PostFormDialog } from "@/components/changelog-admin/post-form-dialog";
 import { PreviewDialog } from "@/components/changelog-admin/preview-dialog";
 import { Shell } from "@/components/shell";
-import { Badge, type BadgeTone, Button, Dialog, EmptyState, ErrorState, Field, Input, LoadingState, PageHeader, Select, Table } from "@/components/ui";
+import { Badge, type BadgeTone, Button, Dialog, EmptyState, ErrorState, Field, IconButton, Input, LoadingState, PageHeader, SaveButton, SaveToast, Select, Table, useSaveFeedback } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { CHANGELOG_STATUS_LABELS, changelogCategoryLabel, type ChangelogAdminListResponse, type ChangelogAdminPost, type ChangelogStatus } from "@/lib/changelog";
 import type { PanelSession } from "@/lib/session";
@@ -63,6 +63,7 @@ export default function RootChangelogPage() {
   const [publishing, setPublishing] = useState<ChangelogAdminPost | null>(null);
   const [publishAt, setPublishAt] = useState("");
   const [working, setWorking] = useState(false);
+  const publishSave = useSaveFeedback();
   const posts = data?.posts ?? [];
 
   if (!root) {
@@ -75,7 +76,7 @@ export default function RootChangelogPage() {
     );
   }
 
-  async function lifecycle(post: ChangelogAdminPost, action: "publish" | "unpublish" | "delete", body?: unknown) {
+  async function lifecycle(post: ChangelogAdminPost, action: "publish" | "unpublish" | "delete", body?: unknown): Promise<boolean> {
     setWorking(true);
     setMessage("");
     setActionError("");
@@ -94,8 +95,10 @@ export default function RootChangelogPage() {
         );
       }
       await mutate();
+      return true;
     } catch (cause) {
       setActionError(cause instanceof ApiError ? cause.message : cause instanceof Error ? cause.message : "Não foi possível concluir a ação.");
+      return false;
     } finally {
       setWorking(false);
     }
@@ -115,7 +118,8 @@ export default function RootChangelogPage() {
     event.preventDefault();
     const post = publishing;
     if (!post || working) return;
-    await lifecycle(post, "publish", publishAt ? { publishAt: new Date(publishAt).toISOString() } : undefined);
+    const ok = await lifecycle(post, "publish", publishAt ? { publishAt: new Date(publishAt).toISOString() } : undefined);
+    if (ok) publishSave.markDone();
     setPublishing(null);
   }
 
@@ -146,6 +150,7 @@ export default function RootChangelogPage() {
 
         {message ? <p className="accent" role="status">{message}</p> : null}
         {actionError ? <ErrorState title="Ação não concluída">{actionError}</ErrorState> : null}
+        <SaveToast show={publishSave.done}>Novidade publicada</SaveToast>
 
         {error ? <ErrorState title="Não foi possível carregar os posts do changelog." action={<Button onClick={() => void mutate()}>Tentar novamente</Button>} /> : null}
         {!data && !error ? <LoadingState label="Carregando posts do changelog" /> : null}
@@ -192,19 +197,19 @@ export default function RootChangelogPage() {
                   <td data-label="Módulos">{post.modulesAffected.length ? post.modulesAffected.join(", ") : "—"}</td>
                   <td data-label="Ações">
                     <div className="cluster flex-wrap">
-                      <Button size="sm" onClick={() => setEditing(post)}>Editar</Button>
-                      <Button size="sm" onClick={() => setPreviewing(post)}>Prévia</Button>
+                      <IconButton label="Editar" size="sm" onClick={() => setEditing(post)}><PencilSimple size={14} aria-hidden="true" /></IconButton>
+                      <IconButton label="Prévia" size="sm" onClick={() => setPreviewing(post)}><Eye size={14} aria-hidden="true" /></IconButton>
                       {post.status === "published" ? (
-                        <Button size="sm" tone="danger" disabled={working} onClick={() => void lifecycle(post, "unpublish")}>Despublicar</Button>
+                        <IconButton label="Despublicar" size="sm" tone="danger" disabled={working} onClick={() => void lifecycle(post, "unpublish")}><ArrowUUpLeft size={14} aria-hidden="true" /></IconButton>
                       ) : post.status === "scheduled" ? (
                         <>
-                          <Button size="sm" tone="danger" disabled={working} onClick={() => void lifecycle(post, "unpublish")}>Cancelar agenda</Button>
-                          <Button size="sm" tone="primary" disabled={working} onClick={() => openPublish(post)}>Publicar agora</Button>
+                          <IconButton label="Cancelar agenda" size="sm" tone="danger" disabled={working} onClick={() => void lifecycle(post, "unpublish")}><CalendarX size={14} aria-hidden="true" /></IconButton>
+                          <IconButton label="Publicar agora" size="sm" tone="primary" disabled={working} onClick={() => openPublish(post)}><PaperPlaneTilt size={14} aria-hidden="true" /></IconButton>
                         </>
                       ) : (
-                        <Button size="sm" tone="primary" disabled={working} onClick={() => openPublish(post)}>Publicar…</Button>
+                        <IconButton label="Publicar…" size="sm" tone="primary" disabled={working} onClick={() => openPublish(post)}><PaperPlaneTilt size={14} aria-hidden="true" /></IconButton>
                       )}
-                      <Button size="sm" tone="danger" disabled={working} onClick={() => requestDelete(post)}>Excluir</Button>
+                      <IconButton label="Excluir" size="sm" tone="danger" disabled={working} onClick={() => requestDelete(post)}><Trash size={14} aria-hidden="true" /></IconButton>
                     </div>
                   </td>
                 </tr>
@@ -238,9 +243,9 @@ export default function RootChangelogPage() {
         footer={
           <>
             <Button onClick={() => setPublishing(null)} disabled={working}>Cancelar</Button>
-            <Button tone="primary" type="submit" form="changelog-publish-form" disabled={working}>
+            <SaveButton state={working ? "busy" : publishSave.state} type="submit" form="changelog-publish-form" busyLabel="Publicando…">
               {publishAt ? "Agendar publicação" : "Publicar agora"}
-            </Button>
+            </SaveButton>
           </>
         }
       >

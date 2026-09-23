@@ -1,32 +1,6 @@
-/* Histórico de versões (SPEC flow-integrity WP-C) + botão de abertura na
-   página do editor. O botão flutua sobre o canto superior ESQUERDO do canvas
-   (o direito pertence ao "Organizar" do editor) e recua para a margem quando
-   a paleta colapsa (≤900px, mesma media query do flow-editor.module.css).
+/* Histórico de versões (SPEC flow-integrity WP-C). Os botões de ação vivem
+   na barra superior do editor (IconButton "Histórico") e no ModalDialog.
    Só tokens existentes do painel — nada de cor nova. */
-
-.openButton {
-  position: absolute;
-  top: 10px;
-  left: 234px; /* paleta (224px) + folga — o canvas começa após a paleta */
-  z-index: 5;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text-secondary);
-  font-size: var(--text-micro);
-  font-weight: var(--weight-medium);
-  cursor: pointer;
-  box-shadow: var(--shadow-sm);
-}
-
-.openButton:hover {
-  color: var(--text);
-  border-color: var(--border-strong);
-}
 
 .historyDialog {
   width: min(560px, 92vw);
@@ -77,10 +51,4 @@
 .diffBox ul {
   margin: 4px 0 0;
   padding-left: 18px;
-}
-
-@media (max-width: 900px) {
-  .openButton {
-    left: 10px;
-  }
 }

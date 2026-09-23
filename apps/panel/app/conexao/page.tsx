@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowsClockwise, CheckCircle, DotsThreeVertical, PencilSimple, Plus, Star, Trash, Warning } from "@phosphor-icons/react";
+import { ArrowsClockwise, CheckCircle, DotsThreeVertical, PencilSimple, Plus, Star, Trash, Warning, X } from "@phosphor-icons/react";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useRef, useState } from "react";
 import { Empty } from "@/components/page-state";
@@ -22,6 +22,7 @@ import {
 } from "@/lib/connections";
 import { usePermission } from "@/lib/use-permission";
 import { Button } from "@/components/ui/button";
+import { IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { PageHeader } from "@/components/ui/layout";
 import { PopoverMenu } from "@/components/popover-menu";
 import { InstagramConnections } from "@/components/instagram-connections";
@@ -56,6 +57,7 @@ export default function Connection() {
   const [confirmedAction, setConfirmedAction] = useState<ConfirmedAction | null>(null);
   const [actingConnectionId, setActingConnectionId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const save = useSaveFeedback();
   const [addOpen, setAddOpen] = useState(false);
   const [newLabel, setNewLabel] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -276,6 +278,7 @@ export default function Connection() {
     setNotice("");
     try {
       await createConnection(label);
+      save.markDone();
       setAddOpen(false);
       setNewLabel("");
       setNotice(`Conexão “${label}” adicionada. Leia o QR Code quando ele estiver disponível.`);
@@ -298,6 +301,7 @@ export default function Connection() {
     setNotice("");
     try {
       await renameConnection(connectionToRename.id, label);
+      save.markDone();
       setEditingId(null);
       setEditLabel("");
       setNotice("Rótulo atualizado.");
@@ -393,8 +397,9 @@ export default function Connection() {
             <input className="input" maxLength={60} value={newLabel} autoFocus onChange={(event) => setNewLabel(event.target.value)} placeholder="Ex.: Comercial" aria-label="Rótulo do número" />
           </label>
           <div className="flex flex-wrap gap-2 md:justify-end">
-            <button type="button" className="btn" disabled={adding} onClick={() => { setAddOpen(false); setNewLabel(""); setActionError(""); }}>Cancelar</button>
-            <button type="button" className="btn primary" disabled={adding || !newLabel.trim()} onClick={() => void addConnection()}>{adding ? "Adicionando…" : "Adicionar conexão"}</button>
+            <IconButton type="button" label="Cancelar" size="sm" disabled={adding} onClick={() => { setAddOpen(false); setNewLabel(""); setActionError(""); }}><X size={15} aria-hidden="true" /></IconButton>
+            <SaveButton type="button" state={adding ? "busy" : save.state} busyLabel="Adicionando…" disabled={adding || !newLabel.trim()} onClick={() => void addConnection()}>Adicionar conexão</SaveButton>
+            <SaveToast show={save.done}>Conexão adicionada</SaveToast>
           </div>
           {actionError ? <p className="error md:col-span-2" role="alert">{actionError}</p> : null}
         </section>
@@ -483,10 +488,9 @@ export default function Connection() {
               <p className="mono mt-1 type-caption text-[var(--warning-text)]">{pollingError}</p>
             </div>
           </div>
-          <button type="button" className="btn warn" disabled={pollingRetrying || reconnecting} onClick={() => retryPollingRef.current()}>
+          <IconButton type="button" label="Tentar agora" disabled={pollingRetrying || reconnecting} onClick={() => retryPollingRef.current()}>
             <ArrowsClockwise size={16} className={pollingRetrying ? "animate-spin" : ""} aria-hidden="true" />
-            {pollingRetrying ? "Atualizando…" : "Tentar agora"}
-          </button>
+          </IconButton>
         </section>
       ) : null}
 
@@ -507,10 +511,9 @@ export default function Connection() {
               {retryDelayMs ? <p className="sub">Nova tentativa automática em aproximadamente {retryDelaySeconds}s.</p> : null}
             </div>
           </div>
-          <button type="button" className="btn warn" disabled={pollingRetrying} onClick={() => retryPollingRef.current()}>
+          <IconButton type="button" label="Tentar novamente" disabled={pollingRetrying} onClick={() => retryPollingRef.current()}>
             <ArrowsClockwise size={16} className={pollingRetrying ? "animate-spin" : ""} aria-hidden="true" />
-            {pollingRetrying ? "Tentando novamente…" : "Tentar novamente"}
-          </button>
+          </IconButton>
         </section>
       ) : null}
 
@@ -533,12 +536,12 @@ export default function Connection() {
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-3">
                   <div className="flex channels-ai-min-zero flex-wrap items-center gap-2">
                     <h2 className="truncate text-lg font-semibold text-[var(--text)]">{item.label}</h2>
-                    {item.is_primary ? <span className="mono rounded border border-[var(--primary-border)] bg-[var(--primary-subtle)] px-2 py-0.5 type-caption text-[var(--primary-text)]">Principal</span> : null}
+                    {item.is_primary ? <span className="mono rounded border border-[var(--primary-border)] bg-[var(--primary-subtle)] px-2 py-0.5 text-[length:var(--text-meta)] leading-[1.45] text-[var(--primary-text)]">Principal</span> : null}
                     <span className={`mono rounded-md border px-2 py-1 type-caption ${item.status === "connected" ? "border-[var(--primary-border)] text-[var(--primary-text)]" : "border-[var(--warning-border)] bg-[var(--warning-subtle)] text-[var(--warning-text)]"}`}>status: {item.status}</span>
                   </div>
                   {canManageConnection ? (
                     <div className="flex flex-wrap gap-2">
-                      <button type="button" className="btn" disabled={busy} aria-expanded={confirmingReconnect && reconnectTarget?.id === item.id} aria-controls="connection-reconnect-confirmation" onClick={(event) => openReconnect(item, event.currentTarget)}><ArrowsClockwise size={15} aria-hidden="true" />Reconectar</button>
+                      <IconButton type="button" label="Reconectar" disabled={busy} aria-expanded={confirmingReconnect && reconnectTarget?.id === item.id} aria-controls="connection-reconnect-confirmation" onClick={(event) => openReconnect(item, event.currentTarget)}><ArrowsClockwise size={15} aria-hidden="true" /></IconButton>
                       <PopoverMenu
                         buttonClassName="btn"
                         icon={<DotsThreeVertical size={15} weight="bold" aria-hidden="true" />}
@@ -585,7 +588,7 @@ export default function Connection() {
                 {editingId === item.id ? (
                   <section className="channels-ai-section channels-ai-form-grid" role="dialog" aria-label={`Renomear conexão ${item.label}`}>
                     <label className="field"><span className="label">Novo rótulo</span><input className="input" maxLength={60} value={editLabel} autoFocus onChange={(event) => setEditLabel(event.target.value)} /></label>
-                    <div className="flex flex-wrap gap-2 md:justify-end"><button type="button" className="btn" disabled={busy} onClick={() => { setEditingId(null); setActionError(""); }}>Cancelar</button><button type="button" className="btn primary" disabled={busy || !editLabel.trim()} onClick={() => void saveRename(item)}>{busy ? "Salvando…" : "Salvar rótulo"}</button></div>
+                    <div className="flex flex-wrap gap-2 md:justify-end"><IconButton type="button" label="Cancelar" size="sm" disabled={busy} onClick={() => { setEditingId(null); setActionError(""); }}><X size={15} aria-hidden="true" /></IconButton><SaveButton type="button" state={busy ? "busy" : save.state} busyLabel="Salvando…" disabled={busy || !editLabel.trim()} onClick={() => void saveRename(item)}>Salvar rótulo</SaveButton><SaveToast show={save.done}>Rótulo salvo</SaveToast></div>
                   </section>
                 ) : null}
 

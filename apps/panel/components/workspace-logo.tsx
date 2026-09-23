@@ -3,6 +3,7 @@
 import { type ChangeEvent, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { FloppyDisk, Sticker, Trash } from "@phosphor-icons/react";
+import { IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { PanelSession } from "@/lib/session";
 
@@ -74,6 +75,7 @@ export function WorkspaceLogoSection({ canManage }: { canManage: boolean }) {
   const [removing, setRemoving] = useState(false);
   const [logoError, setLogoError] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
+  const save = useSaveFeedback();
 
   async function handleFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
@@ -115,6 +117,7 @@ export function WorkspaceLogoSection({ canManage }: { canManage: boolean }) {
       await mutateKey("/me");
       setPreviewLogo("");
       setSavedMessage("Logo salva.");
+      save.markDone();
     } catch (saveError) {
       setLogoError(saveError instanceof Error ? saveError.message : "Não foi possível salvar a logo.");
     } finally {
@@ -161,6 +164,7 @@ export function WorkspaceLogoSection({ canManage }: { canManage: boolean }) {
           </div>
           {logoError ? <p className="error" role="alert">{logoError}</p> : null}
           {savedMessage ? <p className="text-sm text-[var(--primary-text)]" role="status">{savedMessage}</p> : null}
+          <SaveToast show={save.done}>Logo salva</SaveToast>
           <div className="flex items-start gap-4">
             {shownLogo ? (
               previewLogo ? (
@@ -187,27 +191,26 @@ export function WorkspaceLogoSection({ canManage }: { canManage: boolean }) {
                   <small className="sub">PNG, JPEG ou WEBP até 5MB. Redimensionamos para até 256px.</small>
                 </label>
                 <div className="flex gap-2">
-                  <button
+                  <SaveButton
                     type="button"
-                    className="btn primary"
+                    state={saving ? "busy" : save.state}
                     aria-label="Salvar logo"
+                    icon={<FloppyDisk size={16} aria-hidden="true" />}
                     disabled={!previewLogo || saving || removing}
                     onClick={() => void saveLogo()}
                   >
-                    <FloppyDisk size={16} aria-hidden="true" />
-                    {saving ? "Salvando…" : "Salvar"}
-                  </button>
+                    Salvar
+                  </SaveButton>
                   {shownLogo ? (
-                    <button
+                    <IconButton
                       type="button"
-                      className="btn warn"
-                      aria-label="Remover logo"
+                      label="Remover logo"
+                      className="warn"
                       disabled={saving || removing}
                       onClick={() => void removeLogo()}
                     >
                       <Trash size={16} aria-hidden="true" />
-                      {removing ? "Removendo…" : "Remover"}
-                    </button>
+                    </IconButton>
                   ) : null}
                 </div>
               </div>

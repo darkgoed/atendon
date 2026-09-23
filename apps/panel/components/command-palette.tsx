@@ -314,6 +314,11 @@ export function CommandPalette({ items, open, onOpenChange, workspaceId }: {
             </button>
           ) : null}
         </div>
+        <div className="cmdk-footer" aria-hidden="true">
+          <span><kbd>↑↓</kbd>navegar</span>
+          <span><kbd>↵</kbd>abrir</span>
+          <span>Ctrl K</span>
+        </div>
     </ModalDialog>
   );
 }

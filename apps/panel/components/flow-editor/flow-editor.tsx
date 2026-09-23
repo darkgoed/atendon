@@ -15,17 +15,19 @@ import {
   ChatText,
   Clock,
   CursorClick,
-  Eye,
   Flag,
   GitBranch,
   GitFork,
+  ClockCounterClockwise,
   Hourglass,
   Kanban,
   Keyboard,
   ListBullets,
+  Play,
   Plug,
   Power,
   Tag,
+  Trash,
   UserFocus,
   WebhooksLogo,
   X,
@@ -68,6 +70,7 @@ import {
   type Position as XYPos,
 } from "./flow-model";
 import { FlowConflictModal, type FlowConflict } from "./FlowConflictModal";
+import { IconButton, SaveButton, SaveToast, type SaveState } from "@/components/ui";
 import styles from "./flow-editor.module.css";
 
 export type SimTrace = {
@@ -84,7 +87,10 @@ type FlowEditorProps = {
   definition: FlowDefinition;
   canManage: boolean;
   saving: boolean;
+  /** Legado do feedback antigo ("Salvo." no header) — o estado visível agora é saveState. */
   saved: boolean;
+  /** Padrão de salvar DS v2 (§2): idle → busy → done (+ SaveToast 2,6s). */
+  saveState?: SaveState;
   serverError: string | null;
   trace: SimTrace | null;
   /** 409 FLOW_VERSION_CONFLICT do save (M3 popula; aqui só a exibição). */
@@ -791,14 +797,17 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
 
             <p className={styles.propertiesHint}>Destinos definidos pelas arestas no canvas. Duplo clique numa aresta remove.</p>
 
-            <button
-              type="button"
-              className={styles.removeStep}
-              disabled={!canManage || Object.keys(definition.steps).length <= 1}
-              onClick={() => onDeleteStep(node.id)}
-            >
-              <X size={13} aria-hidden="true" /> Remover etapa
-            </button>
+            <div className={styles.removeStepRow}>
+              <IconButton
+                label="Remover etapa"
+                tone="danger"
+                size="sm"
+                disabled={!canManage || Object.keys(definition.steps).length <= 1}
+                onClick={() => onDeleteStep(node.id)}
+              >
+                <Trash size={14} aria-hidden="true" />
+              </IconButton>
+            </div>
           </>
         ) : null}
       </div>
@@ -817,6 +826,9 @@ function FlowEditorInner(props: FlowEditorProps) {
   const [conflictDismissed, setConflictDismissed] = useState(false);
 
   const graph = useMemo(() => graphFromDefinition(definition), [definition]);
+
+  /* Fluxo Ativo ou simulação em curso: arestas ciano tracejadas animadas (README §6). */
+  const flowing = props.ativo || Boolean(props.trace?.running);
 
   const rfNodes: Node[] = useMemo(() => {
     let fallbackY = 0;
@@ -841,11 +853,11 @@ function FlowEditorInner(props: FlowEditorProps) {
         target: edge.target,
         sourceHandle: edge.sourceHandle,
         label: edge.label,
-        markerEnd: { type: MarkerType.ArrowClosed, color: "var(--border-strong)" },
+        markerEnd: { type: MarkerType.ArrowClosed, color: flowing ? "var(--primary)" : "var(--border-strong)" },
         labelStyle: { fill: "var(--text-muted)", fontSize: 10, fontWeight: 500 },
         labelBgStyle: { fill: "var(--surface)", fillOpacity: 0.95 },
       })),
-    [graph.edges],
+    [graph.edges, flowing],
   );
 
   useEffect(() => {
@@ -939,18 +951,34 @@ function FlowEditorInner(props: FlowEditorProps) {
             aria-label="Nome do fluxo"
           />
           <span className={styles.statusPill} data-on={props.ativo}>{props.ativo ? "Ativo" : "Inativo"}</span>
-          {props.saved && !props.saving ? <span className={`${styles.dirtyNote} ${styles.savedNote}`} role="status">Salvo.</span> : null}
-          {props.saving ? <span className={styles.dirtyNote} role="status">Salvando…</span> : null}
         </div>
         <div className={styles.headerActions}>
-          <button type="button" className="btn" disabled={props.trace?.running} onClick={props.onSimulate}>
-            <Eye size={15} aria-hidden="true" /> Simular
-          </button>
-          <button type="button" className="btn primary" disabled={!canManage || props.saving} onClick={props.onSave}>
+          <span className={styles.nodeCount} aria-hidden="true">{graph.nodes.length} blocos</span>
+          {props.onOpenHistory ? (
+            <IconButton label="Histórico" size="sm" data-testid="flow-history-open" onClick={props.onOpenHistory}>
+              <ClockCounterClockwise size={15} aria-hidden="true" />
+            </IconButton>
+          ) : null}
+          <IconButton
+            label="Simular"
+            size="sm"
+            disabled={props.trace?.running}
+            data-running={Boolean(props.trace?.running)}
+            onClick={props.onSimulate}
+          >
+            <Play size={15} aria-hidden="true" />
+          </IconButton>
+          <SaveButton
+            state={props.saving ? "busy" : props.saveState ?? "idle"}
+            data-testid="flow-save"
+            disabled={!canManage}
+            onClick={props.onSave}
+          >
             Salvar
-          </button>
+          </SaveButton>
         </div>
       </header>
+      <SaveToast show={props.saveState === "done"}>Fluxo salvo</SaveToast>
 
       {props.serverError ? <div className={styles.editorError} role="alert">{props.serverError}</div> : null}
       {clientIssues.length > 0 ? (
@@ -1005,7 +1033,7 @@ function FlowEditorInner(props: FlowEditorProps) {
           ))}
         </aside>
 
-        <div className={styles.canvasWrap} data-testid="flow-canvas">
+        <div className={styles.canvasWrap} data-testid="flow-canvas" data-flowing={flowing}>
           <ReactFlow
             nodes={rfNodes}
             edges={rfEdges}
@@ -1022,14 +1050,14 @@ function FlowEditorInner(props: FlowEditorProps) {
             deleteKeyCode={null}
             proOptions={{ hideAttribution: true }}
           >
-            <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--border)" />
+            <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="var(--border)" />
             <Controls showInteractive={false} position="bottom-left" />
             <MiniMap nodeColor={minimapColor} nodeStrokeWidth={3} nodeBorderRadius={6} zoomable pannable className={styles.minimap} />
           </ReactFlow>
           <div className={styles.canvasToolbar}>
-            <button type="button" onClick={handleAutoLayout} title="Reorganiza as etapas automaticamente">
-              <ArrowsDownUp size={14} aria-hidden="true" /> Organizar
-            </button>
+            <IconButton label="Organizar" size="sm" title="Reorganiza as etapas automaticamente" onClick={handleAutoLayout}>
+              <ArrowsDownUp size={14} aria-hidden="true" />
+            </IconButton>
           </div>
         </div>
 

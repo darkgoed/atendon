@@ -141,6 +141,9 @@
 .conversation-list__item:hover { background: var(--surface-hover); }
 .conversation-list__item[aria-pressed="true"] { background: var(--surface-selected); }
 .conversation-list__item[aria-pressed="true"]::before { background: var(--primary); }
+/* DS v2: --text-muted sobre --surface-selected (ciano escuro) fica em 4.46:1
+   no dark — o meta da linha ativa sobe um degrau para passar AA. */
+.conversation-list__item[aria-pressed="true"] .conversation-list__company { color: var(--text-secondary); }
 .conversation-list__avatar { flex: 0 0 30px; }
 .conversation-list__body { min-width: 0; flex: 1 1 auto; overflow: hidden; }
 .conversation-list__row { display: flex; min-width: 0; align-items: center; overflow: hidden; }
@@ -330,7 +333,10 @@
   border-radius: var(--radius-lg);
   background: var(--surface);
 }
+.conversation-composer { border-color: var(--border-subtle); transition: border-color var(--duration-normal) var(--ease-out), box-shadow var(--duration-normal) var(--ease-out); }
 .conversation-composer:focus-within { border-color: var(--border-strong); }
+/* Rascunho na aba Responder: borda ciano (ref.: rgba(34,211,238,.35)). */
+.conversation-composer[data-draft="true"] { border-color: var(--primary-border); }
 .conversation-composer__tabs { display: flex; gap: 2px; padding: var(--space-2) var(--space-2) 0; }
 .conversation-composer__tabs > span {
   padding: var(--space-1) var(--space-2);
@@ -355,7 +361,30 @@
   font-size: var(--text-control);
   line-height: var(--leading-body);
 }
-.conversation-composer__send { width: auto; height: var(--control-height-md); min-height: var(--control-height-md); gap: var(--space-1); padding: 0 var(--space-3); }
+/* DS v2 (ref. Conversas.dc.html): envio circular de 32px. Neutro sem
+   rascunho; ciano cheio com glow quando há conteúdo (único uso de ciano cheio
+   junto com confirmação em lote). */
+.conversation-composer__send.btn {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-hover);
+  color: var(--text-subtle);
+  transition: background var(--duration-normal) var(--ease-out), color var(--duration-normal) var(--ease-out), box-shadow var(--duration-normal) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.conversation-composer__send.btn[data-ready="true"] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 0 0 4px var(--primary-subtle), var(--shadow-glow);
+}
+.conversation-composer__send.btn[data-ready="true"]:hover { background: var(--primary-hover); }
+.conversation-composer__send.btn:active:not(:disabled) { transform: scale(.9); }
+.conversation-composer__send.btn:disabled { background: var(--surface-hover); color: var(--text-subtle); box-shadow: none; opacity: 1; }
+.conversation-composer__send.btn[data-ready="true"]:disabled { background: var(--primary); color: var(--primary-foreground); opacity: .7; }
 .conversation-composer__footer {
   display: flex;
   min-width: 0;
@@ -657,7 +686,7 @@
     height: var(--control-height-touch);
     min-height: var(--control-height-touch);
   }
-  .conversation-composer__send { grid-column: 1 / -1; justify-self: stretch; min-height: var(--control-height-touch); height: auto; }
+  .conversation-composer__send.btn { width: var(--control-height-touch); height: var(--control-height-touch); min-height: var(--control-height-touch); justify-self: end; }
   .conversation-composer__footer > p { width: 100%; margin-left: 0; }
   .conversation-contact-panel__media-thumb { min-height: 0; }
   .conversation-referral__details.has-thumbnail { grid-template-columns: 1fr; }
@@ -688,3 +717,24 @@
   box-shadow: var(--shadow-popover);
 }
 .conversation-thread__jump-latest:hover { background: var(--surface-hover); }
+
+/* DS v2 (ref. Conversas.dc.html): "digitando" do contato — 3 pontos de 6px
+   com on-dot escalonado (keyframe global em styles/motion.css). */
+.conversation-typing {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 4px;
+  padding: var(--space-3) var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--surface-hover);
+}
+.conversation-typing > span {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--text-muted);
+  animation: on-dot 1.1s ease-in-out infinite;
+}
+.conversation-typing > span:nth-child(2) { animation-delay: .15s; }
+.conversation-typing > span:nth-child(3) { animation-delay: .3s; }

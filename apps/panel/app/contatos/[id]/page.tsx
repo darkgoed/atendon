@@ -10,6 +10,7 @@ import { LeadCustomFields } from "@/components/lead-custom-fields";
 import { LeadEventHistory } from "@/components/lead-history-tabs";
 import { LeadNotes } from "@/components/lead-notes";
 import { Shell } from "@/components/shell";
+import { IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { UnsavedChangesStrip, type UnsavedChangeField } from "@/components/unsaved-changes-strip";
 import { ApiError, api } from "@/lib/api";
 import { useDraft } from "@/lib/drafts";
@@ -127,6 +128,10 @@ export default function LeadDetail() {
   const [savingStatus, setSavingStatus] = useState(false);
   const [editingIdentity, setEditingIdentity] = useState(false);
   const [savingIdentity, setSavingIdentity] = useState(false);
+  const identitySave = useSaveFeedback();
+  const statusSave = useSaveFeedback();
+  const followUpSave = useSaveFeedback();
+  const transferSave = useSaveFeedback();
   const [identityName, setIdentityName] = useState("");
   const [identityPhone, setIdentityPhone] = useState("");
   const [nextStatus, setNextStatus] = useState<LeadStatus | "">("");
@@ -269,6 +274,7 @@ export default function LeadDetail() {
       await updateLeadStatus(id, nextStatus);
       await load();
       setFeedback(`Status atualizado para ${statusLabel(nextStatus)}.`);
+      statusSave.markDone();
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "Falha ao atualizar o status");
     } finally {
@@ -307,6 +313,7 @@ export default function LeadDetail() {
       setEditingIdentity(false);
       identityDraft.clear();
       setFeedback("Nome e telefone atualizados no lead e no contato vinculado.");
+      identitySave.markDone();
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "Falha ao atualizar nome e telefone");
     } finally {
@@ -356,6 +363,7 @@ export default function LeadDetail() {
       await persistIdentity(nome, telefone);
       identityDraft.clear();
       setFeedback("Rascunho salvo: nome e telefone atualizados no lead e no contato vinculado.");
+      identitySave.markDone();
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "Falha ao atualizar nome e telefone");
     } finally {
@@ -426,6 +434,7 @@ export default function LeadDetail() {
       setFeedback("Acompanhamento interno atualizado.");
       setFollowUpData((current) => current ? { ...current, follow_up: persisted.follow_up } : current);
       await refreshAfterFollowUpMutation("Acompanhamento interno atualizado.");
+      followUpSave.markDone();
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "Falha ao atualizar o acompanhamento");
     } finally {
@@ -447,6 +456,7 @@ export default function LeadDetail() {
       form.reset();
       await load();
       setFeedback("Lead transferido para atendimento humano.");
+      transferSave.markDone();
     } catch (transferError) {
       setError(transferError instanceof Error ? transferError.message : "Falha ao transferir");
     } finally {
@@ -497,8 +507,8 @@ export default function LeadDetail() {
                     <input className="input mono" type="tel" value={identityPhone} onChange={(event) => handleIdentityPhoneChange(event.target.value)} maxLength={50} required aria-label="Telefone do contato" />
                   </label>
                   <div className="flex gap-2">
-                    <button className="btn primary" disabled={savingIdentity}>{savingIdentity ? "Salvando…" : "Salvar"}</button>
-                    <button type="button" className="btn px-2.5" onClick={cancelIdentityEdit} disabled={savingIdentity} aria-label="Cancelar edição"><X size={16} aria-hidden="true" /></button>
+                    <SaveButton state={savingIdentity ? "busy" : identitySave.state} type="submit" busyLabel="Salvando…">Salvar</SaveButton>
+                    <IconButton type="button" label="Cancelar edição" onClick={cancelIdentityEdit} disabled={savingIdentity}><X size={16} aria-hidden="true" /></IconButton>
                   </div>
                 </form>
               ) : (
@@ -608,7 +618,7 @@ export default function LeadDetail() {
                             A ação e a data devem ser preenchidas ou removidas juntas.
                             {!hasWorkspaceScope ? " Ao transferir, escolha outro membro ativo do pool; o atendimento não pode ficar sem responsável." : ""}
                           </p>
-                          <button className="btn primary w-full" disabled={savingFollowUp || (!hasWorkspaceScope && !responsibleMemberId)}>{savingFollowUp ? "Salvando…" : "Salvar acompanhamento"}</button>
+                          <SaveButton state={savingFollowUp ? "busy" : followUpSave.state} type="submit" className="w-full" disabled={!hasWorkspaceScope && !responsibleMemberId}>Salvar acompanhamento</SaveButton>
                         </form>
                       ) : <p className="sub">Acesso somente leitura ao acompanhamento.</p>}
                     </>
@@ -629,9 +639,9 @@ export default function LeadDetail() {
                           {data.status_permitidos.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
                         </select>
                       </label>
-                      <button disabled={savingStatus || !nextStatus} className="btn primary mt-3 w-full">
-                        {savingStatus ? "Atualizando…" : "Atualizar status"}
-                      </button>
+                      <SaveButton state={savingStatus ? "busy" : statusSave.state} type="submit" busyLabel="Atualizando…" doneLabel="Atualizado" disabled={!nextStatus} className="mt-3 w-full">
+                        Atualizar status
+                      </SaveButton>
                     </>
                   ) : (
                     <p className="sub">Não há transições manuais disponíveis para este status.</p>
@@ -647,7 +657,7 @@ export default function LeadDetail() {
                     <span className="label">Motivo</span>
                     <textarea name="motivo" className="input min-h-24 resize-y" required placeholder="Contexto para o atendente responsável" />
                   </label>
-                  <button disabled={sending} className="btn warn mt-3 w-full">{sending ? "Transferindo…" : "Transferir manualmente"}</button>
+                  <SaveButton state={sending ? "busy" : transferSave.state} type="submit" busyLabel="Transferindo…" doneLabel="Transferido" className="warn mt-3 w-full">Transferir manualmente</SaveButton>
                 </form>
               ) : (
                 <section className="card" aria-label="Transferência para atendimento humano">
@@ -690,6 +700,10 @@ export default function LeadDetail() {
         saveLabel="Salvar alterações"
         saving={savingIdentity}
       />
+      <SaveToast show={identitySave.done}>Contato salvo</SaveToast>
+      <SaveToast show={followUpSave.done}>Acompanhamento atualizado</SaveToast>
+      <SaveToast show={statusSave.done}>Status atualizado</SaveToast>
+      <SaveToast show={transferSave.done}>Lead transferido</SaveToast>
     </Shell>
   );
 }

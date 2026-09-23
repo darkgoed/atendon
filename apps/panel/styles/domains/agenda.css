@@ -96,9 +96,11 @@
   display: grid;
   align-content: start;
   justify-items: center;
-  padding: 12dvh var(--space-4) var(--space-4);
+  padding: 14dvh var(--space-4) var(--space-4);
   background: var(--overlay);
-  animation: fadeIn var(--duration-fast) var(--ease) both;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: on-fade 180ms var(--ease-out) both;
 }
 
 .cmdk {
@@ -107,13 +109,13 @@
   display: grid;
   width: min(var(--cmdk-width), calc(100vw - var(--space-6)));
   max-height: min(70dvh, calc(100dvh - var(--space-8)));
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: var(--radius-xl);
   background: var(--surface-elevated);
   box-shadow: var(--shadow-dialog);
-  animation: popIn var(--duration-fast) var(--ease-out) both;
+  animation: on-drop 240ms var(--ease-out) both;
 }
 
 .cmdk-input {
@@ -130,6 +132,7 @@
   width: var(--icon);
   height: var(--icon);
   flex: none;
+  color: var(--primary-text);
 }
 
 .cmdk-input input {
@@ -140,7 +143,7 @@
   border: 0;
   background: transparent;
   color: var(--text);
-  font-size: var(--text-body);
+  font-size: var(--text-body-lg);
 }
 
 .cmdk-input input::placeholder {
@@ -167,16 +170,16 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: var(--space-1);
+  padding: 6px;
 }
 
 .cmdk-item {
   display: flex;
   width: 100%;
-  min-height: var(--control-height-md);
+  min-height: var(--row-height-lg);
   align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-3);
+  gap: var(--space-3);
+  padding: 0 10px;
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
@@ -202,9 +205,15 @@
 }
 
 .cmdk-item > svg {
+  box-sizing: content-box;
   width: var(--icon);
   height: var(--icon);
   flex: none;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  transition: var(--transition-control);
 }
 
 .cmdk-item span {
@@ -227,10 +236,29 @@
 
 .cmdk-item.active,
 .cmdk-item[aria-selected="true"] {
-  background: var(--surface-selected);
+  background: var(--surface-hover);
   color: var(--text);
-  box-shadow: inset 2px 0 0 var(--primary);
 }
+
+.cmdk-item.active > svg,
+.cmdk-item[aria-selected="true"] > svg {
+  background: var(--primary-subtle);
+  color: var(--primary-text);
+}
+
+/* Rodapé de atalhos (ref. CommandPalette.dc.html). */
+.cmdk-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 10px var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-subtle);
+  font-size: var(--text-meta);
+}
+.cmdk-footer > span { display: inline-flex; align-items: center; gap: 6px; }
+.cmdk-footer kbd { color: var(--text-secondary); font-family: var(--font-mono); }
+.cmdk-footer > :last-child { margin-left: auto; font-family: var(--font-mono); }
 
 .cmdk-item.active small,
 .cmdk-item[aria-selected="true"] small {

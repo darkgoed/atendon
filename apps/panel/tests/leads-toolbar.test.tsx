@@ -36,7 +36,7 @@ vi.mock("@/components/contact-avatar", () => ({ ContactAvatar: () => <span /> })
 vi.mock("@/components/page-state", () => ({ Empty: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock("@/components/lead-tag-picker", () => ({ LeadTagChips: () => null, LeadTagPicker: () => <button type="button">Etiquetas</button>, LeadTagMenuItems: () => null }));
 vi.mock("next/link", () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
-vi.mock("@phosphor-icons/react", () => ({ DotsThreeVertical: () => null, DownloadSimple: () => null, MagnifyingGlass: () => null, MagicWand: () => null, WhatsappLogo: () => null, Funnel: () => null, X: () => null, UploadSimple: () => null }));
+vi.mock("@phosphor-icons/react", () => ({ DotsThreeVertical: () => null, DownloadSimple: () => null, Eye: () => null, MagnifyingGlass: () => null, MagicWand: () => null, WhatsappLogo: () => null, Funnel: () => null, X: () => null, UploadSimple: () => null }));
 
 import LeadsPage from "../app/contatos/page";
 import { BulkLeadActions } from "../components/bulk-lead-actions";

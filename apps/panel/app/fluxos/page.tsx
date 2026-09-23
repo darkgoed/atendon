@@ -10,6 +10,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { ArrowsClockwise, CopySimple, PencilSimple, Plus, Plugs } from "@phosphor-icons/react";
 import { Shell } from "@/components/shell";
+import { Button, IconButton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { formatPanelDateTime } from "@/lib/format";
 import { usePermission } from "@/lib/use-permission";
@@ -97,9 +98,9 @@ export default function FluxosPage() {
           <h1>Fluxos</h1>
           <p className="sub">Atendimento automático por robô: mensagens, perguntas, esperas e ações no CRM.</p>
         </div>
-        <button type="button" className="btn primary active:scale-[.98]" disabled={!canManage || busyId !== null} onClick={novoFluxo}>
+        <Button type="button" tone="primary" disabled={!canManage || busyId !== null} onClick={novoFluxo}>
           <Plus size={16} aria-hidden="true" /> Novo fluxo
-        </button>
+        </Button>
       </header>
 
       {actionError ? <p className="error" role="alert">{actionError}</p> : null}
@@ -113,9 +114,9 @@ export default function FluxosPage() {
           <p className="label">Nenhum fluxo</p>
           <p className="sub">Crie um fluxo para automatizar o atendimento por WhatsApp.</p>
           {canManage ? (
-            <button type="button" className="btn primary active:scale-[.98]" onClick={novoFluxo}>
+            <Button type="button" tone="primary" onClick={novoFluxo}>
               <Plus size={16} aria-hidden="true" /> Novo fluxo
-            </button>
+            </Button>
           ) : null}
         </section>
       ) : null}
@@ -137,25 +138,29 @@ export default function FluxosPage() {
                   <p className="sub m-0">{triggerSummary(flow.definition)} · atualizado {flow.atualizado_em ? formatPanelDateTime(flow.atualizado_em) : "—"}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Link href={`/fluxos/${flow.id}`} className="btn active:scale-[.98]">
-                    <PencilSimple size={15} aria-hidden="true" /> Editar
-                  </Link>
-                  <button
-                    type="button"
-                    className="btn active:scale-[.98]"
+                  {/* Minimalismo (README §4): só "Novo fluxo" tem texto; ações
+                      por linha viram IconButton com o texto antigo no label. */}
+                  <IconButton label="Editar" size="sm" asChild>
+                    <Link href={`/fluxos/${flow.id}`}>
+                      <PencilSimple size={15} aria-hidden="true" />
+                    </Link>
+                  </IconButton>
+                  <IconButton
+                    label="Duplicar"
+                    size="sm"
                     disabled={!canManage || busyId !== null}
                     onClick={() => duplicar(flow)}
                   >
-                    <CopySimple size={15} aria-hidden="true" /> Duplicar
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn active:scale-[.98] ${flow.ativo ? "warn" : "primary"}`}
+                    <CopySimple size={15} aria-hidden="true" />
+                  </IconButton>
+                  <IconButton
+                    label={flow.ativo ? "Desativar" : "Ativar"}
+                    size="sm"
                     disabled={!canManage || busyId !== null}
                     onClick={() => alternarAtivo(flow)}
                   >
-                    <ArrowsClockwise size={15} aria-hidden="true" /> {flow.ativo ? "Desativar" : "Ativar"}
-                  </button>
+                    <ArrowsClockwise size={15} aria-hidden="true" />
+                  </IconButton>
                 </div>
               </li>
             ))}

@@ -10,7 +10,7 @@ import { ArrowClockwise, Trash } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
-import { Badge, Button, EmptyState } from "@/components/ui";
+import { Badge, Button, EmptyState, IconButton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { usePermission } from "@/lib/use-permission";
 import styles from "./lixeira.module.css";
@@ -179,24 +179,23 @@ export default function TrashPage() {
                   </div>
                 </div>
                 <div className={styles.itemActions}>
-                  <Button
+                  <IconButton
                     size="sm"
-                    tone="primary"
+                    label={`Restaurar contato: ${item.name?.trim() || item.phone}`}
                     onClick={() => void restore(item)}
                     disabled={busyId === item.id}
-                    aria-label={`Restaurar contato: ${item.name?.trim() || item.phone}`}
                   >
-                    <ArrowClockwise size={14} aria-hidden="true" />Restaurar
-                  </Button>
-                  <Button
+                    <ArrowClockwise size={14} aria-hidden="true" />
+                  </IconButton>
+                  <IconButton
                     size="sm"
                     tone="danger"
+                    label={`Excluir definitivamente: ${item.name?.trim() || item.phone}`}
                     onClick={() => void destroy(item)}
                     disabled={busyId === item.id}
-                    aria-label={`Excluir definitivamente: ${item.name?.trim() || item.phone}`}
                   >
-                    <Trash size={14} aria-hidden="true" />Excluir definitivamente
-                  </Button>
+                    <Trash size={14} aria-hidden="true" />
+                  </IconButton>
                 </div>
               </article>
             ))}

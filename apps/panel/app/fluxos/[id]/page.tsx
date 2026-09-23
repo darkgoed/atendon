@@ -17,10 +17,10 @@ import useSWR from "swr";
 import { Shell } from "@/components/shell";
 import { ApiError, api } from "@/lib/api";
 import { usePermission } from "@/lib/use-permission";
+import { useSaveFeedback } from "@/components/ui";
 import { FlowEditor, type SimTrace } from "@/components/flow-editor/flow-editor";
 import type { FlowConflict } from "@/components/flow-editor/FlowConflictModal";
 import { FlowHistory } from "@/components/flow-editor/flow-history";
-import pageStyles from "@/components/flow-editor/flow-history.module.css";
 import {
   normalizeDefinition,
   parseTrace,
@@ -69,6 +69,12 @@ export default function FluxoEditorPage() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  /* Padrão de salvar DS v2 (§2): SaveButton idle→busy→done + SaveToast 2,6s.
+     A página tem flag `saving` própria (o save captura o flowId no closure),
+     então usa markDone() no sucesso com o MESMO guarda de resposta tardia —
+     save.run() marcaria done mesmo com outro fluxo na tela (R5). */
+  const saveFeedback = useSaveFeedback();
+  const { markDone: markSaveDone, reset: resetSaveFeedback } = saveFeedback;
   const [trace, setTrace] = useState<SimTrace | null>(null);
 
   /* O id do fluxo vivo em um ref: o save captura o id no closure e, na
@@ -91,8 +97,9 @@ export default function FluxoEditorPage() {
     setServerError(null);
     setSaving(false);
     setSaved(false);
+    resetSaveFeedback();
     setTrace(null);
-  }, [flowId]);
+  }, [flowId, resetSaveFeedback]);
 
   /* Guarda a revisão do GET (primeira carga e recarga explícita) e do PUT
      (pós-trigger). Revalidação em background NÃO sobrescreve o token: com
@@ -156,9 +163,11 @@ export default function FluxoEditorPage() {
       if (flowIdRef.current !== targetId) return; // resposta tardia: outro fluxo na tela
       if (typeof response.flow?.revisao === "number") setRevisao(response.flow.revisao);
       setSaved(true);
+      markSaveDone(); // SaveButton "Salvo" + SaveToast "Fluxo salvo" por 2,6s
       setDirty(false);
     } catch (cause) {
       if (flowIdRef.current !== targetId) return;
+      resetSaveFeedback(); // em erro o botão volta a "Salvar"
       const conflictRevisao = cause instanceof ApiError ? flowConflictRevisao(cause.body) : null;
       if (cause instanceof ApiError && cause.status === 409 && conflictRevisao !== null) {
         setConflict({ revisao: conflictRevisao }); // modal do editor; Recarregar = mutate
@@ -168,7 +177,7 @@ export default function FluxoEditorPage() {
     } finally {
       if (flowIdRef.current === targetId) setSaving(false);
     }
-  }, [canManage, currentAtivo, currentDefinition, currentNome, flowId, revisao]);
+  }, [canManage, currentAtivo, currentDefinition, currentNome, flowId, revisao, markSaveDone, resetSaveFeedback]);
 
   /* Recarregar (modal de conflito) e pós-restore: descarta o shadow state e
      revalida — a revisão volta a ser a viva do GET, senão o token stale
@@ -218,9 +227,6 @@ export default function FluxoEditorPage() {
       ) : currentDefinition ? (
         <div style={{ height: "100%", position: "relative" }}>
           <h1 className="sr-only">{currentNome}</h1>
-          <button type="button" className={pageStyles.openButton} data-testid="flow-history-open" onClick={() => setHistoryOpen(true)}>
-            Histórico
-          </button>
           <FlowEditor
             flowId={flowId}
             nome={currentNome}
@@ -229,6 +235,7 @@ export default function FluxoEditorPage() {
             canManage={canManage}
             saving={saving}
             saved={saved}
+            saveState={saveFeedback.state}
             serverError={serverError}
             trace={trace}
             conflict={conflict}

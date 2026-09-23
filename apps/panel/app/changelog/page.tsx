@@ -9,10 +9,11 @@
  * Páginas dinâmicas: fetch sempre cache:"no-store" (revogabilidade da SPEC).
  */
 
+import { CaretDown, CaretUp } from "@phosphor-icons/react";
 import { useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
-import { Badge, Button, Dot, EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui";
+import { Badge, Button, Dot, EmptyState, ErrorState, IconButton, LoadingState, PageHeader } from "@/components/ui";
 import { api } from "@/lib/api";
 import {
   changelogApiUrl,
@@ -129,9 +130,9 @@ export default function ChangelogPage() {
                 </div>
                 <h2 className="mt-2">{post.title}</h2>
                 {post.summary ? <p className="sub mt-1">{post.summary}</p> : null}
-                <Button size="sm" className="mt-2" aria-expanded={isOpen} aria-controls={`changelog-body-${post.slug}`} onClick={() => view(post)}>
-                  {isOpen ? "Recolher" : "Ver post completo"}
-                </Button>
+                <IconButton size="sm" className="mt-2" label={isOpen ? "Recolher" : "Ver post completo"} aria-expanded={isOpen} aria-controls={`changelog-body-${post.slug}`} onClick={() => view(post)}>
+                  {isOpen ? <CaretUp size={14} aria-hidden="true" /> : <CaretDown size={14} aria-hidden="true" />}
+                </IconButton>
                 {isOpen ? (
                   <div id={`changelog-body-${post.slug}`} className="mt-3 grid gap-3 border-t border-[var(--border)] pt-3">
                     {splitParagraphs(post.contentText).map((paragraph, index) => (

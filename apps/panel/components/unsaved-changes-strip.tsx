@@ -5,7 +5,7 @@
 // popover com diff resumido; Descartar e Salvar são callbacks do dono do form).
 
 import { useId, useState } from "react";
-import { Button } from "@/components/ui";
+import { SaveButton } from "@/components/ui";
 import styles from "./unsaved-changes-strip.module.css";
 
 export type UnsavedChangeField = {
@@ -70,9 +70,9 @@ export function UnsavedChangesStrip({
           <button type="button" className={styles.link} onClick={onDiscard} disabled={saving}>
             Descartar
           </button>
-          <Button size="sm" tone="primary" onClick={onSave} disabled={saving}>
-            {saving ? "Salvando…" : saveLabel}
-          </Button>
+          <SaveButton size="sm" tone="primary" state={saving ? "busy" : "idle"} busyLabel="Salvando…" onClick={onSave} disabled={saving}>
+            {saveLabel}
+          </SaveButton>
         </span>
       </div>
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useMemo, useState } from "react";
-import { Buildings, DotsThreeVertical, DoorOpen, PencilSimple, Plus, WarningCircle } from "@phosphor-icons/react";
+import { Buildings, DotsThreeVertical, DoorOpen, PencilSimple, Plus, WarningCircle, X } from "@phosphor-icons/react";
 import useSWR from "swr";
 import { Empty } from "@/components/page-state";
 import { Shell } from "@/components/shell";
@@ -13,6 +13,7 @@ import { affectedCapabilityKeys, capabilityCascadeImpact, capabilityOverrideValu
 import { publishWorkspaceContextChange, type PanelSession } from "@/lib/session";
 import { PopoverMenu } from "@/components/popover-menu";
 import { AdminField, AdminPage, AdminPageHeader, AdminSection, AdminTableScroll } from "@/components/admin";
+import { IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 
 
 type Workspace = {
@@ -49,6 +50,8 @@ export default function RootWorkspacesPage() {
   const [capabilitiesError, setCapabilitiesError] = useState("");
   const [savingCapability, setSavingCapability] = useState<CapabilityKey | null>(null);
   const [pending, setPending] = useState<PendingChange | null>(null);
+  const createSave = useSaveFeedback();
+  const editSave = useSaveFeedback();
   const workspaces = data?.workspaces ?? [];
 
   const previewKey = templateTenantId ? `/root/workspaces/${templateTenantId}/capabilities` : null;
@@ -73,19 +76,19 @@ export default function RootWorkspacesPage() {
           capabilityTemplateTenantId: templateTenantId
         })
       });
-      setCreated(response); form.reset(); setTemplateTenantId(""); await mutate();
+      setCreated(response); form.reset(); setTemplateTenantId(""); await mutate(); createSave.markDone();
     } catch (submitError) { setMessage(submitError instanceof Error ? submitError.message : "Falha ao criar workspace"); }
     finally { setCreating(false); }
   }
 
-  async function updateWorkspace(id: string, payload: WorkspaceUpdate) {
+  async function updateWorkspace(id: string, payload: WorkspaceUpdate): Promise<boolean> {
     setUpdatingId(id); setMessage(""); setNotice("");
     try {
       const response = await api<{ workspace: Workspace }>(`/root/workspaces/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
       await mutate((current) => current ? { workspaces: current.workspaces.map((item) => item.id === id ? { ...item, ...response.workspace } : item) } : current, false);
       setEditing((current) => current?.id === id ? { ...current, ...response.workspace } : current);
-      setNotice(`Workspace ${response.workspace.name} atualizado.`);
-    } catch (updateError) { setMessage(updateError instanceof Error ? updateError.message : "Falha ao atualizar workspace"); }
+      setNotice(`Workspace ${response.workspace.name} atualizado.`); return true;
+    } catch (updateError) { setMessage(updateError instanceof Error ? updateError.message : "Falha ao atualizar workspace"); return false; }
     finally { setUpdatingId(null); }
   }
 
@@ -141,7 +144,8 @@ export default function RootWorkspacesPage() {
     if (!editing) return;
     const formData = new FormData(event.currentTarget);
     const attendantPhone = String(formData.get("attendantPhone") ?? "").trim();
-    await updateWorkspace(editing.id, { name: String(formData.get("name") ?? "").trim(), status: String(formData.get("status") ?? editing.status) as Workspace["status"], attendantPhone: attendantPhone || null });
+    const ok = await updateWorkspace(editing.id, { name: String(formData.get("name") ?? "").trim(), status: String(formData.get("status") ?? editing.status) as Workspace["status"], attendantPhone: attendantPhone || null });
+    if (ok) editSave.markDone();
   }
 
   return <Shell>
@@ -149,6 +153,8 @@ export default function RootWorkspacesPage() {
     <AdminPageHeader title="Workspaces" />
     {message ? <p className="error mb-4" role="alert">{message}</p> : null}
     {notice ? <p className="accent mb-4 text-sm" role="status">{notice}</p> : null}
+    <SaveToast show={createSave.done}>Workspace criado</SaveToast>
+    <SaveToast show={editSave.done}>Workspace atualizado</SaveToast>
     {error ? <section className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-4" role="alert"><p className="error">{error.message}</p><button type="button" className="btn warn" onClick={() => void mutate()}>Tentar novamente</button></section> : null}
 
     <section className={created || editing ? "admin-grid admin-grid--sidebar" : "admin-stack max-w-md"}>
@@ -165,7 +171,7 @@ export default function RootWorkspacesPage() {
               : previewError ? <div className="mt-2 flex items-center justify-between gap-2 text-xs text-[var(--warning-text)]" role="alert"><span>Não foi possível carregar a prévia.</span><button type="button" className="btn warn" onClick={() => void retryPreview()}>Tentar novamente</button></div>
                 : <ul className="mt-2 grid gap-1.5">{(preview?.capabilities ?? []).filter((item) => item.tenantConfigurable).sort((a, b) => a.uiOrder - b.uiOrder).map((item) => <li key={item.key} className="flex items-center justify-between gap-3 text-xs"><span>{item.displayName}</span><span className={`admin-badge${item.enabled ? " admin-badge--ok" : ""}`}>{!item.supported ? "Não provisionada" : item.enabled ? "Ativo" : "Desativado"}</span></li>)}</ul>}
           </div> : null}
-          <button type="submit" className="btn primary active:scale-[.98]" disabled={creating || !templateTenantId || previewLoading || Boolean(previewError)}><Plus size={16} aria-hidden="true" />{creating ? "Criando…" : "Criar workspace"}</button>
+          <SaveButton state={creating ? "busy" : createSave.state} type="submit" icon={<Plus size={16} aria-hidden="true" />} busyLabel="Criando…" doneLabel="Criado" disabled={!templateTenantId || previewLoading || Boolean(previewError)}>Criar workspace</SaveButton>
         </div>
       </form>
 
@@ -187,7 +193,7 @@ export default function RootWorkspacesPage() {
                 </div>)}</div>}
           </section>
           {pending ? <section className="border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-4" role="alertdialog" aria-labelledby="cascade-confirmation-title"><div className="flex gap-3"><WarningCircle className="shrink-0 text-[var(--warning-text)]" size={20} aria-hidden="true" /><div><strong id="cascade-confirmation-title" className="text-sm">Confirmar alteração em cascata?</strong><p className="sub mt-1">Esta mudança também afeta: {pending.affected.map((key) => capabilityName(capabilities, key)).join(", ")}.</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn warn active:scale-[.98]" disabled={savingCapability !== null} onClick={() => void applyCapability(pending, true)}>{savingCapability ? "Aplicando…" : "Confirmar mudança"}</button><button type="button" className="btn" disabled={savingCapability !== null} onClick={() => setPending(null)}>Cancelar</button></div></div></div></section> : null}
-          <div className="admin-actions"><button type="submit" className="btn primary" disabled={updatingId === editing.id}>{updatingId === editing.id ? "Salvando…" : "Salvar dados"}</button><button className="btn" type="button" onClick={() => setEditing(null)}>Fechar</button></div>
+          <div className="admin-actions"><SaveButton state={updatingId === editing.id ? "busy" : editSave.state} type="submit" busyLabel="Salvando…">Salvar dados</SaveButton><IconButton label="Fechar" onClick={() => setEditing(null)}><X size={16} aria-hidden="true" /></IconButton></div>
         </div>
       </form> : null}
     </section>
@@ -195,7 +201,7 @@ export default function RootWorkspacesPage() {
     <AdminSection className="card admin-card" title="Catálogo de workspaces" description={`${workspaces.length} registro(s)`}>
       {!data && !error ? <div className="grid gap-2" role="status" aria-busy="true"><span className="sr-only">Carregando workspaces</span>{[1, 2, 3].map((item) => <div key={item} className="skeleton h-12" aria-hidden="true" />)}</div>
         : error ? null : workspaces.length === 0 ? <Empty>Nenhum workspace provisionado.</Empty>
-          : <AdminTableScroll className="admin-table-wrap responsive-table-wrap"><table className="admin-table responsive-table"><thead><tr><th>Workspace</th><th>Status</th><th>Membros</th><th>Convites</th><th>Criado em</th><th>Ações</th></tr></thead><tbody>{workspaces.map((workspace) => <tr key={workspace.id}><td data-label="Workspace"><strong>{workspace.name}</strong><span className="sub mono">{workspace.slug}</span></td><td data-label="Status"><span className={`admin-badge${workspace.status === "active" ? " admin-badge--ok" : workspace.status === "suspended" ? " admin-badge--warn" : ""}`}>{accessStatusLabel(workspace.status)}</span></td><td data-label="Membros">{workspace.member_count}</td><td data-label="Convites">{workspace.pending_invites}</td><td data-label="Criado em">{dateTime.format(new Date(workspace.created_at))}</td><td data-label="Ações"><div className="admin-actions"><button type="button" className="btn" disabled={updatingId === workspace.id || loadingCapabilities} onClick={() => void openEditor(workspace)}><PencilSimple size={16} aria-hidden="true" />Editar</button><button type="button" className="btn primary" disabled={workspace.status === "suspended" || accessingId === workspace.id} onClick={() => void accessWorkspace(workspace)}><DoorOpen size={16} aria-hidden="true" />{accessingId === workspace.id ? "Acessando…" : "Acessar"}</button><PopoverMenu buttonClassName="btn" icon={<DotsThreeVertical size={16} weight="bold" aria-hidden="true" />} ariaLabel={`Mais ações de ${workspace.name}`} title="Mais ações" panelClassName="conversation-action-menu__panel">{(close) => <button type="button" className={`conversation-action-menu__item${workspace.status === "suspended" ? "" : " conversation-action-menu__item--warn"}`} disabled={updatingId === workspace.id} onClick={() => { close(); if (workspace.status !== "suspended" && !confirm(`Suspender o workspace ${workspace.name}? Os acessos serão interrompidos.`)) return; void updateWorkspace(workspace.id, { status: workspace.status === "suspended" ? "active" : "suspended" }); }}>{workspace.status === "suspended" ? "Reativar workspace" : "Suspender workspace"}</button>}</PopoverMenu></div></td></tr>)}</tbody></table></AdminTableScroll>}
+          : <AdminTableScroll className="admin-table-wrap responsive-table-wrap"><table className="admin-table responsive-table"><thead><tr><th>Workspace</th><th>Status</th><th>Membros</th><th>Convites</th><th>Criado em</th><th>Ações</th></tr></thead><tbody>{workspaces.map((workspace) => <tr key={workspace.id}><td data-label="Workspace"><strong>{workspace.name}</strong><span className="sub mono">{workspace.slug}</span></td><td data-label="Status"><span className={`admin-badge${workspace.status === "active" ? " admin-badge--ok" : workspace.status === "suspended" ? " admin-badge--warn" : ""}`}>{accessStatusLabel(workspace.status)}</span></td><td data-label="Membros">{workspace.member_count}</td><td data-label="Convites">{workspace.pending_invites}</td><td data-label="Criado em">{dateTime.format(new Date(workspace.created_at))}</td><td data-label="Ações"><div className="admin-actions"><IconButton label="Editar" size="sm" disabled={updatingId === workspace.id || loadingCapabilities} onClick={() => void openEditor(workspace)}><PencilSimple size={16} aria-hidden="true" /></IconButton><IconButton label="Acessar" size="sm" tone="primary" disabled={workspace.status === "suspended" || accessingId === workspace.id} onClick={() => void accessWorkspace(workspace)}><DoorOpen size={16} aria-hidden="true" /></IconButton><PopoverMenu buttonClassName="btn" icon={<DotsThreeVertical size={16} weight="bold" aria-hidden="true" />} ariaLabel={`Mais ações de ${workspace.name}`} title="Mais ações" panelClassName="conversation-action-menu__panel">{(close) => <button type="button" className={`conversation-action-menu__item${workspace.status === "suspended" ? "" : " conversation-action-menu__item--warn"}`} disabled={updatingId === workspace.id} onClick={() => { close(); if (workspace.status !== "suspended" && !confirm(`Suspender o workspace ${workspace.name}? Os acessos serão interrompidos.`)) return; void updateWorkspace(workspace.id, { status: workspace.status === "suspended" ? "active" : "suspended" }); }}>{workspace.status === "suspended" ? "Reativar workspace" : "Suspender workspace"}</button>}</PopoverMenu></div></td></tr>)}</tbody></table></AdminTableScroll>}
     </AdminSection>
     </AdminPage>
   </Shell>;

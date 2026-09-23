@@ -7,12 +7,12 @@
 // Submissão fala o contrato real (POST /contact-ops/import, base64 + mapping
 // objeto); histórico segue pendente e é omitido sem o endpoint.
 
-import { DownloadSimple, UploadSimple, Warning } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowLeft, DownloadSimple, UploadSimple, Warning } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { Empty } from "@/components/page-state";
 import { FlowConnect } from "@/components/flow-connect";
 import { Shell } from "@/components/shell";
-import { Badge, Button } from "@/components/ui";
+import { Badge, Button, IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatPanelDateTime } from "@/lib/format";
 import {
@@ -78,6 +78,7 @@ export default function ImportContactsPage() {
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [history, setHistory] = useState<ImportHistoryItem[] | null>(null);
+  const save = useSaveFeedback();
 
   // Histórico só aparece se o backend expuser o endpoint; qualquer falha
   // (inclusive 404/contrato pendente) omite a seção silenciosamente.
@@ -180,6 +181,7 @@ export default function ImportContactsPage() {
       const response = await submitImport({ file, filename: file.name, headers: preview.headers, mapping, onDuplicate: duplicatePolicy });
       setResult(response);
       setFeedback("Importação concluída.");
+      save.markDone();
     } catch (importError) {
       setError(
         importError instanceof Error
@@ -240,9 +242,9 @@ export default function ImportContactsPage() {
                   aria-label="Arquivo CSV ou XLSX para importação"
                 />
               </label>
-              <Button icon={<DownloadSimple size={16} aria-hidden="true" />} onClick={handleTemplateDownload}>
-                Baixar template CSV
-              </Button>
+              <IconButton label="Baixar template CSV" onClick={handleTemplateDownload}>
+                <DownloadSimple size={16} aria-hidden="true" />
+              </IconButton>
             </div>
           </section>
         ) : null}
@@ -324,7 +326,7 @@ export default function ImportContactsPage() {
               <p className="error" role="alert">Mapeie a coluna de {IMPORT_FIELDS.find((field) => missingRequired.includes(field.id))?.label ?? "telefone"}.</p>
             ) : null}
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button onClick={() => setStep("upload")}>Voltar</Button>
+              <IconButton label="Voltar" onClick={() => setStep("upload")}><ArrowLeft size={16} aria-hidden="true" /></IconButton>
               <Button tone="primary" disabled={missingRequired.length > 0} onClick={() => setStep("review")}>
                 Continuar para revisão
               </Button>
@@ -355,10 +357,10 @@ export default function ImportContactsPage() {
             </dl>
             {!result ? (
               <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={() => setStep("map")}>Voltar ao mapeamento</Button>
-                <Button tone="primary" icon={<UploadSimple size={16} aria-hidden="true" />} onClick={() => void runImport()} disabled={importing}>
-                  {importing ? "Importando…" : `Importar ${lineCount} contato(s)`}
-                </Button>
+                <IconButton label="Voltar ao mapeamento" onClick={() => setStep("map")}><ArrowLeft size={16} aria-hidden="true" /></IconButton>
+                <SaveButton state={importing ? "busy" : save.state} busyLabel="Importando…" doneLabel="Importado" icon={<UploadSimple size={16} aria-hidden="true" />} onClick={() => void runImport()} disabled={importing}>
+                  {`Importar ${lineCount} contato(s)`}
+                </SaveButton>
               </div>
             ) : (
               <div className="grid gap-4">
@@ -372,13 +374,13 @@ export default function ImportContactsPage() {
                   <div className={styles.resultLines}>
                     <div className="flex items-center justify-between gap-2">
                       <strong className="text-xs">Erros por linha</strong>
-                      <Button
+                      <IconButton
                         size="sm"
-                        icon={<DownloadSimple size={14} aria-hidden="true" />}
+                        label="Baixar CSV de erros"
                         onClick={() => downloadFile(IMPORT_ERRORS_FILENAME, buildImportErrorsCsv(result))}
                       >
-                        Baixar CSV de erros
-                      </Button>
+                        <DownloadSimple size={14} aria-hidden="true" />
+                      </IconButton>
                     </div>
                     <ul className={styles.resultLineList}>
                       {visibleLines.map((line) => (
@@ -398,7 +400,7 @@ export default function ImportContactsPage() {
                 ) : (
                   <p className="sub" role="status">Nenhum erro por linha reportado.</p>
                 )}
-                <Button onClick={resetAll}>Nova importação</Button>
+                <IconButton label="Nova importação" onClick={resetAll}><ArrowClockwise size={16} aria-hidden="true" /></IconButton>
               </div>
             )}
           </section>
@@ -431,6 +433,7 @@ export default function ImportContactsPage() {
           </section>
         ) : null}
       </div>
+      <SaveToast show={save.done}>Importação concluída</SaveToast>
     </Shell>
   );
 }

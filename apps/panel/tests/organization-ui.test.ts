@@ -102,6 +102,7 @@ describe("case organization UI contracts", () => {
     expect(bulkActions).toContain("idempotency_key: applyKey");
     expect(bulkActions).toContain("Prévia validada para {preview.count} lead(s).");
     expect(bulkActions).toContain("`/organization/bulk/${applied.operation.id}/undo`");
-    expect(bulkActions).toContain("Desfazer · {undoSeconds}s");
+    // DS v2: Desfazer virou IconButton — o texto antigo vive no label acessível.
+    expect(bulkActions).toContain("label={`Desfazer · ${undoSeconds}s`}");
   });
 });

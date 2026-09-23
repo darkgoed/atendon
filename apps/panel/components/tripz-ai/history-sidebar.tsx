@@ -156,7 +156,7 @@ export function TripzHistorySidebar({
     >
       <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-4">
         <div>
-          <span className="font-mono text-[9px] font-medium uppercase tracking-[.17em] text-[var(--primary)]">Tripz IA</span>
+          <span className="font-mono text-[9px] font-medium uppercase tracking-[.17em] text-[var(--primary-text)]">Tripz IA</span>
           <h2 id="tripz-history-title" className="m-0 mt-1 text-sm font-semibold tracking-tight text-[var(--text)]">Propostas</h2>
         </div>
         <button type="button" data-autofocus className="grid h-11 w-11 place-items-center border border-[var(--border)] bg-transparent text-[var(--text-secondary)] transition-[background,transform] hover:bg-[var(--surface-active)] hover:text-[var(--text)] active:translate-y-px lg:hidden" onClick={onCloseMobile} aria-label="Fechar histórico">

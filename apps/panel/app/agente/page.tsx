@@ -1,9 +1,10 @@
 "use client";
 
-import { Power } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, Power } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Shell } from "@/components/shell";
 import { PageHeader } from "@/components/ui/layout";
+import { IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { api } from "@/lib/api";
 import { usePermission } from "@/lib/use-permission";
 import styles from "../channels-ai.module.css";
@@ -44,6 +45,7 @@ type AgentResponse = {
 
 export default function Agent() {
   const canManage = usePermission("agent.manage");
+  const save = useSaveFeedback();
   const [form, setForm] = useState<AgentForm>();
 
 
@@ -110,7 +112,7 @@ export default function Agent() {
     }
   }
 
-  async function save() {
+  async function saveAgent() {
     if (!form || !canManage) return;
     setStateTone("info");
     setState("Salvando…");
@@ -209,9 +211,10 @@ export default function Agent() {
             <Power size={16} aria-hidden="true" />
             {changingStatus ? "Alterando…" : form?.isActive ? "Desativar IA" : "Ativar IA"}
           </button>
-          <button type="button" className="btn primary active:scale-[.98]" disabled={!canManage || !dirty || !form || form.enabledTools.length === 0} onClick={() => void save()}>
+          <SaveButton type="button" state={save.state} disabled={!canManage || !dirty || !form || form.enabledTools.length === 0} onClick={() => void save.run(saveAgent)}>
             Salvar alterações
-          </button>
+          </SaveButton>
+          <SaveToast show={save.done}>Agente salvo</SaveToast>
           </div>
         }
       />
@@ -224,9 +227,9 @@ export default function Agent() {
           {scope === "connection" && canManage ? (
             <>
               {" "}
-              <button type="button" className="btn warn ml-2" disabled={removingOverride} onClick={() => void removeOverride()}>
-                {removingOverride ? "Removendo…" : "Voltar ao prompt compartilhado"}
-              </button>
+              <IconButton type="button" label="Voltar ao prompt compartilhado" size="sm" className="ml-2 align-middle" disabled={removingOverride} onClick={() => void removeOverride()}>
+                <ArrowCounterClockwise size={14} aria-hidden="true" />
+              </IconButton>
             </>
           ) : null}
         </p>

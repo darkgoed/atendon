@@ -2,6 +2,7 @@
 
 import {
   Archive,
+  ArrowCounterClockwise,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
@@ -18,7 +19,7 @@ import { useRef, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { ModalDialog } from "@/components/modal-dialog";
 import { Shell } from "@/components/shell";
-import { Input } from "@/components/ui";
+import { IconButton, Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { api } from "@/lib/api";
 import { isPostSaleVersionConflict, type PostSaleTemplateItem } from "@/lib/post-sales";
 
@@ -42,6 +43,8 @@ export default function PostSalesChecklistSettingsPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [pendingArchive, setPendingArchive] = useState<PostSaleTemplateItem | null>(null);
+  const createSave = useSaveFeedback();
+  const renameSave = useSaveFeedback();
   const active = data?.items.filter((item) => !item.archived_at) ?? [];
   const archived = data?.items.filter((item) => Boolean(item.archived_at)) ?? [];
 
@@ -60,6 +63,7 @@ export default function PostSalesChecklistSettingsPage() {
       });
       form.reset();
       await mutate();
+      createSave.markDone();
       setMessage("Item adicionado como pendente para todos os clientes ativos.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Falha ao adicionar item");
@@ -80,6 +84,7 @@ export default function PostSalesChecklistSettingsPage() {
         body: JSON.stringify({ version: item.version, description })
       });
       await mutate();
+      renameSave.markDone();
       setEditingId(null);
       setMessage("Descrição atualizada.");
     } catch (caught) {
@@ -149,6 +154,8 @@ export default function PostSalesChecklistSettingsPage() {
 
       {message ? <p className="post-sales-feedback accent" role="status">{message}</p> : null}
       {error ? <p className="post-sales-feedback error" role="alert">{error}</p> : null}
+      <SaveToast show={createSave.done}>Item adicionado</SaveToast>
+      <SaveToast show={renameSave.done}>Descrição salva</SaveToast>
       {loadError ? <div className="post-sales-failure" role="alert"><strong>Não foi possível carregar o checklist</strong><p>{loadError.message}</p><button className="btn warn" type="button" onClick={() => void mutate()}>Tentar novamente</button></div> : null}
 
       <div className="post-sales-template-layout">
@@ -158,7 +165,7 @@ export default function PostSalesChecklistSettingsPage() {
               <span className="label">Novo item</span>
               <span className="post-sales-template-create__input">
                 <Input name="description" placeholder="Ex.: oferecer treinamento da equipe" maxLength={500} required disabled={creating} />
-                <button className="btn primary" type="submit" disabled={creating}><Plus size={16} aria-hidden="true" /> {creating ? "Adicionando…" : "Adicionar"}</button>
+                <SaveButton type="submit" state={creating ? "busy" : createSave.state} disabled={creating} busyLabel="Adicionando…" icon={<Plus size={16} aria-hidden="true" />}>Adicionar</SaveButton>
               </span>
             </label>
             <p>O item será incluído como pendente, sem alterar respostas já registradas.</p>
@@ -180,8 +187,8 @@ export default function PostSalesChecklistSettingsPage() {
                       {editingId === item.id ? (
                         <form className="post-sales-template-item__edit" onSubmit={(event) => void renameItem(event, item)}>
                           <label className="field"><span className="sr-only">Descrição do item</span><Input name="description" defaultValue={item.description} required data-autofocus disabled={pendingId === item.id} /></label>
-                          <button className="btn primary" type="submit" aria-label="Salvar descrição" disabled={pendingId === item.id}><FloppyDisk size={15} aria-hidden="true" /> Salvar</button>
-                          <button className="btn" type="button" aria-label="Cancelar edição" onClick={() => cancelEditing(item.id)}><X size={15} aria-hidden="true" /></button>
+                          <SaveButton type="submit" state={pendingId === item.id ? "busy" : renameSave.state} disabled={pendingId === item.id} icon={<FloppyDisk size={15} aria-hidden="true" />}>Salvar descrição</SaveButton>
+                          <IconButton type="button" label="Cancelar edição" disabled={pendingId === item.id} onClick={() => cancelEditing(item.id)}><X size={15} aria-hidden="true" /></IconButton>
                         </form>
                       ) : (
                         <div className="post-sales-template-item__copy"><strong>{item.description}</strong><span>{item.answered_count} resposta(s) em {item.client_count} cliente(s)</span></div>
@@ -212,7 +219,7 @@ export default function PostSalesChecklistSettingsPage() {
                 {archived.map((item) => (
                   <article key={item.id} aria-busy={pendingId === item.id}>
                     <div><strong>{item.description}</strong><span>{item.answered_count} resposta(s) preservada(s)</span></div>
-                    <button className="btn" type="button" onClick={() => void setArchived(item, false)} disabled={Boolean(pendingId)}>{pendingId === item.id ? "Restaurando…" : "Restaurar"}</button>
+                    <IconButton type="button" label="Restaurar" onClick={() => void setArchived(item, false)} disabled={Boolean(pendingId)}><ArrowCounterClockwise size={16} aria-hidden="true" /></IconButton>
                   </article>
                 ))}
               </div>

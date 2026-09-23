@@ -47,7 +47,7 @@ export function VersionBanner({
                 O que há de novo
               </h2>
               <p id="version-banner-desc" className="text-xs text-[var(--text-secondary)]">
-                {hasKnownVersion ? <>Novidades da versão <strong className="mono text-[var(--primary)]">v{currentVersion}</strong></> : "Novidades da versão implantada"}
+                {hasKnownVersion ? <>Novidades da versão <strong className="mono text-[var(--primary-text)]">v{currentVersion}</strong></> : "Novidades da versão implantada"}
                 {currentChangelog?.date ? ` (${currentChangelog.date})` : ""}
               </p>
             </div>

@@ -1,7 +1,7 @@
 "use client";
 
-import { ArrowClockwise } from "@phosphor-icons/react";
-import { useEffect, useMemo, useState } from "react";
+import { ArrowClockwise, Eye } from "@phosphor-icons/react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import useSWR from "swr";
 import { BulkLeadActions } from "@/components/bulk-lead-actions";
 import { PipelineBoard } from "@/components/pipeline-board";
@@ -40,7 +40,7 @@ import { useRealtimeSignals } from "@/lib/realtime";
 import { canAccessWithSession, hasWorkspaceWideCaseScope, type PanelSession } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
 import { usePipelinePreferences } from "@/lib/use-pipeline-preferences";
-import { Button } from "@/components/ui";
+import { Button, IconButton, SaveToast } from "@/components/ui";
 import { readPipelineViewPreference, writePipelineViewPreference } from "@/lib/pipeline-view";
 
 type PipelinePageMeta = { limit: number; has_more: boolean; next_cursor: string | null };
@@ -78,6 +78,41 @@ const fallbackStages: PipelineStage[] = CANONICAL_PIPELINE_STATUSES.map((status,
 
 const fallbackTransitions = Object.entries(fallbackStatusTransitions).flatMap(([source, targets]) => targets.map((target) => `fallback:${source}:fallback:${target}`));
 
+type Celebration = { key: number; name: string };
+
+const CONFETTI_COLORS = ["var(--primary)", "var(--success)", "var(--warning)"];
+
+/**
+ * Confete do fechamento (DS v2, ref. Pipeline.dc.html): 12 partículas com
+ * trajetória aleatória via variáveis CSS (--x/--y/--r), animação .on-burst de
+ * 0,9s; os spans saem da árvore logo após a animação terminar.
+ */
+function PipelineWinBurst() {
+  const [bursting, setBursting] = useState(true);
+  const parts = useMemo(() => Array.from({ length: 12 }, (_, index) => ({
+    x: Math.round((Math.random() * 2 - 1) * 80),
+    y: -Math.round(30 + Math.random() * 90),
+    r: Math.round((Math.random() * 2 - 1) * 220),
+    color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
+    delay: (index % 5) * 0.02
+  })), []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setBursting(false), 1000);
+    return () => window.clearTimeout(timer);
+  }, []);
+  if (!bursting) return null;
+  return (
+    <div className="pipeline-confetti" aria-hidden="true">
+      {parts.map((part, index) => (
+        <span
+          key={index}
+          style={{ "--x": `${part.x}px`, "--y": `${part.y}px`, "--r": `${part.r}deg`, "--c": part.color, "--d": `${part.delay}s` } as CSSProperties}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function PipelinePage() {
   const canMove = usePermission("leads.update_status");
   const organizationEnabled = useCaseOrganizationEnabled();
@@ -89,6 +124,7 @@ export default function PipelinePage() {
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
   const [showAllStages, setShowAllStages] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [celebration, setCelebration] = useState<Celebration | null>(null);
   const { data: session } = useSWR<PanelSession>("/me", fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
   const [preferences, setPreferences] = usePipelinePreferences(session?.activeWorkspace?.id, session?.user.id);
   const hasWorkspaceScope = Boolean(session && hasWorkspaceWideCaseScope(session));
@@ -98,6 +134,12 @@ export default function PipelinePage() {
     const timer = window.setTimeout(() => setDebouncedSearch(filters.busca.trim()), 300);
     return () => window.clearTimeout(timer);
   }, [filters.busca]);
+
+  useEffect(() => {
+    if (!celebration) return;
+    const timer = window.setTimeout(() => setCelebration(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [celebration]);
 
   useEffect(() => {
     if (!session?.activeWorkspace?.id || !session.user.id) return;
@@ -384,6 +426,10 @@ export default function PipelinePage() {
         }
         return optimisticData;
       }, { optimisticData, rollbackOnError: true, revalidate: true });
+      // Fechamento bem-sucedido: confete + toast (ref. Pipeline.dc.html).
+      if (persistenceStage.technical_status === "fechado") {
+        setCelebration({ key: Date.now(), name: lead.nome ?? "Lead" });
+      }
       setIntent(null);
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "Falha ao mover lead");
@@ -413,7 +459,7 @@ export default function PipelinePage() {
         </div>
         <div className="pipeline-page__actions">
           <SavedViewsControl resource="pipeline" filters={pipelineFiltersForSavedView(filters)} onApply={(saved) => setFilters(applyPipelineSavedView(saved))} />
-          <Button type="button" className="pipeline-page__stage-toggle" aria-pressed={showAllStages} onClick={() => setShowAllStages((current) => !current)}>Mostrar todas as etapas</Button>
+          <IconButton label="Mostrar todas as etapas" className="pipeline-page__stage-toggle" aria-pressed={showAllStages} onClick={() => setShowAllStages((current) => !current)}><Eye size={16} aria-hidden="true" /></IconButton>
           <PipelineViewPreferences value={preferences} onChange={setPreferences} />
           <PipelineSettings stages={pipelineData?.stages ?? []} transitions={pipelineData?.transitions ?? []} followUpConfig={pipelineData?.follow_up_config} enforceTransitions={pipelineData?.enforce_transitions} onChanged={mutatePipeline} onToggleFreeMovement={handleToggleFreeMovement} />
         </div>
@@ -428,8 +474,8 @@ export default function PipelinePage() {
         </dl>
       </div>
 
-      {actionError && !intent ? <div className="pipeline-error"><span>{actionError}</span><button type="button" className="btn crm-compact-button" onClick={retry}><ArrowClockwise size={13} aria-hidden="true" />Atualizar</button></div> : null}
-      {loadError && leads.length > 0 ? <div className="pipeline-stale"><span>Os dados exibidos podem estar desatualizados: {loadError}</span><button type="button" className="btn crm-compact-button" onClick={retry}><ArrowClockwise size={13} aria-hidden="true" />Tentar novamente</button></div> : null}
+      {actionError && !intent ? <div className="pipeline-error"><span>{actionError}</span><IconButton label="Atualizar" onClick={retry}><ArrowClockwise size={15} aria-hidden="true" /></IconButton></div> : null}
+      {loadError && leads.length > 0 ? <div className="pipeline-stale"><span>Os dados exibidos podem estar desatualizados: {loadError}</span><IconButton label="Tentar novamente" onClick={retry}><ArrowClockwise size={15} aria-hidden="true" /></IconButton></div> : null}
 
       <div className="pipeline-page__board">
         {viewMode === "list" ? <PipelineList
@@ -486,6 +532,8 @@ export default function PipelinePage() {
         />
       ) : null}
       <BulkLeadActions selected={selectedItems} onClear={() => setSelectedIds(new Set())} onChanged={mutate} />
+      {celebration ? <PipelineWinBurst key={celebration.key} /> : null}
+      <SaveToast show={celebration !== null}>Negócio fechado · {celebration?.name}</SaveToast>
       </div>
     </Shell>
   );

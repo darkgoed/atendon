@@ -2,7 +2,7 @@
 
 import { ArrowRight } from "@phosphor-icons/react";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import useSWR from "swr";
 import { ContactAvatar } from "@/components/contact-avatar";
 import { Empty, LoadingCards } from "@/components/page-state";
@@ -130,9 +130,9 @@ export default function Overview() {
             overline, e um "Atendimento em tempo real" acima seria um rótulo
             sobre rótulos. */}
         <div className="overview-realtime">
-          <Panel>
+          <Panel className="on-enter" style={{ "--i": 0 } as CSSProperties}>
             <dl className="overview-metrics">
-              <div className="overview-metrics__item">
+              <div className="overview-metrics__item on-enter" style={{ "--i": 0 } as CSSProperties}>
                 <dt className="type-overline">Conexão WhatsApp</dt>
                 <dd className="overview-metrics__status">
                   <Dot tone={connected ? "success" : "warning"} />
@@ -140,7 +140,7 @@ export default function Overview() {
                 </dd>
                 <dd className="type-meta mono">status: {data.connection.status}</dd>
               </div>
-              <div className="overview-metrics__item">
+              <div className="overview-metrics__item on-enter" style={{ "--i": 1 } as CSSProperties}>
                 <dt className="type-overline">Aguardando humano</dt>
                 <dd className="metric warning">{data.counts.handoff}</dd>
                 <dd className="type-meta">
@@ -149,12 +149,12 @@ export default function Overview() {
                     : `${data.counts.handoff_over_sla} dos seus atendimentos acima de 15 min`}
                 </dd>
               </div>
-              <div className="overview-metrics__item">
+              <div className="overview-metrics__item on-enter" style={{ "--i": 2 } as CSSProperties}>
                 <dt className="type-overline">Conversas abertas</dt>
                 <dd className="metric">{data.counts.open}</dd>
                 <dd className="type-meta">{data.counts.ai_open} com IA · {data.counts.resolved_today} resolvidas hoje</dd>
               </div>
-              <div className="overview-metrics__item">
+              <div className="overview-metrics__item on-enter" style={{ "--i": 3 } as CSSProperties}>
                 <dt className="type-overline">Mensagens hoje</dt>
                 <dd className="metric">{data.counts.messagesToday}</dd>
                 <dd className="type-meta">contato, IA e humano</dd>
@@ -167,7 +167,7 @@ export default function Overview() {
           {/* Fila de handoff: uma LISTA de linhas divididas. Antes cada item era
               um bloco com borda e fundo âmbar dentro de um card — caixa dentro
               de caixa, e o alerta gritava mais que o conteúdo. */}
-          <Panel>
+          <Panel className="on-enter" style={{ "--i": 1 } as CSSProperties}>
             <PanelHeader>
               <h2 className="type-section-title">{hasWorkspaceScope ? "Aguardando atendimento humano" : "Meus atendimentos aguardando ação"}</h2>
               <Link href={`/conversas?filtro=${hasWorkspaceScope ? "human" : "mine"}`} className="overview-link">
@@ -205,7 +205,7 @@ export default function Overview() {
             </PanelFooter>
           </Panel>
 
-          <Panel>
+          <Panel className="on-enter" style={{ "--i": 2 } as CSSProperties}>
             <PanelHeader><h2 className="type-section-title">Agente</h2></PanelHeader>
             <PanelBody>
               {data.agent ? <div className="stack stack--tight">

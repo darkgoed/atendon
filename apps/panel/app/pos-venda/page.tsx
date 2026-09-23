@@ -20,7 +20,7 @@ import { ModalDialog } from "@/components/modal-dialog";
 import { PostSalesChecklist } from "@/components/post-sales-checklist";
 import { PostSalesSummaryStrip } from "@/components/post-sales-summary";
 import { Shell } from "@/components/shell";
-import { Input, PageHeader, Select, Textarea } from "@/components/ui";
+import { IconButton, Input, PageHeader, SaveButton, SaveToast, Select, Textarea, useSaveFeedback, type SaveState } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import {
   buildPostSaleQuery,
@@ -66,6 +66,8 @@ export default function PostSalesPage() {
   const [actionError, setActionError] = useState("");
   const [savingEntryId, setSavingEntryId] = useState<string | null>(null);
   const [entryErrors, setEntryErrors] = useState<Record<string, string>>({});
+  const updateSave = useSaveFeedback();
+  const createSave = useSaveFeedback();
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(filters.q.trim()), 250);
@@ -332,16 +334,17 @@ export default function PostSalesPage() {
                     client={detail.client}
                     members={options?.members ?? []}
                     timezone={timezone}
-                    onSaved={async (message) => { await refresh(); setActionMessage(message); }}
+                    saveState={updateSave.state}
+                    onSaved={async (message) => { updateSave.markDone(); await refresh(); setActionMessage(message); }}
                     onConflict={refresh}
                     onError={(message) => setActionError(message)}
                   />
                 </div>
                 <div className="post-sales-detail__sticky">
                   <span><NotePencil size={15} aria-hidden="true" /> Alterações são salvas automaticamente</span>
-                  <button className="btn warn" type="button" onClick={() => void archiveClient(detail.client)}>
-                    <Archive size={15} aria-hidden="true" /> {detail.client.archived_at ? "Restaurar cliente" : "Arquivar cliente"}
-                  </button>
+                  <IconButton type="button" label={detail.client.archived_at ? "Restaurar cliente" : "Arquivar cliente"} onClick={() => void archiveClient(detail.client)}>
+                    <Archive size={15} aria-hidden="true" />
+                  </IconButton>
                 </div>
               </>
             ) : null}
@@ -349,12 +352,17 @@ export default function PostSalesPage() {
         </section>
       </div>
 
+      <SaveToast show={updateSave.done}>Dados do cliente atualizados</SaveToast>
+      <SaveToast show={createSave.done}>Cliente adicionado à carteira</SaveToast>
+
       {createOpen ? (
         <CreateClientDialog
           members={options?.members ?? []}
           timezone={timezone}
           onClose={() => setCreateOpen(false)}
+          saveState={createSave.state}
           onCreated={async (client) => {
+            createSave.markDone();
             await mutateList();
             setSelectedId(client.id);
             setMobileView("detail");
@@ -376,6 +384,7 @@ function ClientEditor({
   client,
   members,
   timezone,
+  saveState,
   onSaved,
   onConflict,
   onError
@@ -383,6 +392,7 @@ function ClientEditor({
   client: PostSaleClient;
   members: PostSaleMember[];
   timezone: string;
+  saveState: SaveState;
   onSaved: (message: string) => Promise<void> | void;
   onConflict: () => Promise<void> | void;
   onError: (message: string) => void;
@@ -453,7 +463,7 @@ function ClientEditor({
           <label className="field"><span className="label">Data da ação</span><Input name="next_action_at" type="datetime-local" defaultValue={client.next_action_at ? localMinute(client.next_action_at, timezone) : ""} disabled={saving} /></label>
           <label className="field post-sales-client-editor__notes"><span className="label">Observação</span><Textarea name="notes" rows={4} defaultValue={client.notes ?? ""} disabled={saving} /></label>
           {inlineError ? <p className="error post-sales-client-editor__error" role="alert">{inlineError}</p> : null}
-          <div className="post-sales-client-editor__actions"><button className="btn" type="button" onClick={() => setOpen(false)} disabled={saving}>Cancelar</button><button className="btn primary" type="submit" disabled={saving}>{saving ? "Salvando…" : "Salvar alterações"}</button></div>
+          <div className="post-sales-client-editor__actions"><IconButton type="button" label="Cancelar" onClick={() => setOpen(false)} disabled={saving}><X size={16} aria-hidden="true" /></IconButton><SaveButton type="submit" state={saving ? "busy" : saveState} disabled={saving}>Salvar alterações</SaveButton></div>
         </form>
       ) : client.notes ? <p className="post-sales-client-editor__preview">{client.notes}</p> : null}
     </section>
@@ -463,12 +473,14 @@ function ClientEditor({
 function CreateClientDialog({
   members,
   timezone,
+  saveState,
   onClose,
   onCreated,
   onExisting
 }: {
   members: PostSaleMember[];
   timezone: string;
+  saveState: SaveState;
   onClose: () => void;
   onCreated: (client: PostSaleClient) => Promise<void> | void;
   onExisting: (id: string) => void;
@@ -539,7 +551,7 @@ function CreateClientDialog({
         <label className="field post-sales-create-form__notes"><span className="label">Observação</span><Textarea name="notes" rows={3} disabled={saving} /></label>
         {error ? <p className="error post-sales-create-form__error" role="alert">{error}</p> : null}
         {existingId ? <button className="btn post-sales-create-form__existing" type="button" onClick={() => onExisting(existingId)}>Abrir cadastro existente</button> : null}
-        <div className="post-sales-create-form__actions"><button className="btn" type="button" onClick={onClose} disabled={saving}>Cancelar</button><button className="btn primary" type="submit" disabled={saving}>{saving ? "Adicionando…" : "Adicionar cliente"}</button></div>
+        <div className="post-sales-create-form__actions"><button className="btn" type="button" onClick={onClose} disabled={saving}>Cancelar</button><SaveButton type="submit" state={saving ? "busy" : saveState} disabled={saving} busyLabel="Adicionando…">Adicionar cliente</SaveButton></div>
       </form>
     </ModalDialog>
   );

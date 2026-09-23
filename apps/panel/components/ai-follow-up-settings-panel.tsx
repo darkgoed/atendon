@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Textarea } from "@/components/ui/field";
+import { Field, Input, SaveButton, SaveToast, Textarea, useSaveFeedback } from "@/components/ui";
 
 import { formatFollowUpDelay, isValidFollowUpDelays, normalizeFollowUpDelivery, type AiFollowUpSettings, type FollowUpDelivery } from "@/lib/ai-follow-ups";
 
@@ -40,7 +40,8 @@ export function AiFollowUpSettingsPanel() {
   const [uploadName, setUploadName] = useState("");
   const [uploadDescription, setUploadDescription] = useState("");
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
+  const save = useSaveFeedback();
+  const uploadSave = useSaveFeedback();
 
   useEffect(() => {
     let active = true;
@@ -71,7 +72,6 @@ export function AiFollowUpSettingsPanel() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    setSaved(false);
     if (!isValidFollowUpDelays(settings.delaysMinutes)) {
       setError("Os atrasos devem ser crescentes, entre 1 minuto e 30 dias.");
       return;
@@ -88,7 +88,7 @@ export function AiFollowUpSettingsPanel() {
         body: JSON.stringify(payload)
       });
       setSettings(response.settings);
-      setSaved(true);
+      save.markDone();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Falha ao salvar os follow-ups da IA");
     } finally {
@@ -116,6 +116,7 @@ export function AiFollowUpSettingsPanel() {
       setUploadFile(undefined);
       setUploadName("");
       setUploadDescription("");
+      uploadSave.markDone();
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Falha ao adicionar a mídia");
     } finally {
@@ -129,7 +130,6 @@ export function AiFollowUpSettingsPanel() {
       next[index] = delivery;
       return { ...current, delivery: next };
     });
-    setSaved(false);
   }
 
   if (loading) {
@@ -153,14 +153,13 @@ export function AiFollowUpSettingsPanel() {
             <input
               type="checkbox"
               checked={settings.enabled}
-              onChange={(event) => { setSettings((current) => ({ ...current, enabled: event.target.checked })); setSaved(false); }}
+              onChange={(event) => { setSettings((current) => ({ ...current, enabled: event.target.checked })); }}
             />
             {settings.enabled ? "Ativo" : "Inativo"}
           </label>
         </div>
 
         {error ? <p className="error mb-5" role="alert">{error}</p> : null}
-        {saved ? <p className="mb-5 text-sm text-[var(--primary-text)]" role="status">Configuração salva.</p> : null}
 
         <div className="grid gap-3">
           <div className="flex items-end justify-between gap-4">
@@ -178,8 +177,7 @@ export function AiFollowUpSettingsPanel() {
                   delaysMinutes: [...current.delaysMinutes, Math.min(43_200, (current.delaysMinutes.at(-1) ?? 0) + 1440)],
                   delivery: [...normalizeFollowUpDelivery(current.delaysMinutes, current.delivery), { type: "text" }]
                 }));
-                setSaved(false);
-              }}
+                          }}
             >
               <Plus size={15} aria-hidden="true" />Adicionar
             </Button>
@@ -206,8 +204,7 @@ export function AiFollowUpSettingsPanel() {
                       const delaysMinutes = [...settings.delaysMinutes];
                       delaysMinutes[index] = Number(event.target.value);
                       setSettings((current) => ({ ...current, delaysMinutes }));
-                      setSaved(false);
-                    }}
+                                      }}
                   />
                   <span className="sub text-xs">{formatFollowUpDelay(delay)} após a origem</span>
                   <Button
@@ -222,8 +219,7 @@ export function AiFollowUpSettingsPanel() {
                         delivery: normalizeFollowUpDelivery(current.delaysMinutes, current.delivery)
                           .filter((_, deliveryIndex) => deliveryIndex !== index)
                       }));
-                      setSaved(false);
-                    }}
+                                      }}
                   >
                     <Trash size={15} aria-hidden="true" />
                   </Button>
@@ -296,10 +292,10 @@ export function AiFollowUpSettingsPanel() {
 
         <div className="mt-7 flex items-center justify-between gap-4 border-t border-[var(--border)] pt-5">
           <span className="sub text-xs">Alterações também atualizam sequências que ainda estão aguardando.</span>
-          <Button type="submit" tone="primary" className="channels-ai-touch" disabled={saving}>
-            <FloppyDisk aria-hidden="true" />
-            {saving ? "Salvando…" : "Salvar cadência"}
-          </Button>
+          <SaveButton type="submit" className="channels-ai-touch" state={saving ? "busy" : save.state} icon={<FloppyDisk aria-hidden="true" />}>
+            Salvar cadência
+          </SaveButton>
+          <SaveToast show={save.done}>Cadência salva</SaveToast>
         </div>
       </form>
 
@@ -329,10 +325,18 @@ export function AiFollowUpSettingsPanel() {
             <Textarea className="channels-ai-textarea-compact resize-y" value={uploadDescription} maxLength={500} onChange={(event) => setUploadDescription(event.target.value)} placeholder="Resultados de vendas do novo cliente Newave nos primeiros 14 dias." />
             <small className="sub">A IA usa somente estes fatos para apresentar o case, sem inventar resultados.</small>
           </Field>
-          <Button type="submit" className="channels-ai-touch" disabled={!uploadFile || !uploadName.trim() || !uploadDescription.trim() || uploading}>
-            <UploadSimple size={16} aria-hidden="true" />
-            {uploading ? "Adicionando…" : "Adicionar mídia"}
-          </Button>
+          <SaveButton
+            type="submit"
+            className="channels-ai-touch"
+            state={uploading ? "busy" : uploadSave.state}
+            busyLabel="Adicionando…"
+            doneLabel="Adicionada"
+            icon={<UploadSimple size={16} aria-hidden="true" />}
+            disabled={!uploadFile || !uploadName.trim() || !uploadDescription.trim()}
+          >
+            Adicionar mídia
+          </SaveButton>
+          <SaveToast show={uploadSave.done}>Mídia adicionada</SaveToast>
           <div className="flex items-start gap-2 text-xs text-[var(--text-secondary)]">
             <Sticker className="mt-0.5 shrink-0" size={15} aria-hidden="true" />
             <p>As figurinhas vêm da biblioteca logo abaixo nesta página e sempre são enviadas sem texto.</p>

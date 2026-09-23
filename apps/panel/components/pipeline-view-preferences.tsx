@@ -2,6 +2,7 @@
 
 import { ArrowCounterClockwise, SlidersHorizontal } from "@phosphor-icons/react";
 import { PopoverMenu } from "@/components/popover-menu";
+import { IconButton } from "@/components/ui";
 import {
   DEFAULT_PIPELINE_PREFERENCES,
   type PipelineAuxiliaryBadge,
@@ -38,7 +39,8 @@ export function PipelineViewPreferences({
   return (
     <PopoverMenu
       icon={<SlidersHorizontal size={15} aria-hidden="true" />}
-      label="Exibição"
+      ariaLabel="Exibição"
+      title="Exibição"
       buttonClassName="btn active:scale-[.98]"
       panelClassName="pipeline-popover grid gap-4"
     >
@@ -101,10 +103,9 @@ export function PipelineViewPreferences({
             <option value={320}>Ampla · 320 px</option>
           </select>
         </label>
-        <button type="button" className="btn justify-center active:scale-[.98]" onClick={() => onChange({ ...DEFAULT_PIPELINE_PREFERENCES, visibleFields: [...DEFAULT_PIPELINE_PREFERENCES.visibleFields], auxiliaryBadges: [...DEFAULT_PIPELINE_PREFERENCES.auxiliaryBadges] })}>
+        <IconButton type="button" label="Restaurar padrão" className="active:scale-[.98]" onClick={() => onChange({ ...DEFAULT_PIPELINE_PREFERENCES, visibleFields: [...DEFAULT_PIPELINE_PREFERENCES.visibleFields], auxiliaryBadges: [...DEFAULT_PIPELINE_PREFERENCES.auxiliaryBadges] })}>
           <ArrowCounterClockwise size={15} aria-hidden="true" />
-          Restaurar padrão
-        </button>
+        </IconButton>
       </>}
     </PopoverMenu>
   );

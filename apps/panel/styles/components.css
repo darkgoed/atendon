@@ -200,19 +200,60 @@
   color: var(--text-disabled);
 }
 
+/* DS v2 §4: a ação principal é NEUTRA — branco gelo com texto preto no dark,
+   preto profundo com texto gelo no light (--text / --text-inverse). O ciano
+   cheio fica reservado para envio e confirmação em lote (.btn--accent). */
 .btn-primary, .btn.primary {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--text-inverse);
+  font-weight: var(--weight-semibold);
+}
+.btn-primary:hover, .btn.primary:hover {
+  border-color: var(--text);
+  background: color-mix(in srgb, var(--text) 88%, var(--bg));
+}
+.btn-primary:active, .btn.primary:active { transform: scale(.97); }
+.btn-primary:disabled, .btn.primary:disabled {
+  background: var(--surface-sunken);
+  border-color: var(--border-subtle);
+  color: var(--text-disabled);
+  transform: none;
+}
+
+/* Ciano cheio: envio com conteúdo e confirmação em lote (README §4). */
+.btn--accent {
   border-color: var(--primary);
   background: var(--primary);
   color: var(--primary-foreground);
   font-weight: var(--weight-semibold);
 }
-.btn-primary:hover, .btn.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
-.btn-primary:active, .btn.primary:active { background: var(--primary-active); border-color: var(--primary-active); }
-.btn-primary:disabled, .btn.primary:disabled {
-  background: var(--primary-subtle);
-  border-color: var(--primary-border);
+.btn--accent:hover { border-color: var(--primary-hover); background: var(--primary-hover); box-shadow: var(--shadow-glow); }
+.btn--accent:active { background: var(--primary-active); transform: scale(.97); }
+.btn--accent:disabled {
+  background: var(--surface-sunken);
+  border-color: var(--border-subtle);
   color: var(--text-disabled);
+  box-shadow: none;
+  transform: none;
 }
+
+/* Chip com contorno: sugestões e respostas rápidas (README §4). */
+.chip-action {
+  display: inline-flex;
+  min-height: var(--control-height-sm);
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  white-space: nowrap;
+  transition: var(--transition-control);
+}
+.chip-action:hover { border-color: var(--primary); color: var(--text); }
 
 /* Ghost: sem moldura em repouso. É o default para ações secundárias densas. */
 .btn.quiet, .btn--ghost {
@@ -915,3 +956,12 @@ th[aria-sort="descending"]::after { content: " ↓"; }
   margin-bottom: var(--space-3);
 }
 .chart-panel__title { color: var(--text); font-size: var(--text-control); font-weight: var(--weight-semibold); }
+
+/* ===================================================== PADRÃO DE SALVAR ==
+   DS v2 README §2 — components/ui/save-feedback.tsx. Camada fixa do toast,
+   centralizada sobre a área de conteúdo (descontando o rail) e sem capturar
+   clique; o .on-toast de motion.css é absolute dentro dela. */
+.save-toast-layer { position: fixed; z-index: var(--z-toast); inset: auto 0 var(--space-8) 0; height: 0; pointer-events: none; }
+@media (min-width: 701px) { .save-toast-layer { left: var(--sidebar-width); } }
+.save-toast-layer .on-toast { bottom: 0; color: var(--text); font-size: var(--text-body); white-space: nowrap; }
+.save-button .on-check { flex: none; }

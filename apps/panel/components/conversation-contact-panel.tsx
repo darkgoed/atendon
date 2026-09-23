@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowClockwise,
   ArrowDown,
   ArrowSquareOut,
   FileText,
@@ -13,7 +14,7 @@ import {
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ContactAvatar } from "./contact-avatar";
 import { ConversationNotes } from "./conversation-notes";
-import { Button, Input } from "@/components/ui";
+import { Button, IconButton, Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { instagramDisplayIdentity, instagramDisplayName } from "@/lib/channel-identity";
 import { shouldSubmitOnEnter } from "@/lib/compat";
 
@@ -85,6 +86,7 @@ export function ConversationContactPanel({
   const [savingName, setSavingName] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [draftName, setDraftName] = useState(conversation.contact_name ?? "");
+  const nameSave = useSaveFeedback();
   const panelRef = useRef<HTMLElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -161,6 +163,7 @@ export function ConversationContactPanel({
     setSavingName(true);
     try {
       await onSaveContactName(name);
+      nameSave.markDone();
       setEditing(false);
     } catch (caught) {
       setSaveError(caught instanceof Error ? caught.message : "Falha ao editar o contato");
@@ -173,9 +176,9 @@ export function ConversationContactPanel({
     <aside ref={panelRef} className="conversation-contact-panel min-h-0 min-w-0" aria-label="Dados do contato" tabIndex={-1}>
       <header className="conversation-contact-panel__header flex shrink-0 items-center justify-between px-4 py-3">
         <h2 className="text-sm font-semibold text-[var(--text)]">Dados do lead</h2>
-        <Button type="button" autoFocus data-autofocus className="conversation-contact-panel__icon" onClick={onClose} aria-label="Fechar dados do contato" title="Fechar">
+        <IconButton type="button" label="Fechar dados do contato" title="Fechar" autoFocus data-autofocus onClick={onClose}>
           <X size={18} aria-hidden="true" />
-        </Button>
+        </IconButton>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -214,21 +217,20 @@ export function ConversationContactPanel({
                   disabled={savingName}
                   autoFocus
                 />
-                <Button type="button" className="btn primary shrink-0" onClick={() => void saveName()} disabled={savingName}>{savingName ? "Salvando…" : "Salvar"}</Button>
+                <SaveButton type="button" state={savingName ? "busy" : nameSave.state} onClick={() => void saveName()} disabled={savingName}>Salvar</SaveButton>
               </div>
             ) : (
               <>
                 <strong className="truncate text-sm font-semibold text-[var(--text)]">{title}</strong>
                 {canEdit ? (
-                  <Button
+                  <IconButton
                     type="button"
-                    className="conversation-contact-panel__icon"
-                    onClick={() => { setDraftName(conversation.contact_name ?? ""); setEditing(true); }}
-                    aria-label="Editar nome do contato"
+                    label="Editar nome do contato"
                     title="Editar contato"
+                    onClick={() => { setDraftName(conversation.contact_name ?? ""); setEditing(true); }}
                   >
                     <PencilSimple size={16} aria-hidden="true" />
-                  </Button>
+                  </IconButton>
                 ) : null}
               </>
             )}
@@ -274,7 +276,7 @@ export function ConversationContactPanel({
           {assetsError ? (
             <div className="mt-3 flex items-center justify-between gap-2 border border-[var(--warning-border)] bg-[var(--warning-subtle)] p-2 text-xs text-[var(--warning-text)]" role="alert">
               <span>{assetsError}</span>
-              {onRetryAssets ? <Button type="button" className="btn shrink-0" onClick={onRetryAssets}>Tentar novamente</Button> : null}
+              {onRetryAssets ? <IconButton type="button" label="Tentar novamente" onClick={onRetryAssets}><ArrowClockwise size={14} aria-hidden="true" /></IconButton> : null}
             </div>
           ) : null}
 
@@ -334,13 +336,13 @@ export function ConversationContactPanel({
         </section>
         {canEdit ? (
           <section className="px-4 py-4">
-            <Button type="button" className="conversation-contact-panel__clear" onClick={onClearConversation}>
+            <IconButton type="button" tone="danger" label="Limpar conversa" onClick={onClearConversation}>
               <Trash size={17} aria-hidden="true" />
-              <span>Limpar conversa</span>
-            </Button>
+            </IconButton>
           </section>
         ) : null}
       </div>
+      <SaveToast show={nameSave.done}>Contato salvo</SaveToast>
     </aside>
   );
 }

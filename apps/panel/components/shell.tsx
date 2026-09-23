@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowClockwise, CaretDown, CaretLineLeft, CaretLineRight, CheckCircle, List, MagnifyingGlass, Prohibit, SignOut, UserCircle, X } from "@phosphor-icons/react";
+import { ArrowClockwise, CaretDown, CaretLineLeft, CaretLineRight, CheckCircle, List, MagnifyingGlass, Prohibit, SignOut, Sparkle, UserCircle, X } from "@phosphor-icons/react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -14,7 +14,7 @@ import { ContextPanel } from "@/components/context-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { VersionBanner } from "@/components/version-banner";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
-import { Button } from "@/components/ui";
+import { Button, IconButton } from "@/components/ui";
 import { ApiError, api, type VersionInfo } from "@/lib/api";
 import { useCapabilities } from "@/lib/capabilities";
 import { useEntitlements } from "@/lib/entitlements";
@@ -474,6 +474,12 @@ export function Shell({
           {workspaceSlug ? <span className="topbar__slug mono">{workspaceSlug}</span> : null}
           <span className="topbar__role">{accessStatusLabel(workspaceStatus)}</span>
         </div>
+        {/* DS v2 §3: busca central abre a paleta global (Ctrl/⌘ K). */}
+        <button type="button" className="topbar__search" onClick={() => setPaletteOpen(true)} aria-label="Busca global (Ctrl+K)" title="Busca global (Ctrl+K)">
+          <MagnifyingGlass size={15} aria-hidden="true" />
+          <span>Buscar…</span>
+          <kbd>Ctrl K</kbd>
+        </button>
         <div className="topbar__meta">
           {showRootBanner ? (
             <Link className="topbar__root" href="/root/workspaces" title="Acesso assistido ROOT — todas as ações ficam auditadas neste workspace">
@@ -483,13 +489,10 @@ export function Shell({
           {/* Sino de notificações internas (R2 v6): user-scoped e independente do
               centro de alertas — presente em TODAS as páginas, inclusive /conversas. */}
           <InternalNotifications />
-          <Link className="mono topbar__version" href="/changelog" title="Ver changelog público">
-            AtendON v{versionData?.version ?? "—"}{versionData?.buildNumber ? ` · Build ${versionData.buildNumber}` : ""}
-          </Link>
-          <button type="button" className="topbar__changelog" onClick={() => setVersionBannerOpen(true)} title="Ver o que há de novo nesta versão">
-            <CheckCircle size={13} weight="regular" aria-hidden="true" />
-            Novidades
-          </button>
+          {/* DS v2 §4: versão + novidades num único ícone; o texto vira title. */}
+          <IconButton asChild tone="quiet" size="sm" className="topbar__changelog" label={`Novidades · AtendON v${versionData?.version ?? "—"}${versionData?.buildNumber ? ` · Build ${versionData.buildNumber}` : ""}`}>
+            <Link href="/changelog"><Sparkle size={16} aria-hidden="true" /></Link>
+          </IconButton>
         </div>
       </header>
       <main className={`content${flush ? " content--flush" : ""}`}>

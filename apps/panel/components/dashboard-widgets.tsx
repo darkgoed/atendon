@@ -23,11 +23,15 @@ import { Shell } from "@/components/shell";
 import {
   Button,
   Funnel,
+  IconButton,
   Input,
   KpiCard,
   KpiGrid,
   LineAreaChart,
+  SaveButton,
+  SaveToast,
   Segmented,
+  useSaveFeedback,
   type FunnelStage
 } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -433,6 +437,7 @@ export function DashboardWidgets() {
   const [customEnd, setCustomEnd] = useState(today);
   const [draft, setDraft] = useState<LayoutItem[]>([]);
   const [saving, setSaving] = useState(false);
+  const layoutSave = useSaveFeedback();
   const { mutate: mutateCache } = useSWRConfig();
   const { data: catalog, error: catalogError } = useSWR<CatalogResponse>("/dashboard/widgets/catalog", fetcher);
   const { data: layout, error: layoutError, mutate: mutateLayout } = useSWR<LayoutResponse>("/dashboard/widgets/layout", fetcher);
@@ -497,6 +502,7 @@ export function DashboardWidgets() {
       const response = await api<LayoutResponse>("/dashboard/widgets/layout", { method: "PUT", body: JSON.stringify({ items: draft }) });
       await mutateLayout(response, { revalidate: false });
       setEditing(false);
+      layoutSave.markDone();
     } finally { setSaving(false); }
   }
   async function reset() {
@@ -541,7 +547,7 @@ export function DashboardWidgets() {
                 <Input id="dashboard-end" type="date" value={customEnd} min={customStart} onChange={(event) => setCustomEnd(event.target.value)} />
               </div>
             ) : null}
-            <Button tone="quiet" icon={editing ? <X size={17} /> : <SlidersHorizontal size={17} />} onClick={() => setEditing((value) => !value)}>{editing ? "Fechar" : "Personalizar"}</Button>
+            <IconButton label={editing ? "Fechar" : "Personalizar"} onClick={() => setEditing((value) => !value)}>{editing ? <X size={17} aria-hidden="true" /> : <SlidersHorizontal size={17} aria-hidden="true" />}</IconButton>
           </div>
         </header>
 
@@ -552,8 +558,8 @@ export function DashboardWidgets() {
               <p className="sub">A ordem e o tamanho se adaptam automaticamente em telas menores — um widget &ldquo;Amplo&rdquo; também vira coluna única no celular.</p>
             </div>
             <div className="cluster">
-              <Button tone="quiet" icon={<ArrowCounterClockwise size={17} />} disabled={saving} onClick={() => void reset()}>Restaurar padrão</Button>
-              <Button tone="primary" icon={<Check size={17} />} disabled={saving} onClick={() => void save()}>{saving ? "Salvando" : "Salvar"}</Button>
+              <IconButton label="Restaurar padrão" tone="quiet" disabled={saving} onClick={() => void reset()}><ArrowCounterClockwise size={17} aria-hidden="true" /></IconButton>
+              <SaveButton state={saving ? "busy" : layoutSave.state} busyLabel="Salvando" icon={<Check size={17} aria-hidden="true" />} disabled={saving} onClick={() => void save()}>Salvar</SaveButton>
             </div>
           </div>
           <div className={styles.libraryPresets} aria-label="Presets do dashboard">
@@ -564,6 +570,7 @@ export function DashboardWidgets() {
         </section> : null}
 
         {catalogError || layoutError ? <div className="card" role="alert"><p className="error">Não foi possível carregar a configuração do dashboard.</p></div> : !catalog || !layout ? <div className={`${styles.widgets} grid grid-cols-12 gap-4`}>{[0, 1, 2, 3].map((index) => <div key={index} className={`${sizeClasses.small} ${styles.widgetCard}`} style={{ "--dash-index": index } as CSSProperties}><WidgetSkeleton /></div>)}</div> : !visible.length ? <div className="card"><EmptyWidget message="Nenhum widget está visível. Abra Personalizar para escolher o que acompanhar." /></div> : <section className={`${styles.widgets} grid grid-cols-12 gap-4`} aria-label="Widgets do dashboard">{boardItems.map(({ item, definition }, index) => definition ? <WidgetCard key={item.key} item={item} definition={definition} periodQuery={periodQuery} index={index} /> : null)}</section>}
+        <SaveToast show={layoutSave.done}>Layout salvo</SaveToast>
       </div>
     </Shell>
   );

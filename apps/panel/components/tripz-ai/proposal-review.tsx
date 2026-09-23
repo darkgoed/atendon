@@ -97,7 +97,7 @@ export function TripzProposalReview({
     >
       <header className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 py-4 sm:px-6">
         <div className="min-w-0">
-          <span className="font-mono text-[9px] uppercase tracking-[.17em] text-[var(--primary)]">Revisão da proposta</span>
+          <span className="font-mono text-[9px] uppercase tracking-[.17em] text-[var(--primary-text)]">Revisão da proposta</span>
           <h2 id="tripz-review-title" className="mt-1 truncate !text-lg">{proposal?.title || proposal?.destination || "Proposta em construção"}</h2>
           <p id="tripz-review-description" className="m-0 mt-1 text-[11px] text-[var(--text-secondary)]">Confira os dados estruturados e gere uma prévia antes do PDF.</p>
         </div>

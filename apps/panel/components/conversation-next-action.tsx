@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Input, Textarea } from "@/components/ui";
+import { Button, IconButton, Input, SaveButton, SaveToast, Textarea, useSaveFeedback } from "@/components/ui";
 import { CalendarDots, Check, PencilSimple, X } from "@phosphor-icons/react";
 import { type FormEvent, type ReactElement, useEffect, useMemo, useState } from "react";
 import { ModalDialog } from "@/components/modal-dialog";
@@ -39,6 +39,7 @@ export function ConversationNextAction({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const saveFeedback = useSaveFeedback();
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 1_000);
@@ -77,6 +78,7 @@ export function ConversationNextAction({
       followUpSaved = true;
       await onSaved();
       setNotice("Próxima ação atualizada.");
+      saveFeedback.markDone();
       setOpen(false);
     } catch (saveError) {
       setError(followUpSaved
@@ -95,19 +97,20 @@ export function ConversationNextAction({
           {nextActionAt ? <time className="mono mt-1 block text-xs text-[var(--text-muted)]">{new Date(nextActionAt).toLocaleString("pt-BR", { timeZone: timezone })}</time> : null}
           {assignedUserEmail ? <p className="mt-1 text-xs text-[var(--text-muted)]">Responsável: {assignedUserEmail}</p> : null}
         </div>
-        {canManage ? <Button type="button" className="btn shrink-0" onClick={() => setOpen(true)} aria-label="Editar próxima ação"><PencilSimple size={14} /></Button> : null}
+        {canManage ? <IconButton type="button" label="Editar próxima ação" className="shrink-0" onClick={() => setOpen(true)}><PencilSimple size={14} aria-hidden="true" /></IconButton> : null}
       </div>
       {notice ? <p className="mt-2 text-xs text-[var(--success-text)]" role="status">{notice}</p> : null}
       {open ? <ModalDialog labelledBy="next-action-dialog-title" onClose={() => { if (!busy) setOpen(false); }}>
         <form onSubmit={save} className="grid gap-4">
-          <div className="flex items-center justify-between"><h2 id="next-action-dialog-title" className="text-base font-semibold">Próxima ação</h2><Button type="button" className="btn" onClick={() => setOpen(false)} disabled={busy} aria-label="Fechar"><X size={16} /></Button></div>
+          <div className="flex items-center justify-between"><h2 id="next-action-dialog-title" className="text-base font-semibold">Próxima ação</h2><IconButton type="button" label="Fechar" onClick={() => setOpen(false)} disabled={busy}><X size={16} aria-hidden="true" /></IconButton></div>
           <label className="field"><span className="label">Descrição <b aria-hidden="true">*</b></span><Textarea className="input" value={action} maxLength={500} required onChange={(event) => setAction(event.target.value)} /><small className="text-[var(--text-muted)]">{action.length}/500</small></label>
           <label className="field"><span className="label">Data e hora local <b aria-hidden="true">*</b></span><Input className="input" type="datetime-local" value={when} required onChange={(event) => setWhen(event.target.value)} /><small className="text-[var(--text-muted)]">Fuso do workspace: {timezone}</small></label>
 
           {error ? <p className="error" role="alert">{error}</p> : null}
-          <div className="flex justify-end gap-2"><Button type="button" className="btn" onClick={() => setOpen(false)} disabled={busy}>Cancelar</Button><Button type="submit" className="btn primary" disabled={busy}>{busy ? "Salvando…" : <><Check size={14} /> Salvar</>}</Button></div>
+          <div className="flex justify-end gap-2"><Button type="button" className="btn" onClick={() => setOpen(false)} disabled={busy}>Cancelar</Button><SaveButton type="submit" state={busy ? "busy" : saveFeedback.state} icon={<Check size={14} aria-hidden="true" />}>Salvar</SaveButton></div>
         </form>
       </ModalDialog> : null}
+      <SaveToast show={saveFeedback.done}>Próxima ação salva</SaveToast>
     </section>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
+import { ArrowsClockwise, ArrowUUpLeft, Info, PencilSimple } from "@phosphor-icons/react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
 import { Empty, LoadingCards } from "@/components/page-state";
@@ -8,6 +9,7 @@ import { ModalDialog } from "@/components/modal-dialog";
 import { api, type ChangelogAiSettings, type RootRelease } from "@/lib/api";
 import type { PanelSession } from "@/lib/session";
 import { AdminPage, AdminPageHeader, AdminSection } from "@/components/admin";
+import { Button, IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 
 const fetcher = <T,>(url: string) => api<T>(url);
 const classificationLabel: Record<RootRelease["classification"], string> = {
@@ -24,6 +26,8 @@ export default function RootVersionsPage() {
   const [detail, setDetail] = useState<RootRelease | null>(null);
   const [editing, setEditing] = useState<RootRelease | null>(null);
   const [message, setMessage] = useState("");
+  const settingsSave = useSaveFeedback();
+  const editSave = useSaveFeedback();
   const { data, error, mutate } = useSWR<{ releases: RootRelease[] }>(
     root ? `/root/versions?limit=200${tenantFilter ? `&tenantSlug=${encodeURIComponent(tenantFilter)}` : ""}` : null,
     fetcher,
@@ -58,6 +62,7 @@ export default function RootVersionsPage() {
     const changes = String(form.get("publicChanges") ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
     setMessage("");
     try {
+      await editSave.run(async () => {
       await api(`/root/versions/${editing.id}`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -70,6 +75,7 @@ export default function RootVersionsPage() {
       setEditing(null);
       await mutate();
       setMessage("Release editada (override manual registrado).");
+      });
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Não foi possível salvar a edição.");
     }
@@ -81,6 +87,7 @@ export default function RootVersionsPage() {
     const apiKey = String(form.get("apiKey") ?? "").trim();
     setMessage("");
     try {
+      await settingsSave.run(async () => {
       await api("/root/settings/changelog-ai", {
         method: "PUT",
         body: JSON.stringify({
@@ -93,6 +100,7 @@ export default function RootVersionsPage() {
       });
       await mutateSettings();
       setMessage("Configuração de IA salva. A chave nunca é exibida novamente.");
+      });
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Não foi possível salvar a configuração.");
     }
@@ -113,6 +121,8 @@ export default function RootVersionsPage() {
           }
         />
         {message ? <p className="accent mb-4" role="status">{message}</p> : null}
+        <SaveToast show={settingsSave.done}>Configuração salva</SaveToast>
+        <SaveToast show={editSave.done}>Versão salva</SaveToast>
 
         <AdminSection title="Configuração de IA (OpenRouter)" description="Chave criptografada no banco; nunca exposta ao navegador. Usada apenas para gerar o changelog público, fora do caminho crítico do deploy.">
           {settings ? (
@@ -130,7 +140,7 @@ export default function RootVersionsPage() {
                 <label className="flex items-center gap-2"><input type="checkbox" name="autoGenerateEnabled" defaultChecked={settings.autoGenerateEnabled} /> Gerar changelog com IA automaticamente</label>
                 <label className="flex items-center gap-2"><input type="checkbox" name="autoPublishEnabled" defaultChecked={settings.autoPublishEnabled} /> Publicar automaticamente ao gerar</label>
               </div>
-              <div className="sm:col-span-2"><button type="submit" className="btn primary">Salvar configuração</button></div>
+              <div className="sm:col-span-2"><SaveButton state={settingsSave.state} type="submit">Salvar configuração</SaveButton></div>
             </form>
           ) : <LoadingCards label="Carregando configuração" />}
         </AdminSection>
@@ -153,7 +163,7 @@ export default function RootVersionsPage() {
                       <td>{release.scope === "GLOBAL" ? "Global" : release.tenantSlugsDetected.join(", ") || "Tenant"}</td>
                       <td><span className={release.aiStatus === "failed" ? "error" : "sub"}>{aiStatusLabel[release.aiStatus]}</span>{release.aiStatus === "generated" && release.aiModelUsed ? <span className="sub"> · {release.aiModelUsed}</span> : null}</td>
                       <td>{release.published ? "Sim" : "Não"}</td>
-                      <td><button type="button" className="btn" onClick={() => setDetail(release)}>Detalhes</button></td>
+                      <td><IconButton label="Detalhes" size="sm" onClick={() => setDetail(release)}><Info size={16} aria-hidden="true" /></IconButton></td>
                     </tr>
                   ))}
                 </tbody>
@@ -183,11 +193,11 @@ export default function RootVersionsPage() {
               {detail.publicChanges.map((change, index) => <li key={index}>{change.text}{change.tenant_slugs.length > 0 ? <span className="sub"> ({change.tenant_slugs.join(", ")})</span> : null}</li>)}
             </ul>
             <div className="admin-actions mt-4 flex-wrap">
-              <button type="button" className="btn" onClick={() => setEditing(detail)}>Editar</button>
-              <button type="button" className="btn" onClick={() => void action(detail, "regenerate")}>Regenerar com IA</button>
+              <IconButton label="Editar" size="sm" onClick={() => setEditing(detail)}><PencilSimple size={16} aria-hidden="true" /></IconButton>
+              <IconButton label="Regenerar com IA" size="sm" onClick={() => void action(detail, "regenerate")}><ArrowsClockwise size={16} aria-hidden="true" /></IconButton>
               {detail.published
-                ? <button type="button" className="btn warn" onClick={() => void action(detail, "unpublish")}>Despublicar</button>
-                : <button type="button" className="btn primary" onClick={() => void action(detail, "publish")}>Publicar</button>}
+                ? <IconButton label="Despublicar" size="sm" tone="danger" onClick={() => void action(detail, "unpublish")}><ArrowUUpLeft size={16} aria-hidden="true" /></IconButton>
+                : <Button tone="primary" onClick={() => void action(detail, "publish")}>Publicar</Button>}
             </div>
           </div>
         </ModalDialog>
@@ -203,7 +213,7 @@ export default function RootVersionsPage() {
               <textarea className="input" name="publicChanges" rows={6} defaultValue={editing.publicChanges.map((change) => change.text).join("\n")} required />
             </label>
             <label className="field"><span className="label">Changelog técnico</span><textarea className="input" name="technicalChangelog" rows={4} defaultValue={editing.technicalChangelog} /></label>
-            <div className="admin-actions"><button type="submit" className="btn primary">Salvar</button><button type="button" className="btn" onClick={() => setEditing(null)}>Cancelar</button></div>
+            <div className="admin-actions"><SaveButton state={editSave.state} type="submit">Salvar</SaveButton><Button onClick={() => setEditing(null)}>Cancelar</Button></div>
           </form>
         </ModalDialog>
       ) : null}

@@ -70,11 +70,15 @@ const SESSION = {
   actorScope: "workspace"
 };
 
-// Datas relativas ao relógio real, ancoradas ao MEIO-DIA local: ontem/hoje/+2
-// dias não mudam de grupo se a suíte cruzar a meia-noite (janela de flake).
-const now = new Date();
-now.setHours(12, 0, 0, 0);
-const baseMs = now.getTime();
+// Datas relativas ao relógio real, ancoradas ao MEIO-DIA de America/Sao_Paulo
+// (fuso em que a página agrupa): ontem/hoje/+2 dias não mudam de grupo se a
+// suíte cruzar a meia-noite. Ancorar no fuso do host (UTC no CI) quebrava entre
+// 00h e 03h UTC, quando o "ontem" do host ainda é "hoje" em São Paulo.
+const [spYear, spMonth, spDay] = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" })
+  .format(new Date())
+  .split("-")
+  .map(Number);
+const baseMs = Date.UTC(spYear, spMonth - 1, spDay, 15, 0, 0); // 12:00 em São Paulo (UTC-3)
 const YESTERDAY = new Date(baseMs - 24 * 3_600_000).toISOString();
 const TODAY = new Date(baseMs).toISOString();
 const IN_TWO_DAYS = new Date(baseMs + 48 * 3_600_000).toISOString();

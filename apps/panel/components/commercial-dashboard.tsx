@@ -9,9 +9,10 @@ import {
   UsersThree
 } from "@phosphor-icons/react";
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { Sparkline } from "@/components/commercial-dashboard-charts";
 import { Empty } from "@/components/page-state";
-import { BarComparisonChart, Button, Card, DonutChart, Input, KpiCard, KpiGrid, LineAreaChart, TableScroll } from "@/components/ui";
+import { BarComparisonChart, Card, DonutChart, IconButton, Input, KpiCard, KpiGrid, LineAreaChart, TableScroll } from "@/components/ui";
 import { trendDelta, type CommercialDashboardSeries } from "@/lib/commercial-dashboard";
 import styles from "./metrics-dashboard.module.css";
 
@@ -177,7 +178,7 @@ export function CommercialDashboard({
   const delta = trendDelta(data.series);
 
   return (
-    <section className={styles.dashboard} aria-labelledby="commercial-dashboard-title">
+    <section className={`${styles.dashboard} ds-dashboard`} aria-labelledby="commercial-dashboard-title">
       <header className={styles.dashboardHeader}>
         <div>
           <span className="label">{data.scope.type === "mine" ? "MINHA OPERAÇÃO" : "OPERAÇÃO DO WORKSPACE"}</span>
@@ -210,9 +211,7 @@ export function CommercialDashboard({
               Período
             </button>
           </div>
-          <Button tone="quiet" icon={<ArrowLineDown size={16} aria-hidden="true" />} onClick={() => exportDashboard(data)}>
-            Exportar
-          </Button>
+          <IconButton label="Exportar" tone="quiet" onClick={() => exportDashboard(data)}><ArrowLineDown size={16} aria-hidden="true" /></IconButton>
         </div>
       </header>
 
@@ -230,10 +229,12 @@ export function CommercialDashboard({
       ) : null}
 
       <div className={styles.agendaChartGrid}>
-        <Card>
+        <Card className="on-enter" style={{ "--i": 0 } as CSSProperties}>
           <div className="cardtitle"><span>Calls no período</span><CalendarBlank size={17} aria-hidden="true" /></div>
           <KpiGrid className="kpi-grid--highlight">
             <KpiCard
+              className="on-enter"
+              style={{ "--i": 0 } as CSSProperties}
               label="Criadas"
               value={data.metrics.created}
               hint="novos agendamentos no período"
@@ -244,15 +245,15 @@ export function CommercialDashboard({
             />
           </KpiGrid>
           <KpiGrid className="mt-3">
-            <KpiCard label="Marcadas" value={data.metrics.scheduled} tone="primary" />
-            <KpiCard label="Compareceram" value={data.metrics.completed} tone="success" />
-            <KpiCard label="Resultado pendente" value={data.metrics.result_pending} tone="warning" />
-            <KpiCard label="Não comp." value={data.metrics.no_show} tone="danger" />
-            <KpiCard label="Canceladas" value={data.metrics.cancelled} />
+            <KpiCard className="on-enter" style={{ "--i": 1 } as CSSProperties} label="Marcadas" value={data.metrics.scheduled} tone="primary" />
+            <KpiCard className="on-enter" style={{ "--i": 2 } as CSSProperties} label="Compareceram" value={data.metrics.completed} tone="success" />
+            <KpiCard className="on-enter" style={{ "--i": 3 } as CSSProperties} label="Resultado pendente" value={data.metrics.result_pending} tone="warning" />
+            <KpiCard className="on-enter" style={{ "--i": 4 } as CSSProperties} label="Não comp." value={data.metrics.no_show} tone="danger" />
+            <KpiCard className="on-enter" style={{ "--i": 5 } as CSSProperties} label="Canceladas" value={data.metrics.cancelled} />
           </KpiGrid>
         </Card>
 
-        <Card>
+        <Card className="on-enter" style={{ "--i": 1 } as CSSProperties}>
           <div className="cardtitle"><span>Operação SDR</span><UsersThree size={19} aria-hidden="true" /></div>
           <dl className={styles.sdrGrid}>
             {[
@@ -269,7 +270,7 @@ export function CommercialDashboard({
           </dl>
         </Card>
 
-        <Card>
+        <Card className="on-enter" style={{ "--i": 2 } as CSSProperties}>
           <div className="cardtitle"><span>Comercial / Closer</span><Target size={19} aria-hidden="true" /></div>
           <dl className={styles.closerGrid}>
             {[
@@ -292,7 +293,7 @@ export function CommercialDashboard({
           </dl>
         </Card>
 
-        <Card>
+        <Card className="on-enter" style={{ "--i": 3 } as CSSProperties}>
           <div className="cardtitle"><span>Taxas</span><ChartLineUp size={19} aria-hidden="true" /></div>
           <DonutChart
             height={168}
@@ -306,7 +307,7 @@ export function CommercialDashboard({
           />
         </Card>
 
-        <Card>
+        <Card className="on-enter" style={{ "--i": 4 } as CSSProperties}>
           <div className="cardtitle">
             <span className="inline-flex items-center gap-2"><CalendarBlank size={19} aria-hidden="true" /> Agenda de hoje</span>
             <Link href="/agenda" className="accent text-xs">Abrir agenda</Link>
@@ -338,7 +339,7 @@ export function CommercialDashboard({
           ) : <Empty>Nenhuma reunião na agenda de hoje.</Empty>}
         </Card>
 
-        <Card>
+        <Card className="on-enter" style={{ "--i": 5 } as CSSProperties}>
           <div className="chart-panel__head">
             <span className="chart-panel__title inline-flex items-center gap-2"><ChartLineUp size={17} aria-hidden="true" /> Evolução de calls</span>
           </div>
@@ -356,7 +357,7 @@ export function CommercialDashboard({
         </Card>
 
         {data.scope.type === "workspace" ? (
-          <Card>
+          <Card className="on-enter" style={{ "--i": 6 } as CSSProperties}>
             <div className="cardtitle">
               <span className="inline-flex items-center gap-2"><UsersThree size={19} aria-hidden="true" /> Distribuição do time</span>
               {data.team[0] ? <span className="sub text-xs">Próxima da fila: <strong className="text-[var(--text)]">{data.team[0].email}</strong></span> : null}
@@ -397,7 +398,7 @@ export function CommercialDashboard({
           </Card>
         ) : null}
 
-        <Card>
+        <Card className="on-enter" style={{ "--i": 7 } as CSSProperties}>
           <div className="cardtitle"><span className="inline-flex items-center gap-2"><Target size={19} aria-hidden="true" /> Composição das calls</span></div>
           <BarComparisonChart
             ariaLabel="Composição das calls marcadas no período por desfecho"

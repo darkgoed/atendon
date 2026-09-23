@@ -5,6 +5,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { Progress } from "@/components/ui/status";
+import { SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import styles from "@/components/storage-settings.module.css";
 
 export type StorageOrigem = { origem: string; bytes: number; itens: number };
@@ -53,6 +54,7 @@ export function StorageSettingsPanel({ canManage, onSaved }: StorageSettingsProp
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saved, setSaved] = useState(false);
+  const save = useSaveFeedback();
 
   useEffect(() => {
     if (!data) return;
@@ -77,6 +79,7 @@ export function StorageSettingsPanel({ canManage, onSaved }: StorageSettingsProp
       // A resposta não traz per_origem: mescla com spread para não apagá-la.
       await mutate((current) => current ? { storage: { ...current.storage, ...response.storage } } : current, { revalidate: false });
       setSaved(true);
+      save.markDone();
       onSaved?.();
     } catch (submitError) {
       setSaveError(submitError instanceof Error ? submitError.message : "Não foi possível salvar o armazenamento.");
@@ -172,14 +175,14 @@ export function StorageSettingsPanel({ canManage, onSaved }: StorageSettingsProp
           </div>
           {canManage ? (
             <div>
-              <button type="submit" className="btn primary active:scale-[0.98]" disabled={saving}>
-                <FloppyDisk size={16} aria-hidden="true" />
-                {saving ? "Salvando…" : "Salvar"}
-              </button>
+              <SaveButton type="submit" state={saving ? "busy" : save.state} icon={<FloppyDisk size={16} aria-hidden="true" />} className="active:scale-[0.98]" disabled={saving}>
+                Salvar
+              </SaveButton>
             </div>
           ) : null}
         </div>
       </div>
+      <SaveToast show={save.done}>Armazenamento salvo</SaveToast>
     </form>
   );
 }

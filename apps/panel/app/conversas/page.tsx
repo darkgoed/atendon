@@ -13,6 +13,7 @@ import { ConversationScheduler } from "@/components/conversation-scheduler";
 import { ConversationStatusPicker } from "@/components/conversation-status-picker";
 import { Empty } from "@/components/page-state";
 import { LeadTagChips, type LeadTag } from "@/components/lead-tag-picker";
+import { IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { ListFiltersBar, type ListFilterDef } from "@/components/ui/filters";
 import { MessageActionsMenu } from "@/components/message-actions-menu";
 import { ModalDialog } from "@/components/modal-dialog";
@@ -341,6 +342,7 @@ function MessageItem({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
   const [saving, setSaving] = useState(false);
+  const editSave = useSaveFeedback();
 
   async function saveEdit() {
     const text = draft.trim();
@@ -348,6 +350,7 @@ function MessageItem({
     setSaving(true);
     try {
       await onEdit(message.id, text);
+      editSave.markDone();
       setEditing(false);
     } finally {
       setSaving(false);
@@ -384,7 +387,7 @@ function MessageItem({
         </span>
         <div
           className={[
-            "msg conversation-message__bubble",
+            "msg conversation-message__bubble on-enter",
             isSticker
               ? "bg-transparent px-1 py-1"
               : isContact
@@ -415,9 +418,9 @@ function MessageItem({
                     disabled={saving}
                     autoFocus
                   />
-                  <div className="flex justify-end gap-1.5">
+                  <div className="flex items-center justify-end gap-1.5">
                     <button type="button" className="btn text-xs" onClick={() => { setDraft(message.content); setEditing(false); }} disabled={saving}>Cancelar</button>
-                    <button type="button" className="btn primary text-xs" onClick={() => void saveEdit()} disabled={saving}>Salvar</button>
+                    <SaveButton type="button" className="text-xs" state={saving ? "busy" : editSave.state} onClick={() => void saveEdit()} disabled={saving}>Salvar</SaveButton>
                   </div>
                 </div>
               ) : message.media_type ? (
@@ -431,6 +434,7 @@ function MessageItem({
         {!isDeleted && message.reaction_emoji ? (
           <span className={`msg-reaction-badge ${isContact ? "self-start" : "self-end"}`}>{message.reaction_emoji}</span>
         ) : null}
+        <SaveToast show={editSave.done}>Mensagem atualizada</SaveToast>
       </div>
       {isContact && !isDeleted && canManage ? (
         <MessageActionsMenu
@@ -496,6 +500,8 @@ export default function Conversations() {
   const [contactAssetsCursor, setContactAssetsCursor] = useState<string | null>(null);
   const [contactAssetsError, setContactAssetsError] = useState("");
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const resolveSave = useSaveFeedback();
+  const resetResolveSave = resolveSave.reset;
   const [threadConversation, setThreadConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [aiTurn, setAiTurn] = useState<AiTurnProgress | null>(null);
@@ -737,7 +743,8 @@ export default function Conversations() {
     setAiTurn(null);
     setBeforeCursor(null);
     setHasMoreBefore(false);
-  }, [selected]);
+    resetResolveSave();
+  }, [resetResolveSave, selected]);
 
   useEffect(() => {
     if (messageModeRef.current === messageMode) return;
@@ -1163,11 +1170,18 @@ export default function Conversations() {
     setPendingConfirm({
       message: "Marcar esta conversa como resolvida e removê-la da fila aberta?",
       confirmLabel: "Resolver conversa",
-      onConfirm: () => void resolveConversationConfirmed()
+      // DS v2 §2: busy → done (check + toast) só quando a API confirma. A
+      // função trata o próprio erro (rollback + banner) e devolve false; o run()
+      // recebe um throw para voltar a idle em vez de mostrar "Resolvida".
+      onConfirm: () => {
+        void resolveSave.run(async () => {
+          if (!(await resolveConversationConfirmed())) throw new Error("resolve-failed");
+        }).catch(() => undefined);
+      }
     });
   }
 
-  async function resolveConversationConfirmed() {
+  async function resolveConversationConfirmed(): Promise<boolean> {
     setError("");
     setChangingOwner(true);
     const previousList = listData;
@@ -1178,10 +1192,12 @@ export default function Conversations() {
     try {
       await resolveConversationApi(selectedRef.current);
       await Promise.all([mutateList(), mutateThread(), mutateQueues()]);
+      return true;
     } catch (e) {
       await mutateList(previousList, { revalidate: false });
       await mutateThread(previousThread, { revalidate: false });
       setError(e instanceof Error ? e.message : "Falha ao resolver a conversa");
+      return false;
     } finally {
       setChangingOwner(false);
     }
@@ -1486,7 +1502,7 @@ export default function Conversations() {
             {listError ? (
               <div className="mb-2.5 flex items-center justify-between gap-2 rounded-md border border-[var(--warning-border)] bg-transparent p-2.5 text-sm text-[var(--warning-text)]" role="alert">
                 <span>Não foi possível carregar as conversas.</span>
-                <button type="button" className="btn warn shrink-0" onClick={() => void mutateList()}>Tentar novamente</button>
+                <IconButton type="button" tone="danger" label="Tentar novamente" onClick={() => void mutateList()}><ArrowClockwise size={14} aria-hidden="true" /></IconButton>
               </div>
             ) : null}
             {listLoading && items.length === 0 ? (
@@ -1529,7 +1545,7 @@ export default function Conversations() {
               <div className="max-w-md rounded-lg border border-[var(--warning-border)] bg-transparent p-5 text-[var(--warning-text)]" role="alert">
                 <strong className="block text-sm">Falha ao carregar a conversa</strong>
                 <p className="mt-2 text-sm leading-relaxed">{threadError.message}</p>
-                <button type="button" className="btn warn mt-3" onClick={() => void mutateThread()}>Tentar novamente</button>
+                <IconButton type="button" tone="danger" label="Tentar novamente" className="mt-3" onClick={() => void mutateThread()}><ArrowClockwise size={14} aria-hidden="true" /></IconButton>
               </div>
             </div>
           ) : !thread.conversation ? (
@@ -1607,20 +1623,35 @@ export default function Conversations() {
                       />
                     ) : null
                   ) : null}
-                  {canReply ? thread.conversation.status === "closed"
-                    ? <span className="text-xs text-[var(--text-secondary)]" aria-label="Fila atual">Fila: {thread.conversation.queue_name ?? "Sem fila"}</span>
-                    : <label className="field"><span className="sr-only">Fila do atendimento</span><select className="input" aria-label="Fila do atendimento" value={thread.conversation.queue_id ?? ""} onChange={(event) => { if (event.target.value) void moveConversationToQueue(event.target.value); }}><option value="">Sem fila</option>{(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></label>
-                    : null}
-                  {canReply && thread.conversation.status === "open" ? <button className="btn primary shrink-0 active:scale-95" onClick={resolveConversation} disabled={changingOwner || followUpPending}>
-                    <CheckCircle size={14} aria-hidden="true" /> Resolver
-                  </button> : null}
+                  {canReply && thread.conversation.status === "closed" && resolveSave.state === "idle" ? <span className="text-xs text-[var(--text-secondary)]" aria-label="Fila atual">Fila: {thread.conversation.queue_name ?? "Sem fila"}</span> : null}
+                  {canReply && thread.conversation.status === "open" ? <label className="field"><span className="sr-only">Fila do atendimento</span><select className="input" aria-label="Fila do atendimento" value={thread.conversation.queue_id ?? ""} onChange={(event) => { if (event.target.value) void moveConversationToQueue(event.target.value); }}><option value="">Sem fila</option>{(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></label> : null}
+                  {/* DS v2 §2: Resolver segue o padrão de salvar (idle → busy →
+                      done "Resolvida" + toast). Permanece montado durante o
+                      feedback para o operador ver o check mesmo com o status
+                      já otimisticamente fechado. */}
+                  {canReply && (thread.conversation.status === "open" || (thread.conversation.status === "closed" && resolveSave.state !== "idle")) ? (
+                    <SaveButton
+                      type="button"
+                      tone="primary"
+                      state={resolveSave.state}
+                      busyLabel="Resolvendo…"
+                      doneLabel="Resolvida"
+                      className="shrink-0"
+                      icon={<CheckCircle size={14} aria-hidden="true" />}
+                      onClick={resolveConversation}
+                      disabled={changingOwner || followUpPending}
+                    >
+                      Resolver
+                    </SaveButton>
+                  ) : null}
                   {canReply
                   && thread.conversation.status === "open"
                   && (hasWorkspaceScope || thread.conversation.assigned_user_id === session?.user.id) ? (
                     <PopoverMenu
                       buttonClassName="btn conversation-action-menu-trigger shrink-0 active:scale-95"
                       icon={<ArrowsLeftRight size={14} aria-hidden="true" />}
-                      label="Transferir"
+                      ariaLabel="Transferir"
+                      title="Transferir"
                       align="start"
                       panelClassName="conversation-action-menu__panel conversation-action-menu__panel--transfer"
                     >
@@ -1795,6 +1826,11 @@ export default function Conversations() {
                         })
                       )}
                       {aiTurn ? <AiTurnBubble progress={aiTurn} /> : null}
+                      {thread.conversation.channel !== "instagram" && contactIsOnline(thread.conversation) && thread.conversation.contact_presence === "composing" ? (
+                        <div className="conversation-typing on-enter" role="status" aria-label="O contato está digitando">
+                          <span /><span /><span />
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
@@ -1852,7 +1888,7 @@ export default function Conversations() {
       {error ? (
         <div className="error fixed inset-x-4 bottom-20 flex items-start justify-between gap-3 rounded-lg border border-[var(--warning-border)] bg-[var(--bg)] p-3 sm:bottom-4 sm:left-auto sm:max-w-sm" role="alert">
           <span>{error}</span>
-          <button type="button" className="shrink-0 rounded p-1 text-[var(--warning-text)]" onClick={() => setError("")} aria-label="Fechar aviso"><X size={15} aria-hidden="true" /></button>
+          <IconButton type="button" tone="quiet" label="Fechar aviso" onClick={() => setError("")}><X size={15} aria-hidden="true" /></IconButton>
         </div>
       ) : null}
 
@@ -1882,6 +1918,8 @@ export default function Conversations() {
           </div>
         </ModalDialog>
       ) : null}
+
+      <SaveToast show={resolveSave.done}>Conversa resolvida</SaveToast>
     </Shell>
   );
 }

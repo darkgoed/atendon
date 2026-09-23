@@ -1,11 +1,12 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Check, DotsThreeVertical, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
+import { ArrowDown, ArrowUp, Check, DotsThreeVertical, PencilSimple, Plus, Trash, X } from "@phosphor-icons/react";
 import { type ReactElement, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { SETTINGS_COLOR_DEFAULTS } from "@/components/settings-colors";
 import { PopoverMenu } from "@/components/popover-menu";
+import { IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { usePermission } from "@/lib/use-permission";
 
 type Queue = { id: string; name: string; color: string; position: number; is_initial: boolean; is_resolved: boolean; archived_at: string | null; conversation_count: number };
@@ -22,6 +23,7 @@ export function ConversationQueueManager({ onSaved }: { onSaved?: () => void | P
   const [busy, setBusy] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [collapsed, setCollapsed] = useState(true);
+  const createSave = useSaveFeedback();
 
   if (!canManage) return <></>;
   const queues = data?.queues ?? [];
@@ -35,7 +37,7 @@ export function ConversationQueueManager({ onSaved }: { onSaved?: () => void | P
     const name = createDraft.name.trim();
     if (!name) { setErrorMessage("Informe um nome para a fila."); return; }
     setBusy("create"); setErrorMessage("");
-    try { await api("/conversation-queues", { method: "POST", body: JSON.stringify({ name, color: createDraft.color }) }); setCreateDraft({ name: "", color: DEFAULT_QUEUE_COLOR }); await refresh(); }
+    try { await api("/conversation-queues", { method: "POST", body: JSON.stringify({ name, color: createDraft.color }) }); setCreateDraft({ name: "", color: DEFAULT_QUEUE_COLOR }); createSave.markDone(); await refresh(); }
     catch (caught) { setErrorMessage(caught instanceof Error ? caught.message : "Falha ao criar a fila"); }
     finally { setBusy(null); }
   }
@@ -68,10 +70,11 @@ export function ConversationQueueManager({ onSaved }: { onSaved?: () => void | P
   return <section className="card" aria-labelledby="conversation-queues-title">
     <button type="button" className="flex w-full items-center justify-between gap-2 text-left" onClick={() => setCollapsed((value) => !value)} aria-expanded={!collapsed} aria-controls="conversation-queues-content"><span id="conversation-queues-title" className="cardtitle">Filas de atendimento</span><span className="text-xs text-[var(--text-muted)]">{active.length} ativas {collapsed ? "＋" : "－"}</span></button>
     {!collapsed ? <div id="conversation-queues-content">
-    <div className="mt-3 grid grid-cols-[minmax(0,1fr)_3rem_auto] gap-2"><label className="field"><span className="label">Nova fila</span><input className="input" value={createDraft.name} maxLength={60} onChange={(event) => setCreateDraft((current) => ({ ...current, name: event.target.value }))} disabled={busy !== null} /></label><label className="field"><span className="label">Cor</span><input className="input" type="color" value={createDraft.color} onChange={(event) => setCreateDraft((current) => ({ ...current, color: event.target.value }))} disabled={busy !== null} /></label><button type="button" className="btn primary self-end" onClick={() => void create()} disabled={busy !== null}><Plus size={14} /> {busy === "create" ? "Criando…" : "Criar"}</button></div>
+    <div className="mt-3 grid grid-cols-[minmax(0,1fr)_3rem_auto] gap-2"><label className="field"><span className="label">Nova fila</span><input className="input" value={createDraft.name} maxLength={60} onChange={(event) => setCreateDraft((current) => ({ ...current, name: event.target.value }))} disabled={busy !== null} /></label><label className="field"><span className="label">Cor</span><input className="input" type="color" value={createDraft.color} onChange={(event) => setCreateDraft((current) => ({ ...current, color: event.target.value }))} disabled={busy !== null} /></label><SaveButton type="button" state={busy === "create" ? "busy" : createSave.state} busyLabel="Criando…" className="self-end" icon={<Plus size={14} aria-hidden="true" />} disabled={busy !== null} onClick={() => void create()}>Criar</SaveButton></div>
     {isLoading ? <p className="mt-3 text-xs text-[var(--text-muted)]" role="status">Carregando filas…</p> : error ? <p className="error mt-3" role="alert">Não foi possível carregar as filas.</p> : null}
     {errorMessage ? <p className="error mt-3" role="alert">{errorMessage}</p> : null}
-    <div className="mt-3 grid gap-2">{active.map((queue, index) => editing === queue.id ? <div key={queue.id} className="grid grid-cols-[minmax(0,1fr)_3rem_auto] gap-2 rounded border border-[var(--border)] p-2"><input className="input" value={editDraft.name} maxLength={60} onChange={(event) => setEditDraft((current) => ({ ...current, name: event.target.value }))} aria-label={`Nome da fila ${queue.name}`} /><input className="input" type="color" value={editDraft.color} onChange={(event) => setEditDraft((current) => ({ ...current, color: event.target.value }))} aria-label={`Cor da fila ${queue.name}`} /><span className="flex gap-1"><button type="button" className="btn" onClick={() => void save(queue)} disabled={busy === queue.id} aria-label="Salvar fila"><Check size={14} /></button><button type="button" className="btn" onClick={() => setEditing(null)} disabled={busy === queue.id} aria-label="Cancelar edição">×</button></span></div> : <div key={queue.id} className="flex items-center gap-2 rounded border border-[var(--border)] p-2"><span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: queue.color }} aria-hidden="true" /><span className="min-w-0 flex-1 truncate text-sm">{queue.name}</span><span className="text-xs text-[var(--text-muted)]">{queue.conversation_count}</span>{queue.is_initial ? <span className="text-xs text-[var(--text-muted)]">Inicial</span> : null}{queue.is_resolved ? <span className="text-xs text-[var(--text-muted)]">Resolvida</span> : null}<button type="button" className="btn" onClick={() => { setEditing(queue.id); setEditDraft({ name: queue.name, color: queue.color }); }} aria-label={`Editar fila ${queue.name}`}><PencilSimple size={13} /></button><PopoverMenu
+    <SaveToast show={createSave.done}>Fila criada</SaveToast>
+    <div className="mt-3 grid gap-2">{active.map((queue, index) => editing === queue.id ? <div key={queue.id} className="grid grid-cols-[minmax(0,1fr)_3rem_auto] gap-2 rounded border border-[var(--border)] p-2"><input className="input" value={editDraft.name} maxLength={60} onChange={(event) => setEditDraft((current) => ({ ...current, name: event.target.value }))} aria-label={`Nome da fila ${queue.name}`} /><input className="input" type="color" value={editDraft.color} onChange={(event) => setEditDraft((current) => ({ ...current, color: event.target.value }))} aria-label={`Cor da fila ${queue.name}`} /><span className="flex gap-1"><IconButton type="button" label="Salvar fila" disabled={busy === queue.id} onClick={() => void save(queue)}><Check size={14} aria-hidden="true" /></IconButton><IconButton type="button" label="Cancelar edição" disabled={busy === queue.id} onClick={() => setEditing(null)}><X size={14} aria-hidden="true" /></IconButton></span></div> : <div key={queue.id} className="flex items-center gap-2 rounded border border-[var(--border)] p-2"><span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: queue.color }} aria-hidden="true" /><span className="min-w-0 flex-1 truncate text-sm">{queue.name}</span><span className="text-xs text-[var(--text-muted)]">{queue.conversation_count}</span>{queue.is_initial ? <span className="text-xs text-[var(--text-muted)]">Inicial</span> : null}{queue.is_resolved ? <span className="text-xs text-[var(--text-muted)]">Resolvida</span> : null}<IconButton type="button" label={`Editar fila ${queue.name}`} onClick={() => { setEditing(queue.id); setEditDraft({ name: queue.name, color: queue.color }); }}><PencilSimple size={13} aria-hidden="true" /></IconButton><PopoverMenu
   buttonClassName="btn shrink-0"
   icon={<DotsThreeVertical size={13} weight="bold" aria-hidden="true" />}
   ariaLabel={`Mais ações da fila ${queue.name}`}

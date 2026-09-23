@@ -13,6 +13,7 @@
 import { useCallback, useState } from "react";
 import useSWR from "swr";
 import { ModalDialog } from "@/components/modal-dialog";
+import { SaveButton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import type { FlowConflict } from "./FlowConflictModal";
 import styles from "./flow-history.module.css";
@@ -154,9 +155,17 @@ export function FlowHistory({
           <button type="button" className="btn" onClick={() => setTarget(null)} disabled={restoring}>
             Cancelar
           </button>
-          <button type="button" className="btn primary" data-testid="flow-history-confirm" onClick={() => void restore()} disabled={restoring || !canManage}>
-            {restoring ? "Restaurando…" : "Restaurar versão"}
-          </button>
+          {/* Padrão de salvar DS v2 (§2) — flag `restoring` própria: idle → busy
+              ("Restaurando…"); o done é o fechamento do diálogo pelo onRestored. */}
+          <SaveButton
+            state={restoring ? "busy" : "idle"}
+            busyLabel="Restaurando…"
+            data-testid="flow-history-confirm"
+            onClick={() => void restore()}
+            disabled={restoring || !canManage}
+          >
+            Restaurar versão
+          </SaveButton>
         </div>
       </ModalDialog>
     );

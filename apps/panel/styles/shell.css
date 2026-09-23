@@ -417,6 +417,31 @@
   transition: var(--transition-control);
 }
 .topbar__changelog:hover { background: var(--surface-hover); color: var(--text); }
+.topbar__changelog.icon-button { padding: 0; color: var(--primary-text); }
+.topbar__search { display: none; }
+@media (min-width: 701px) {
+  /* DS v2 §3: busca central da topbar — abre a paleta (Ctrl/⌘ K). */
+  .topbar__search {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    height: var(--control-height);
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0 var(--space-2) 0 var(--space-3);
+    border: 0;
+    border-radius: var(--radius-md);
+    background: var(--surface-sunken);
+    background: color-mix(in srgb, var(--text) 4%, transparent);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: var(--text-control);
+    transition: var(--transition-control);
+  }
+  .topbar__search:hover { background: var(--surface-hover); color: var(--text-secondary); }
+  .topbar__search > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar__search > kbd { flex: none; color: var(--text-muted); font-family: var(--font-mono); font-size: var(--text-micro); white-space: nowrap; }
+}
 
 /* ============================================================== CONTENT == */
 

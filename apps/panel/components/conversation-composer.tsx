@@ -307,7 +307,14 @@ export function ConversationComposer({
   }
 
   return (
-    <form ref={formRef} onSubmit={send} className="conversation-composer shrink-0" aria-busy={sending}>
+    <form
+      ref={formRef}
+      onSubmit={send}
+      className="conversation-composer shrink-0"
+      aria-busy={sending}
+      data-draft={draft.trim() ? "true" : "false"}
+      data-mode="reply"
+    >
       <div className="conversation-composer__tabs" role="tablist" aria-label="Tipo de mensagem">
         <span className="is-active" role="tab" aria-selected="true">Responder</span>
         <span role="tab" aria-selected="false" aria-disabled="true">Nota interna</span>
@@ -415,18 +422,26 @@ export function ConversationComposer({
             disabled={sending || recording || attachment?.mediaType === "audio" || !canSendText}
           />
         </label>
-        <Button type="submit" className="conversation-composer__send btn primary active:scale-95" aria-label={sending ? "Enviando mensagem" : "Enviar mensagem"} disabled={sending || recording || !canSend || (!draft.trim() && !attachment)}>
-          {sending ? <span className="h-4 w-4 animate-pulse rounded-full border border-current" aria-hidden="true" /> : <PaperPlaneRight size={16} aria-hidden="true" />}
-          <span>{sending ? "Enviando…" : "Enviar"}</span>
+        {/* DS v2: envio circular de 32px (ref. Conversas.dc.html). O nome
+            acessível "Enviar mensagem"/"Enviando mensagem" não muda; sem
+            rascunho fica neutro, com rascunho ciano cheio com glow. */}
+        <Button
+          type="submit"
+          className="conversation-composer__send btn"
+          data-ready={draft.trim() || attachment ? "true" : undefined}
+          aria-label={sending ? "Enviando mensagem" : "Enviar mensagem"}
+          disabled={sending || recording || !canSend || (!draft.trim() && !attachment)}
+        >
+          {sending ? <span className="on-spinner" aria-hidden="true" /> : <PaperPlaneRight size={16} aria-hidden="true" />}
         </Button>
         </div>
       </div>
       {availabilityMessage ? <p className="mt-2 text-xs text-[var(--warning-text)]" role="status">{availabilityMessage}</p> : null}
       <div className="conversation-composer__footer">
         <div className="conversation-composer__quick-replies" aria-label="Respostas rápidas">
-          <span>Enviar proposta</span>
-          <span>Confirmar horário</span>
-          <span>Pedir CNPJ</span>
+          <span className="chip-action">Enviar proposta</span>
+          <span className="chip-action">Confirmar horário</span>
+          <span className="chip-action">Pedir CNPJ</span>
         </div>
         <p className="mono">Enter envia · Shift + Enter quebra a linha</p>
       </div>

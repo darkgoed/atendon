@@ -1,18 +1,19 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { type FormEvent, useState } from "react";
 import { CheckCircle, SlidersHorizontal, UserCircle } from "@phosphor-icons/react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
 import { AppearancePreferences } from "@/components/appearance-preferences";
 import { api } from "@/lib/api";
 import type { PanelSession } from "@/lib/session";
-import { Button, Card, Field, Input, PageHeader, Section } from "@/components/ui";
+import { Card, Field, Input, PageHeader, SaveButton, SaveToast, Section, useSaveFeedback } from "@/components/ui";
 import styles from "@/components/settings-panels.module.css";
 
 const fetcher = <T,>(url: string) => api<T>(url);
 
 export default function ProfilePage() {
+  const save = useSaveFeedback();
   const {
     data: session,
     error: sessionError,
@@ -61,6 +62,7 @@ export default function ProfilePage() {
       await mutate(nextSession, false);
       form.reset();
       setMessage("Perfil atualizado.");
+      save.markDone();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao atualizar perfil");
     } finally {
@@ -92,9 +94,10 @@ export default function ProfilePage() {
             <Field label="Confirmar nova senha" hint="Opcional"><Input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} disabled={saving || !session} /></Field>
             {error ? <p className="error" role="alert">{error}</p> : null}
             {message ? <p className="accent text-sm" role="status">{message}</p> : null}
-            <Button type="submit" tone="primary" disabled={saving || !session}>
-              {saving ? "Salvando…" : "Salvar perfil"}
-            </Button>
+            <SaveButton type="submit" state={saving ? "busy" : save.state} disabled={saving || !session}>
+              Salvar perfil
+            </SaveButton>
+            <SaveToast show={save.done}>Perfil salvo</SaveToast>
           </div>
           </Section>
         </form>

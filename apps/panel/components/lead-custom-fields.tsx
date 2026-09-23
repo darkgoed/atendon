@@ -9,9 +9,10 @@
 
 import { useState } from "react";
 import useSWR from "swr";
+import { PencilSimple, X } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import { canAccessWithSession, type PanelSession } from "@/lib/session";
-import { Button, Field, Input, Select } from "@/components/ui";
+import { Field, IconButton, Input, SaveButton, SaveToast, Select, useSaveFeedback } from "@/components/ui";
 
 export type LeadCustomFieldType = "text" | "number" | "currency" | "date" | "select" | "multiselect" | "boolean";
 
@@ -148,10 +149,10 @@ function CustomValueEditor({
       </Field>
       {error ? <p className="error" role="alert">{error}</p> : null}
       <div className="flex gap-2">
-        <Button tone="primary" size="sm" onClick={() => void save()} disabled={saving || invalidNumber}>
-          {saving ? "Salvando…" : "Salvar"}
-        </Button>
-        <Button size="sm" onClick={onCancel} disabled={saving}>Cancelar</Button>
+        <SaveButton state={saving ? "busy" : "idle"} size="sm" onClick={() => void save()} disabled={saving || invalidNumber}>
+          Salvar
+        </SaveButton>
+        <IconButton size="sm" label="Cancelar" onClick={onCancel} disabled={saving}><X size={14} aria-hidden="true" /></IconButton>
       </div>
     </div>
   );
@@ -169,6 +170,7 @@ export function LeadCustomFields({ leadId }: { leadId: string }) {
     { revalidateOnFocus: false }
   );
   const [editingId, setEditingId] = useState<string | null>(null);
+  const save = useSaveFeedback();
   const items = data?.items ?? [];
 
   // Sem campos cadastrados o card não ocupa espaço no perfil; com campos,
@@ -194,16 +196,16 @@ export function LeadCustomFields({ leadId }: { leadId: string }) {
                 <CustomValueEditor
                   leadId={leadId}
                   field={field}
-                  onSaved={() => mutate()}
+                  onSaved={() => { void mutate(); save.markDone(); }}
                   onCancel={() => setEditingId(null)}
                 />
               ) : (
                 <dd className="flex items-center gap-2">
                   <span>{formatCustomFieldValue(field)}</span>
                   {canManage ? (
-                    <button type="button" className="type-label text-[var(--primary-text)] hover:underline" onClick={() => setEditingId(field.field_id)} aria-label={`Editar valor: ${field.label}`}>
-                      Editar
-                    </button>
+                    <IconButton size="sm" label={`Editar valor: ${field.label}`} onClick={() => setEditingId(field.field_id)}>
+                      <PencilSimple size={14} aria-hidden="true" />
+                    </IconButton>
                   ) : null}
                 </dd>
               )}
@@ -211,6 +213,7 @@ export function LeadCustomFields({ leadId }: { leadId: string }) {
           ))}
         </dl>
       )}
+      <SaveToast show={save.done}>Valor salvo</SaveToast>
     </section>
   );
 }

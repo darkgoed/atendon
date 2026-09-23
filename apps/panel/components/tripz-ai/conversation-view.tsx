@@ -82,7 +82,7 @@ function ConversationEmpty() {
   return (
     <div className="mx-auto grid min-h-full w-full max-w-[52rem] content-center px-2 py-10 text-left">
       <div className="max-w-[34rem] border-l-2 border-[var(--primary)] pl-6 sm:pl-8">
-        <span className="font-mono text-[9px] uppercase tracking-[.18em] text-[var(--primary)]">Comece pela informação mais fácil</span>
+        <span className="font-mono text-[9px] uppercase tracking-[.18em] text-[var(--primary-text)]">Comece pela informação mais fácil</span>
         <h2 className="mb-0 mt-3 text-2xl font-semibold leading-tight tracking-[-.035em] text-[var(--text)] sm:text-3xl">Conte o destino.<br />A proposta toma forma na conversa.</h2>
         <p className="mb-0 mt-4 max-w-[48ch] text-[13px] leading-6 text-[var(--text-secondary)]">Envie uma frase, prints dos voos, imagens da hospedagem ou um PDF. A Tripz IA organiza os dados e pergunta apenas o próximo ponto necessário.</p>
         <div className="mt-7 grid gap-2 border-t border-[var(--border)] pt-4 text-[11px] text-[var(--text-muted)] sm:grid-cols-2">

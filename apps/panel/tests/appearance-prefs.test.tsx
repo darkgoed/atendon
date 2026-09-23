@@ -53,12 +53,12 @@ describe("preferências de aparência (R16)", () => {
   });
 
   it("falla silenciosamente para o localStorage quando a API 404", async () => {
-    localStorage.setItem("atendon-appearance", JSON.stringify({ theme: null, accent: "violet", density: "compact" }));
+    localStorage.setItem("atendon-appearance", JSON.stringify({ theme: null, accent: "green", density: "compact" }));
     apiMock.mockRejectedValue(new Error("404"));
     await act(async () => {
       await hydrateAppearance();
     });
-    expect(document.documentElement.getAttribute("data-accent")).toBe("violet");
+    expect(document.documentElement.getAttribute("data-accent")).toBe("green");
     expect(document.documentElement.getAttribute("data-density")).toBe("compact");
   });
 
@@ -81,9 +81,16 @@ describe("preferências de aparência (R16)", () => {
     expect(patchBodies()).toContainEqual({ accent: "green" });
   });
 
-  it("aplica accent null removendo o atributo (voltar ao padrão azul)", () => {
-    applyAppearanceToDocument(document.documentElement, { accent: "violet", density: "compact" });
-    expect(document.documentElement.getAttribute("data-accent")).toBe("violet");
+  it("acentos da v1 removidos (blue/violet) caem no padrão ciano", () => {
+    applyAppearanceToDocument(document.documentElement, { accent: "violet" });
+    expect(document.documentElement.hasAttribute("data-accent")).toBe(false);
+    applyAppearanceToDocument(document.documentElement, { accent: "blue" });
+    expect(document.documentElement.hasAttribute("data-accent")).toBe(false);
+  });
+
+  it("aplica accent null removendo o atributo (voltar ao padrão ciano)", () => {
+    applyAppearanceToDocument(document.documentElement, { accent: "green", density: "compact" });
+    expect(document.documentElement.getAttribute("data-accent")).toBe("green");
     applyAppearanceToDocument(document.documentElement, { accent: null, density: null });
     expect(document.documentElement.hasAttribute("data-accent")).toBe(false);
     expect(document.documentElement.hasAttribute("data-density")).toBe(false);

@@ -1,6 +1,6 @@
 "use client";
 
-import { DotsThreeVertical, DownloadSimple, MagicWand, MagnifyingGlass, UploadSimple } from "@phosphor-icons/react";
+import { DotsThreeVertical, DownloadSimple, Eye, MagicWand, MagnifyingGlass, UploadSimple } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
@@ -21,7 +21,7 @@ import { applyLeadSavedViewFilters, leadFiltersForSavedView, useCaseOrganization
 import { useRealtimeSignals } from "@/lib/realtime";
 import { hasWorkspaceWideCaseScope, type PanelSession } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
-import { Button } from "@/components/ui";
+import { Button, IconButton } from "@/components/ui";
 import { ListFiltersBar, type ListFilterDef } from "@/components/ui/filters";
 
 type Option = { id: string; nome: string };
@@ -201,15 +201,15 @@ export default function LeadsPage() {
     <header className="leads-page__header">
       <div><h1>{hasWorkspaceScope ? "Contatos" : "Meus contatos"}</h1></div>
       <div className="leads-page__actions flex min-h-8 flex-wrap items-center gap-2">
-        <Link className="btn crm-compact-button" href="/contatos/importar"><UploadSimple size={14} aria-hidden="true" />Importar</Link>
+        <Link className="btn primary crm-compact-button" href="/contatos/importar"><UploadSimple size={14} aria-hidden="true" />Importar</Link>
         {canReadFollowUp ? (
-          <Button
-            className="crm-compact-button"
-            icon={<DownloadSimple size={14} aria-hidden="true" />}
+          <IconButton
+            label="Exportar CSV"
+            size="sm"
             onClick={() => window.location.assign(apiContentUrl(query ? `/contact-ops/export.csv?${query}` : "/contact-ops/export.csv"))}
           >
-            Exportar CSV
-          </Button>
+            <DownloadSimple size={14} aria-hidden="true" />
+          </IconButton>
         ) : null}
         <SavedViewsControl resource="leads" filters={leadFiltersForSavedView(filters)} onApply={applySavedFilters} />
         <label className="field m-0">
@@ -246,7 +246,9 @@ export default function LeadsPage() {
               <td data-label="Ações">
                 <div className="leads-table__actions">
                   <ContactChatLink conversationId={lead.conversation_id} name={lead.nome} />
-                  <Link className="btn primary crm-compact-button" href={`/contatos/${lead.id}`}>Ver detalhes</Link>
+                  <IconButton asChild label="Ver detalhes" size="sm">
+                    <Link href={`/contatos/${lead.id}`}><Eye size={14} aria-hidden="true" /></Link>
+                  </IconButton>
                   <PopoverMenu
                     buttonClassName="btn crm-compact-button"
                     icon={<DotsThreeVertical size={14} weight="bold" aria-hidden="true" />}

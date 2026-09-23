@@ -8,11 +8,11 @@
  * key são fixados na criação, então o dialog trava o tipo na edição.
  */
 
-import { Plus, Trash } from "@phosphor-icons/react";
+import { PencilSimple, Plus, Trash } from "@phosphor-icons/react";
 import { type FormEvent, useEffect, useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
-import { Badge, Button, Dialog, EmptyState, Field, Input, Select, Textarea } from "@/components/ui";
+import { Badge, Button, Dialog, EmptyState, Field, IconButton, Input, SaveButton, SaveToast, Select, Textarea, useSaveFeedback } from "@/components/ui";
 import { api } from "@/lib/api";
 import { usePermission } from "@/lib/use-permission";
 import styles from "./campos.module.css";
@@ -67,6 +67,7 @@ function FieldDialog({
   const [required, setRequired] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const save = useSaveFeedback();
 
   useEffect(() => {
     if (!open) return;
@@ -103,6 +104,7 @@ function FieldDialog({
         });
       }
       onSaved();
+      save.markDone();
       onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Falha ao salvar o campo");
@@ -139,11 +141,12 @@ function FieldDialog({
         {error ? <p className="error" role="alert">{error}</p> : null}
         <div className="flex justify-end gap-2">
           <Button onClick={onClose} disabled={saving}>Cancelar</Button>
-          <Button tone="primary" type="submit" disabled={saving || !label.trim()}>
-            {saving ? "Salvando…" : field ? "Salvar campo" : "Criar campo"}
-          </Button>
+          <SaveButton state={saving ? "busy" : save.state} type="submit" disabled={!label.trim()}>
+            {field ? "Salvar campo" : "Criar campo"}
+          </SaveButton>
         </div>
       </form>
+      <SaveToast show={save.done}>{field ? "Campos salvos" : "Campo criado"}</SaveToast>
     </Dialog>
   );
 }
@@ -215,10 +218,10 @@ export default function CustomFieldsPage() {
                 <p className={styles.fieldKey}>chave: {field.key}</p>
                 {field.options?.length ? <p className={styles.fieldOptions}>Opções: {field.options.join(", ")}</p> : null}
                 <div className={styles.fieldActions}>
-                  <Button size="sm" onClick={() => setDialog({ open: true, field })} aria-label={`Editar campo: ${field.label}`}>Editar</Button>
-                  <Button size="sm" tone="danger" onClick={() => void removeField(field)} aria-label={`Excluir campo: ${field.label}`}>
-                    <Trash size={14} aria-hidden="true" />Excluir
-                  </Button>
+                  <IconButton size="sm" label={`Editar campo: ${field.label}`} onClick={() => setDialog({ open: true, field })}><PencilSimple size={14} aria-hidden="true" /></IconButton>
+                  <IconButton size="sm" tone="danger" label={`Excluir campo: ${field.label}`} onClick={() => void removeField(field)}>
+                    <Trash size={14} aria-hidden="true" />
+                  </IconButton>
                 </div>
               </article>
             ))}

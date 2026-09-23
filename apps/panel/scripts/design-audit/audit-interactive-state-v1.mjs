@@ -12,6 +12,7 @@ import { commercialFixture } from "./fixtures/commercial.mjs";
 import { settingsFixture } from "./fixtures/settings.mjs";
 import { rootFixture } from "./fixtures/root.mjs";
 import { publicTripzFixture } from "./fixtures/public-tripz.mjs";
+import { panelsV6Fixture } from "./fixtures/panels-v6.mjs";
 import { CAPABILITY_CATALOG, FEATURE_FLAG_KEYS, OPERATOR_PERMISSIONS, PERMISSION_KEYS } from "./catalog.mjs";
 import { contractFor } from "./contracts.mjs";
 
@@ -62,6 +63,14 @@ const cases = [
   { id: "post-sales-create", route: "/pos-venda", scenarios: ["owner"], viewports: ["desktop"], run: async (page) => {
     const create = page.getByRole("button", { name: "Novo cliente", exact: true }); await one(create, "post-sales create"); await create.click();
     const dialog = page.getByRole("dialog", { name: "Adicionar à carteira", exact: true }); await one(dialog, "post-sales create dialog"); await page.keyboard.press("Escape"); await expectHidden(dialog, "post-sales create close");
+  }},
+  // DS v2 §3: busca central da topbar e Ctrl+K abrem a mesma paleta global.
+  { id: "command-palette", route: "/", scenarios: ["owner"], viewports: ["desktop"], run: async (page) => {
+    const trigger = page.getByRole("button", { name: "Busca global (Ctrl+K)", exact: true }); await one(trigger, "topbar search"); await trigger.click();
+    const dialog = page.getByRole("dialog", { name: "Busca global", exact: true }); await one(dialog, "palette open (click)");
+    await page.keyboard.press("Escape"); await expectHidden(dialog, "palette close");
+    await page.keyboard.press("Control+k"); await one(dialog, "palette open (Ctrl+K)");
+    await page.keyboard.press("Escape"); await expectHidden(dialog, "palette close (Ctrl+K)");
   }}
 ];
 const deniedRoutes = [
@@ -80,7 +89,10 @@ function fixture(path, method, actor) {
   if (path === "/panel/version") return { body: { version: FIXTURE_VERSION, changelog: [] } };
   if (path === "/events") return { status: 204 };
   if (path.endsWith("/media")) return { body: { messages: [], has_more: false, next_cursor: null } };
-  for (const domain of [conversationFixture, commercialFixture, settingsFixture, rootFixture, publicTripzFixture]) { const body = domain(path); if (body !== undefined) return { body }; }
+  // Shell v6 hidrata aparência + sino em TODA rota; o composer consulta as
+  // capacidades do canal. Mesmas shapes do design-audit.mjs principal.
+  if (/^\/conversations\/[^/]+\/channel-capabilities$/.test(path)) return { body: { channel: "whatsapp", can_send: true, reason: null, window_expires_at: null, text: true, image: true, audio: true, video: true, document: true, reactions: true, edit: true, delete: true, stickers: true } };
+  for (const domain of [panelsV6Fixture, conversationFixture, commercialFixture, settingsFixture, rootFixture, publicTripzFixture]) { const body = domain(path); if (body !== undefined) return { body }; }
   return { status: 599, body: { error: "fixture-gap", path, method } };
 }
 async function one(locator, label) { await locator.first().waitFor({ state: "visible", timeout: 10000 }); if (await locator.count() !== 1 || !(await locator.isVisible())) throw new Error(`${label}: expected one visible real control`); }

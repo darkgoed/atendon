@@ -10,7 +10,7 @@
 
 import { ArrowDown, ArrowUp, FileArrowUp, Plus, Trash } from "@phosphor-icons/react";
 import { type FormEvent, useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Badge, Button, Dialog, Field, IconButton, Input, Select, Textarea } from "@/components/ui";
+import { Badge, Button, Dialog, Field, IconButton, Input, SaveButton, SaveToast, Select, Textarea, useSaveFeedback } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import {
   CHANGELOG_CATEGORIES,
@@ -85,9 +85,9 @@ function MediaRow({
           {error ? <p className="error text-xs" role="alert">{error}</p> : null}
         </div>
         <div className="flex shrink-0 flex-col gap-1">
-          <Button size="sm" onClick={() => void saveAlt()} disabled={disabled || saving}>
-            {saving ? "Salvando…" : "Salvar alt"}
-          </Button>
+          <SaveButton size="sm" state={saving ? "busy" : "idle"} disabled={disabled} onClick={() => void saveAlt()}>
+            Salvar alt
+          </SaveButton>
           <div className="flex gap-1">
             <IconButton label={`Mover mídia ${index + 1} para cima`} size="sm" disabled={disabled || index === 0} onClick={() => onMove(index, index - 1)}>
               <ArrowUp size={14} aria-hidden="true" />
@@ -129,6 +129,7 @@ export function PostFormDialog({
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const postSave = useSaveFeedback();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const isEdit = Boolean(post);
@@ -248,7 +249,7 @@ export function PostFormDialog({
           method: "PATCH",
           body: JSON.stringify(body)
         });
-        onSaved(response.post);
+        onSaved(response.post); postSave.markDone();
       } else {
         const body: Record<string, unknown> = {
           title: trimmedTitle,
@@ -266,7 +267,7 @@ export function PostFormDialog({
           method: "POST",
           body: JSON.stringify(body)
         });
-        onSaved(response.post);
+        onSaved(response.post); postSave.markDone();
       }
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : cause instanceof Error ? cause.message : "Não foi possível salvar o post.");
@@ -276,6 +277,7 @@ export function PostFormDialog({
   }
 
   return (
+    <>
     <Dialog
       open={open}
       onOpenChange={(next) => {
@@ -287,9 +289,9 @@ export function PostFormDialog({
       footer={
         <>
           <Button onClick={onClose} disabled={saving}>Cancelar</Button>
-          <Button tone="primary" type="submit" form="changelog-post-form" disabled={saving || !title.trim()}>
-            {saving ? "Salvando…" : post ? "Salvar alterações" : "Criar post"}
-          </Button>
+          <SaveButton state={saving ? "busy" : postSave.state} type="submit" form="changelog-post-form" disabled={!title.trim()}>
+            {post ? "Salvar alterações" : "Criar post"}
+          </SaveButton>
         </>
       }
     >
@@ -399,5 +401,7 @@ export function PostFormDialog({
         ) : null}
       </form>
     </Dialog>
+    <SaveToast show={postSave.done}>Post salvo</SaveToast>
+    </>
   );
 }

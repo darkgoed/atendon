@@ -8,11 +8,11 @@
  * por cursor, dedup por id mantendo a cópia fresca da página 1.
  */
 
-import { Check, Plus, Trash, X } from "@phosphor-icons/react";
+import { Check, PencilSimple, Plus, Trash, X } from "@phosphor-icons/react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
-import { Badge, Button, Dialog, EmptyState, Field, Input, Segmented, Select, Textarea } from "@/components/ui";
+import { Badge, Button, Dialog, EmptyState, Field, IconButton, Input, SaveButton, SaveToast, Segmented, Select, Textarea, useSaveFeedback } from "@/components/ui";
 import { api } from "@/lib/api";
 import { canAccessWithSession, type PanelSession } from "@/lib/session";
 import { groupTasksByDay, type AgendaGroup } from "./tasks-agenda";
@@ -309,9 +309,9 @@ function TaskDialog({
         {error ? <p className="error" role="alert">{error}</p> : null}
         <div className="flex justify-end gap-2">
           <Button onClick={onClose} disabled={saving}>Cancelar</Button>
-          <Button tone="primary" type="submit" disabled={saving || !title.trim()}>
-            {saving ? "Salvando…" : task ? "Salvar tarefa" : "Criar tarefa"}
-          </Button>
+          <SaveButton type="submit" state={saving ? "busy" : "idle"} disabled={!title.trim()}>
+            {task ? "Salvar tarefa" : "Criar tarefa"}
+          </SaveButton>
         </div>
       </form>
     </Dialog>
@@ -355,18 +355,16 @@ function TaskCard({
           </span>
         ) : null}
         <div className={styles.taskActions}>
-          <Button
+          <IconButton
             size="sm"
+            label={task.status === "concluida" ? `Reabrir tarefa: ${task.title}` : `Concluir tarefa: ${task.title}`}
             tone={task.status === "concluida" ? "quiet" : "primary"}
             onClick={() => onToggle(task)}
-            aria-label={task.status === "concluida" ? `Reabrir tarefa: ${task.title}` : `Concluir tarefa: ${task.title}`}
           >
-            <Check size={14} aria-hidden="true" />{task.status === "concluida" ? "Reabrir" : "Concluir"}
-          </Button>
-          <Button size="sm" onClick={() => onEdit(task)} aria-label={`Editar tarefa: ${task.title}`}>Editar</Button>
-          <Button size="sm" tone="danger" onClick={() => onRemove(task)} aria-label={`Excluir tarefa: ${task.title}`}>
-            <Trash size={14} aria-hidden="true" />Excluir
-          </Button>
+            <Check size={14} aria-hidden="true" />
+          </IconButton>
+          <IconButton size="sm" label={`Editar tarefa: ${task.title}`} onClick={() => onEdit(task)}><PencilSimple size={14} aria-hidden="true" /></IconButton>
+          <IconButton size="sm" tone="danger" label={`Excluir tarefa: ${task.title}`} onClick={() => onRemove(task)}><Trash size={14} aria-hidden="true" /></IconButton>
         </div>
       </div>
     </article>
@@ -374,6 +372,7 @@ function TaskCard({
 }
 
 export default function TasksPage() {
+  const save = useSaveFeedback();
   const { data: session } = useSWR<PanelSession>("/me", fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
   const currentUserId = session?.user.id ?? "";
   const canAssign = Boolean(session && canAccessWithSession(session, ["tasks.assign"]));
@@ -591,8 +590,10 @@ export default function TasksPage() {
           onSaved={(saved, created) => {
             if (created) void mutate();
             else applyTaskUpdate(saved);
+            save.markDone();
           }}
         />
+        <SaveToast show={save.done}>Tarefa salva</SaveToast>
       </div>
     </Shell>
   );

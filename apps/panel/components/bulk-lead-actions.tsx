@@ -1,13 +1,13 @@
 "use client";
 
-import { ArrowCounterClockwise, CheckSquare, X } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, CheckSquare, Eye, X } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { randomUUID } from "@/lib/compat";
 import { useCaseOrganizationEnabled } from "@/lib/organization";
 import { usePermission } from "@/lib/use-permission";
-import { Button } from "@/components/ui";
+import { Button, IconButton } from "@/components/ui";
 import type { LeadTag } from "@/components/lead-tag-picker";
 
 type BulkAction = "assign" | "tags_add" | "tags_remove" | "move_stage";
@@ -109,15 +109,15 @@ export function BulkLeadActions({ selected, onClear, onChanged }: { selected: Bu
     finally { setPending(false); }
   }
 
-  if (!open && !applied) return <Button onClick={() => setOpen(true)} aria-expanded={false}>Ações em lote ({selected.length})</Button>;
+  if (!open && !applied) return <IconButton label={`Ações em lote (${selected.length})`} className="pipeline-bulk-trigger" aria-expanded={false} onClick={() => setOpen(true)}><CheckSquare size={18} aria-hidden="true" /></IconButton>;
 
-  if (applied) return <aside className="bulk-lead-actions bulk-lead-actions--applied" role="status"><CheckSquare size={20} className="text-[var(--success-text)]" aria-hidden="true" /><p className="bulk-lead-actions__copy"><strong>{applied.result.count} lead(s) atualizados</strong><span>Operação concluída de forma atômica.</span></p>{applied.result.undoable && undoSeconds > 0 ? <button type="button" className="btn" onClick={() => void undo()} disabled={pending}><ArrowCounterClockwise size={15} />Desfazer · {undoSeconds}s</button> : null}<button type="button" className="bulk-lead-actions__close" onClick={() => setApplied(null)} aria-label="Fechar confirmação"><X size={15} /></button>{error ? <p className="error" role="alert">{error}</p> : null}</aside>;
+  if (applied) return <aside className="bulk-lead-actions bulk-lead-actions--applied" role="status"><CheckSquare size={20} className="text-[var(--success-text)]" aria-hidden="true" /><p className="bulk-lead-actions__copy"><strong>{applied.result.count} lead(s) atualizados</strong><span>Operação concluída de forma atômica.</span></p>{applied.result.undoable && undoSeconds > 0 ? <IconButton label={`Desfazer · ${undoSeconds}s`} onClick={() => void undo()} disabled={pending}><ArrowCounterClockwise size={15} aria-hidden="true" /></IconButton> : null}<button type="button" className="bulk-lead-actions__close" onClick={() => setApplied(null)} aria-label="Fechar confirmação"><X size={15} /></button>{error ? <p className="error" role="alert">{error}</p> : null}</aside>;
 
   return <aside className="bulk-lead-actions" aria-label="Ações em lote">
     <div className="flex items-center gap-2 self-center"><CheckSquare size={19} className="text-[var(--primary)]" /><strong className="text-xs">{selected.length} selecionado(s)</strong></div>
     <label className="field"><span className="label">Ação</span><select className="input" value={action} onChange={(event) => setAction(event.target.value as BulkAction)}>{availableActions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
     <label className="field"><span className="label">Destino</span><select className="input" value={targetId} onChange={(event) => { setTargetId(event.target.value); setPreview(null); setApplyKey(null); }}><option value="">{action === "assign" ? "Sem responsável" : "Selecione"}</option>{action === "move_stage" ? pipelineData?.stages.filter((stage) => !stage.archived_at).map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>) : action === "assign" ? attendantData?.attendants.filter((attendant) => attendant.selected).map((attendant) => <option key={attendant.member_id} value={attendant.member_id}>{attendant.email}{attendant.availability_status === "available" ? " · disponível" : ""}</option>) : tagData?.tags.filter((tag) => !tag.archived_at).map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select></label>
-    <div className="flex gap-2"><button type="button" className="btn" onClick={onClear}>Cancelar</button>{preview?.valid ? <button type="button" className="btn primary" onClick={() => void apply()} disabled={pending}>{pending ? "Aplicando…" : `Aplicar em ${preview.count}`}</button> : <button type="button" className="btn primary" onClick={() => void runPreview()} disabled={pending || !targetReady}>{pending ? "Validando…" : "Prévia"}</button>}</div>
+    <div className="flex gap-2"><IconButton label="Cancelar" onClick={onClear}><X size={15} aria-hidden="true" /></IconButton>{preview?.valid ? <Button tone="accent" onClick={() => void apply()} disabled={pending}>{pending ? "Aplicando…" : `Aplicar em ${preview.count}`}</Button> : <IconButton label="Prévia" onClick={() => void runPreview()} disabled={pending || !targetReady}><Eye size={15} aria-hidden="true" /></IconButton>}</div>
     {preview && !preview.valid ? <div className="sm:col-span-4 rounded border border-[var(--warning-border)] bg-[var(--warning-subtle)] p-2 text-xs text-[var(--warning-text)]" role="alert"><strong>O lote inteiro foi bloqueado.</strong><ul className="mt-1 list-disc pl-4">{preview.errors.slice(0, 5).map((item) => <li key={`${item.id}:${item.code}`}>{item.message}</li>)}</ul></div> : null}
     {preview?.valid ? <div className="sm:col-span-4 rounded border border-[var(--success-border)] bg-[var(--success-subtle)] p-2 text-xs text-[var(--success-text)]" role="status"><strong>Prévia validada para {preview.count} lead(s).</strong> {preview.undoable ? "Esta ação poderá ser desfeita por 30 segundos." : "Esta mudança de status não poderá ser desfeita pelo atalho."}</div> : null}
     {error ? <p className="error sm:col-span-4" role="alert">{error}</p> : null}

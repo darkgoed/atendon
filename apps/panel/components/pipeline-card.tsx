@@ -108,7 +108,7 @@ export function PipelineCard({
       onPointerDown={interactive ? onGrabPointerDown : undefined}
       onKeyDown={onGrabKeyDown}
       transition={localReduceMotion ? { duration: 0 } : FLOW_SPRING}
-      whileHover={interactive && !localReduceMotion ? { y: -1 } : undefined}
+      whileHover={interactive && !localReduceMotion ? { y: -2 } : undefined}
       className={`pipeline-card group border ${selected ? "border-[var(--primary)]" : "border-[var(--border)]"} ${interactive ? "cursor-grab active:cursor-grabbing touch-none" : ""} ${pending ? "opacity-60" : ""} ${grabbed ? "pipeline-card--grabbed" : ""} ${floating ? "pipeline-card--floating" : ""} ${compact ? "p-2" : "p-2.5"}`}
     >
       <div className="flex min-w-0 items-start gap-2">

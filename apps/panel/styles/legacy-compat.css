@@ -8,6 +8,9 @@
   .shell { height: 100vh; }
   .sidebar { height: 100vh; }
   .content { height: calc(100vh - var(--topbar-height)); }
+  @media (min-width: 701px) {
+    .shell--rail .content { height: calc(100vh - var(--topbar-height) - var(--panel-gap)); }
+  }
   .shell-loading { min-height: 100vh; }
   .public-state-page { min-height: 100vh; }
   .meet-room { min-height: 100vh; }

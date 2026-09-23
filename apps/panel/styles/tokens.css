@@ -1,54 +1,38 @@
 /* ============================================================================
-   AtendON Design System — token foundation
+   AtendON Design System v2 — "ON" (minimalista)
    ----------------------------------------------------------------------------
-   Um único design system. LIGHT é declarado em :root; DARK apenas re-declara
-   os MESMOS semantic tokens em :root[data-theme="dark"]. O tema padrão do
-   produto continua sendo DARK — `<html data-theme="dark">` é emitido no SSR e
-   o boot script troca para light quando há preferência salva.
+   Substitui apps/panel/styles/tokens.css 1:1. MESMOS nomes de variáveis da v1
+   (camada 3 = legacy aliases da v1, intacta), só valores novos — nenhum consumidor precisa mudar.
 
-   Layout, spacing, tipografia, radius, dimensões de controle, motion e z-index
-   vivem na camada 1 (foundations) e NÃO mudam entre temas — é isso que impede
-   estruturalmente os dois temas de divergirem.
+   Premissa: minimalismo. Preto profundo + branco gelo fazem 90% da interface;
+   o Azul Ciano Tech (#22D3EE) aparece só no que é essencial: estado ativo,
+   foco, ação principal de envio, confirmação e dados-chave.
 
-   Camadas neste arquivo, nesta ordem:
-     1. Foundations  — type, spacing, radius, controls, layout, motion, z
-     2. Semantic     — o único vocabulário que features consomem
-     3. Legacy alias — nomes herdados apontando para a camada 2 (migração)
-
-   Os componentes (Radix headless + classes deste sistema) consomem os tokens
-   semânticos DIRETAMENTE. Não existe uma camada de nomes shadcn (--muted,
-   --accent, --input, --ring) porque esses nomes já significam outra coisa no
-   vocabulário herdado do AtendON e a colisão repintaria texto como superfície.
-
-   Hierarquia de superfície:  bg → sidebar → surface → surface-elevated
-   Ordem de separação:        spacing > typography > surface > border
+   Paleta de marca:
+     Preto Profundo   #0A0A0A   sofisticação, foco
+     Branco Gelo      #F5F5F5   clareza, texto, CTA neutro
+     Azul Ciano Tech  #22D3EE   tecnologia, destaque
    ========================================================================= */
 
 :root {
   color-scheme: light;
 
   /* ======================================================== 1. FOUNDATIONS */
-
-  /* ---- 1.1 Tipografia ---------------------------------------------------
-     Dois registros. DENSO governa a operação (tabelas, listas, painéis);
-     EXPRESSIVO governa superfícies de marca (login, estados públicos). */
   --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* registro denso */
   --text-display: 30px;
-  --text-page-title: 20px;
-  --text-section-title: 14px;
+  --text-page-title: 22px;
+  --text-section-title: 13px;
   --text-body-lg: 15px;
   --text-body: 13.5px;
   --text-control: 13px;
-  --text-label: 12px;
+  --text-label: 12.5px;
   --text-meta: 11.5px;
-  --text-micro: 11px;          /* piso de legibilidade */
-  --text-metric: 26px;
+  --text-micro: 11px;
+  --text-metric: 28px;
   --text-metric-lg: 32px;
 
-  /* registro expressivo (marca) */
   --text-hero: clamp(40px, 4.6vw, 64px);
   --text-hero-sub: clamp(22px, 2vw, 28px);
 
@@ -57,15 +41,14 @@
   --weight-semibold: 600;
   --weight-bold: 700;
 
-  --leading-body: 1.55;
+  --leading-body: 1.5;
   --leading-tight: 1.3;
   --leading-flat: 1.12;
   --tracking-tight: -0.01em;
-  --tracking-title: -0.018em;
+  --tracking-title: -0.025em;
   --tracking-hero: -0.035em;
-  --tracking-overline: 0.07em;
+  --tracking-overline: 0.06em;
 
-  /* ---- 1.2 Spacing ----------------------------------------------------- */
   --space-0: 0px;
   --space-1: 4px;
   --space-2: 8px;
@@ -79,27 +62,26 @@
   --space-12: 48px;
   --space-16: 64px;
 
-  --pad-panel: var(--space-4);
-  --pad-panel-lg: var(--space-5);
+  --pad-panel: var(--space-5);
+  --pad-panel-lg: var(--space-7);
   --gutter: clamp(16px, 1.8vw, 28px);
-  --content-max: 1480px;
+  --content-max: 1160px;
   --prose-max: 68ch;
 
-  /* ---- 1.3 Radius ------------------------------------------------------ */
-  --radius-xs: 3px;
-  --radius-sm: 5px;
-  --radius-md: 7px;    /* inputs, botões          */
-  --radius-lg: 9px;    /* painéis, cards          */
-  --radius-xl: 11px;   /* dialogs                 */
+  /* Raios mais generosos que a v1: painéis 16, cards 14, controles 10 */
+  --radius-xs: 4px;
+  --radius-sm: 7px;
+  --radius-md: 10px;   /* inputs, botões, icon-buttons */
+  --radius-lg: 14px;   /* cards, KPIs, nós            */
+  --radius-xl: 16px;   /* painéis, dialogs            */
   --radius-pill: 999px;
   --radius: var(--radius-md);
 
-  /* ---- 1.4 Controles --------------------------------------------------- */
   --control-height-sm: 28px;
-  --control-height: 32px;        /* denso: filtros, toolbars    */
-  --control-height-md: 36px;     /* padrão                      */
-  --control-height-lg: 40px;     /* CTA, formulários            */
-  --control-height-touch: 44px;  /* alvo mínimo touch           */
+  --control-height: 34px;
+  --control-height-md: 36px;
+  --control-height-lg: 40px;
+  --control-height-touch: 44px;
   --control-min: var(--control-height-md);
   --icon-sm: 14px;
   --icon: 16px;
@@ -107,29 +89,31 @@
   --row-height: 38px;
   --row-height-lg: 44px;
 
-  /* ---- 1.5 Layout ------------------------------------------------------ */
-  --sidebar-width: 232px;
-  --sidebar-width-collapsed: 56px;
-  --topbar-height: 48px;
+  /* Shell v2: rail de ícones (68px) + topbar 56px + painéis flutuantes */
+  --sidebar-width: 68px;
+  --sidebar-width-collapsed: 68px;
+  --topbar-height: 56px;
   --screen-header-height: 0px;
-  --list-pane-width: 336px;
+  --list-pane-width: 340px;
   --context-pane-width: 320px;
   --settings-nav-width: 216px;
+  --panel-gap: 8px;             /* NOVO: espaço entre painéis flutuantes */
 
-  /* ---- 1.6 Motion ------------------------------------------------------ */
   --ease: cubic-bezier(0.2, 0, 0.2, 1);
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --duration-instant: 80ms;
-  --duration-fast: 130ms;
-  --duration-normal: 190ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.2, 0.9, 0.3, 1.3);   /* NOVO: pop de confirmação */
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-enter: 350ms;                           /* NOVO: entradas */
   --motion-fast: var(--duration-fast);
   --transition-control:
     background-color var(--duration-fast) var(--ease),
     border-color var(--duration-fast) var(--ease),
     color var(--duration-fast) var(--ease),
-    box-shadow var(--duration-fast) var(--ease);
+    box-shadow var(--duration-fast) var(--ease),
+    transform var(--duration-instant) var(--ease);
 
-  /* ---- 1.7 Z-index ----------------------------------------------------- */
   --z-base: 0;
   --z-sticky: 10;
   --z-topbar: 20;
@@ -138,197 +122,175 @@
   --z-popover: 60;
   --z-dialog: 80;
   --z-toast: 100;
-  /* A onda de troca de tema cobre TUDO, inclusive toast e dialog: é ela que
-     esconde o repaint do tema. Nunca colocar UI acima desta camada. */
   --z-theme-fx: 120;
 
-  /* ---- 1.8 Breakpoints (referência; media queries não aceitam var) ----- */
   --bp-xs: 480px;
   --bp-sm: 700px;
   --bp-md: 960px;
   --bp-lg: 1200px;
 
-  /* ---- 1.9 Troca de tema ------------------------------------------------
-     Estes valores NÃO são semânticos de tema: descrevem a cor do tema de
-     DESTINO durante a transição, então ficam em foundations e não são
-     redeclarados em dark/light. Espelham o --bg de cada tema.
-     As durações são espelhadas em lib/theme-transition.ts (THEME_SWEEP_MS /
-     THEME_SETTLE_MS) — mudar uma exige mudar a outra. */
   --theme-fx-sweep: 620ms;
   --theme-fx-settle: 380ms;
-  /* Easing PRÓPRIO da onda. O --ease-out do sistema é um expo-out extremo
-     (0.16,1,0.3,1): chegaria ao raio final por volta de 40% do tempo, deixando
-     a tela chapada e parada até o commit. Esta curva mantém o impulso inicial
-     mas só fecha a cobertura perto do fim, sem tempo morto. */
   --theme-fx-ease: cubic-bezier(0.38, 0.22, 0.2, 1);
-  --theme-fx-dark-bg: #0F1115;
-  --theme-fx-dark-accent: #5B8CFF;
-  --theme-fx-dark-glow: rgb(91 140 255 / 0.22);
-  /* Segunda cor da crista: a frente da onda é um degradê entre accent e edge,
-     não uma linha chapada — é o que dá a leitura de "energia" no escuro. */
-  --theme-fx-dark-edge: #A78BFA;
-  --theme-fx-dark-spark: rgb(167 139 250 / 0.55);
-  --theme-fx-light-bg: #F7F8FA;
-  --theme-fx-light-accent: #2563EB;
-  --theme-fx-light-glow: rgb(37 99 235 / 0.16);
-  --theme-fx-light-edge: #38BDF8;
-  --theme-fx-light-spark: rgb(56 189 248 / 0.45);
+  --theme-fx-dark-bg: #0A0A0A;
+  --theme-fx-dark-accent: #22D3EE;
+  --theme-fx-dark-glow: rgb(34 211 238 / 0.22);
+  --theme-fx-dark-edge: #67E8F9;
+  --theme-fx-dark-spark: rgb(103 232 249 / 0.5);
+  --theme-fx-light-bg: #F5F5F5;
+  --theme-fx-light-accent: #0891B2;
+  --theme-fx-light-glow: rgb(8 145 178 / 0.16);
+  --theme-fx-light-edge: #22D3EE;
+  --theme-fx-light-spark: rgb(34 211 238 / 0.45);
 
   /* ==================================================== 2. SEMANTIC — LIGHT
-     Paleta do brief. Os valores de TEXTO são derivados para cumprir WCAG AA
-     sobre TODAS as superfícies onde podem pousar (bg/surface/surface-sunken/
-     sidebar/hover), não apenas sobre --surface. Os valores originais do brief
-     seguem em uso como fill/border/indicador, onde AA de texto não se aplica.
-     ==================================================================== */
-
-  /* superfícies — escada de profundidade explícita */
-  --bg: #F7F8FA;
-  --sidebar: #F1F3F5;
+     Branco Gelo como fundo, preto profundo como texto. Ciano puro não passa
+     AA como texto sobre branco: fill continua #22D3EE (com texto preto),
+     texto de marca usa #0E7490. */
+  --bg: #F5F5F5;
+  --sidebar: #F5F5F5;
   --surface: #FFFFFF;
   --surface-elevated: #FFFFFF;
-  --surface-sunken: #F3F5F7;
-  --surface-hover: #ECEFF3;
-  --surface-active: #E4E8EE;
-  --surface-selected: #EFF6FF;
+  --surface-sunken: #EFEFEF;
+  --surface-hover: #EBEBEC;
+  --surface-active: #E2E2E4;
+  --surface-selected: #E6F8FC;
 
-  /* bordas em três pesos */
-  --border: #DDE2E7;
-  --border-subtle: #E8ECF0;
-  --border-strong: #C6CDD5;
+  --border: #E4E4E6;
+  --border-subtle: #EDEDEE;
+  --border-strong: #CFCFD2;
   --border-focus: var(--primary);
 
-  /* texto em papéis */
-  --text: #181B20;
-  --text-secondary: #5A6678;      /* AA 4.73+ em todos os fundos do tema claro (inclui --surface-active) */
-  --text-muted: #5A6678;
-  --text-subtle: #5A6472;         /* AA 4.88+ em todos os fundos do tema claro */
-  --text-disabled: #7E8AA0;
-  --text-inverse: #FFFFFF;
+  --text: #0A0A0A;
+  --text-secondary: #55555D;
+  --text-muted: #5F5F68;
+  --text-subtle: #6A6A72;
+  --text-disabled: #9A9AA2;
+  --text-inverse: #F5F5F5;
 
-  /* marca — família, não uma cor */
-  --primary: #2563EB;             /* fill / borda / indicador             */
-  --primary-hover: #1D4FD7;
-  --primary-active: #1A45BF;
-  --primary-subtle: #EFF6FF;
-  --primary-subtle-hover: #E0EBFE;
-  --primary-border: #C3D6FC;
-  --primary-foreground: #FFFFFF;  /* 5.17:1 sobre --primary               */
-  --primary-text: #2462EB;        /* marca como TEXTO: AA 4.53 pior caso  */
+  --primary: #22D3EE;
+  --primary-hover: #06B6D4;
+  --primary-active: #0891B2;
+  --primary-subtle: #E6F8FC;
+  --primary-subtle-hover: #D3F3FA;
+  --primary-border: #A5E9F5;
+  --primary-foreground: #0A0A0A;
+  --primary-text: #0E7490;
 
-  /* status — mesmo triplete para todos: plain / -text / -subtle / -border */
   --success: #16875B;
-  --success-text: #147C54;        /* AA 4.51 no pior caso                 */
+  --success-text: #147C54;
   --success-subtle: #EAF7F0;
   --success-border: #BFE3D0;
   --warning: #B7791F;
-  --warning-text: #956219;        /* AA 4.51 no pior caso                 */
+  --warning-text: #956219;
   --warning-subtle: #FFF5DF;
   --warning-border: #EBD7AE;
   --danger: #D14343;
-  --danger-text: #CB3232;         /* AA 4.50 no pior caso                 */
+  --danger-text: #CB3232;
   --danger-subtle: #FDECEC;
   --danger-border: #F4CBCB;
-  --info: #2563EB;
-  --info-text: #2462EB;
-  --info-subtle: #EFF6FF;
-  --info-border: #C3D6FC;
+  --info: #0891B2;
+  --info-text: #0E7490;
+  --info-subtle: #E6F8FC;
+  --info-border: #A5E9F5;
 
-  /* overlay, foco, sombra */
-  --overlay: rgb(16 22 28 / 0.32);
-  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px color-mix(in srgb, var(--primary) 55%, transparent);
+  --overlay: rgb(10 10 10 / 0.32);
+  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px color-mix(in srgb, var(--primary) 60%, transparent);
   --focus-ring-inset: inset 0 0 0 1px var(--primary);
 
   --shadow-none: none;
-  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.05);
-  --shadow-popover: 0 8px 24px -8px rgb(16 24 40 / 0.14), 0 0 0 1px var(--border);
-  --shadow-dialog: 0 24px 56px -16px rgb(16 24 40 / 0.2), 0 0 0 1px var(--border);
-  --shadow-drag: 0 12px 28px -10px rgb(16 24 40 / 0.18);
-  --shadow-panel: var(--shadow-none);
+  --shadow-sm: 0 1px 2px rgb(10 10 10 / 0.05);
+  --shadow-popover: 0 12px 32px -8px rgb(10 10 10 / 0.16), 0 0 0 1px var(--border);
+  --shadow-dialog: 0 30px 80px -16px rgb(10 10 10 / 0.22), 0 0 0 1px var(--border);
+  --shadow-drag: 0 12px 28px -10px rgb(10 10 10 / 0.18);
+  --shadow-panel: 0 0 0 1px var(--border);
   --shadow-inset: inset 0 0 0 1px var(--border);
+  --shadow-glow: 0 0 0 4px rgb(34 211 238 / 0.18), 0 4px 16px rgb(34 211 238 / 0.3);   /* NOVO */
 
-  --scrollbar-thumb: #CDD4DC;
-  --scrollbar-thumb-hover: #AFB8C2;
+  --scrollbar-thumb: #D4D4D8;
+  --scrollbar-thumb-hover: #B4B4BA;
 
-  /* categóricas (agenda, tags, pipeline) — cada uma com o mesmo triplete */
-  --cat-1: #2563EB;  --cat-1-text: #2462EB;  --cat-1-subtle: #EFF6FF;  --cat-1-border: #C3D6FC;
+  --cat-1: #0891B2;  --cat-1-text: #0E7490;  --cat-1-subtle: #E6F8FC;  --cat-1-border: #A5E9F5;
   --cat-2: #16875B;  --cat-2-text: #147C54;  --cat-2-subtle: #EAF7F0;  --cat-2-border: #BFE3D0;
-  --cat-3: #7C4DCB;  --cat-3-text: #6C3FB8;  --cat-3-subtle: #F3EDFC;  --cat-3-border: #DCCBF3;
+  --cat-3: #55555D;  --cat-3-text: #3F3F46;  --cat-3-subtle: #EFEFEF;  --cat-3-border: #D4D4D8;
   --cat-4: #B7791F;  --cat-4-text: #956219;  --cat-4-subtle: #FFF5DF;  --cat-4-border: #EBD7AE;
-  --cat-5: #0E7490;  --cat-5-text: #0C6579;  --cat-5-subtle: #E6F5F8;  --cat-5-border: #BCDEE6;
+  --cat-5: #D14343;  --cat-5-text: #CB3232;  --cat-5-subtle: #FDECEC;  --cat-5-border: #F4CBCB;
 }
 
 /* ==========================================================================
-   SEMANTIC TOKENS — DARK
-   Mesma estrutura, mesmos nomes, mesmas dimensões. Só valores de cor.
+   SEMANTIC — DARK (tema padrão do produto)
+   Hierarquia: bg #0A0A0A → painel #111112 → card #161617 → hover #1C1C1D
    ======================================================================= */
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #0F1115;
-  --sidebar: #12151A;
-  --surface: #15181E;
-  --surface-elevated: #1A1E25;
-  --surface-sunken: #12151A;
-  --surface-hover: #20252D;
-  --surface-active: #272D36;
-  --surface-selected: #172445;
+  --bg: #0A0A0A;
+  --sidebar: #0A0A0A;
+  --surface: #111112;
+  --surface-elevated: #161617;
+  --surface-sunken: #0D0D0E;
+  --surface-hover: #1C1C1D;
+  --surface-active: #232325;
+  --surface-selected: #0B2A31;
 
-  --border: #2A3039;
-  --border-subtle: #20252D;
-  --border-strong: #3A424E;
+  --border: #1F1F21;
+  --border-subtle: #18181A;
+  --border-strong: #2C2C2F;
 
-  --text: #F2F4F7;
-  --text-secondary: #A6ADB8;      /* AA 6.81 no pior caso  */
-  --text-muted: #A6ADB8;
-  --text-subtle: #8B94A2;         /* AA 5.03+ em todos os fundos do tema escuro */
-  --text-disabled: #747D8A;
-  --text-inverse: #08111F;
+  --text: #F5F5F5;
+  --text-secondary: #A8A8B0;
+  --text-muted: #8B8B93;
+  --text-subtle: #7A7A83;
+  --text-disabled: #55555D;
+  --text-inverse: #0A0A0A;
 
-  --primary: #5B8CFF;
-  --primary-hover: #7AA2FF;
-  --primary-active: #4A7BF0;
-  --primary-subtle: #172445;
-  --primary-subtle-hover: #1E2F57;
-  --primary-border: #2D4278;
-  --primary-foreground: #08111F;  /* 5.98:1 sobre --primary */
-  --primary-text: #5B8CFF;        /* AA 4.87 no pior caso   */
+  --primary: #22D3EE;
+  --primary-hover: #67E8F9;
+  --primary-active: #06B6D4;
+  --primary-subtle: #0B2A31;
+  --primary-subtle-hover: #0E353D;
+  --primary-border: #155E6B;
+  --primary-foreground: #0A0A0A;
+  --primary-text: #22D3EE;
 
-  --success: #42C98B;
-  --success-text: #42C98B;
-  --success-subtle: #132C23;
-  --success-border: #1F4A36;
-  --warning: #E6A53C;
-  --warning-text: #E6A53C;
-  --warning-subtle: #332712;
+  --success: #3DDC97;
+  --success-text: #3DDC97;
+  --success-subtle: #102A20;
+  --success-border: #1B4A36;
+  --warning: #F5B94A;
+  --warning-text: #F5B94A;
+  --warning-subtle: #2E2410;
   --warning-border: #55411C;
-  --danger: #F06A6A;
-  --danger-text: #F06A6A;
-  --danger-subtle: #341B1D;
+  --danger: #FF7A7A;
+  --danger-text: #FF7A7A;
+  --danger-subtle: #321A1B;
   --danger-border: #56292C;
-  --info: #5B8CFF;
-  --info-text: #5B8CFF;
-  --info-subtle: #172445;
-  --info-border: #2D4278;
+  --info: #22D3EE;
+  --info-text: #22D3EE;
+  --info-subtle: #0B2A31;
+  --info-border: #155E6B;
 
-  --overlay: rgb(5 7 10 / 0.68);
-  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px color-mix(in srgb, var(--primary) 62%, transparent);
+  --overlay: rgb(0 0 0 / 0.55);
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px color-mix(in srgb, var(--primary) 60%, transparent);
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
-  --shadow-popover: 0 8px 24px -6px rgb(0 0 0 / 0.55), 0 0 0 1px var(--border);
-  --shadow-dialog: 0 24px 56px -12px rgb(0 0 0 / 0.62), 0 0 0 1px var(--border);
+  --shadow-popover: 0 12px 40px -6px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.06);
+  --shadow-dialog: 0 30px 80px -12px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.08);
   --shadow-drag: 0 12px 28px -8px rgb(0 0 0 / 0.55);
+  --shadow-panel: 0 0 0 1px rgb(255 255 255 / 0.06);
+  --shadow-glow: 0 0 0 4px rgb(34 211 238 / 0.15), 0 4px 16px rgb(34 211 238 / 0.35);
 
-  --scrollbar-thumb: #2E353F;
-  --scrollbar-thumb-hover: #3E4754;
+  --scrollbar-thumb: rgb(255 255 255 / 0.08);
+  --scrollbar-thumb-hover: rgb(255 255 255 / 0.16);
 
-  --cat-1: #5B8CFF;  --cat-1-text: #5B8CFF;  --cat-1-subtle: #172445;  --cat-1-border: #2D4278;
-  --cat-2: #42C98B;  --cat-2-text: #42C98B;  --cat-2-subtle: #132C23;  --cat-2-border: #1F4A36;
-  --cat-3: #B292F0;  --cat-3-text: #B292F0;  --cat-3-subtle: #221A33;  --cat-3-border: #3D2F5A;
-  --cat-4: #E6A53C;  --cat-4-text: #E6A53C;  --cat-4-subtle: #332712;  --cat-4-border: #55411C;
-  --cat-5: #4EC3D4;  --cat-5-text: #4EC3D4;  --cat-5-subtle: #10272C;  --cat-5-border: #1E454D;
+  /* Categóricas: ciano + status + neutros. Sem roxo/violeta na v2. */
+  --cat-1: #22D3EE;  --cat-1-text: #22D3EE;  --cat-1-subtle: #0B2A31;  --cat-1-border: #155E6B;
+  --cat-2: #3DDC97;  --cat-2-text: #3DDC97;  --cat-2-subtle: #102A20;  --cat-2-border: #1B4A36;
+  --cat-3: #A8B4C8;  --cat-3-text: #A8B4C8;  --cat-3-subtle: #1A1D22;  --cat-3-border: #2C313A;
+  --cat-4: #F5B94A;  --cat-4-text: #F5B94A;  --cat-4-subtle: #2E2410;  --cat-4-border: #55411C;
+  --cat-5: #FF7A7A;  --cat-5-text: #FF7A7A;  --cat-5-subtle: #321A1B;  --cat-5-border: #56292C;
 }
 
-/* Sidebar recolhida — só a dimensão muda, nunca a estrutura. */
 :root[data-sidebar="collapsed"] { --sidebar-width: var(--sidebar-width-collapsed); }
 
 /* ==========================================================================
@@ -450,13 +412,11 @@
 }
 
 /* ==========================================================================
-   4. Preferências individuais (R16) — ADITIVO
-   Ativadas por data-density / data-accent no <html>, persistidas em
-   GET/PATCH /me/appearance-preferences + localStorage (boot script do layout).
-   data-accent redeclara a FAMÍLIA --primary (o acento real do sistema — os
-   aliases --accent* da camada 3 apontam para ela e seguem a troca). Valores
-   emprestados da paleta categórica, AA-verificados nos dois temas.
-   ========================================================================= */
+   4. Preferências individuais — data-accent
+   Na v2 o acento da marca é o ciano. As opções green/violet/cyan da v1 podem
+   ser mantidas por compatibilidade, mas recomenda-se remover "violet" do
+   seletor de aparência e tratar "cyan" como padrão.
+   ======================================================================= */
 :root[data-density="compact"] {
   --control-height-sm: 24px;
   --control-height: 28px;
@@ -469,6 +429,8 @@
   --gutter: clamp(12px, 1.4vw, 20px);
 }
 
+/* Acento alternativo mantido por compatibilidade (v1). Ciano = padrão v2, sem
+   bloco próprio; blue/violet saíram do seletor (lib/appearance.ts). */
 :root[data-accent="green"] {
   --primary: #16875B;
   --primary-hover: #11714B;
@@ -480,28 +442,6 @@
   --primary-text: #147C54;
 }
 
-:root[data-accent="violet"] {
-  --primary: #7C4DCB;
-  --primary-hover: #6C3FB8;
-  --primary-active: #5D339F;
-  --primary-subtle: #F3EDFC;
-  --primary-subtle-hover: #E9DDFA;
-  --primary-border: #DCCBF3;
-  --primary-foreground: #FFFFFF;
-  --primary-text: #6C3FB8;
-}
-
-:root[data-accent="cyan"] {
-  --primary: #0E7490;
-  --primary-hover: #0C6379;
-  --primary-active: #0A5265;
-  --primary-subtle: #E6F5F8;
-  --primary-subtle-hover: #D6EEF3;
-  --primary-border: #BCDEE6;
-  --primary-foreground: #FFFFFF;
-  --primary-text: #0C6579;
-}
-
 :root[data-theme="dark"][data-accent="green"] {
   --primary: #42C98B;
   --primary-hover: #57D49C;
@@ -511,26 +451,4 @@
   --primary-border: #1F4A36;
   --primary-foreground: #08111F;
   --primary-text: #42C98B;
-}
-
-:root[data-theme="dark"][data-accent="violet"] {
-  --primary: #B292F0;
-  --primary-hover: #C3A8F4;
-  --primary-active: #A284E6;
-  --primary-subtle: #221A33;
-  --primary-subtle-hover: #2B2140;
-  --primary-border: #3D2F5A;
-  --primary-foreground: #221A33;
-  --primary-text: #B292F0;
-}
-
-:root[data-theme="dark"][data-accent="cyan"] {
-  --primary: #4EC3D4;
-  --primary-hover: #6ED2E0;
-  --primary-active: #3BAFBE;
-  --primary-subtle: #10272C;
-  --primary-subtle-hover: #16343A;
-  --primary-border: #1E454D;
-  --primary-foreground: #08111F;
-  --primary-text: #4EC3D4;
 }

@@ -11,7 +11,7 @@ import { alertHistoryPollingDelay } from "@/lib/alerts";
 import { panelFeatureEnabled, type PanelFeatureFlagsResponse } from "@/lib/feature-flags";
 import { useRealtimeSignals } from "@/lib/realtime";
 import { canAccessRootWorkspace, type PanelSession } from "@/lib/session";
-import { Button } from "@/components/ui/button";
+import { SaveButton } from "@/components/ui";
 import styles from "../channels-ai.module.css";
 
 type OperationalAlert = {
@@ -237,16 +237,17 @@ export default function AlertsPage() {
                     </time>
                   </div>
                   {unread ? (
-                    <Button
-                      tone="default"
+                    <SaveButton
+                      state={dismissing === alert.id ? "busy" : "idle"}
+                      busyLabel="Dispensando…"
                       className="channels-ai-touch justify-self-start md:justify-self-end"
                       disabled={dismissing === alert.id}
                       onClick={() => void dismiss(alert.id)}
                       type="button"
+                      icon={<Check size={16} weight="bold" aria-hidden="true" />}
                     >
-                      <Check size={16} weight="bold" aria-hidden="true" />
-                      {dismissing === alert.id ? "Dispensando…" : "Dispensar"}
-                    </Button>
+                      Dispensar
+                    </SaveButton>
                   ) : (
                     <span className="mono type-caption uppercase tracking-[.1em] text-[var(--text-muted)] md:text-right">
                       {alert.can_acknowledge ? "Revisado" : "Somente leitura"}

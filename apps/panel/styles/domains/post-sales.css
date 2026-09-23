@@ -279,6 +279,9 @@
   color: var(--text-muted);
   font-size: var(--text-micro);
 }
+/* --text-muted sobre --surface-selected fica em 4.46:1 no dark (mesmo ajuste da
+   linha ativa de conversas). */
+.post-sales-client-row.is-active .post-sales-client-row__main small { color: var(--text-secondary); }
 
 .post-sales-client-row__meta {
   display: flex;

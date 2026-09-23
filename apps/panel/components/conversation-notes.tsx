@@ -8,8 +8,10 @@
 
 import { useState } from "react";
 import useSWR from "swr";
+import { Notepad } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import { canAccessWithSession, type PanelSession } from "@/lib/session";
+import { IconButton } from "@/components/ui";
 import { NoteComposer, NoteList, type NotesResponse } from "./notes-shared";
 import styles from "./conversation-notes.module.css";
 
@@ -28,10 +30,12 @@ export function ConversationNotes({ conversationId }: { conversationId: string }
   const canReply = Boolean(session && canAccessWithSession(session, ["conversations.reply"]));
 
   if (!open) {
+    // Minimalismo (README §4): ação secundária vira IconButton — o nome
+    // acessível "Nota interna" permanece exatamente igual.
     return (
-      <button type="button" className={styles.trigger} aria-expanded={false} onClick={() => setOpen(true)}>
-        Nota interna
-      </button>
+      <IconButton type="button" label="Nota interna" className={styles.trigger} aria-expanded={false} onClick={() => setOpen(true)}>
+        <Notepad size={16} aria-hidden="true" />
+      </IconButton>
     );
   }
 

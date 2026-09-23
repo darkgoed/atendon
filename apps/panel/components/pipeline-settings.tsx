@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { useCaseOrganizationEnabled } from "@/lib/organization";
 import { CANONICAL_PIPELINE_STATUSES, pipelineStatusLabel, type PipelineFollowUpConfig } from "@/lib/pipeline";
 import { usePermission } from "@/lib/use-permission";
-import { Button, Field, Input, Select } from "@/components/ui";
+import { Field, IconButton, Input, SaveButton, SaveToast, Select, useSaveFeedback } from "@/components/ui";
 import { SETTINGS_COLOR_DEFAULTS } from "@/components/settings-colors";
 import styles from "@/components/settings-panels.module.css";
 
@@ -62,6 +62,7 @@ export function PipelineSettings({
   const [capacity, setCapacity] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const save = useSaveFeedback();
   const freeMovement = enforceTransitions !== true;
 
   if (!canManage || organizationEnabled !== true) return null;
@@ -85,6 +86,7 @@ export function PipelineSettings({
       setName("");
       setCapacity("");
       await onChanged();
+      save.markDone();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Falha ao criar etapa");
     } finally {
@@ -111,7 +113,7 @@ export function PipelineSettings({
   }
 
   return <>
-    <Button onClick={() => setOpen(true)}><SlidersHorizontal size={15} aria-hidden="true" />Configurar</Button>
+    <IconButton label="Configurar" onClick={() => setOpen(true)}><SlidersHorizontal size={16} aria-hidden="true" /></IconButton>
     {open ? (
       <ModalDialog className="pipeline-settings-dialog" labelledBy="pipeline-settings-title" describedBy="pipeline-settings-description" onClose={() => { if (!pending) setOpen(false); }}>
         <header className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-4 py-4 sm:px-5">
@@ -170,9 +172,10 @@ export function PipelineSettings({
               <Field className="lg:col-span-2" label="Status técnico"><Select value={technicalStatus} onChange={(event) => setTechnicalStatus(event.target.value)}>{technicalStatuses.map((status) => <option key={status} value={status}>{pipelineStatusLabel(status)}</option>)}</Select></Field>
               <Field label="Cor"><Input className="h-10 p-1" type="color" value={color} onChange={(event) => setColor(event.target.value.toUpperCase())} /></Field>
               <Field className="lg:col-span-2" label="Meta de capacidade"><Input type="number" min="1" value={capacity} onChange={(event) => setCapacity(event.target.value)} placeholder="Sem meta" /></Field>
-              <Button tone="primary" className="self-end" onClick={() => void createStage()} disabled={!name.trim() || pending}><Plus size={15} aria-hidden="true" />{pending ? "Criando…" : "Adicionar"}</Button>
+              <SaveButton state={pending ? "busy" : save.state} busyLabel="Criando…" doneLabel="Criado" className="self-end" icon={<Plus size={15} aria-hidden="true" />} onClick={() => void createStage()} disabled={!name.trim() || pending}>Adicionar</SaveButton>
             </div>
             {error ? <p className="error mt-2" role="alert">{error}</p> : null}
+            <SaveToast show={save.done}>Etapa criada</SaveToast>
           </section>
         </div>
       </ModalDialog>
@@ -186,6 +189,7 @@ function StageEditor({ stage, stages, transitions, onChanged }: { stage: Configu
   const [replacement, setReplacement] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const stageSave = useSaveFeedback();
   const possibleTargets = stages.filter((candidate) => !candidate.archived_at && candidate.id !== stage.id);
   const transitionTargets = possibleTargets.filter((candidate) => technicalTransitions[stage.technical_status]?.includes(candidate.technical_status));
   const replacementTargets = possibleTargets.filter((candidate) => candidate.technical_status === stage.technical_status);
@@ -211,6 +215,7 @@ function StageEditor({ stage, stages, transitions, onChanged }: { stage: Configu
       await api(`/organization/pipeline/stages/${stage.id}`, { method: "PATCH", body: JSON.stringify({ name: draft.name.trim(), color: draft.color, position: Number(draft.position), capacity_target: draft.capacity ? Number(draft.capacity) : null, is_default: draft.isDefault }) });
       await api(`/organization/pipeline/stages/${stage.id}/transitions`, { method: "PUT", body: JSON.stringify({ to_stage_ids: [...targets] }) });
       await onChanged();
+      stageSave.markDone();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao salvar etapa"); }
     finally { setPending(false); }
   }
@@ -244,11 +249,12 @@ function StageEditor({ stage, stages, transitions, onChanged }: { stage: Configu
       <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={draft.isDefault} disabled={stage.is_default} onChange={(event) => setDraft((current) => ({ ...current, isDefault: event.target.checked }))} />Etapa padrão para {pipelineStatusLabel(stage.technical_status)}</label>
       <fieldset><legend className="label mb-2">Movimentos permitidos a partir desta etapa</legend><div className="grid gap-2 sm:grid-cols-2">{transitionTargets.map((target) => <label key={target.id} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={targets.has(target.id)} onChange={(event) => setTargets((current) => { const next = new Set(current); if (event.target.checked) next.add(target.id); else next.delete(target.id); return next; })} /><span className="size-2 rounded-full" style={{ backgroundColor: target.color }} />{target.name}</label>)}</div></fieldset>
       <div className="flex flex-wrap items-end gap-2 border-t border-[var(--border)] pt-3">
-        <button type="button" className="btn primary" onClick={() => void save()} disabled={pending || !draft.name.trim()}>{pending ? "Salvando…" : "Salvar etapa"}</button>
+        <SaveButton state={pending ? "busy" : stageSave.state} onClick={() => void save()} disabled={pending || !draft.name.trim()}>Salvar etapa</SaveButton>
         <label className="field min-w-52 flex-1"><span className="label">Substituta ao arquivar{needsReplacement ? " (obrigatória)" : " (opcional)"}</span><select className="input" value={replacement} onChange={(event) => setReplacement(event.target.value)}><option value="">{needsReplacement ? "Selecione" : "Sem substituta"}</option>{replacementTargets.map((target) => <option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
         <button type="button" className="btn warn" onClick={() => void archive()} disabled={(needsReplacement && !replacement) || pending}><Archive size={15} aria-hidden="true" />Arquivar</button>
       </div>
       {error ? <p className="error" role="alert">{error}</p> : null}
+      <SaveToast show={stageSave.done}>Etapa salva</SaveToast>
     </div>
   </details>;
 }

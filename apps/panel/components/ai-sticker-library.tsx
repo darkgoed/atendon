@@ -4,7 +4,8 @@ import { Check, FloppyDisk, Sticker, Trash, UploadSimple, WhatsappLogo } from "@
 import { FormEvent, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
-import { Button } from "@/components/ui/button";
+import { SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
+import { IconButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/status";
 
@@ -54,6 +55,9 @@ export function AiStickerLibrary() {
   const [file, setFile] = useState<File>();
   const [status, setStatus] = useState("");
   const [busyId, setBusyId] = useState<string>();
+  const [uploading, setUploading] = useState(false);
+  const saveState = useSaveFeedback();
+  const uploadSave = useSaveFeedback();
   const fileInput = useRef<HTMLInputElement>(null);
   const stickers = useMemo(() => data?.stickers ?? [], [data?.stickers]);
   const pendingCount = useMemo(() => stickers.filter((sticker) => !sticker.enabled).length, [stickers]);
@@ -73,7 +77,7 @@ export function AiStickerLibrary() {
     if (!file) return setStatus("Selecione uma figurinha WebP.");
     if (file.type !== "image/webp" && !file.name.toLocaleLowerCase("pt-BR").endsWith(".webp")) return setStatus("Use um arquivo WebP.");
     if (file.size > 1024 * 1024) return setStatus("A figurinha deve ter no máximo 1 MB.");
-    setStatus("Enviando figurinha…");
+    setUploading(true);
     try {
       await api("/ai-stickers", {
         method: "POST",
@@ -92,9 +96,12 @@ export function AiStickerLibrary() {
       setFile(undefined);
       if (fileInput.current) fileInput.current.value = "";
       setStatus("Figurinha adicionada à biblioteca.");
+      uploadSave.markDone();
       await mutate();
     } catch (uploadError) {
       setStatus(uploadError instanceof Error ? uploadError.message : "Não foi possível enviar a figurinha.");
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -113,6 +120,7 @@ export function AiStickerLibrary() {
         return next;
       });
       setStatus("Biblioteca atualizada.");
+      saveState.markDone();
       await mutate();
     } catch (saveError) {
       setStatus(saveError instanceof Error ? saveError.message : "Não foi possível salvar.");
@@ -178,8 +186,17 @@ export function AiStickerLibrary() {
                   </div>
                 </div>
                 <div className="flex items-start gap-2 md:flex-col">
-                  <Button type="button" tone="primary" className="channels-ai-touch" disabled={!dirty || busyId === sticker.id} onClick={() => void save(sticker)}><FloppyDisk size={15} aria-hidden="true" />{busyId === sticker.id ? "Salvando…" : "Salvar"}</Button>
-                  <Button type="button" className="channels-ai-touch" disabled={busyId === sticker.id} onClick={() => void remove(sticker)} aria-label={`Remover ${sticker.name}`}><Trash size={15} aria-hidden="true" /><span className="md:sr-only">Remover</span></Button>
+                  <SaveButton
+                    type="button"
+                    className="channels-ai-touch"
+                    state={busyId === sticker.id ? "busy" : "idle"}
+                    icon={<FloppyDisk size={15} aria-hidden="true" />}
+                    disabled={!dirty}
+                    onClick={() => void save(sticker)}
+                  >
+                    Salvar
+                  </SaveButton>
+                  <IconButton className="channels-ai-touch" label={`Remover ${sticker.name}`} disabled={busyId === sticker.id} onClick={() => void remove(sticker)}><Trash size={15} aria-hidden="true" /></IconButton>
                 </div>
               </article>;
             })}
@@ -193,7 +210,18 @@ export function AiStickerLibrary() {
           <label className="field"><span>Nome</span><input className="input" required minLength={2} maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Confirmação animada"/></label>
           <label className="field"><span>Quando usar</span><textarea className="input channels-ai-textarea-tall resize-y" required minLength={3} maxLength={500} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Ex.: quando o contato demonstrar entusiasmo depois de confirmar uma visita"/></label>
           <label className="field"><span>Tags</span><input className="input" value={tags} onChange={(event) => setTags(event.target.value)} placeholder="confirmação, comemoração"/><small className="sub">Separe por vírgula.</small></label>
-          <Button type="submit" tone="primary" className="channels-ai-touch" disabled={!file || !name.trim() || !description.trim() || status === "Enviando figurinha…"}><UploadSimple size={16}/>Adicionar à biblioteca</Button>
+          <SaveButton
+            type="submit"
+            className="channels-ai-touch"
+            state={uploading ? "busy" : uploadSave.state}
+            busyLabel="Enviando figurinha…"
+            doneLabel="Adicionada"
+            icon={<UploadSimple size={16} aria-hidden="true" />}
+            disabled={!file || !name.trim() || !description.trim()}
+          >
+            Adicionar à biblioteca
+          </SaveButton>
+          <SaveToast show={uploadSave.done}>Figurinha adicionada</SaveToast>
         </form>
 
         <section className="border-t border-[var(--border)] pt-5">
@@ -207,6 +235,7 @@ export function AiStickerLibrary() {
         </section>
         {status ? <p role={/adicionada|atualizada|removida/.test(status) ? "status" : "alert"} className={`flex items-center gap-2 text-sm ${/adicionada|atualizada|removida/.test(status) ? "accent" : "error"}`}>{/adicionada|atualizada|removida/.test(status) ? <Check size={16} aria-hidden="true" /> : null}{status}</p> : null}
       </aside>
+      <SaveToast show={saveState.done}>Figurinha salva</SaveToast>
     </div>
   </>;
 }

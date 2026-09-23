@@ -1,11 +1,12 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { ArrowsClockwise } from "@phosphor-icons/react";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { deepClone } from "@/lib/compat";
 import { usePermission } from "@/lib/use-permission";
-import { Button, PageHeader } from "@/components/ui";
+import { IconButton, PageHeader, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import styles from "@/components/settings-panels.module.css";
 
 type Json = { [key: string]: number | string[] | Json };
@@ -72,6 +73,7 @@ export default function HumanizacaoPage() {
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const save = useSaveFeedback();
 
   const loadHumanizer = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -117,6 +119,7 @@ export default function HumanizacaoPage() {
     try {
       await api("/humanizer", { method: "PUT", body: JSON.stringify(value) });
       setSaved(true);
+      save.markDone();
     } catch (saveError) {
       setError(errorMessage(saveError, "Falha ao salvar a configuração."));
     } finally {
@@ -131,7 +134,7 @@ export default function HumanizacaoPage() {
       {error ? (
         <section className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-4" role="alert">
           <p className="error">{error}</p>
-          {!value ? <button type="button" className="btn warn" onClick={() => void loadHumanizer()}>Tentar novamente</button> : null}
+          {!value ? <IconButton type="button" label="Tentar novamente" onClick={() => void loadHumanizer()}><ArrowsClockwise size={16} aria-hidden="true" /></IconButton> : null}
         </section>
       ) : null}
 
@@ -152,9 +155,10 @@ export default function HumanizacaoPage() {
           <div className={styles.saveBar}>
             {!canManage ? <span className="text-sm text-[var(--text-secondary)]">Acesso somente leitura.</span> : null}
             {saved ? <span className="text-sm text-[var(--primary-text)]" role="status">Configuração salva.</span> : null}
-            <Button type="submit" tone="primary" disabled={saving || !canManage}>
-              {saving ? "Salvando…" : "Salvar humanização"}
-            </Button>
+            <SaveButton type="submit" state={saving ? "busy" : save.state} disabled={saving || !canManage}>
+              Salvar humanização
+            </SaveButton>
+            <SaveToast show={save.done}>Configurações salvas</SaveToast>
           </div>
         </form>
       ) : null}

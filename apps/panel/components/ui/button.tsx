@@ -13,6 +13,8 @@ const button = cva("btn", {
     tone: {
       default: "",
       primary: "primary",
+      /** Ciano cheio — só envio e confirmação em lote (DS v2 §4). */
+      accent: "btn--accent",
       quiet: "quiet",
       danger: "danger",
       "danger-solid": "btn--danger-solid",

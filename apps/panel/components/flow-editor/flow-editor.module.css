@@ -58,18 +58,23 @@
   font-weight: var(--weight-semibold);
 }
 
+/* Pill de status do editor (ref. Fluxo.dc.html): altura 26px, raio pill,
+   ponto 6px currentColor. Ativo: fundo success-subtle, cor --success e ponto
+   pulsando (on-beat 1.4s). Inativo: fundo --surface-sunken, cor --text-muted,
+   sem animação. */
 .statusPill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: 7px;
+  height: 26px;
+  padding: 0 10px;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  font-size: var(--text-micro);
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-overline);
+  border: 0;
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  background: var(--surface-sunken);
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .statusPill::before {
@@ -77,16 +82,23 @@
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: var(--text-disabled);
+  background: currentColor;
 }
 
 .statusPill[data-on="true"] {
-  color: var(--success-text);
-  border-color: var(--success-border);
+  color: var(--success);
   background: var(--success-subtle);
 }
 
-.statusPill[data-on="true"]::before { background: var(--success); }
+.statusPill[data-on="true"]::before { animation: on-beat 1.4s ease-out infinite; }
+
+/* Contador de nós: mono 11px --text-subtle (ref. Fluxo.dc.html). */
+.nodeCount {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted); /* --text-subtle fica em 4.43:1 no dark */
+  white-space: nowrap;
+}
 
 .headerActions {
   display: flex;
@@ -96,7 +108,13 @@
   margin-left: auto;
 }
 
-.dirtyNote { font-size: var(--text-micro); color: var(--text-muted); }
+/* Simular em curso: destaque ciano mesmo desabilitado (evita re-run). */
+.header .headerActions [data-running="true"] {
+  background: var(--primary-subtle);
+  border-color: transparent;
+  color: var(--primary);
+  opacity: 1;
+}
 
 /* ---- corpo: paleta | canvas | propriedades ---- */
 .body {
@@ -165,8 +183,13 @@
   position: relative;
   min-width: 0;
   min-height: 0;
-  background: var(--bg);
+  background: var(--surface-sunken);
 }
+
+/* Fluxo Ativo ou simulação em curso: arestas ciano tracejadas animadas
+   (README §6 — SVG do React Flow: stroke-dasharray 5 9 + dashoffset,
+   equivalente ao on-flow .7s linear). Repouso: aresta neutra. */
+@keyframes flowDash { to { stroke-dashoffset: -14; } }
 
 .canvasWrap :global(.react-flow__node) { cursor: pointer; }
 .canvasWrap :global(.react-flow__attribution) { display: none; }
@@ -178,7 +201,12 @@
   border: 2px solid var(--nt, var(--border-strong));
 }
 .canvasWrap :global(.react-flow__handle-connecting) { border-color: var(--primary); }
-.canvasWrap :global(.react-flow__edge-path) { stroke: color-mix(in srgb, var(--primary) 70%, var(--border)); stroke-width: 2; }
+.canvasWrap :global(.react-flow__edge-path) { stroke: var(--border-strong); stroke-width: 2; }
+.canvasWrap[data-flowing="true"] :global(.react-flow__edge-path) {
+  stroke: var(--primary);
+  stroke-dasharray: 5 9;
+  animation: flowDash 0.7s linear infinite;
+}
 .canvasWrap :global(.react-flow__edge-text) { fill: var(--text-muted); font-size: 10px; }
 .canvasWrap :global(.react-flow__edge-textbg) { fill: var(--surface); }
 
@@ -212,14 +240,14 @@
 .canvasToolbar button {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md, 10px);
   background: var(--surface);
   color: var(--text-secondary);
-  font-size: var(--text-micro);
-  font-weight: var(--weight-medium);
   cursor: pointer;
   box-shadow: var(--shadow-sm);
 }
@@ -480,23 +508,8 @@
 .optionRow { display: flex; align-items: center; gap: 6px; }
 .optionRow .input { flex: 1; min-width: 0; }
 
-.removeStep {
-  margin-top: 4px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
-  border: 1px solid var(--danger-border);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--danger-text);
-  font-size: var(--text-label);
-  font-weight: var(--weight-medium);
-  cursor: pointer;
-}
-
-.removeStep:hover { background: var(--danger-subtle); }
-.removeStep:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Posiciona o IconButton "Remover etapa" ao pé do painel de propriedades. */
+.removeStepRow { margin-top: 4px; display: flex; }
 
 /* ---- painel de simulação ---- */
 .trace {
@@ -549,8 +562,6 @@
   color: var(--danger-text);
   font-size: var(--text-label);
 }
-
-.savedNote { color: var(--success-text); }
 
 /* ---- responsivo: paleta colapsa ---- */
 @media (max-width: 900px) {

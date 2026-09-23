@@ -4,9 +4,10 @@ import { type FormEvent, useState } from "react";
 import { Eye, EyeSlash, Key } from "@phosphor-icons/react";
 import { BrandMark } from "@/components/brand-mark";
 import { api } from "@/lib/api";
-import { Button, Field, Input } from "@/components/ui";
+import { Field, Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 
 export default function RequiredPasswordChangePage() {
+  const save = useSaveFeedback();
   const [saving, setSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -30,6 +31,7 @@ export default function RequiredPasswordChangePage() {
         method: "POST",
         body: JSON.stringify({ newPassword, passwordConfirmation })
       });
+      save.markDone();
       window.location.assign(response.user.isRoot ? "/root/workspaces" : "/");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Falha ao criar a nova senha");
@@ -90,9 +92,10 @@ export default function RequiredPasswordChangePage() {
           </Field>
 
           {error ? <p className="error" role="alert">{error}</p> : null}
-          <Button type="submit" tone="primary" className="button-wide" icon={<Key size={18} aria-hidden="true" />} disabled={saving}>
-            {saving ? "Salvando…" : "Criar senha e continuar"}
-          </Button>
+          <SaveButton type="submit" state={saving ? "busy" : save.state} className="button-wide" icon={<Key size={18} aria-hidden="true" />} disabled={saving}>
+            Criar senha e continuar
+          </SaveButton>
+          <SaveToast show={save.done}>Senha alterada</SaveToast>
         </form>
       </section>
     </main>

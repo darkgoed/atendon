@@ -6,7 +6,7 @@ import useSWR from "swr";
 import { api } from "@/lib/api";
 import { useCaseOrganizationEnabled } from "@/lib/organization";
 import { PopoverMenu } from "@/components/popover-menu";
-import { Button, Input } from "@/components/ui";
+import { Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import type { PanelSession } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
 
@@ -46,6 +46,7 @@ export function SavedViewsControl({
   const [shared, setShared] = useState(false);
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState("");
+  const viewSave = useSaveFeedback();
 
   async function save() {
     if (!name.trim() || pending) return;
@@ -59,6 +60,7 @@ export function SavedViewsControl({
       setName("");
       setShared(false);
       await mutate();
+      viewSave.markDone();
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "Falha ao salvar visão");
     } finally {
@@ -83,9 +85,10 @@ export function SavedViewsControl({
   if (organizationEnabled !== true) return null;
   return (
     <PopoverMenu
-      buttonClassName="btn active:scale-[.98]"
-      icon={<BookmarkSimple size={15} aria-hidden="true" />}
-      label="Visões"
+      buttonClassName="icon-button icon-button--md"
+      icon={<BookmarkSimple size={16} aria-hidden="true" />}
+      ariaLabel="Visões"
+      title="Visões"
       panelClassName="pipeline-popover pipeline-popover--saved grid gap-3"
     >
       {(close) => (
@@ -118,11 +121,11 @@ export function SavedViewsControl({
               <Input className="input" value={name} onChange={(event) => setName(event.target.value)} maxLength={100} placeholder="Ex.: Leads quentes desta semana" />
             </label>
             {canPublish ? <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={shared} onChange={(event) => setShared(event.target.checked)} /> Compartilhar com o workspace</label> : null}
-            <Button type="button" className="btn primary" onClick={() => void save()} disabled={!name.trim() || pending}>
-              <FloppyDisk size={15} aria-hidden="true" />
-              {pending ? "Salvando…" : "Salvar filtros atuais"}
-            </Button>
+            <SaveButton state={pending ? "busy" : viewSave.state} icon={<FloppyDisk size={15} aria-hidden="true" />} onClick={() => void save()} disabled={!name.trim() || pending}>
+              Salvar filtros atuais
+            </SaveButton>
             {actionError ? <p className="error" role="alert">{actionError}</p> : null}
+            <SaveToast show={viewSave.done}>Visão salva</SaveToast>
           </div>
         </>
       )}

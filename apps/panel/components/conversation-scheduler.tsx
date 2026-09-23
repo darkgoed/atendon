@@ -1,7 +1,8 @@
 "use client";
 
-import { Button, Input, Select } from "@/components/ui";
+import { Button, IconButton, Input, SaveButton, SaveToast, Select, useSaveFeedback } from "@/components/ui";
 import {
+  ArrowClockwise,
   ArrowLeft,
   ArrowRight,
   CalendarDots,
@@ -98,6 +99,7 @@ export function ConversationScheduler({
   onClose: () => void;
 }) {
   const utcToday = isoDay(new Date());
+  const save = useSaveFeedback();
   const [unitId, setUnitId] = useState("");
   const [date, setDate] = useState(utcToday);
   const [dateTouched, setDateTouched] = useState(false);
@@ -229,6 +231,7 @@ export function ConversationScheduler({
         })
       });
       setCreated(response.agendamento);
+      save.markDone();
     } catch (error) {
       setSubmitError(errorMessage(error, "Não foi possível criar o agendamento."));
       await retryAvailability();
@@ -246,6 +249,7 @@ export function ConversationScheduler({
         method: "PATCH",
         body: JSON.stringify({ assigned_member_id: assignedMemberId || null })
       });
+      save.markDone();
       await Promise.all([retryContext(), retryAssignees()]);
     } catch (error) {
       setSubmitError(errorMessage(error, "Não foi possível reatribuir a reunião."));
@@ -272,7 +276,7 @@ export function ConversationScheduler({
         {assigneesLoading ? <div className="skeleton h-20" aria-label="Carregando closers" /> : assigneeError ? (
           <div className="flex items-center justify-between gap-3 text-sm text-[var(--warning-text)]" role="alert">
             <span>{errorMessage(assigneeError, "Não foi possível carregar os closers.")}</span>
-            <Button type="button" className="btn warn" onClick={() => void retryAssignees()}>Tentar novamente</Button>
+            <IconButton type="button" tone="danger" label="Tentar novamente" onClick={() => void retryAssignees()}><ArrowClockwise size={14} aria-hidden="true" /></IconButton>
           </div>
         ) : (
           <>
@@ -347,9 +351,9 @@ export function ConversationScheduler({
             {contactName ?? contactPhone} <span className="mono text-xs text-[var(--text-muted)]">· {contactPhone}</span>
           </p>
         </div>
-        <Button type="button" className="btn shrink-0" aria-label="Fechar agenda" disabled={creating} onClick={onClose}>
+        <IconButton type="button" label="Fechar agenda" disabled={creating} onClick={onClose}>
           <X size={16} aria-hidden="true" />
-        </Button>
+        </IconButton>
       </header>
 
       {loading ? (
@@ -370,9 +374,9 @@ export function ConversationScheduler({
               <p className="mt-1 text-sm text-[var(--warning-text)]">{errorMessage(loadError, "Tente novamente.")}</p>
             </div>
           </div>
-          <Button type="button" className="btn warn justify-self-start" onClick={() => void Promise.all([retryContext(), retryUnits()])}>
-            Tentar novamente
-          </Button>
+          <IconButton type="button" tone="danger" label="Tentar novamente" className="justify-self-start" onClick={() => void Promise.all([retryContext(), retryUnits()])}>
+            <ArrowClockwise size={16} aria-hidden="true" />
+          </IconButton>
         </section>
       ) : created ? (
         <section className="grid gap-5 py-2" role="status" aria-live="polite">
@@ -420,9 +424,14 @@ export function ConversationScheduler({
           <div className="flex flex-wrap justify-end gap-2">
             <Link className="btn" href="/agenda">Ver agenda</Link>
             {context.can_select_assignee ? (
-              <Button type="button" className="btn primary" disabled={reassigning || assigneesLoading || (!assignedMemberId && !noSelectableAssignee)} onClick={() => void reassignAppointment()}>
-                {reassigning ? "Salvando…" : "Salvar responsável"}
-              </Button>
+              <SaveButton
+                type="button"
+                state={reassigning ? "busy" : save.state}
+                disabled={reassigning || assigneesLoading || (!assignedMemberId && !noSelectableAssignee)}
+                onClick={() => void reassignAppointment()}
+              >
+                Salvar responsável
+              </SaveButton>
             ) : null}
           </div>
         </section>
@@ -486,12 +495,12 @@ export function ConversationScheduler({
                 </strong>
               </div>
               <div className="flex gap-2">
-                <Button type="button" className="btn" disabled={date <= today || creating} onClick={() => moveDate(-1)} aria-label="Dia anterior">
+                <IconButton type="button" label="Dia anterior" disabled={date <= today || creating} onClick={() => moveDate(-1)}>
                   <ArrowLeft size={16} aria-hidden="true" />
-                </Button>
-                <Button type="button" className="btn" disabled={creating} onClick={() => moveDate(1)} aria-label="Próximo dia">
+                </IconButton>
+                <IconButton type="button" label="Próximo dia" disabled={creating} onClick={() => moveDate(1)}>
                   <ArrowRight size={16} aria-hidden="true" />
-                </Button>
+                </IconButton>
               </div>
             </div>
 
@@ -502,7 +511,7 @@ export function ConversationScheduler({
             ) : availabilityError ? (
               <div className="flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-4 text-sm text-[var(--warning-text)]" role="alert">
                 <span>{errorMessage(availabilityError, "Não foi possível carregar os horários.")}</span>
-                <Button type="button" className="btn warn" onClick={() => void retryAvailability()}>Tentar novamente</Button>
+                <IconButton type="button" tone="danger" label="Tentar novamente" onClick={() => void retryAvailability()}><ArrowClockwise size={14} aria-hidden="true" /></IconButton>
               </div>
             ) : slots.length === 0 ? (
               <div className="grid justify-items-start gap-2 border-y border-[var(--border)] py-5 text-[var(--text-secondary)]" role="status">
@@ -557,13 +566,20 @@ export function ConversationScheduler({
 
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" className="btn" disabled={creating} onClick={onClose}>Cancelar</Button>
-            <Button type="submit" className="btn primary" disabled={!selectedStart || creating || availabilityLoading || Boolean(availabilityError) || assigneesLoading || (context.can_select_assignee && !assignedMemberId && !noSelectableAssignee)}>
-              <CalendarDots size={16} aria-hidden="true" />
-              {creating ? "Agendando…" : "Confirmar agendamento"}
-            </Button>
+            <SaveButton
+              type="submit"
+              state={creating ? "busy" : save.state}
+              busyLabel="Agendando…"
+              doneLabel="Agendado"
+              icon={<CalendarDots size={16} aria-hidden="true" />}
+              disabled={!selectedStart || creating || availabilityLoading || Boolean(availabilityError) || assigneesLoading || (context.can_select_assignee && !assignedMemberId && !noSelectableAssignee)}
+            >
+              Confirmar agendamento
+            </SaveButton>
           </div>
         </form>
       )}
+      <SaveToast show={save.done}>{created ? "Contato agendado" : "Responsável salvo"}</SaveToast>
     </ModalDialog>
   );
 }

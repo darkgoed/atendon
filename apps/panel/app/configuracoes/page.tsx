@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRinging, BellSimple, Buildings, CalendarCheck, ChartBar, CheckCircle, ChatCircleDots, ClockCountdown, Cpu, FloppyDisk, GlobeHemisphereWest, GoogleLogo, Handshake, HardDrives, Link as LinkIcon, LinkBreak, PencilSimple, Plus, Queue, ShieldCheck, SlidersHorizontal, Sticker, TagSimple, Trash, UserList, UsersThree, VideoCamera, WarningCircle, Watch, type Icon } from "@phosphor-icons/react";
+import { BellRinging, BellSimple, Buildings, CalendarCheck, ChartBar, CheckCircle, ChatCircleDots, ClockCountdown, Cpu, FloppyDisk, GlobeHemisphereWest, GoogleLogo, Handshake, HardDrives, Link as LinkIcon, LinkBreak, PencilSimple, Plus, Queue, ShieldCheck, SlidersHorizontal, SpeakerHigh, Sticker, TagSimple, Trash, UserList, UsersThree, VideoCamera, WarningCircle, Watch, X, type Icon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
@@ -37,7 +37,7 @@ import { ConversationQueueManager } from "@/components/conversation-queue-manage
 import { WorkspaceLogoSection } from "@/components/workspace-logo";
 import { StorageSettingsPanel } from "@/components/storage-settings";
 import { SETTINGS_COLOR_DEFAULTS } from "@/components/settings-colors";
-import { Button, Field as UiField, Input } from "@/components/ui";
+import { Button, Field as UiField, IconButton, Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { settingsNavGroups } from "@/lib/panel-manifest";
 import styles from "@/components/settings-panels.module.css";
 
@@ -481,12 +481,12 @@ export default function ConfigPage() {
                     {canManage ? (
                       <td data-label="Ações" className="px-4 py-3">
                         <div className="flex justify-end gap-2">
-                          <button type="button" className="btn p-2" aria-label={`Editar ${item.nome}`} onClick={() => setEditing(item)}>
+                          <IconButton label={`Editar ${item.nome}`} size="sm" onClick={() => setEditing(item)}>
                             <PencilSimple aria-hidden="true" />
-                          </button>
-                          <button type="button" className="btn warn p-2" aria-label={`Excluir ${item.nome}`} disabled={!item.id} onClick={() => { if (item.id) void remove(item.id); }}>
+                          </IconButton>
+                          <IconButton label={`Excluir ${item.nome}`} size="sm" tone="danger" disabled={!item.id} onClick={() => { if (item.id) void remove(item.id); }}>
                             <Trash aria-hidden="true" />
-                          </button>
+                          </IconButton>
                         </div>
                       </td>
                     ) : null}
@@ -532,6 +532,7 @@ function WorkspaceSettingsPanel({ canManageLogo }: { canManageLogo: boolean }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saved, setSaved] = useState(false);
+  const save = useSaveFeedback();
 
   useEffect(() => {
     if (data?.workspace.timezone) setTimezone(data.workspace.timezone);
@@ -559,6 +560,7 @@ function WorkspaceSettingsPanel({ canManageLogo }: { canManageLogo: boolean }) {
       setBusinessHoursEnd(response.workspace.business_hours_end.slice(0, 5));
       await mutate(response, { revalidate: false });
       setSaved(true);
+      save.markDone();
     } catch (submitError) {
       setSaveError(submitError instanceof Error ? submitError.message : "Não foi possível atualizar o fuso horário.");
     } finally {
@@ -629,14 +631,15 @@ function WorkspaceSettingsPanel({ canManageLogo }: { canManageLogo: boolean }) {
             </label>
           </div>
           <div>
-            <button
+            <SaveButton
               type="submit"
-              className="btn primary active:scale-[0.98]"
+              state={saving ? "busy" : save.state}
               disabled={!timezone.trim() || !businessHoursStart || !businessHoursEnd || saving}
+              icon={<FloppyDisk size={16} aria-hidden="true" />}
             >
-              <FloppyDisk size={16} aria-hidden="true" />
-              {saving ? "Salvando…" : "Salvar"}
-            </button>
+              Salvar
+            </SaveButton>
+            <SaveToast show={save.done}>Configurações salvas</SaveToast>
           </div>
         </div>
       </form>
@@ -668,6 +671,7 @@ function SignatureSettingsPanel({ canManage }: { canManage: boolean }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saved, setSaved] = useState(false);
+  const save = useSaveFeedback();
 
   useEffect(() => {
     if (!data) return;
@@ -689,6 +693,7 @@ function SignatureSettingsPanel({ canManage }: { canManage: boolean }) {
       });
       await mutate(response, { revalidate: false });
       setSaved(true);
+      save.markDone();
     } catch (submitError) {
       setSaveError(submitError instanceof Error ? submitError.message : "Não foi possível salvar a assinatura.");
     } finally {
@@ -752,10 +757,10 @@ function SignatureSettingsPanel({ canManage }: { canManage: boolean }) {
           </label>
           {canManage ? (
             <div>
-              <button type="submit" className="btn primary active:scale-[0.98]" disabled={saving}>
-                <FloppyDisk size={16} aria-hidden="true" />
-                {saving ? "Salvando…" : "Salvar"}
-              </button>
+              <SaveButton type="submit" state={saving ? "busy" : save.state} icon={<FloppyDisk size={16} aria-hidden="true" />}>
+                Salvar
+              </SaveButton>
+              <SaveToast show={save.done}>Configurações salvas</SaveToast>
             </div>
           ) : null}
         </div>
@@ -909,14 +914,13 @@ function PanelNotificationSettingsPanel() {
             </div>
           </div>
           <div className={styles.soundField}>
-            <button
-              type="button"
-              className="btn"
+            <IconButton
+              label="Testar som"
               disabled={soundControlsDisabled}
               onClick={() => playNotificationSound(soundKey, volume)}
             >
-              Testar som
-            </button>
+              <SpeakerHigh aria-hidden="true" />
+            </IconButton>
           </div>
         </div>
       </section>
@@ -931,7 +935,7 @@ function PanelNotificationSettingsPanel() {
             {data.muted_conversations.map((conversation) => (
               <div key={conversation.id} className="flex items-center justify-between gap-4 py-3">
                 <div className="min-w-0"><strong className="block truncate text-sm">{conversation.contact_name?.trim() || conversation.contact_phone}</strong><span className="mono type-caption text-[var(--text-muted)]">{conversation.contact_phone}</span></div>
-                <button type="button" className="btn" onClick={() => void unmute(conversation.id)}>Reativar avisos</button>
+                <IconButton label="Reativar avisos" onClick={() => void unmute(conversation.id)}><BellRinging aria-hidden="true" /></IconButton>
               </div>
             ))}
           </div>
@@ -960,6 +964,7 @@ function AgendaNotificationSettingsPanel({ canManage }: { canManage: boolean }) 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saved, setSaved] = useState(false);
+  const save = useSaveFeedback();
 
   useEffect(() => {
     if (!data) return;
@@ -981,6 +986,7 @@ function AgendaNotificationSettingsPanel({ canManage }: { canManage: boolean }) 
       });
       await mutate(response, { revalidate: false });
       setSaved(true);
+      save.markDone();
     } catch (submitError) {
       setSaveError(submitError instanceof Error ? submitError.message : "Não foi possível salvar a configuração.");
     } finally {
@@ -1038,23 +1044,24 @@ function AgendaNotificationSettingsPanel({ canManage }: { canManage: boolean }) 
               <small className="sub">
                 Grupo atual: {groupName || groupJid}
                 {canManage ? (
-                  <button
-                    type="button"
-                    className="ml-2 text-[var(--primary-text)] underline-offset-2 hover:underline"
+                  <IconButton
+                    label="Remover"
+                    size="sm"
+                    className="ml-2 align-[-2px]"
                     onClick={() => { setGroupJid(""); setGroupName(""); setSaved(false); }}
                   >
-                    Remover
-                  </button>
+                    <X aria-hidden="true" />
+                  </IconButton>
                 ) : null}
               </small>
             ) : null}
           </label>
           {canManage ? (
             <div>
-              <button type="submit" className="btn primary active:scale-[0.98]" disabled={saving || (enabled && !groupJid)}>
-                <FloppyDisk size={16} aria-hidden="true" />
-                {saving ? "Salvando…" : "Salvar"}
-              </button>
+              <SaveButton type="submit" state={saving ? "busy" : save.state} disabled={saving || (enabled && !groupJid)} icon={<FloppyDisk size={16} aria-hidden="true" />}>
+                Salvar
+              </SaveButton>
+              <SaveToast show={save.done}>Configurações salvas</SaveToast>
             </div>
           ) : null}
         </div>
@@ -1096,6 +1103,7 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
   const [colorDrafts, setColorDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
+  const save = useSaveFeedback();
   const panelState = attendantPanelState({
     loading: isLoading,
     hasData: Boolean(data),
@@ -1130,6 +1138,7 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
       setSelectionDirty(false);
       await mutate(response, false);
       setFeedback(attendantPoolSavedMessage(response));
+      save.markDone();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Falha ao salvar a equipe de atendimento");
     } finally {
@@ -1285,7 +1294,8 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
       ) : <Empty>Nenhum membro ativo possui acesso de leitura e resposta a conversas.</Empty>}
       <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] pt-5">
         <span className="sub max-w-[76ch] text-xs">Ao remover alguém do pool, leads e conversas ativas e suas reuniões ativas são redistribuídos. Alterar a disponibilidade não remove o membro do rodízio.</span>
-        {canManage ? <button className="btn primary" disabled={saving}><FloppyDisk size={16} aria-hidden="true" />{saving ? "Salvando…" : "Salvar equipe"}</button> : null}
+        {canManage ? <SaveButton type="submit" state={saving ? "busy" : save.state} icon={<FloppyDisk size={16} aria-hidden="true" />}>Salvar equipe</SaveButton> : null}
+        <SaveToast show={save.done}>Equipe salva</SaveToast>
       </div>
       </form>
     </PanelChassi>
@@ -1303,6 +1313,7 @@ function AtendonMeetSettingsPanel({ canManage }: { canManage: boolean }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const save = useSaveFeedback();
 
   useEffect(() => {
     let active = true;
@@ -1335,6 +1346,7 @@ function AtendonMeetSettingsPanel({ canManage }: { canManage: boolean }) {
       });
       setEnabled(response.settings.enabled);
       setSaved(true);
+      save.markDone();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Falha ao salvar a configuração do AtendON Meet");
     } finally {
@@ -1377,8 +1389,9 @@ function AtendonMeetSettingsPanel({ canManage }: { canManage: boolean }) {
 
           <div className="mt-7 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] pt-5">
             <span className="sub max-w-[58ch] text-xs">Quando ativo, o AtendON Meet tem prioridade sobre a integração Google Meet para novas reuniões.</span>
-            {canManage ? <button className="btn primary active:scale-[.98]" disabled={!available || saving}><FloppyDisk size={16} aria-hidden="true" />{saving ? "Salvando…" : "Salvar AtendON Meet"}</button> : <span className="sub text-xs">Disponível somente para consulta.</span>}
+            {canManage ? <SaveButton type="submit" state={saving ? "busy" : save.state} disabled={!available || saving} icon={<FloppyDisk size={16} aria-hidden="true" />}>Salvar AtendON Meet</SaveButton> : <span className="sub text-xs">Disponível somente para consulta.</span>}
           </div>
+          <SaveToast show={save.done}>Meet salvo</SaveToast>
         </div>
       </form>
     </PanelChassi>
@@ -1415,6 +1428,7 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
   const [disconnecting, setDisconnecting] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const save = useSaveFeedback();
 
   const applyResponse = useCallback((response: GoogleMeetSettingsResponse) => {
     setData(response);
@@ -1460,6 +1474,7 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
       });
       applyResponse(response);
       setSaved(true);
+      save.markDone();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Falha ao salvar a configuração do Google Meet");
     } finally {
@@ -1531,9 +1546,9 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
               <span className="sub mt-1 block text-xs">{oauthConnected ? "Esta conta organiza os novos links do Meet." : "Use uma conta Google com acesso ao Meet."}</span>
             </div>
             {oauthConnected ? (
-              <button type="button" className="btn warn active:scale-[0.98]" disabled={!canManage || disconnecting} onClick={() => void disconnectGoogle()}>
-                <LinkBreak size={17} aria-hidden="true" /> {disconnecting ? "Desconectando…" : "Desconectar"}
-              </button>
+              <IconButton label="Desconectar" disabled={!canManage || disconnecting} onClick={() => void disconnectGoogle()}>
+                {disconnecting ? <span className="on-spinner" aria-hidden="true" /> : <LinkBreak size={17} aria-hidden="true" />}
+              </IconButton>
             ) : (
               <button type="button" className="btn primary active:scale-[0.98]" disabled={!canManage || connecting || !oauthAvailable} onClick={() => void connectGoogle()}>
                 <GoogleLogo size={17} weight="bold" aria-hidden="true" /> {connecting ? "Abrindo Google…" : "Conectar com Google"}
@@ -1564,10 +1579,10 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
         {canManage ? (
           <div className="mt-7 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] pt-5">
             <span className="sub text-xs">Ativar a sala automática exige uma conta Google conectada e ao menos um atendente no pool compartilhado.</span>
-            <button className="btn primary active:scale-[0.98]" disabled={saving || activationBlocked}>
-              <FloppyDisk aria-hidden="true" />
-              {saving ? "Salvando…" : "Salvar Google Meet"}
-            </button>
+            <SaveButton type="submit" state={saving ? "busy" : save.state} disabled={saving || activationBlocked} icon={<FloppyDisk aria-hidden="true" />}>
+              Salvar Google Meet
+            </SaveButton>
+            <SaveToast show={save.done}>Meet salvo</SaveToast>
           </div>
         ) : <p className="sub mt-6 text-sm">Esta configuração está disponível somente para consulta.</p>}
       </section>
@@ -1607,6 +1622,7 @@ function Summary({ resource, item }: { resource: CatalogResource; item: CatalogI
 function Editor({ resource, item, onCancel, onSaved, onError }: { resource: CatalogResource; item: CatalogItem; onCancel: () => void; onSaved: () => void; onError: (value: string) => void }) {
   const existing = Boolean(item.id);
   const [saving, setSaving] = useState(false);
+  const save = useSaveFeedback();
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1619,6 +1635,7 @@ function Editor({ resource, item, onCancel, onSaved, onError }: { resource: Cata
     onError("");
     try {
       await api(`/scheduling/config/${resource}${existing ? `/${item.id}` : ""}`, { method: existing ? "PUT" : "POST", body: JSON.stringify(payload) });
+      save.markDone();
       await onSaved();
     } catch (saveError) {
       onError(saveError instanceof Error ? saveError.message : "Falha ao salvar");
@@ -1639,7 +1656,7 @@ function Editor({ resource, item, onCancel, onSaved, onError }: { resource: Cata
       </div>
       <div className={styles.saveActions}>
         <Button type="button" onClick={onCancel}>Cancelar</Button>
-        <Button type="submit" tone="primary" disabled={saving}>{saving ? "Salvando…" : "Salvar"}</Button>
+        <SaveButton type="submit" state={saving ? "busy" : save.state}>Salvar</SaveButton>
       </div>
     </form>
   );

@@ -31,11 +31,12 @@ export type AppearancePreferencesPayload = {
 export const APPEARANCE_STORAGE_KEY = "atendon-appearance";
 export const THEME_STORAGE_KEY = "atendon-theme";
 
+// DS v2: ciano é o acento padrão da marca (tokens.css, sem bloco data-accent).
+// "blue"/"violet" da v1 saíram — valores salvos antigos normalizam para null
+// e caem no padrão ciano.
 export const ACCENT_PRESETS: readonly { key: string; label: string; swatch: string }[] = [
-  { key: "blue", label: "Azul", swatch: "#2563EB" },
-  { key: "green", label: "Verde", swatch: "#16875B" },
-  { key: "violet", label: "Violeta", swatch: "#7C4DCB" },
-  { key: "cyan", label: "Ciano", swatch: "#0E7490" }
+  { key: "cyan", label: "Ciano", swatch: "#22D3EE" },
+  { key: "green", label: "Verde", swatch: "#16875B" }
 ];
 
 export const DENSITY_PRESETS: readonly { key: AppearanceDensity; label: string }[] = [

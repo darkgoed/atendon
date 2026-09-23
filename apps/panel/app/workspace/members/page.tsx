@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { ArrowsLeftRight, DotsThreeVertical, LinkSimple, PencilSimple, Trash } from "@phosphor-icons/react";
+import { ArrowsClockwise, ArrowsLeftRight, DotsThreeVertical, LinkSimple, PencilSimple, Trash } from "@phosphor-icons/react";
 import useSWR from "swr";
 import { Empty, LoadingCards } from "@/components/page-state";
 import { PopoverMenu } from "@/components/popover-menu";
@@ -15,6 +15,7 @@ import {
   type WorkspaceMember
 } from "./member-profile-dialog";
 import { AdminField, AdminPage, AdminPageHeader, AdminTableScroll } from "@/components/admin";
+import { IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 
 
 type Role = {
@@ -70,6 +71,7 @@ export default function WorkspaceMembersPage() {
   const { data: invitationsData, error: invitationsError, mutate: mutateInvitations } = useSWR<{ invitations: Invitation[] }>("/workspaces/current/invitations", fetcher, { revalidateOnFocus: false });
 
   const [error, setError] = useState("");
+  const save = useSaveFeedback();
   const [submittingInvite, setSubmittingInvite] = useState(false);
   const [inviteResult, setInviteResult] = useState<InviteResult | null>(null);
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
@@ -103,6 +105,7 @@ export default function WorkspaceMembersPage() {
         })
       });
       setInviteResult({ email: response.invitation.email, expiresAt: response.invitation.expiresAt, token: response.token, emailDelivery: response.emailDelivery });
+      save.markDone();
       form.reset();
       await mutateInvitations();
     } catch (err) {
@@ -179,7 +182,7 @@ export default function WorkspaceMembersPage() {
       {dataError ? (
         <section className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-4 py-4" role="alert">
           <p className="error">{dataError instanceof Error ? dataError.message : "Não foi possível carregar os membros."}</p>
-          <button type="button" className="btn warn" onClick={() => void Promise.all([mutateMembers(), mutateRoles(), mutateInvitations()])}>Tentar novamente</button>
+          <IconButton type="button" label="Tentar novamente" onClick={() => void Promise.all([mutateMembers(), mutateRoles(), mutateInvitations()])}><ArrowsClockwise size={16} aria-hidden="true" /></IconButton>
         </section>
       ) : null}
 
@@ -277,10 +280,9 @@ export default function WorkspaceMembersPage() {
                             <td data-label="Ações">
                               <div className="admin-actions">
                                 {session && canManageMemberProfile(session, member) ? (
-                                  <button type="button" className="btn" disabled={locked} onClick={() => setEditingMember(member)}>
+                                  <IconButton type="button" label="Perfil" disabled={locked} onClick={() => setEditingMember(member)}>
                                     <PencilSimple size={16} aria-hidden="true" />
-                                    Perfil
-                                  </button>
+                                  </IconButton>
                                 ) : null}
                                 {(canTransferOwner && !member.is_owner_role && member.status === "active") || (canRemoveMembers && !member.is_owner_role) ? (
                                   <PopoverMenu
@@ -335,9 +337,10 @@ export default function WorkspaceMembersPage() {
                         {inviteRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
                       </select>
                     </AdminField>
-                    <button type="submit" className="btn primary" disabled={submittingInvite || inviteRoles.length === 0}>
-                      {submittingInvite ? "Enviando…" : "Enviar convite"}
-                    </button>
+                    <SaveButton type="submit" state={submittingInvite ? "busy" : save.state} busyLabel="Enviando…" disabled={submittingInvite || inviteRoles.length === 0}>
+                      Enviar convite
+                    </SaveButton>
+                    <SaveToast show={save.done}>Convite enviado</SaveToast>
                   </div>
                 )}
               </form>
@@ -399,10 +402,9 @@ export default function WorkspaceMembersPage() {
                         </td>
                         <td data-label="Ações">
                           {canInvite && invitation.status === "pending" ? (
-                            <button type="button" className="btn warn" disabled={busyInvitationId === invitation.id} onClick={() => void revokeInvitation(invitation.id)}>
+                            <IconButton type="button" label="Revogar" disabled={busyInvitationId === invitation.id} onClick={() => void revokeInvitation(invitation.id)}>
                               <Trash size={16} aria-hidden="true" />
-                              Revogar
-                            </button>
+                            </IconButton>
                           ) : null}
                         </td>
                       </tr>

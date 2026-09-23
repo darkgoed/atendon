@@ -52,6 +52,7 @@ vi.mock("@phosphor-icons/react", () => ({
   ArrowsDownUp: () => null,
   ChatText: () => null,
   Clock: () => null,
+  ClockCounterClockwise: () => null,
   CursorClick: () => null,
   Eye: () => null,
   Flag: () => null,
@@ -61,9 +62,11 @@ vi.mock("@phosphor-icons/react", () => ({
   Kanban: () => null,
   Keyboard: () => null,
   ListBullets: () => null,
+  Play: () => null,
   Plug: () => null,
   Power: () => null,
   Tag: () => null,
+  Trash: () => null,
   UserFocus: () => null,
   WebhooksLogo: () => null,
   X: () => null,
@@ -263,12 +266,14 @@ describe("página do editor — wiring M3/M4 (/fluxos/:id)", () => {
     await waitFor(() => expect(screen.getByTestId("flow-node-P1")).toBeInTheDocument());
 
     const putCalls = () => mocks.api.mock.calls.filter(([path, init]) => path === flowPath && init?.method === "PUT");
-    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    // DS v2: o SaveButton vira "Salvo" por 2,6s após o sucesso — o 2º clique
+    // usa o testid estável (o nome acessível muda com o estado do padrão §2).
+    fireEvent.click(screen.getByTestId("flow-save"));
     await waitFor(() => expect(putCalls()).toHaveLength(1));
     expect(JSON.parse(String(putCalls()[0]?.[1]?.body)).revisao_base).toBe(5);
 
-    await screen.findByText("Salvo."); // resposta do PUT já aplicada (revisão nova no estado)
-    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await screen.findByText("Salvo"); // resposta do PUT já aplicada (revisão nova no estado)
+    fireEvent.click(screen.getByTestId("flow-save"));
     await waitFor(() => expect(putCalls()).toHaveLength(2));
     expect(JSON.parse(String(putCalls()[1]?.[1]?.body)).revisao_base).toBe(6);
   });
@@ -371,8 +376,8 @@ describe("página do editor — wiring M3/M4 (/fluxos/:id)", () => {
 
     await act(async () => { resolverPut({ flow: { revisao: 4 } }); }); // resposta tardia do save antigo
 
-    // nada vazou para o fluxo destino: sem "Salvo.", sem "Salvando…", zero PUT ao destino
-    expect(screen.queryByText("Salvo.")).toBeNull();
+    // nada vazou para o fluxo destino: sem "Salvo" (done)/"Salvando…" (busy), zero PUT ao destino
+    expect(screen.queryByText("Salvo")).toBeNull();
     expect(screen.queryByText("Salvando…")).toBeNull();
     expect(mocks.api.mock.calls.some(([path, init]) => path === `/qualification/flows/${destino}` && init?.method === "PUT")).toBe(false);
     mocks.flowId = "fluxo-hist-base";

@@ -15,6 +15,7 @@
 .shell--fit .content:has(> .pipeline-page) { padding: 0; }
 
 .pipeline-page {
+  position: relative;
   display: flex;
   height: 100%;
   min-width: 0;
@@ -253,7 +254,17 @@
   white-space: nowrap;
 }
 .pipeline-column__dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: var(--radius-pill); }
-.pipeline-column__count { flex: none; color: var(--text-muted); font-family: var(--font-mono); font-size: var(--text-micro); font-weight: var(--weight-medium); }
+/* Contagem em pill mono (DS v2: etiqueta da coluna). */
+.pipeline-column__count {
+  flex: none;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+}
 .pipeline-column__menu {
   display: grid;
   width: var(--control-height-sm);
@@ -330,9 +341,11 @@
   color: var(--text);
   font-size: var(--text-control);
   box-shadow: none;
-  transition: border-color var(--duration-fast) var(--ease), background-color var(--duration-fast) var(--ease);
+  transition: border-color var(--duration-fast) var(--ease), background-color var(--duration-fast) var(--ease), transform .2s var(--ease-out);
 }
-.pipeline-card:hover { border-color: var(--border-strong); }
+/* Hover da referência: fundo sobe de superfície, borda marca, o card sobe 2px
+   (o lift em si é do motion do card, que domina o transform inline). */
+.pipeline-card:hover { border-color: var(--border-strong); background: var(--surface-hover); }
 .pipeline-card a, .pipeline-card button { box-shadow: none; }
 /* Foco e captura por teclado: anel do design system. */
 .pipeline-card:focus-visible { box-shadow: var(--focus-ring); outline: none; }
@@ -518,6 +531,59 @@
 .pipeline-preference-option { min-height: var(--control-height-md); }
 .pipeline-note { color: var(--text-muted); font-size: var(--text-meta); }
 .pipeline-note--error { color: var(--danger-text); }
+
+/* ====================================================== SELEÇÃO EM LOTE ==
+   Barra flutuante centralizada no rodapé do painel (ref. Pipeline.dc.html):
+   pill sobre o quadro, com blur, e não uma faixa colada nas bordas.
+   Escopo no pipeline: /contatos mantém o comportamento de leads.css. */
+.pipeline-page .bulk-lead-actions,
+.pipeline-page .pipeline-bulk-trigger {
+  position: absolute;
+  right: auto;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-popover);
+  width: max-content;
+  max-width: calc(100% - var(--space-8));
+  border-radius: 12px;
+}
+.pipeline-page .bulk-lead-actions {
+  border-color: var(--border);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-popover);
+}
+@supports ((backdrop-filter: blur(10px)) or (-webkit-backdrop-filter: blur(10px))) {
+  .pipeline-page .bulk-lead-actions {
+    background: color-mix(in srgb, var(--surface-elevated) 92%, transparent);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+}
+
+/* ============================================== FECHAMENTO (CONFETE) ==
+   Disparado pela página quando um lead chega a "fechado" com sucesso na API:
+   12 partículas com trajetória aleatória (±80px, -120..-30px, ±220deg) nas
+   cores de status, removidas após a animação de 0,9s. */
+.pipeline-confetti {
+  position: absolute;
+  bottom: 50px;
+  left: 50%;
+  z-index: var(--z-popover);
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.pipeline-confetti span {
+  position: absolute;
+  width: 6px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--c, var(--primary));
+  animation: on-burst .9s var(--ease-out) var(--d, 0s) both;
+}
+.pipeline-confetti span:nth-child(3n) { width: 4px; height: 4px; }
+.pipeline-confetti span:nth-child(4n) { width: 5px; height: 5px; }
 
 /* ========================================================== RESPONSIVO == */
 
