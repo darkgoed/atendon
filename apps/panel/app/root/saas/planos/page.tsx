@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { DotsThreeVertical, FloppyDisk, PencilSimple } from "@phosphor-icons/react";
+import { DotsThreeVertical, FloppyDisk, PencilSimple } from "@/components/icons";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
 import { Empty } from "@/components/page-state";

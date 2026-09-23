@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowCounterClockwise, SlidersHorizontal } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, SlidersHorizontal } from "@/components/icons";
 import { PopoverMenu } from "@/components/popover-menu";
 import { IconButton } from "@/components/ui";
 import {

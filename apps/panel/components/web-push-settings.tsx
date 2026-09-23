@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRinging, DeviceMobile, Prohibit } from "@phosphor-icons/react";
+import { BellRinging, DeviceMobile, Prohibit } from "@/components/icons";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";

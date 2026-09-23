@@ -1,6 +1,6 @@
 "use client";
 
-import { Robot, User } from "@phosphor-icons/react";
+import { Robot, User } from "@/components/icons";
 import React from "react";
 import { formatTripzTimestamp, type TripzMessage } from "../../lib/tripz-ai";
 import { TripzAttachmentCard } from "./attachment-card";

@@ -1,6 +1,6 @@
 "use client";
 
-import { BookmarkSimple, FloppyDisk, Trash } from "@phosphor-icons/react";
+import { BookmarkSimple, FloppyDisk, Trash } from "@/components/icons";
 import { useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";

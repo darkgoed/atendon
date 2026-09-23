@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowClockwise, Eye } from "@phosphor-icons/react";
+import { ArrowClockwise, Eye } from "@/components/icons";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import useSWR from "swr";
 import { BulkLeadActions } from "@/components/bulk-lead-actions";

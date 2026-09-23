@@ -14,7 +14,7 @@ import {
   UsersThree,
   X,
   type Icon
-} from "@phosphor-icons/react";
+} from "@/components/icons";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { Sparkline } from "@/components/commercial-dashboard-charts";

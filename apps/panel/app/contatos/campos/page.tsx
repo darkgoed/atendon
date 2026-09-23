@@ -8,7 +8,7 @@
  * key são fixados na criação, então o dialog trava o tipo na edição.
  */
 
-import { PencilSimple, Plus, Trash } from "@phosphor-icons/react";
+import { PencilSimple, Plus, Trash } from "@/components/icons";
 import { type FormEvent, useEffect, useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";

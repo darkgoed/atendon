@@ -1,6 +1,6 @@
 "use client";
 
-import { FilePdf, Image as ImageIcon, Paperclip, PaperPlaneTilt, SpinnerGap, X } from "@phosphor-icons/react";
+import { FilePdf, Image as ImageIcon, Paperclip, PaperPlaneTilt, SpinnerGap, X } from "@/components/icons";
 import {
   default as React,
   type ChangeEvent,

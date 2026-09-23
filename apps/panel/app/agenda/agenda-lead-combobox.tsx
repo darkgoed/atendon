@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { Check, MagnifyingGlass, X } from "@/components/icons";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { Button } from "@/components/ui";

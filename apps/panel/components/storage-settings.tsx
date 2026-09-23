@@ -1,6 +1,6 @@
 "use client";
 
-import { FloppyDisk, HardDrives } from "@phosphor-icons/react";
+import { FloppyDisk, HardDrives } from "@/components/icons";
 import { type FormEvent, useEffect, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";

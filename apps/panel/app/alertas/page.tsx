@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRinging, Check, ClockCounterClockwise, VideoCamera } from "@phosphor-icons/react";
+import { BellRinging, Check, ClockCounterClockwise, VideoCamera } from "@/components/icons";
 import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { Empty } from "@/components/page-state";

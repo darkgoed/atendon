@@ -13,7 +13,7 @@ import {
   Plus,
   SpinnerGap,
   X
-} from "@phosphor-icons/react";
+} from "@/components/icons";
 import Link from "next/link";
 import { useRef, useState, type FormEvent } from "react";
 import useSWR from "swr";

@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
-import { Eye, EyeSlash, Key } from "@phosphor-icons/react";
+import { Eye, EyeSlash, Key } from "@/components/icons";
 import { BrandMark } from "@/components/brand-mark";
 import { api } from "@/lib/api";
 import { Field, Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";

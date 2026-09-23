@@ -1,7 +1,5 @@
 "use client";
 
-import { Search } from "lucide-react";
-
 /**
  * ContextPanel ~300px do /conversas (port visual do shell — SPEC v7, onda 1).
  *
@@ -20,17 +18,13 @@ import { Search } from "lucide-react";
  * A página /conversas reserva a altura do header na sua coluna de lista
  * (padding-top tokenizado) para que nada fique escondido sob ele.
  */
-export function ContextPanel({ onOpenSearch }: { onOpenSearch: () => void }) {
+/* DS v2: a busca global mora na topbar (Conversas.dc.html); o painel de
+   contexto mantém só a superfície. `onOpenSearch` segue na assinatura. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- assinatura estável para o Shell
+export function ContextPanel(_props: { onOpenSearch?: () => void }) {
   return (
     <>
       <div className="context-panel__backdrop" aria-hidden="true" />
-      <aside className="context-panel" aria-label="Painel de contexto das conversas">
-        <button type="button" className="context-panel__search" onClick={onOpenSearch} aria-label="Buscar página (Ctrl+K)" title="Buscar página (Ctrl+K)">
-          <Search size={15} aria-hidden="true" />
-          <span>Buscar…</span>
-          <kbd>Ctrl K</kbd>
-        </button>
-      </aside>
     </>
   );
 }

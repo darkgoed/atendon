@@ -6,7 +6,7 @@ import * as RadixSwitch from "@radix-ui/react-switch";
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixTabs from "@radix-ui/react-tabs";
 import * as RadixToggleGroup from "@radix-ui/react-toggle-group";
-import { Check, Minus } from "@phosphor-icons/react";
+import { Check, Minus } from "@/components/icons";
 import { forwardRef, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 

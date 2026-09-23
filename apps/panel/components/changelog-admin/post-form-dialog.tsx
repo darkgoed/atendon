@@ -8,7 +8,7 @@
  * PUT /root/changelog/posts/:id/media { mediaIds } (ordem = position).
  */
 
-import { ArrowDown, ArrowUp, FileArrowUp, Plus, Trash } from "@phosphor-icons/react";
+import { ArrowDown, ArrowUp, FileArrowUp, Plus, Trash } from "@/components/icons";
 import { type FormEvent, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Badge, Button, Dialog, Field, IconButton, Input, SaveButton, SaveToast, Select, Textarea, useSaveFeedback } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";

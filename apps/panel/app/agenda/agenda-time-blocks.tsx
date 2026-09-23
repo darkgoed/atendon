@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarX, Trash, X } from "@phosphor-icons/react";
+import { CalendarX, Trash, X } from "@/components/icons";
 import { type FormEvent, useEffect, useState } from "react";
 import { ModalDialog } from "@/components/modal-dialog";
 import { api } from "@/lib/api";

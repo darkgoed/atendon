@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, CheckCircle, InstagramLogo, ShieldCheck } from "@phosphor-icons/react/dist/ssr";
+import { ArrowLeft, CheckCircle, InstagramLogo, ShieldCheck } from "@/components/icons";
 import { BrandMark } from "@/components/brand-mark";
 import { PRIVACY_POLICY_CONFIG } from "./config";
 

@@ -27,7 +27,6 @@ vi.mock("@/lib/api", () => ({
 vi.mock("swr", () => ({ default: () => ({ data: { flows: mocks.flows }, error: undefined, isLoading: false, mutate: mocks.mutate }) }));
 vi.mock("@/lib/use-permission", () => ({ usePermission: () => true }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock("@phosphor-icons/react", () => ({ ArrowsClockwise: () => null, CopySimple: () => null, PencilSimple: () => null, Plus: () => null, Plugs: () => null }));
 vi.mock("@/components/shell", () => ({ Shell: ({ children }: { children: ReactNode }) => <main>{children}</main> }));
 vi.mock("@/components/flow-editor/flow-model", () => ({ newFlowId: () => "fluxo-novo", starterDefinition: () => ({}), triggerSummary: () => "gatilho" }));
 vi.mock("@/lib/format", () => ({ formatPanelDateTime: () => "—" }));

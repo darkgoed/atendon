@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, FileText, PencilSimple, Plus, Trash, X } from "@phosphor-icons/react";
+import { Check, FileText, PencilSimple, Plus, Trash, X } from "@/components/icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
   formatTripzTimestamp,

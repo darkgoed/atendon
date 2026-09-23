@@ -67,7 +67,7 @@ describe("case organization UI contracts", () => {
   it("keeps movement keyboard-accessible, announced and protected by optimistic concurrency", () => {
     expect(pipelineDialog).toContain("<ModalDialog");
     expect(pipelineDialog).toContain('describedBy="pipeline-transition-description"');
-    expect(pipelineCard).toContain(">Mover</button>");
+    expect(pipelineCard).toContain('aria-label="Mover"');
     expect(pipelineCard).not.toContain("md:hidden");
     expect(pipelineBoard).toContain('aria-live="polite"');
     expect(pipelineBoard).toContain("data-drop-state=");

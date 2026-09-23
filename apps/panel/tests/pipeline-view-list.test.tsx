@@ -23,7 +23,6 @@ vi.mock("@/components/pipeline-settings", () => ({ PipelineSettings: () => null 
 vi.mock("@/components/bulk-lead-actions", () => ({ BulkLeadActions: () => null }));
 vi.mock("@/components/pipeline-transition-dialog", () => ({ PipelineTransitionDialog: () => null }));
 vi.mock("@/components/page-state", () => ({ Empty: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
-vi.mock("@/components/phosphor-icons", () => ({}));
 
 import PipelinePage from "../app/pipeline/page";
 import { buildPipelineTransitionPayload } from "../lib/pipeline";

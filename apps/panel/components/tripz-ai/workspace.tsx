@@ -1,6 +1,6 @@
 "use client";
 
-import { AirplaneTilt, ArrowClockwise, Plus, Sparkle, Trash, WarningCircle, X } from "@phosphor-icons/react";
+import { AirplaneTilt, ArrowClockwise, Plus, Sparkle, Trash, WarningCircle, X } from "@/components/icons";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { ModalDialog } from "../modal-dialog";

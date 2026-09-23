@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowClockwise, ChatsCircle, LockSimple } from "@phosphor-icons/react";
+import { ArrowClockwise, ChatsCircle, LockSimple } from "@/components/icons";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";

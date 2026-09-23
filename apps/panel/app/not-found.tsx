@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { WhatsappLogo, Compass } from "@phosphor-icons/react";
+import { WhatsappLogo, Compass } from "@/components/icons";
 import { BrandMark } from "@/components/brand-mark";
 
 const SUPPORT_PHONE = "5512996062155";

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowsClockwise, CheckCircle, DotsThreeVertical, PencilSimple, Plus, Star, Trash, Warning, X } from "@phosphor-icons/react";
+import { ArrowsClockwise, CheckCircle, DotsThreeVertical, PencilSimple, Plus, Star, Trash, Warning, X } from "@/components/icons";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useRef, useState } from "react";
 import { Empty } from "@/components/page-state";

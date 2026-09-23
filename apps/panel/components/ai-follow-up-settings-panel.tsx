@@ -1,6 +1,6 @@
 "use client";
 
-import { ChatCircleDots, ClockCountdown, FloppyDisk, ImageSquare, Plus, Prohibit, Sticker, Trash, UploadSimple } from "@phosphor-icons/react";
+import { ChatCircleDots, ClockCountdown, FloppyDisk, ImageSquare, Plus, Prohibit, Sticker, Trash, UploadSimple } from "@/components/icons";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";

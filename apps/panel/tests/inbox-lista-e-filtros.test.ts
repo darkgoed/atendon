@@ -25,10 +25,10 @@ describe("inbox /conversas — comments.md L5, L7, L9", () => {
   it("remove o contador acima da busca e mantém os filtros e as abas", () => {
     expect(conversations).not.toContain("conversation-list__meta");
     expect(conversationsCss).not.toContain(".conversation-list__meta");
-    // Absorção do Inbox (F2-r6): o campo ad-hoc "Buscar conversa…" saiu — a
-    // busca de conversas agora vive no ListFiltersBar (padrão /contatos) e a
-    // busca de entidades é a paleta global (GET /search).
-    expect(conversations).not.toContain("Buscar conversa");
+    // DS v2 (Conversas.dc.html): a lista tem busca local por nome, telefone
+    // ou tag ao lado do gatilho de filtros; a paleta global segue em GET /search.
+    expect(conversations).toContain("Buscar por nome, telefone ou tag");
+    expect(conversations).not.toContain("Buscar conversa…");
     expect(conversations).toContain("ListFiltersBar");
     expect(conversations).toContain("conversation-filter-tabs");
     // O contador de fila do header da tela NÃO é o removido (comments.md L7).

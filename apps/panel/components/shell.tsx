@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowClockwise, CaretDown, CaretLineLeft, CaretLineRight, CheckCircle, List, MagnifyingGlass, Prohibit, SignOut, Sparkle, UserCircle, X } from "@phosphor-icons/react";
+import { ArrowClockwise, CaretDown, CaretLineLeft, CaretLineRight, CheckCircle, List, MagnifyingGlass, Prohibit, SignOut, Sparkle, UserCircle, X } from "@/components/icons";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

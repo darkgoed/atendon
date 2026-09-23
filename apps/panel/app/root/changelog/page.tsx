@@ -9,7 +9,7 @@
  */
 
 import { type FormEvent, useState } from "react";
-import { ArrowUUpLeft, CalendarX, Eye, PaperPlaneTilt, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
+import { ArrowUUpLeft, CalendarX, Eye, PaperPlaneTilt, PencilSimple, Plus, Trash } from "@/components/icons";
 import useSWR from "swr";
 import { PostFormDialog } from "@/components/changelog-admin/post-form-dialog";
 import { PreviewDialog } from "@/components/changelog-admin/preview-dialog";

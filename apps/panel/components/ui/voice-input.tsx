@@ -1,6 +1,6 @@
 "use client";
 
-import { Pause, Play, Stop, X } from "@phosphor-icons/react";
+import { Pause, Play, Stop, X } from "@/components/icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "../tripz-ai/tripz-ai.module.css";
 import {

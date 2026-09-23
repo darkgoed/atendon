@@ -1,7 +1,7 @@
 "use client";
 
 import * as RadixDialog from "@radix-ui/react-dialog";
-import { X } from "@phosphor-icons/react";
+import { X } from "@/components/icons";
 import { type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 

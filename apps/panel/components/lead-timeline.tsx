@@ -8,7 +8,7 @@
 // backend: GET /scheduling/leads/:id/timeline (shape { items, page });
 // 404 → "Sem eventos ainda".
 
-import { MagicWand, Robot, User } from "@phosphor-icons/react";
+import { MagicWand, Robot, User } from "@/components/icons";
 import { Empty } from "@/components/page-state";
 import { formatPanelDateTime } from "@/lib/format";
 import {

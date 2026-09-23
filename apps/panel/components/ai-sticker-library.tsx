@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, FloppyDisk, Sticker, Trash, UploadSimple, WhatsappLogo } from "@phosphor-icons/react";
+import { Check, FloppyDisk, Sticker, Trash, UploadSimple, WhatsappLogo } from "@/components/icons";
 import { FormEvent, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";

@@ -1,6 +1,6 @@
 "use client";
 
-import { WarningCircle, X } from "@phosphor-icons/react";
+import { WarningCircle, X } from "@/components/icons";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ERROR_TOAST_EVENT } from "@/lib/error-events";

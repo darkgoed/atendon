@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock } from "@phosphor-icons/react";
+import { Clock } from "@/components/icons";
 import { Shell } from "@/components/shell";
 import { AiFollowUpSettingsPanel } from "@/components/ai-follow-up-settings-panel";
 import { AiStickerLibrary } from "@/components/ai-sticker-library";

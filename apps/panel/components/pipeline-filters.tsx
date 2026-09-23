@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarBlank, HandPointing, Handshake, Kanban, MagnifyingGlass, Sparkle, Star } from "@phosphor-icons/react";
+import { CalendarBlank, HandPointing, Handshake, Kanban, MagnifyingGlass, Sparkle, Star } from "@/components/icons";
 import { Input } from "@/components/ui";
 import { ListFiltersBar, type ListFilterDef } from "@/components/ui/filters";
 import {

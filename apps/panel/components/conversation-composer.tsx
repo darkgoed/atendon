@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowBendUpLeft, File, Microphone, Paperclip, PaperPlaneRight, X } from "@phosphor-icons/react";
+import { ArrowBendUpLeft, File, Microphone, Paperclip, PaperPlaneRight, X } from "@/components/icons";
 import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { VoiceInput, VoiceMessagePlayer } from "@/components/ui/voice-input";
 import { Button, Input, Textarea } from "@/components/ui";
@@ -381,7 +381,9 @@ export function ConversationComposer({
             controlRef={quickRepliesRef}
           />
         ) : null}
-        <div className="conversation-composer__controls grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-end gap-2">
+        {/* DS v2 (Conversas.dc.html): textarea de largura total sem caixa própria;
+            abaixo, uma linha só — anexar, áudio, respostas rápidas e envio. */}
+        <div className="conversation-composer__controls">
         <Input
           ref={fileInputRef}
           className="sr-only"
@@ -395,13 +397,7 @@ export function ConversationComposer({
             event.target.value = "";
           }}
         />
-        <Button type="button" className="btn active:scale-95" onClick={() => fileInputRef.current?.click()} aria-label="Anexar arquivo" disabled={sending || recording || !canAttach}>
-          <Paperclip size={19} />
-        </Button>
-        <Button type="button" className="btn active:scale-95" onClick={startRecording} aria-label="Gravar áudio" disabled={sending || recording || !supports("audio")}>
-          <Microphone size={19} />
-        </Button>
-        <label>
+        <label className="conversation-composer__field">
           <span className="sr-only">Mensagem</span>
           <Textarea
             ref={textareaRef}
@@ -422,6 +418,18 @@ export function ConversationComposer({
             disabled={sending || recording || attachment?.mediaType === "audio" || !canSendText}
           />
         </label>
+        <div className="conversation-composer__actions">
+        <Button type="button" className="conversation-composer__tool active:scale-95" onClick={() => fileInputRef.current?.click()} aria-label="Anexar arquivo" disabled={sending || recording || !canAttach}>
+          <Paperclip size={16} aria-hidden="true" />
+        </Button>
+        <Button type="button" className="conversation-composer__tool active:scale-95" onClick={startRecording} aria-label="Gravar áudio" disabled={sending || recording || !supports("audio")}>
+          <Microphone size={16} aria-hidden="true" />
+        </Button>
+          <div className="conversation-composer__quick-replies" role="group" aria-label="Respostas rápidas" tabIndex={0}>
+            <span className="chip-action">Enviar proposta</span>
+            <span className="chip-action">Confirmar horário</span>
+            <span className="chip-action">Pedir CNPJ</span>
+          </div>
         {/* DS v2: envio circular de 32px (ref. Conversas.dc.html). O nome
             acessível "Enviar mensagem"/"Enviando mensagem" não muda; sem
             rascunho fica neutro, com rascunho ciano cheio com glow. */}
@@ -435,16 +443,10 @@ export function ConversationComposer({
           {sending ? <span className="on-spinner" aria-hidden="true" /> : <PaperPlaneRight size={16} aria-hidden="true" />}
         </Button>
         </div>
+        </div>
       </div>
       {availabilityMessage ? <p className="mt-2 text-xs text-[var(--warning-text)]" role="status">{availabilityMessage}</p> : null}
-      <div className="conversation-composer__footer">
-        <div className="conversation-composer__quick-replies" aria-label="Respostas rápidas">
-          <span className="chip-action">Enviar proposta</span>
-          <span className="chip-action">Confirmar horário</span>
-          <span className="chip-action">Pedir CNPJ</span>
-        </div>
-        <p className="mono">Enter envia · Shift + Enter quebra a linha</p>
-      </div>
+      <p className="conversation-composer__hint mono">Enter envia · Shift + Enter quebra a linha</p>
     </form>
   );
 }

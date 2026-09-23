@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowCounterClockwise, Power } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, Power } from "@/components/icons";
 import { type ReactNode, useEffect, useState } from "react";
 import { Shell } from "@/components/shell";
 import { PageHeader } from "@/components/ui/layout";

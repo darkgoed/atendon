@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { Notepad } from "@phosphor-icons/react";
+import { Notepad } from "@/components/icons";
 import { api } from "@/lib/api";
 import { canAccessWithSession, type PanelSession } from "@/lib/session";
 import { IconButton } from "@/components/ui";

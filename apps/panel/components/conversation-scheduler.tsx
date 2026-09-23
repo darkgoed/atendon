@@ -12,7 +12,7 @@ import {
   UsersThree,
   WarningCircle,
   X
-} from "@phosphor-icons/react";
+} from "@/components/icons";
 import Link from "next/link";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";

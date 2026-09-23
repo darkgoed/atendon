@@ -1,6 +1,6 @@
 "use client";
 
-import { FileImage, FilePdf, WarningCircle } from "@phosphor-icons/react";
+import { FileImage, FilePdf, WarningCircle } from "@/components/icons";
 import React from "react";
 import {
   formatTripzFileSize,

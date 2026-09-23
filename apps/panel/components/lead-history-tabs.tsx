@@ -6,7 +6,7 @@
 // na página ser de uma linha (e o orquestrador poder inserir seções vizinhas
 // sem conflito).
 
-import { CaretDown } from "@phosphor-icons/react";
+import { CaretDown } from "@/components/icons";
 import { useId, useState } from "react";
 import { LeadActivities } from "@/components/lead-activities";
 import { LeadTimeline } from "@/components/lead-timeline";

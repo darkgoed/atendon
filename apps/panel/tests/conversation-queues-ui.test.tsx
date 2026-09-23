@@ -154,7 +154,8 @@ describe("inbox de filas e canais", () => {
     expect(screen.getByRole("button", { name: "Remover filtro Fila" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remover filtro Não lidas" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remover filtro Pendências" })).toBeInTheDocument();
-  });
+    // 3 interações completas de filtro (~3,9s isolado): folga para rodar sob carga.
+  }, 15_000);
 
   it("mantém as quatro abas visíveis e expõe estados aria dos filtros", async () => {
     await renderInbox();

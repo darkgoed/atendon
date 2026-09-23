@@ -1,6 +1,6 @@
 "use client";
 
-import { Robot } from "@phosphor-icons/react";
+import { Robot } from "@/components/icons";
 import React from "react";
 import {
   aiTurnPhaseLabel,

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { ArrowSquareOut, Copy } from "@phosphor-icons/react";
+import { ArrowSquareOut, Copy } from "@/components/icons";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { usePermission } from "@/lib/use-permission";

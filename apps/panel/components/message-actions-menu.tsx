@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowBendUpLeft, Copy, DotsThreeVertical, PencilSimple, Trash } from "@phosphor-icons/react";
+import { ArrowBendUpLeft, Copy, DotsThreeVertical, PencilSimple, Trash } from "@/components/icons";
 import { PopoverMenu } from "@/components/popover-menu";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];

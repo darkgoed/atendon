@@ -1,6 +1,6 @@
 "use client";
 
-import { WhatsappLogo } from "@phosphor-icons/react";
+import { WhatsappLogo } from "@/components/icons";
 import Link from "next/link";
 
 /**

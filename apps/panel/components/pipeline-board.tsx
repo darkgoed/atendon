@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowClockwise, DotsThree } from "@phosphor-icons/react";
+import { ArrowClockwise, DotsThree } from "@/components/icons";
 import {
   AnimatePresence,
   LayoutGroup,

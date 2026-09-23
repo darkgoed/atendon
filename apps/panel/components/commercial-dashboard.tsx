@@ -7,7 +7,7 @@ import {
   PhoneCall,
   Target,
   UsersThree
-} from "@phosphor-icons/react";
+} from "@/components/icons";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { Sparkline } from "@/components/commercial-dashboard-charts";

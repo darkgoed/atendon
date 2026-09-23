@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, Plus, Tag, X } from "@phosphor-icons/react";
+import { Archive, Plus, Tag, X } from "@/components/icons";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";

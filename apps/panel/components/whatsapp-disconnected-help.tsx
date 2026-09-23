@@ -1,4 +1,4 @@
-import { WhatsappLogo } from "@phosphor-icons/react";
+import { WhatsappLogo } from "@/components/icons";
 import { whatsappReconnectSupportHref } from "../lib/whatsapp-support";
 
 

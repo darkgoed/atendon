@@ -16,7 +16,7 @@ import {
   Watch,
   CreditCard,
   FlowArrow
-} from "@phosphor-icons/react";
+} from "@/components/icons";
 import type { PanelSession } from "./session";
 import { canAccessRootWorkspace, canAccessWithSession } from "./session";
 

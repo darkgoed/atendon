@@ -1,4 +1,4 @@
-import { CalendarX, Plus } from "@phosphor-icons/react";
+import { CalendarX, Plus } from "@/components/icons";
 import { Button, PageHeader } from "@/components/ui";
 import type { AppointmentView } from "./agenda-types";
 

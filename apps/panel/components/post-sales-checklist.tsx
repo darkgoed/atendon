@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, CheckCircle, FloppyDisk, ListChecks } from "@phosphor-icons/react";
+import { Archive, CheckCircle, FloppyDisk, ListChecks } from "@/components/icons";
 import React, { useEffect, useState, type FormEvent } from "react";
 import { Button, Select, Textarea } from "@/components/ui";
 import {

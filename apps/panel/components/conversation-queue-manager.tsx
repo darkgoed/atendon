@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Check, DotsThreeVertical, PencilSimple, Plus, Trash, X } from "@phosphor-icons/react";
+import { ArrowDown, ArrowUp, Check, DotsThreeVertical, PencilSimple, Plus, Trash, X } from "@/components/icons";
 import { type ReactElement, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";

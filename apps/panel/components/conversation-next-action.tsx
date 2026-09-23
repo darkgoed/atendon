@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, IconButton, Input, SaveButton, SaveToast, Textarea, useSaveFeedback } from "@/components/ui";
-import { CalendarDots, Check, PencilSimple, X } from "@phosphor-icons/react";
+import { CalendarDots, Check, PencilSimple, X } from "@/components/icons";
 import { type FormEvent, type ReactElement, useEffect, useMemo, useState } from "react";
 import { ModalDialog } from "@/components/modal-dialog";
 import { api } from "@/lib/api";

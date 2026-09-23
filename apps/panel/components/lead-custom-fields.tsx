@@ -9,7 +9,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { PencilSimple, X } from "@phosphor-icons/react";
+import { PencilSimple, X } from "@/components/icons";
 import { api } from "@/lib/api";
 import { canAccessWithSession, type PanelSession } from "@/lib/session";
 import { Field, IconButton, Input, SaveButton, SaveToast, Select, useSaveFeedback } from "@/components/ui";

@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
-import { CheckCircle, SlidersHorizontal, UserCircle } from "@phosphor-icons/react";
+import { CheckCircle, SlidersHorizontal, UserCircle } from "@/components/icons";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
 import { AppearancePreferences } from "@/components/appearance-preferences";

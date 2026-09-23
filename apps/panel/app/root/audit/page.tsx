@@ -1,6 +1,6 @@
 "use client";
 
-import { MagnifyingGlass } from "@phosphor-icons/react";
+import { MagnifyingGlass } from "@/components/icons";
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { AuditLogTable } from "@/components/audit-log-table";

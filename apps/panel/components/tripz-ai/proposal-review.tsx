@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowSquareOut, CheckCircle, DownloadSimple, Eye, FilePdf, PencilSimple, SpinnerGap, WarningCircle, X } from "@phosphor-icons/react";
+import { ArrowSquareOut, CheckCircle, DownloadSimple, Eye, FilePdf, PencilSimple, SpinnerGap, WarningCircle, X } from "@/components/icons";
 import React from "react";
 import { ModalDialog } from "../modal-dialog";
 import {

@@ -9,11 +9,7 @@ const { apiMock } = vi.hoisted(() => ({ apiMock: vi.fn() }));
 
 vi.mock("@/lib/api", () => ({ api: apiMock }));
 vi.mock("@/components/shell", () => ({ Shell: ({ children }: { children: React.ReactNode }) => <main>{children}</main> }));
-vi.mock("@phosphor-icons/react", () => ({
-  Clock: () => null, ChatCircleDots: () => null, ClockCountdown: () => null, FloppyDisk: () => null,
-  ImageSquare: () => null, Plus: () => null, Prohibit: () => null, Sticker: () => null,
-  Trash: () => null, UploadSimple: () => null, WhatsappLogo: () => null
-}));
+// Ícones: módulo real (components/icons.tsx é leve — só SVG do lucide).
 
 import FollowUpsPage from "../app/follow-ups/page";
 

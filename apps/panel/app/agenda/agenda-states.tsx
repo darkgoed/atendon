@@ -1,4 +1,4 @@
-import { WarningCircle } from "@phosphor-icons/react";
+import { WarningCircle } from "@/components/icons";
 import { Button } from "@/components/ui";
 
 export function AgendaLoading({ label }: { label: string }) {

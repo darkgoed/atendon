@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Eye, EyeSlash } from "@phosphor-icons/react";
+import { ArrowLeft, Eye, EyeSlash } from "@/components/icons";
 import { type FormEvent, useState } from "react";
 import { BrandMark } from "@/components/brand-mark";
 import { Button, Field, Input } from "@/components/ui";

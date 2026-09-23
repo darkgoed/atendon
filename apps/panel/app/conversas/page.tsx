@@ -1,5 +1,5 @@
 "use client";
-import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowsLeftRight, BellRinging, BellSlash, CalendarDots, CheckCircle, Checks, Check, DotsThreeVertical, Flask, Pause, Robot, UserPlus, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowsLeftRight, BellRinging, BellSlash, CalendarDots, CheckCircle, Checks, Check, DotsThreeVertical, Flask, MagnifyingGlass, Pause, Robot, UserPlus, X } from "@/components/icons";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { ConversationComposer } from "@/components/conversation-composer";
@@ -686,7 +686,16 @@ export default function Conversations() {
     const seen = new Set(fresh.map((item) => item.id));
     return [...fresh, ...olderConversations.filter((item) => !seen.has(item.id))];
   }, [listData?.conversations, olderConversations]);
-  const items = allItems;
+  // Busca local da lista (Conversas.dc.html: "Buscar por nome, telefone ou tag").
+  const [listQuery, setListQuery] = useState("");
+  const items = useMemo(() => {
+    const q = listQuery.trim().toLocaleLowerCase("pt-BR");
+    if (!q) return allItems;
+    return allItems.filter((item) =>
+      [item.contact_name, item.contact_phone, item.contact_identifier, item.instagram_username, ...(item.tags ?? []).map((tag) => tag.name)]
+        .some((value) => typeof value === "string" && value.toLocaleLowerCase("pt-BR").includes(q))
+    );
+  }, [allItems, listQuery]);
   const thread = { conversation: threadConversation, messages };
   const threadConnectionLabel = conversationLabelForSession(
     threadConversation?.session_id ? threadConversation : allItems.find((item) => item.id === selected),
@@ -1445,10 +1454,10 @@ export default function Conversations() {
   return (
     <Shell flush activeConversationId={selected} onOpenConversation={setSelected}>
       <div className="conversation-screen flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-        <header className="conversation-screen__header flex shrink-0 items-center gap-3 border-b border-[var(--border)] px-4">
+        {/* Celular: título no topo da tela (a lista some quando a thread abre). ≥701px o título mora na lista (Conversas.dc.html). */}
+        <header className="conversation-screen__header conversation-screen__header--mobile flex shrink-0 items-center gap-3 border-b border-[var(--border)] px-4">
           <h1>{hasWorkspaceScope ? "Conversas" : "Minhas conversas"}</h1>
-          <span className="conversation-screen__summary mono">{items.length} na fila</span>
-
+          <span className="conversation-screen__summary mono">{allItems.length} na fila</span>
         </header>
         <div
           className="conversation-layout grid min-h-0 min-w-0 flex-1 overflow-hidden"
@@ -1456,8 +1465,23 @@ export default function Conversations() {
           data-mobile-view={selected ? "thread" : "list"}
         >
         <aside className="conversation-list flex min-h-0 flex-col border-r border-[var(--border)] bg-transparent">
-          <header className="conversation-list__header shrink-0 border-b border-[var(--border)] px-3.5 py-3">
-            <div className="mb-2" data-testid="conversation-list-filters">
+          <header className="conversation-list__header shrink-0">
+            <div className="conversation-list__title">
+              <h1>{hasWorkspaceScope ? "Conversas" : "Minhas conversas"}</h1>
+              <span className="mono">{allItems.length} na fila</span>
+            </div>
+            <div className="conversation-list__search-row" data-testid="conversation-list-filters">
+              <label className="conversation-list__search-field">
+                <MagnifyingGlass size={14} aria-hidden="true" />
+                <span className="sr-only">Buscar conversas</span>
+                <input
+                  type="search"
+                  value={listQuery}
+                  onChange={(event) => setListQuery(event.target.value)}
+                  placeholder="Buscar por nome, telefone ou tag"
+                  autoComplete="off"
+                />
+              </label>
               <ListFiltersBar filters={conversationFilters} defs={conversationFilterDefs} onSet={setConversationFilter} onClearAll={clearConversationFilters} />
             </div>
 

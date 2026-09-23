@@ -48,29 +48,7 @@ vi.mock("next/navigation", () => ({
 /* Phosphor é pesado demais para os testes. Mock explícito por ícone —
    NÃO usar Proxy com get: () => stub (o namespace vira thenable e trava
    a coleta do vitest — pitfall já registrado no flow-editor.test.tsx). */
-vi.mock("@phosphor-icons/react", () => ({
-  ArrowsDownUp: () => null,
-  ChatText: () => null,
-  Clock: () => null,
-  ClockCounterClockwise: () => null,
-  CursorClick: () => null,
-  Eye: () => null,
-  Flag: () => null,
-  GitBranch: () => null,
-  GitFork: () => null,
-  Hourglass: () => null,
-  Kanban: () => null,
-  Keyboard: () => null,
-  ListBullets: () => null,
-  Play: () => null,
-  Plug: () => null,
-  Power: () => null,
-  Tag: () => null,
-  Trash: () => null,
-  UserFocus: () => null,
-  WebhooksLogo: () => null,
-  X: () => null,
-}));
+// Ícones: módulo real (components/icons.tsx é leve — só SVG do lucide).
 
 import { ApiError } from "@/lib/api";
 import { FlowHistory } from "@/components/flow-editor/flow-history";

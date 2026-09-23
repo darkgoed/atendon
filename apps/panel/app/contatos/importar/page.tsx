@@ -7,7 +7,7 @@
 // Submissão fala o contrato real (POST /contact-ops/import, base64 + mapping
 // objeto); histórico segue pendente e é omitido sem o endpoint.
 
-import { ArrowClockwise, ArrowLeft, DownloadSimple, UploadSimple, Warning } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowLeft, DownloadSimple, UploadSimple, Warning } from "@/components/icons";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { Empty } from "@/components/page-state";
 import { FlowConnect } from "@/components/flow-connect";

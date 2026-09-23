@@ -13,28 +13,19 @@ import Link from "next/link";
 import {
   ArrowsDownUp,
   ChatText,
-  Clock,
-  CursorClick,
-  Flag,
-  GitBranch,
-  GitFork,
   ClockCounterClockwise,
-  Hourglass,
-  Kanban,
-  Keyboard,
-  ListBullets,
+  CursorClick,
+  FlowIcons,
   Play,
-  Plug,
-  Power,
-  Tag,
+  RailIcons,
   Trash,
-  UserFocus,
   WebhooksLogo,
   X,
-} from "@phosphor-icons/react";
+} from "@/components/icons";
 import {
   Background,
   BackgroundVariant,
+  ControlButton,
   Controls,
   Handle,
   MarkerType,
@@ -129,24 +120,24 @@ const NT: Record<string, string> = {
 };
 
 const NODE_ICONS: Record<string, typeof ChatText> = {
-  trigger: Plug,
-  message: ChatText,
-  options: ListBullets,
-  boolean: GitFork,
-  text: Keyboard,
-  years: ListBullets,
-  revenue: ListBullets,
-  final: Power,
-  delay: Clock,
-  wait_for_reply: Hourglass,
-  branch: GitBranch,
-  finalize: Flag,
+  trigger: FlowIcons.gatilho,
+  message: FlowIcons.mensagem,
+  options: FlowIcons.opcoes,
+  boolean: FlowIcons.simnao,
+  text: FlowIcons.texto,
+  years: FlowIcons.opcoes,
+  revenue: FlowIcons.opcoes,
+  final: FlowIcons.finalizar,
+  delay: FlowIcons.espera,
+  wait_for_reply: FlowIcons.aguardar,
+  branch: FlowIcons.simnao,
+  finalize: FlowIcons.finalizar,
   interactive: CursorClick,
-  tag_add: Tag,
-  tag_remove: Tag,
-  stage_move: Kanban,
-  assign_agent: UserFocus,
-  webhook: WebhooksLogo,
+  tag_add: FlowIcons.addtag,
+  tag_remove: FlowIcons.rmtag,
+  stage_move: FlowIcons.etapa,
+  assign_agent: FlowIcons.agente,
+  webhook: FlowIcons.webhook,
 };
 
 function withNt(nodeType: string): CSSProperties {
@@ -155,7 +146,7 @@ function withNt(nodeType: string): CSSProperties {
 
 function NodeIcon({ nodeType }: { nodeType: string }) {
   const Icon = NODE_ICONS[nodeType] ?? WebhooksLogo;
-  return <Icon size={16} aria-hidden="true" />;
+  return <Icon size={17} strokeWidth={1.9} aria-hidden="true" />;
 }
 
 /* ─── nós do canvas ─── */
@@ -1051,7 +1042,17 @@ function FlowEditorInner(props: FlowEditorProps) {
             proOptions={{ hideAttribution: true }}
           >
             <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="var(--border)" />
-            <Controls showInteractive={false} position="bottom-left" />
+            <Controls showInteractive={false} showZoom={false} showFitView={false} position="bottom-left" className={styles.zoomControls}>
+              <ControlButton onClick={() => void reactFlow.zoomIn({ duration: 200 })} title="Aproximar" aria-label="Aproximar">
+                <RailIcons.aproximar size={14} aria-hidden="true" />
+              </ControlButton>
+              <ControlButton onClick={() => void reactFlow.zoomOut({ duration: 200 })} title="Afastar" aria-label="Afastar">
+                <RailIcons.afastar size={14} aria-hidden="true" />
+              </ControlButton>
+              <ControlButton onClick={() => void reactFlow.fitView({ padding: 0.25, duration: 300 })} title="Ajustar à tela" aria-label="Ajustar à tela">
+                <RailIcons.ajustar size={13} strokeWidth={2} aria-hidden="true" />
+              </ControlButton>
+            </Controls>
             <MiniMap nodeColor={minimapColor} nodeStrokeWidth={3} nodeBorderRadius={6} zoomable pannable className={styles.minimap} />
           </ReactFlow>
           <div className={styles.canvasToolbar}>
@@ -1111,30 +1112,31 @@ function FlowEditorInner(props: FlowEditorProps) {
 
 const NODE_GAP_Y = 140;
 
+/* Hexes do handoff (Fluxo.dc.html `const K`). */
 function minimapColor(node: Node): string {
   const nodeType = (node.data as unknown as GraphNode)?.nodeType;
-  if (nodeType === "trigger") return "#00ae75";
-  return MINIMAP_COLORS[nodeType] ?? "#74889e";
+  if (nodeType === "trigger") return "#3DDC97";
+  return MINIMAP_COLORS[nodeType] ?? "#A8A8B0";
 }
 
 const MINIMAP_COLORS: Record<string, string> = {
-  message: "#2389e2",
-  options: "#2389e2",
-  boolean: "#c9a90c",
-  text: "#2389e2",
-  years: "#2389e2",
-  revenue: "#2389e2",
-  final: "#e94646",
-  delay: "#de9c31",
-  wait_for_reply: "#e67339",
-  branch: "#c9a90c",
-  finalize: "#e94646",
-  interactive: "#2389e2",
-  tag_add: "#df5ba2",
-  tag_remove: "#df5ba2",
-  stage_move: "#6572e4",
-  assign_agent: "#c35bca",
-  webhook: "#74889e",
+  message: "#7CC4FF",
+  options: "#7CC4FF",
+  boolean: "#F5C46B",
+  text: "#7CC4FF",
+  years: "#7CC4FF",
+  revenue: "#7CC4FF",
+  final: "#FF7A7A",
+  delay: "#F5B94A",
+  wait_for_reply: "#FF9F6B",
+  branch: "#F5C46B",
+  finalize: "#FF7A7A",
+  interactive: "#7CC4FF",
+  tag_add: "#FF8FB4",
+  tag_remove: "#FF8FB4",
+  stage_move: "#22D3EE",
+  assign_agent: "#C99CFF",
+  webhook: "#A8A8B0",
 };
 
 export function FlowEditor(props: FlowEditorProps) {

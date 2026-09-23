@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowClockwise, CheckCircle, InstagramLogo, Link, Trash, Warning } from "@phosphor-icons/react";
+import { ArrowClockwise, CheckCircle, InstagramLogo, Link, Trash, Warning } from "@/components/icons";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { disconnectInstagram, refreshInstagram, startInstagramOAuth, type ConnectionState, type InstagramStatus } from "@/lib/connections";

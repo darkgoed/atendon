@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import useSWR from "swr";
-import { ArrowsClockwise, CopySimple, PencilSimple, Plus, Plugs } from "@phosphor-icons/react";
+import { ArrowsClockwise, CopySimple, PencilSimple, Plus, Plugs } from "@/components/icons";
 import { Shell } from "@/components/shell";
 import { Button, IconButton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";

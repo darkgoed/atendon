@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowClockwise, ArrowLeft, ShieldCheck, VideoCamera } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowLeft, ShieldCheck, VideoCamera } from "@/components/icons";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { BrandMark } from "@/components/brand-mark";

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowsClockwise, MagicWand, PencilSimple, Star, UserSwitch, X } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowsClockwise, MagicWand, PencilSimple, Star, UserSwitch, X } from "@/components/icons";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";

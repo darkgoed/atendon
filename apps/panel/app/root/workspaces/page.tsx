@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useMemo, useState } from "react";
-import { Buildings, DotsThreeVertical, DoorOpen, PencilSimple, Plus, WarningCircle, X } from "@phosphor-icons/react";
+import { Buildings, DotsThreeVertical, DoorOpen, PencilSimple, Plus, WarningCircle, X } from "@/components/icons";
 import useSWR from "swr";
 import { Empty } from "@/components/page-state";
 import { Shell } from "@/components/shell";

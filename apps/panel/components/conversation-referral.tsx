@@ -1,4 +1,4 @@
-import { ArrowSquareOut, FacebookLogo, InstagramLogo, Megaphone } from "@phosphor-icons/react";
+import { ArrowSquareOut, FacebookLogo, InstagramLogo, Megaphone } from "@/components/icons";
 import React from "react";
 
 type Attribution = Record<string, unknown> | null | undefined;

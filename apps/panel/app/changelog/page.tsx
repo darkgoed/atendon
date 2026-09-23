@@ -9,7 +9,7 @@
  * Páginas dinâmicas: fetch sempre cache:"no-store" (revogabilidade da SPEC).
  */
 
-import { CaretDown, CaretUp } from "@phosphor-icons/react";
+import { CaretDown, CaretUp } from "@/components/icons";
 import { useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";

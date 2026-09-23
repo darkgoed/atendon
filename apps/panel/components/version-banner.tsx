@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle, Sparkle, X } from "@phosphor-icons/react";
+import { CheckCircle, Sparkle, X } from "@/components/icons";
 import { ModalDialog } from "@/components/modal-dialog";
 import type { VersionInfo } from "@/lib/api";
 

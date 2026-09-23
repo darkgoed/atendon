@@ -10,7 +10,7 @@ import {
   PencilSimple,
   Trash,
   X
-} from "@phosphor-icons/react";
+} from "@/components/icons";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ContactAvatar } from "./contact-avatar";
 import { ConversationNotes } from "./conversation-notes";

@@ -6,7 +6,7 @@
  * Página restrita a trash.manage.
  */
 
-import { ArrowClockwise, Trash } from "@phosphor-icons/react";
+import { ArrowClockwise, Trash } from "@/components/icons";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";

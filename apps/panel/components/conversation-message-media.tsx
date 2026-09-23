@@ -1,6 +1,6 @@
 "use client";
 
-import { FileArrowDown } from "@phosphor-icons/react";
+import { FileArrowDown } from "@/components/icons";
 import { VoiceMessagePlayer } from "@/components/ui/voice-input";
 
 export interface ConversationMediaMessage {

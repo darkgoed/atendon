@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, X } from "@phosphor-icons/react";
+import { ArrowRight, X } from "@/components/icons";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { ModalDialog } from "@/components/modal-dialog";
 import { pipelineStageAutomationLabel } from "@/components/pipeline-board";

@@ -8,7 +8,7 @@
  * por cursor, dedup por id mantendo a cópia fresca da página 1.
  */
 
-import { Check, PencilSimple, Plus, Trash, X } from "@phosphor-icons/react";
+import { Check, PencilSimple, Plus, Trash, X } from "@/components/icons";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";

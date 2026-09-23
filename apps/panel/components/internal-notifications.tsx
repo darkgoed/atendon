@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell } from "@phosphor-icons/react";
+import { Bell } from "@/components/icons";
 import Link from "next/link";
 import { useCallback } from "react";
 import useSWR from "swr";

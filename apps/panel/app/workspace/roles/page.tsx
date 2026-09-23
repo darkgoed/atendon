@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { Lock, Plus, Trash } from "@phosphor-icons/react";
+import { Lock, Plus, Trash } from "@/components/icons";
 import useSWR from "swr";
 import { Empty } from "@/components/page-state";
 import { Shell } from "@/components/shell";

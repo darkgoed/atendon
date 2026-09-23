@@ -23,7 +23,7 @@
 .catalogTable { width: 100%; min-width: 32rem; text-align: left; }
 .editorPlaceholder { min-height: 16rem; display: grid; place-items: center; text-align: center; color: var(--text-muted); }
 /* R3 (SPEC settings-search): chassi ÚNICO de configuração — um card, o mesmo
-   cabeçalho (ícone phosphor num círculo + h2 + sub opcional) e os mesmos
+   cabeçalho (ícone da biblioteca do handoff num círculo + h2 + sub opcional) e os mesmos
    estados (busy/skeleton). Forms, tabelas e grids internos permanecem. */
 .panel { display: grid; gap: var(--space-5); min-width: 0; padding: var(--space-5); }
 .panelHead { display: flex; align-items: start; gap: var(--space-3); }

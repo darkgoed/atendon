@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight } from "@phosphor-icons/react";
+import { ArrowRight } from "@/components/icons";
 import Link from "next/link";
 import { useState, type CSSProperties } from "react";
 import useSWR from "swr";

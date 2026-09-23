@@ -1,6 +1,6 @@
 "use client";
 
-import { Moon, Sun } from "@phosphor-icons/react";
+import { Moon, Sun } from "@/components/icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   currentTheme,

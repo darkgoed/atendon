@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import { ArrowsClockwise, ArrowUUpLeft, Info, PencilSimple } from "@phosphor-icons/react";
+import { ArrowsClockwise, ArrowUUpLeft, Info, PencilSimple } from "@/components/icons";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
 import { Empty, LoadingCards } from "@/components/page-state";

@@ -3,18 +3,21 @@
    color-mix contra var(--surface)/var(--border) (tokens semânticos do painel). */
 
 /* ---- paleta categórica por tipo (legado: cobalto-tokens.css) ---- */
+/* DS v2: hexes exatos do handoff (Fluxo.dc.html `const K`). No tema claro os
+   tons pastel não atingem 4.5:1 como texto; lá a cor vira mistura com --text. */
 .editor {
-  --nt-trigger: #00ae75;
-  --nt-message: #2389e2;
-  --nt-delay: #de9c31;
-  --nt-wait: #e67339;
-  --nt-condition: #c9a90c;
-  --nt-tag: #df5ba2;
-  --nt-stage: #6572e4;
-  --nt-assign: #c35bca;
-  --nt-webhook: #74889e;
-  --nt-finalize: #e94646;
+  --nt-trigger: #3DDC97;
+  --nt-message: #7CC4FF;
+  --nt-delay: #F5B94A;
+  --nt-wait: #FF9F6B;
+  --nt-condition: #F5C46B;
+  --nt-tag: #FF8FB4;
+  --nt-stage: #22D3EE;
+  --nt-assign: #C99CFF;
+  --nt-webhook: #A8A8B0;
+  --nt-finalize: #FF7A7A;
 }
+:global(:root:not([data-theme="dark"])) .editor [style*="--nt"] { --nt-ink: color-mix(in srgb, var(--nt) 45%, var(--text)); }
 
 /* ---- shell do editor ---- */
 .editor {
@@ -149,7 +152,7 @@
 
 .paletteItem {
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   width: 100%;
@@ -162,18 +165,19 @@
   color: var(--text);
 }
 
-.paletteItem:hover { background: var(--surface-hover); border-color: var(--border-subtle); }
+.paletteItem:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
 .paletteItem:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .paletteIcon {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--nt) 18%, var(--surface));
-  color: var(--nt);
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--nt) 12%, transparent);
+  color: var(--nt-ink, var(--nt));
 }
+.paletteIcon svg { width: 15px; height: 15px; }
 
 .paletteItem strong { display: block; font-size: var(--text-control); font-weight: var(--weight-medium); }
 .paletteItem small { display: block; font-size: var(--text-micro); color: var(--text-muted); }
@@ -194,16 +198,17 @@
 .canvasWrap :global(.react-flow__node) { cursor: pointer; }
 .canvasWrap :global(.react-flow__attribution) { display: none; }
 .canvasWrap :global(.react-flow__handle) {
-  width: 11px;
-  height: 11px;
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
-  background: var(--surface);
-  border: 2px solid var(--nt, var(--border-strong));
+  background: var(--surface-hover);
+  border: 1px solid var(--border-strong);
 }
 .canvasWrap :global(.react-flow__handle-connecting) { border-color: var(--primary); }
-.canvasWrap :global(.react-flow__edge-path) { stroke: var(--border-strong); stroke-width: 2; }
+.canvasWrap :global(.react-flow__edge-path) { stroke: color-mix(in srgb, var(--text) 18%, transparent); stroke-width: 1; }
 .canvasWrap[data-flowing="true"] :global(.react-flow__edge-path) {
   stroke: var(--primary);
+  stroke-width: 2;
   stroke-dasharray: 5 9;
   animation: flowDash 0.7s linear infinite;
 }
@@ -213,12 +218,40 @@
 /* Minimapa: o default do React Flow é branco e estoura no tema escuro
    (audit/0109 — retângulo claro cobrindo o canvas). Superfície e máscara
    seguem os tokens; preenchimento dos nós usa a cor --nt por tipo. */
+/* Minimapa e zoom: vidro flutuante do handoff (raio 12, blur 8, sem borda). */
 .canvasWrap :global(.react-flow__minimap) {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm, 6px);
+  width: 132px;
+  height: 92px;
+  margin: 16px;
+  background: color-mix(in srgb, var(--surface-hover) 85%, transparent);
+  backdrop-filter: blur(8px);
+  border: 0;
+  border-radius: 12px;
   overflow: hidden;
 }
+.canvasWrap :global(.react-flow__minimap svg) { width: 132px; height: 92px; background: transparent; }
+.zoomControls {
+  margin: 16px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-hover) 92%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+}
+.zoomControls :global(.react-flow__controls-button) {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+}
+.zoomControls :global(.react-flow__controls-button svg) { max-width: none; max-height: none; fill: none; }
+.zoomControls :global(.react-flow__controls-button:hover) { background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); }
 .canvasWrap :global(.react-flow__minimap-mask) { fill: color-mix(in srgb, var(--bg) 72%, transparent); }
 .canvasWrap :global(.react-flow__minimap-node) { fill: color-mix(in srgb, var(--nt, var(--primary)) 70%, var(--surface)); }
 
@@ -255,60 +288,54 @@
 .canvasToolbar button:hover { color: var(--text); border-color: var(--border-strong); }
 
 /* ---- nó de etapa ---- */
+/* Nó — Fluxo.dc.html: 320px, grid 36px|1fr, padding 14, raio 14, borda
+   hairline; seleção ciano (anel 4px 12% + sombra), hover sobe 2px. */
 .node {
   position: relative;
-  width: 280px;
-  padding: 12px 14px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  width: 320px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-raised-2, var(--surface));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
   text-align: left;
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
-
-.node::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 3px;
-  background: var(--nt);
-}
+.node:hover { transform: translateY(-2px); }
 
 .node[data-selected="true"] {
-  border-color: var(--nt);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--nt) 28%, transparent), var(--shadow-sm);
+  border-color: color-mix(in srgb, var(--primary) 60%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 12%, transparent), 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
 .node[data-error="true"] { border-color: var(--danger); }
 .node[data-selected="true"][data-error="true"] { box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 30%, transparent); }
 
-.nodeHead { display: flex; align-items: flex-start; gap: 10px; }
+.nodeHead { display: flex; align-items: center; gap: 12px; }
 
 .nodeIcon {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 36px;
+  height: 36px;
   flex: none;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--nt) 18%, var(--surface));
-  color: var(--nt);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--nt) 12%, transparent);
+  color: var(--nt-ink, var(--nt));
 }
 
 .nodeLabel {
   display: block;
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--nt);
+  letter-spacing: 0.02em;
+  color: var(--nt-ink, var(--nt));
 }
 
 .nodePreview {
   margin-top: 3px;
-  font-size: var(--text-body);
-  font-weight: var(--weight-medium);
+  font-size: 13.5px;
+  font-weight: var(--weight-regular, 400);
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -355,21 +382,24 @@
 /* ---- nó do gatilho ---- */
 .trigger {
   position: relative;
-  width: 280px;
+  width: 320px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 8px;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
   border: 1px dashed var(--border-strong);
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
+  background: var(--surface-raised-2, var(--surface));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
   text-align: left;
+  transition: transform var(--duration-fast) var(--ease-out);
 }
+.trigger:hover { transform: translateY(-2px); }
 
 .trigger[data-selected="true"] {
-  border-color: var(--nt);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--nt) 28%, transparent);
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--primary) 60%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 12%, transparent), 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
 /* ---- painel de propriedades ---- */

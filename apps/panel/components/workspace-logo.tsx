@@ -2,7 +2,7 @@
 
 import { type ChangeEvent, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
-import { FloppyDisk, Sticker, Trash } from "@phosphor-icons/react";
+import { FloppyDisk, Sticker, Trash } from "@/components/icons";
 import { IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { PanelSession } from "@/lib/session";

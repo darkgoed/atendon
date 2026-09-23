@@ -1,4 +1,4 @@
-import { ArrowClockwise, Warning } from "@phosphor-icons/react";
+import { ArrowClockwise, Warning } from "@/components/icons";
 
 export interface FailedMessageRecoveryState {
   available: number;

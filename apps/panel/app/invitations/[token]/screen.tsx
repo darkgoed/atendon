@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, SealCheck, Warning } from "@phosphor-icons/react";
+import { ArrowRight, SealCheck, Warning } from "@/components/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";

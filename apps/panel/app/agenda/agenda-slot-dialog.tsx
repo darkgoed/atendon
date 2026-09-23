@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "@phosphor-icons/react";
+import { X } from "@/components/icons";
 import { ModalDialog } from "@/components/modal-dialog";
 import { Button } from "@/components/ui";
 import type { Slot } from "./agenda-types";

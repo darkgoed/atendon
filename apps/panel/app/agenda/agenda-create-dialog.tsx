@@ -1,4 +1,4 @@
-import { Plus, UsersThree, X } from "@phosphor-icons/react";
+import { Plus, UsersThree, X } from "@/components/icons";
 import { useRef } from "react";
 import { ModalDialog } from "@/components/modal-dialog";
 import { Button, Select } from "@/components/ui";

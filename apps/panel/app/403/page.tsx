@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ShieldSlash } from "@phosphor-icons/react";
+import { ShieldSlash } from "@/components/icons";
 import { BrandMark } from "@/components/brand-mark";
 
 export default function AccessDeniedPage() {

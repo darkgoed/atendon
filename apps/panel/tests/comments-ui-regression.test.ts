@@ -183,7 +183,7 @@ describe("comments.md UI regressions", () => {
     expect(pipelineBoardSource).toContain("overflow-x-auto overflow-y-hidden overscroll-contain");
     expect(pipelineBoardSource).toContain("flex-1 flex-col overflow-y-auto");
     expect(pipelineBoardSource).toContain('aria-label="Quadro de pipeline"');
-    expect(pipelineCardSource).toContain(">Mover</button>");
+    expect(pipelineCardSource).toContain('aria-label="Mover"');
     expect(pipelineCardSource).not.toContain("md:hidden");
   });
 

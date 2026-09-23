@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, CheckCircle } from "@phosphor-icons/react/dist/ssr";
+import { ArrowLeft, CheckCircle } from "@/components/icons";
 import { BrandMark } from "@/components/brand-mark";
 import { PRIVACY_POLICY_CONFIG } from "../privacidade/config";
 

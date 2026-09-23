@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, WarningCircle } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, WarningCircle } from "@/components/icons";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Empty } from "@/components/page-state";

@@ -37,7 +37,7 @@
   /* Altura do header de contexto (py 16 + controle 32 + borda 1): a página
      /conversas reserva esta altura na coluna da lista para nada ficar sob o
      header fixo. */
-  --context-panel-header-h: 65px;
+  --context-panel-header-h: 0px;
 }
 
 /* Tipografia do port: aplicada SÓ ao domínio do novo shell. */

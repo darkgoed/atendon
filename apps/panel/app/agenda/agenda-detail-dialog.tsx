@@ -1,4 +1,4 @@
-import { ArrowClockwise, CalendarDots, Check, DownloadSimple, FileVideo, Trash, UserMinus, VideoCamera, WhatsappLogo, X } from "@phosphor-icons/react";
+import { ArrowClockwise, CalendarDots, Check, DownloadSimple, FileVideo, Trash, UserMinus, VideoCamera, WhatsappLogo, X } from "@/components/icons";
 import useSWR from "swr";
 import { ModalDialog } from "@/components/modal-dialog";
 import { api } from "@/lib/api";

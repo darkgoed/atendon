@@ -1,6 +1,6 @@
 "use client";
 
-import { DotsThreeVertical, DownloadSimple, Eye, MagicWand, MagnifyingGlass, UploadSimple } from "@phosphor-icons/react";
+import { DotsThreeVertical, DownloadSimple, Eye, MagicWand, MagnifyingGlass, UploadSimple } from "@/components/icons";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";

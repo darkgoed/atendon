@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, PhoneCall, Plus, SlidersHorizontal, X } from "@phosphor-icons/react";
+import { Archive, PhoneCall, Plus, SlidersHorizontal, X } from "@/components/icons";
 import { useEffect, useState } from "react";
 import { ModalDialog } from "@/components/modal-dialog";
 import { api } from "@/lib/api";

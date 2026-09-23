@@ -1,6 +1,6 @@
 "use client";
 
-import { ChatsCircle, ListChecks, MagnifyingGlass, UsersThree, type Icon } from "@phosphor-icons/react";
+import { ChatsCircle, ListChecks, MagnifyingGlass, UsersThree, type Icon } from "@/components/icons";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ModalDialog } from "@/components/modal-dialog";

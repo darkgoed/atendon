@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Tag as TagIcon } from "@phosphor-icons/react";
+import { Check, Tag as TagIcon } from "@/components/icons";
 import { useState, type CSSProperties } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";

@@ -1,6 +1,6 @@
 "use client";
 
-import { DotsThreeVertical } from "@phosphor-icons/react";
+import { DotsThreeVertical } from "@/components/icons";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";

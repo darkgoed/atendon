@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRinging, BellSimple, Buildings, CalendarCheck, ChartBar, CheckCircle, ChatCircleDots, ClockCountdown, Cpu, FloppyDisk, GlobeHemisphereWest, GoogleLogo, Handshake, HardDrives, Link as LinkIcon, LinkBreak, PencilSimple, Plus, Queue, ShieldCheck, SlidersHorizontal, SpeakerHigh, Sticker, TagSimple, Trash, UserList, UsersThree, VideoCamera, WarningCircle, Watch, X, type Icon } from "@phosphor-icons/react";
+import { BellRinging, BellSimple, Buildings, CalendarCheck, ChartBar, CheckCircle, ChatCircleDots, ClockCountdown, Cpu, FloppyDisk, GlobeHemisphereWest, GoogleLogo, Handshake, HardDrives, Link as LinkIcon, LinkBreak, PencilSimple, Plus, Queue, ShieldCheck, SlidersHorizontal, SpeakerHigh, Sticker, TagSimple, Trash, UserList, UsersThree, VideoCamera, WarningCircle, Watch, X, type Icon } from "@/components/icons";
 import Link from "next/link";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
@@ -131,7 +131,7 @@ const settingsGroupSlug = (label: string) =>
   label.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 // R3 (SPEC settings-search): chassi ÚNICO de configuração — mesmo card, mesmo
-// cabeçalho (ícone da família phosphor num círculo + h2 + sub opcional), mesmo
+// cabeçalho (ícone da biblioteca do handoff num círculo + h2 + sub opcional), mesmo
 // estado de carregamento. O conteúdo interno (forms, tabelas, grids) de cada
 // painel permanece como está.
 function PanelChassi({ headId, Icon, title, sub, busy, busyLabel, children }: {

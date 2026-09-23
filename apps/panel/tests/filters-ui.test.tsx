@@ -10,12 +10,7 @@ import { ListFiltersBar, type ListFilterDef } from "../components/ui/filters";
 type Filters = { status: string; origem: string; period_start: string };
 
 vi.mock("next/link", () => ({ default: ({ children, ...props }: { children: React.ReactNode } & Record<string, unknown>) => <a {...props}>{children}</a> }));
-vi.mock("@phosphor-icons/react", () => ({
-  Funnel: () => null,
-  MagnifyingGlass: () => null,
-  WhatsappLogo: () => null,
-  X: () => null
-}));
+// Ícones: módulo real (components/icons.tsx é leve — só SVG do lucide).
 
 afterEach(cleanup);
 

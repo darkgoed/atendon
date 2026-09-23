@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
-import { Key, X } from "@phosphor-icons/react";
+import { Key, X } from "@/components/icons";
 import { ModalDialog } from "@/components/modal-dialog";
 import { api } from "@/lib/api";
 import type { PanelSession } from "@/lib/session";

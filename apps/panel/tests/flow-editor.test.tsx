@@ -47,29 +47,7 @@ vi.mock("next/navigation", () => ({
    NÃO usar Proxy com get: () => stub: o proxy também intercepta "then",
    o namespace da mock vira um thenable que nunca resolve e o import do
    módulo trava a coleta inteira do vitest (hang sem saída). */
-vi.mock("@phosphor-icons/react", () => ({
-  ArrowsDownUp: () => null,
-  ChatText: () => null,
-  Clock: () => null,
-  ClockCounterClockwise: () => null,
-  CursorClick: () => null,
-  Eye: () => null,
-  Flag: () => null,
-  GitBranch: () => null,
-  GitFork: () => null,
-  Hourglass: () => null,
-  Kanban: () => null,
-  Keyboard: () => null,
-  ListBullets: () => null,
-  Play: () => null,
-  Plug: () => null,
-  Power: () => null,
-  Tag: () => null,
-  Trash: () => null,
-  UserFocus: () => null,
-  WebhooksLogo: () => null,
-  X: () => null,
-}));
+// Ícones: módulo real (components/icons.tsx é leve — só SVG do lucide).
 
 import { FlowEditor } from "@/components/flow-editor/flow-editor";
 import {

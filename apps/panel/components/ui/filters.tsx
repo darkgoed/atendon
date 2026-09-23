@@ -1,7 +1,7 @@
 "use client";
 
 import * as RadixPopover from "@radix-ui/react-popover";
-import { Funnel, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { Funnel, MagnifyingGlass, X } from "@/components/icons";
 import { useMemo, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 

@@ -4,7 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Gauge, type Icon } from "@phosphor-icons/react";
+import { Gauge, type Icon } from "@/components/icons";
 import { CommandPalette, type PaletteItem } from "@/components/command-palette";
 import { settingsNavGroups } from "@/lib/panel-manifest";
 

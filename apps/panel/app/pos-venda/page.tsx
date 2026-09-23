@@ -12,7 +12,7 @@ import {
   Plus,
   UserCircle,
   X
-} from "@phosphor-icons/react";
+} from "@/components/icons";
 import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import useSWR from "swr";

@@ -1,4 +1,4 @@
-import { CalendarCheck, CalendarDots, CheckCircle, ClockCountdown, UsersThree } from "@phosphor-icons/react";
+import { CalendarCheck, CalendarDots, CheckCircle, ClockCountdown, UsersThree } from "@/components/icons";
 import React from "react";
 import type { PostSaleSummary } from "../lib/post-sales";
 

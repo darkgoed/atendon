@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowClockwise, FileText, List, Robot, SidebarSimple, WarningCircle } from "@phosphor-icons/react";
+import { ArrowClockwise, FileText, List, Robot, SidebarSimple, WarningCircle } from "@/components/icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
   tripzConversationStatusLabel,

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowCounterClockwise, CheckSquare, Eye, X } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, CheckSquare, Eye, X } from "@/components/icons";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowsLeftRight } from "@phosphor-icons/react";
+import { ArrowsLeftRight } from "@/components/icons";
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { PipelineTransitionDialog } from "@/components/pipeline-transition-dialog";

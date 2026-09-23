@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { ArrowsClockwise } from "@phosphor-icons/react";
+import { ArrowsClockwise } from "@/components/icons";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { deepClone } from "@/lib/compat";

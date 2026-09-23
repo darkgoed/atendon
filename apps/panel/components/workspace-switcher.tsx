@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretDown } from "@phosphor-icons/react";
+import { CaretDown } from "@/components/icons";
 import { useEffect, useRef, useState } from "react";
 import type { SessionWorkspace } from "@/lib/session";
 

@@ -1,21 +1,6 @@
 "use client";
 
-import {
-  Ban,
-  Bot,
-  Calendar,
-  CheckSquare,
-  CircleCheck,
-  CircleUserRound,
-  Ellipsis,
-  Kanban,
-  LayoutDashboard,
-  LogOut,
-  MessageSquareMore,
-  Search,
-  Users,
-  type LucideIcon
-} from "lucide-react";
+import { CheckCircle, Prohibit, RailIcons, type Icon as HandoffIcon } from "@/components/icons";
 import Link from "next/link";
 import { type ComponentType, type ReactNode } from "react";
 import { BrandMark } from "@/components/brand-mark";
@@ -67,17 +52,18 @@ export type RailAvailability = {
 /** Ordem aprovada na SPEC: os primários do rail, na ordem do donor. */
 export const railPrimaryHrefs = ["/", "/conversas", "/contatos", "/pipeline", "/tarefas", "/fluxos", "/agenda"] as const;
 
-/* Ícones lucide do donor mapeados aos primários do AtendON (labels ficam do
-   manifest; Agenda é rota exclusiva do AtendON e usa o vocabulário do donor). */
-const PRIMARY_ICONS: Record<string, LucideIcon> = {
-  "/": LayoutDashboard,
-  "/conversas": MessageSquareMore,
-  "/contatos": Users,
-  "/pipeline": Kanban,
-  "/tarefas": CheckSquare,
-  "/fluxos": Bot,
-  "/agenda": Calendar
+/* Glifos do rail copiados do handoff (handoff/referencia/*.dc.html, RAIL/RAIL_B):
+   18px, traço 1.8 — ver components/icons.tsx. */
+const PRIMARY_ICONS: Record<string, HandoffIcon> = {
+  "/": RailIcons.painel,
+  "/conversas": RailIcons.conversas,
+  "/contatos": RailIcons.contatos,
+  "/pipeline": RailIcons.pipeline,
+  "/tarefas": RailIcons.tarefas,
+  "/fluxos": RailIcons.agentes,
+  "/agenda": RailIcons.agenda
 };
+const RAIL_ICON_SIZE = 18;
 
 /**
  * Divide o menu (já filtrado por permissão/capability pelo Shell) em primários
@@ -152,7 +138,7 @@ export function NavRail({
                   aria-label={item.label}
                   aria-current={item.active ? "page" : undefined}
                 >
-                  {Icon ? <Icon size={20} aria-hidden /> : null}
+                  {Icon ? <Icon size={RAIL_ICON_SIZE} aria-hidden /> : null}
                   <RailCount count={item.count ?? 0} />
                 </Link>
               </Tooltip>
@@ -165,7 +151,7 @@ export function NavRail({
               title="Mais itens do menu"
               buttonClassName={`nav-rail__link nav-rail__more${moreGroups.some((group) => group.items.some((item) => item.active)) ? " active" : ""}`}
               panelClassName="rail-more-panel"
-              icon={<Ellipsis size={20} aria-hidden="true" />}
+              icon={<RailIcons.mais size={RAIL_ICON_SIZE} aria-hidden="true" />}
             >
               {(close) => (
                 <div className="rail-more__inner">
@@ -207,28 +193,28 @@ export function NavRail({
                 aria-label={availability.available ? "Status: Disponível. Alterar disponibilidade" : "Status: Indisponível. Alterar disponibilidade"}
                 onClick={availability.onToggle}
               >
-                {availability.available ? <CircleCheck size={20} aria-hidden="true" /> : <Ban size={20} aria-hidden="true" />}
+                {availability.available ? <CheckCircle size={RAIL_ICON_SIZE} aria-hidden="true" /> : <Prohibit size={RAIL_ICON_SIZE} aria-hidden="true" />}
               </button>
             </Tooltip>
           ) : null}
           <Tooltip content="Buscar página (Ctrl+K)" side="right">
             <button type="button" className="nav-rail__link" aria-label="Buscar página (Ctrl+K)" onClick={onOpenPalette}>
-              <Search size={20} aria-hidden="true" />
+              <RailIcons.buscar size={RAIL_ICON_SIZE} aria-hidden="true" />
             </button>
           </Tooltip>
           <Tooltip content="Alternar tema" side="right">
             <div className="nav-rail__link nav-rail__theme">
-              <ThemeToggle className="nav-rail__theme-toggle" iconSize={20} />
+              <ThemeToggle className="nav-rail__theme-toggle" iconSize={RAIL_ICON_SIZE} />
             </div>
           </Tooltip>
           <Tooltip content="Abrir perfil" side="right">
             <Link href={profilePath} className={`nav-rail__link${profileActive ? " active" : ""}`} aria-label="Abrir perfil">
-              <CircleUserRound size={20} aria-hidden="true" />
+              <RailIcons.perfil size={RAIL_ICON_SIZE} aria-hidden="true" />
             </Link>
           </Tooltip>
           <Tooltip content="Sair" side="right">
             <button type="button" className="nav-rail__link nav-rail__logout" aria-label="Sair" onClick={onLogout}>
-              <LogOut size={20} aria-hidden="true" />
+              <RailIcons.sair size={RAIL_ICON_SIZE} aria-hidden="true" />
             </button>
           </Tooltip>
         </div>
