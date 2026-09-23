@@ -1,0 +1,117 @@
+/* ============================================================ TABELAS ==
+   DS v2 — pele única para as tabelas de domínio (admin/root, contatos,
+   cobrança, auditoria, uso). Vem DEPOIS dos domínios para vencer os
+   cabeçalhos em caixa-alta/mono e as células "planilha" herdadas.
+   Só desktop (≥901px): abaixo disso cada domínio vira lista de cartões
+   (responsive-table / leads / cobrança) e essas regras não se aplicam. */
+
+@media (min-width: 901px) {
+  /* Cabeçalho: sentence case, 12px, sem mono, sem tracking. */
+  .admin-table thead th,
+  .leads-table thead th,
+  .leads-table th,
+  .post-sales-billing-table thead th,
+  .post-sales-billing-table th,
+  .audit-log-table thead th,
+  .responsive-table thead th {
+    height: 40px;
+    padding-block: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: var(--weight-medium);
+    letter-spacing: 0;
+    text-transform: none;
+    vertical-align: middle;
+  }
+
+  /* Células: respiro vertical, divisória hairline, conteúdo centrado. */
+  .admin-table td,
+  .leads-table td,
+  .post-sales-billing-table td,
+  .audit-log-table td,
+  .responsive-table tbody td {
+    padding-block: var(--space-3);
+    border-bottom: 1px solid color-mix(in srgb, var(--text) 6%, transparent);
+    vertical-align: middle;
+  }
+  .admin-table th, .admin-table td { vertical-align: middle; }
+
+  .admin-table tbody tr,
+  .leads-table tbody tr,
+  .post-sales-billing-table tbody tr,
+  .audit-log-table tbody tr { transition: background-color var(--duration-fast) var(--ease-out); }
+  .admin-table tbody tr:hover,
+  .leads-table tbody tr:hover,
+  .post-sales-billing-table tbody tr:hover,
+  .audit-log-table tbody tr:hover { background: color-mix(in srgb, var(--text) 3%, transparent); }
+
+  /* Superfícies: painel flutuante do DS v2 (raio xl, borda sutil). */
+  .admin-table-wrap,
+  .leads-table-surface,
+  .post-sales-billing-table-wrap {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    background: var(--surface);
+  }
+  /* Tabela já dentro de um card: sem segunda moldura (card dentro de card). */
+  .card .admin-table-wrap,
+  .admin-card .admin-table-wrap { border: 0; border-radius: 0; background: transparent; }
+  .card .admin-table-wrap .admin-table thead th:first-child,
+  .card .admin-table-wrap .admin-table td:first-child { padding-left: 0; }
+  .card .admin-table-wrap .admin-table thead th:last-child,
+  .card .admin-table-wrap .admin-table td:last-child { padding-right: 0; }
+
+  /* Coluna de ações: encostada à direita, ações discretas até o hover
+     (sempre visíveis ao teclado e em telas sem hover). */
+  .admin-table thead th:last-child { text-align: right; }
+  .admin-table td[data-label="Ações"] .admin-actions,
+  .admin-table td:last-child > .admin-actions { justify-content: flex-end; }
+  @media (hover: hover) {
+    .admin-table td:last-child > .admin-actions,
+    .leads-table__actions {
+      opacity: .6;
+      transition: opacity var(--duration-fast) var(--ease-out);
+    }
+    .admin-table tr:hover td:last-child > .admin-actions,
+    .admin-table tr:focus-within td:last-child > .admin-actions,
+    .leads-table tr:hover .leads-table__actions,
+    .leads-table tr:focus-within .leads-table__actions { opacity: 1; }
+  }
+
+  /* Datas, ids e números: mono discreto em tom secundário. */
+  .admin-table td.mono,
+  .admin-table td > .mono,
+  .leads-table td .mono,
+  .audit-log-table td .mono { color: var(--text-secondary); font-size: 12px; }
+}
+
+/* Uso: tabela de dados do gráfico — mesmo cabeçalho sentence case. */
+.usage-data-table thead th {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Badges/pills de status: pílula sans em sentence case (o rótulo já vem
+   capitalizado da fonte), não etiqueta mono em caixa-alta. */
+.admin-badge,
+.admin-pill {
+  min-height: 22px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-sans);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.admin-pill { border-color: transparent; }
+
+@media (min-width: 901px) {
+  .leads-table thead th:last-child { text-align: right; }
+}

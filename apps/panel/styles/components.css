@@ -478,47 +478,55 @@
 .checkbox:disabled { background: var(--surface-sunken); border-color: var(--border-subtle); }
 
 /* ================================================== 5. DADOS / TABELAS ==
-   Densas por padrão: header micro em caixa alta, linhas de 38px, hover
-   discreto, sem zebra (zebra + borda = ruído). */
+   DS v2 — tabela de produto, não planilha: sem grade, sem caixa-alta, sem
+   fundo de cabeçalho. Cabeçalho discreto em sentence case, linhas arejadas
+   separadas por hairline, hover tênue, números tabulares à direita. A
+   superfície é o painel flutuante (raio xl, borda sutil). */
 
 .table-wrap, .table-scroll {
   width: 100%;
   min-width: 0;
   overflow-x: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
   background: var(--surface);
 }
-table { width: 100%; border-collapse: collapse; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; }
 thead th {
-  position: relative;
-  height: var(--control-height);
-  padding: 0 var(--space-3);
-  background: var(--surface-sunken);
-  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 40px;
+  padding: 0 var(--space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-subtle);
   color: var(--text-muted);
-  font-size: var(--text-micro);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-overline);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0;
   text-align: left;
-  text-transform: uppercase;
+  text-transform: none;
   white-space: nowrap;
 }
 tbody td {
-  height: var(--row-height);
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--border-subtle);
+  height: 52px;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 6%, transparent);
   color: var(--text);
-  font-size: var(--text-control);
+  font-size: 13px;
   vertical-align: middle;
 }
+thead th:first-child, tbody td:first-child { padding-left: var(--space-5); }
+thead th:last-child, tbody td:last-child { padding-right: var(--space-5); }
 tbody tr:last-child td { border-bottom: 0; }
-tbody tr:hover { background: var(--surface-hover); }
-tbody tr[aria-selected="true"] { background: var(--surface-selected); }
+tbody tr { transition: background-color var(--duration-fast) var(--ease-out); }
+tbody tr:hover { background: color-mix(in srgb, var(--text) 3%, transparent); }
+tbody tr[aria-selected="true"] { background: color-mix(in srgb, var(--primary) 7%, transparent); box-shadow: inset 2px 0 0 var(--primary); }
 th.is-numeric, td.is-numeric { text-align: right; font-variant-numeric: tabular-nums; }
 th[aria-sort] { color: var(--text); cursor: pointer; }
-th[aria-sort="ascending"]::after { content: " ↑"; }
-th[aria-sort="descending"]::after { content: " ↓"; }
+th[aria-sort="ascending"]::after { content: " ↑"; color: var(--primary-text); }
+th[aria-sort="descending"]::after { content: " ↓"; color: var(--primary-text); }
 
 /* Barra de ferramentas de uma coleção (filtros + ações). */
 .toolbar {

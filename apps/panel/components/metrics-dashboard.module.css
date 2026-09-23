@@ -298,14 +298,14 @@
   padding-block-end: var(--space-2);
   border-block-end: 1px solid var(--border-subtle);
   color: var(--text-muted);
-  font-size: var(--text-micro);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-overline);
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0;
+  text-transform: none;
 }
 .widgetTable tbody tr { transition: background-color var(--duration-fast) var(--ease); }
-.widgetTable tbody tr:hover { background: var(--surface-hover); }
-.widgetTable td { padding-block: var(--space-3); border-block-end: 1px solid var(--border-subtle); }
+.widgetTable tbody tr:hover { background: color-mix(in srgb, var(--text) 3%, transparent); }
+.widgetTable td { padding-block: var(--space-3); border-block-end: 1px solid color-mix(in srgb, var(--text) 6%, transparent); }
 .widgetTable tbody tr:last-child td { border-block-end: 0; }
 .numeric { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
