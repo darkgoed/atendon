@@ -21,6 +21,9 @@ import {
   Archive as LArchive,
   ArrowDown as LArrowDown,
   ArrowDownToLine,
+  GripVertical as LGripVertical,
+  Palette as LPalette,
+  Zap,
   ArrowLeft as LArrowLeft,
   ArrowUp as LArrowUp,
   ArrowUpRight as LArrowUpRight,
@@ -597,6 +600,9 @@ export const SpinnerGap = wrap(LoaderCircle, "SpinnerGap");
 export const Star = wrap(LStar, "Star");
 export const Sticker = wrap(LSticker, "Sticker");
 export const Stop = wrap(Square, "Stop");
+export const GripVertical = wrap(LGripVertical, "GripVertical");
+export const Palette = wrap(LPalette, "Palette");
+export const Lightning = wrap(Zap, "Lightning");
 export const Tag = wrap(LTag, "Tag");
 export const TagSimple = wrap(LTag, "TagSimple");
 export const Target = wrap(LTarget, "Target");

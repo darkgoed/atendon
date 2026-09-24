@@ -1257,6 +1257,11 @@ export function buildApp(options: {
         return updated.rows[0] ?? null;
       });
       if (!saved) return reply.status(404).send({ error: "Agente não encontrado" });
+      // Mesma semântica do PATCH /agent/status: salvar o agente desativado
+      // devolve as conversas abertas para o atendimento humano imediatamente.
+      if (!body.isActive) {
+        await new MessageRepository(db).markConversationsAgentDisabled(session.tenantId);
+      }
       return reply.send({ agent: { ...saved, scope: targetSessionId ? "connection" : "shared" } });
     } catch (error) {
       const status = (error as { statusCode?: number }).statusCode;
@@ -1286,6 +1291,12 @@ export function buildApp(options: {
       [session.tenantId, body.isActive, body.sessionId ?? null]
     );
     if (!result.rows[0]) return reply.status(404).send({ error: "Agente não encontrado" });
+    // Desligar o agente precisa remover as conversas abertas do bucket da IA
+    // na mesma hora; sem isto elas continuam ai_active=true (invisíveis no
+    // filtro humano e travando resposta manual) até o próximo contato escrever.
+    if (!body.isActive) {
+      await new MessageRepository(db).markConversationsAgentDisabled(session.tenantId);
+    }
     await auditLog({
       actorUserId: session.userId,
       workspaceId: session.tenantId,
@@ -1608,7 +1619,7 @@ export function buildApp(options: {
       lead.source lead_source, lead.campaign lead_campaign,
       lead.facebook_attribution,
       jsonb_build_object(
-        'id',stage.id,'name',stage.name,'color',stage.color,'position',stage.position,
+        'id',stage.id,'pipeline_id',stage.pipeline_id,'name',stage.name,'color',stage.color,'position',stage.position,
         'capacity_target',stage.capacity_target,'technical_status',stage.technical_status,
         'is_default',stage.is_default
       ) pipeline_stage,
@@ -1998,7 +2009,7 @@ export function buildApp(options: {
       lead.source lead_source, lead.campaign lead_campaign,
       lead.next_action, lead.next_action_at,
       COALESCE(interest_category.name, lead.interest_category_id) interest,
-      jsonb_build_object('id',stage.id,'name',stage.name,'color',stage.color,'position',stage.position,
+      jsonb_build_object('id',stage.id,'pipeline_id',stage.pipeline_id,'name',stage.name,'color',stage.color,'position',stage.position,
         'capacity_target',stage.capacity_target,'technical_status',stage.technical_status,'is_default',stage.is_default) pipeline_stage,
       COALESCE(tags.items,'[]'::jsonb) tags
       FROM conversations c
@@ -2112,7 +2123,7 @@ export function buildApp(options: {
       lead.source lead_source, lead.campaign lead_campaign,
       lead.next_action, lead.next_action_at,
       COALESCE(interest_category.name, lead.interest_category_id) interest,
-      jsonb_build_object('id',stage.id,'name',stage.name,'color',stage.color,'position',stage.position,
+      jsonb_build_object('id',stage.id,'pipeline_id',stage.pipeline_id,'name',stage.name,'color',stage.color,'position',stage.position,
         'capacity_target',stage.capacity_target,'technical_status',stage.technical_status,'is_default',stage.is_default) pipeline_stage,
       COALESCE(tags.items,'[]'::jsonb) tags
       FROM conversations c
@@ -2620,7 +2631,7 @@ export function buildApp(options: {
           await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`follow-up:${session.tenantId}:${id}`]);
           const lead = (await client.query<{ id: string }>(`SELECT id FROM scheduling_leads WHERE tenant_id=$1 AND regexp_replace(phone,'\\\\D','','g')=regexp_replace($2,'\\\\D','','g') FOR UPDATE`, [session.tenantId, row.contact_phone])).rows[0];
           if (!lead) return null;
-          const stageId = await defaultStageId(client, session.tenantId, "follow_up");
+          const stageId = await defaultStageId(client, session.tenantId, "follow_up", lead.id);
           await client.query(`UPDATE scheduling_leads SET status='follow_up',pipeline_stage_id=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2`, [session.tenantId, lead.id, stageId]);
           return { leadId: lead.id, stageId };
         });
@@ -2903,8 +2914,8 @@ export function buildApp(options: {
     renderPdf: async ({ scope, proposal }: TripzDocumentRenderContext) => tripzDocuments.renderPdf(scope, proposal)
   });
   void app.register(registerConversationQueueRoutes);
-  void app.register(registerChangelogRoutes);
   void app.register(registerMessagingRoutes, { gateway: messageGateway });
+  void app.register(registerChangelogRoutes);
 
   return app;
 }

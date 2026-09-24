@@ -316,19 +316,20 @@ describe("migrations on a clean database", () => {
            VALUES($1,'atendon-0123456789abcdef0123456789abcdef',$2,'cross-tenant/video.mp4',1)`,
           [tenantB, appointmentId]
         )).rejects.toMatchObject({ code: "23503" });
-        const seededPipelines = await fresh.query<{ tenant_id: string; stages: number; defaults: number; statuses: string[] }>(
-          `SELECT tenant_id,count(*)::int stages,count(*) FILTER (WHERE is_default)::int defaults,
-                  array_agg(DISTINCT technical_status ORDER BY technical_status) statuses
-           FROM pipeline_stages WHERE tenant_id=ANY($1::uuid[])
-           GROUP BY tenant_id ORDER BY tenant_id`,
+        // 0184: empresa nova começa crua — 1 "Pipeline padrão" com só "Primeiro contato".
+        const seededPipelines = await fresh.query<{ tenant_id: string; pipelines: number; pipeline_names: string[]; stage_names: string[]; transitions: number }>(
+          `SELECT tenant.id tenant_id,
+                  (SELECT count(*)::int FROM pipelines p WHERE p.tenant_id=tenant.id) pipelines,
+                  (SELECT array_agg(p.name) FROM pipelines p WHERE p.tenant_id=tenant.id AND p.is_default) pipeline_names,
+                  (SELECT array_agg(s.name ORDER BY s.position) FROM pipeline_stages s WHERE s.tenant_id=tenant.id) stage_names,
+                  (SELECT count(*)::int FROM pipeline_transitions t WHERE t.tenant_id=tenant.id) transitions
+           FROM tenants tenant WHERE tenant.id=ANY($1::uuid[]) ORDER BY tenant.id`,
           [[tenantA,tenantB]]
         );
         expect(seededPipelines.rows).toHaveLength(2);
-        expect(seededPipelines.rows.every((row) => row.stages === 10 && row.defaults === 10)).toBe(true);
-        expect(seededPipelines.rows[0].statuses).toEqual([
-          "agendado","aguardando_resposta","em_atendimento","em_negociacao","fechado",
-          "follow_up","novo","perdido","proposta_enviada","qualificado"
-        ]);
+        for (const row of seededPipelines.rows) {
+          expect(row).toMatchObject({ pipelines: 1, pipeline_names: ["Pipeline padrão"], stage_names: ["Primeiro contato"], transitions: 0 });
+        }
         const snapshotPool = new pg.Pool({ connectionString: freshUrl.toString() });
         try {
           const deployVersion = `fresh-${randomUUID()}`;

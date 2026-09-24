@@ -18,11 +18,21 @@ import {
   moveLeadStageSchema,
   organizationIdParams,
   parseSavedViewFilters,
+  pipelineArchiveSchema,
+  pipelineChannelsSchema,
+  pipelineCreateSchema,
+  pipelineDuplicateSchema,
+  pipelineIdParams,
+  pipelineListQuerySchema,
+  pipelineOrderSchema,
   pipelineSettingsSchema,
+  pipelineUpdateSchema,
   savedViewCreateSchema,
   savedViewListQuerySchema,
   savedViewUpdateSchema,
   stageCreateSchema,
+  stageDuplicateParams,
+  stageOrderSchema,
   stageParams,
   stageTransitionsSchema,
   stageUpdateSchema,
@@ -39,19 +49,28 @@ import {
 } from "../commercial-journey/loss-reasons.js";
 import {
   applyBulkOperation,
+  archivePipeline,
   archivePipelineStage,
+  createPipeline,
   createPipelineStage,
   createSavedView,
   createTag,
   deleteSavedView,
+  duplicatePipeline,
+  duplicatePipelineStage,
+  listPipelines,
   listSavedViews,
   listTags,
   loadPipeline,
   moveLeadStage,
   previewBulkOperation,
+  reorderPipelines,
+  reorderPipelineStages,
   replaceStageTransitions,
   setLeadTag,
+  setPipelineChannels,
   undoBulkOperation,
+  updatePipeline,
   updatePipelineSettings,
   updatePipelineStage,
   updateSavedView,
@@ -228,12 +247,81 @@ export async function registerOrganizationRoutes(app: FastifyInstance) {
     return { saved_view: await deleteSavedView(session.tenantId,id,actor(request,session),sessionHasPermission(session,"saved_views.publish")) };
   });
 
+  // Item 9: escopo por pipeline (ausente = padrão; outro tenant/arquivado = 404).
   app.get("/organization/pipeline", async (request) => {
     const session = await requireOrganization(request);
     assertSessionPermission(session,"leads.read");
-    const { include_archived } = includeArchivedQuery.parse(request.query);
+    const { pipeline_id,include_archived } = pipelineListQuerySchema.parse(request.query);
     if (include_archived) assertSessionPermission(session,"pipeline.manage");
-    return loadPipeline(session.tenantId,Boolean(include_archived));
+    return loadPipeline(session.tenantId,{ pipelineId: pipeline_id,includeArchived: Boolean(include_archived) });
+  });
+
+  // Item 1: lista de pipelines ativos; canais só para quem gerencia pipeline.
+  app.get("/organization/pipelines", async (request) => {
+    const session = await requireOrganization(request);
+    assertSessionPermission(session,"leads.read");
+    const canManage = sessionHasPermission(session,"pipeline.manage");
+    return listPipelines(session.tenantId,canManage);
+  });
+
+  // Item 2
+  app.post("/organization/pipelines", async (request, reply) => {
+    const session = await requirePermission(request,"pipeline.manage");
+    if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
+    const created = await createPipeline(session.tenantId,actor(request,session),pipelineCreateSchema.parse(request.body));
+    return reply.status(201).send(created);
+  });
+
+  // Item 3
+  app.patch("/organization/pipelines/:pipelineId", async (request) => {
+    const session = await requirePermission(request,"pipeline.manage");
+    if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
+    const { pipelineId } = pipelineIdParams.parse(request.params);
+    return updatePipeline(session.tenantId,pipelineId,actor(request,session),pipelineUpdateSchema.parse(request.body));
+  });
+
+  // Item 4
+  app.post("/organization/pipelines/:pipelineId/duplicate", async (request, reply) => {
+    const session = await requirePermission(request,"pipeline.manage");
+    if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
+    const { pipelineId } = pipelineIdParams.parse(request.params);
+    const created = await duplicatePipeline(session.tenantId,pipelineId,actor(request,session),pipelineDuplicateSchema.parse(request.body ?? {}));
+    return reply.status(201).send(created);
+  });
+
+  // Item 5
+  app.post("/organization/pipelines/:pipelineId/archive", async (request) => {
+    const session = await requirePermission(request,"pipeline.manage");
+    if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
+    const { pipelineId } = pipelineIdParams.parse(request.params);
+    const { replacement_pipeline_id } = pipelineArchiveSchema.parse(request.body ?? {});
+    return archivePipeline(session.tenantId,pipelineId,replacement_pipeline_id,actor(request,session));
+  });
+
+  // Item 6
+  app.put("/organization/pipelines/order", async (request) => {
+    const session = await requirePermission(request,"pipeline.manage");
+    if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
+    const { pipeline_ids } = pipelineOrderSchema.parse(request.body);
+    return reorderPipelines(session.tenantId,actor(request,session),pipeline_ids);
+  });
+
+  // Item 7
+  app.put("/organization/pipelines/:pipelineId/channels", async (request) => {
+    const session = await requirePermission(request,"pipeline.manage");
+    if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
+    const { pipelineId } = pipelineIdParams.parse(request.params);
+    const { session_ids } = pipelineChannelsSchema.parse(request.body);
+    return setPipelineChannels(session.tenantId,pipelineId,actor(request,session),session_ids);
+  });
+
+  // Item 8
+  app.put("/organization/pipelines/:pipelineId/stages/order", async (request) => {
+    const session = await requirePermission(request,"pipeline.manage");
+    if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
+    const { pipelineId } = pipelineIdParams.parse(request.params);
+    const { stage_ids } = stageOrderSchema.parse(request.body);
+    return reorderPipelineStages(session.tenantId,pipelineId,actor(request,session),stage_ids);
   });
 
   app.post("/organization/pipeline/stages", async (request, reply) => {
@@ -248,6 +336,15 @@ export async function registerOrganizationRoutes(app: FastifyInstance) {
     if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
     const { stageId } = stageParams.parse(request.params);
     return { stage: await updatePipelineStage(session.tenantId,stageId,actor(request,session),stageUpdateSchema.parse(request.body)) };
+  });
+
+  // Item 12: duplica etapa (logo após a original, ids novos, sem leads).
+  app.post("/organization/pipeline/stages/:stageId/duplicate", async (request, reply) => {
+    const session = await requirePermission(request,"pipeline.manage");
+    if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
+    const { stageId } = stageDuplicateParams.parse(request.params);
+    const stage = await duplicatePipelineStage(session.tenantId,stageId,actor(request,session));
+    return reply.status(201).send({ stage });
   });
 
   app.post("/organization/pipeline/stages/:stageId/archive", async (request) => {
@@ -266,6 +363,7 @@ export async function registerOrganizationRoutes(app: FastifyInstance) {
     return { transitions: await replaceStageTransitions(session.tenantId,stageId,to_stage_ids,actor(request,session)) };
   });
 
+  // Item 15: enforce_transitions do pipeline (padrão se pipeline_id ausente).
   app.patch("/organization/pipeline/settings", async (request) => {
     const session = await requirePermission(request,"pipeline.manage");
     if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");

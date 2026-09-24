@@ -35,6 +35,10 @@ beforeAll(async () => {
     "INSERT INTO agent_configs(tenant_id,session_id,system_prompt,ai_model) VALUES($1,$2,'Atenda','test/model')",
     [tenantId, sessionId]
   );
+  // Pós-28a73145: a conversa nasce com ai_active do agente vigente NA CRIAÇÃO.
+  // O agent_configs entra aqui no beforeAll, DEPOIS do persistEvent — ative a
+  // conversa explicitamente para o follow-up ser elegível.
+  await pool.query("UPDATE conversations SET ai_active=true,handoff_reason=NULL WHERE id=$1", [conversationId]);
   await pool.query(
     `UPDATE tenant_ai_settings SET ai_follow_up_enabled=true,
        ai_follow_up_delays_minutes=ARRAY[1,2]::integer[],ai_follow_up_max_count=2

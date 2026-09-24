@@ -1,18 +1,19 @@
 "use client";
 
-import { ArrowClockwise, Eye } from "@/components/icons";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { ArrowClockwise } from "@/components/icons";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState, type CSSProperties } from "react";
 import useSWR from "swr";
 import { BulkLeadActions } from "@/components/bulk-lead-actions";
 import { PipelineBoard } from "@/components/pipeline-board";
 import { PipelineFilters } from "@/components/pipeline-filters";
 import { PipelineList } from "@/components/pipeline-list";
-import { PipelineSettings } from "@/components/pipeline-settings";
+import { PipelineManager } from "@/components/pipeline-manager";
 import { PipelineTransitionDialog } from "@/components/pipeline-transition-dialog";
 import { PipelineViewPreferences } from "@/components/pipeline-view-preferences";
 import { SavedViewsControl } from "@/components/saved-views-control";
 import { Shell } from "@/components/shell";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { updateLeadStatus } from "@/lib/leads-api";
 import { useCaseOrganizationEnabled } from "@/lib/organization";
 import {
@@ -39,13 +40,17 @@ import {
 import { useRealtimeSignals } from "@/lib/realtime";
 import { canAccessWithSession, hasWorkspaceWideCaseScope, type PanelSession } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
+import {
+  type PipelinesResponse,
+  type PipelineSummary
+} from "@/lib/pipeline";
 import { usePipelinePreferences } from "@/lib/use-pipeline-preferences";
 import { Button, IconButton, SaveToast } from "@/components/ui";
 import { readPipelineViewPreference, writePipelineViewPreference } from "@/lib/pipeline-view";
 
 type PipelinePageMeta = { limit: number; has_more: boolean; next_cursor: string | null };
 type PipelineResponse = { leads: PipelineLead[]; timezone?: string; total?: number; page?: PipelinePageMeta };
-type PipelineConfigResponse = { stages: PipelineStage[]; transitions: PipelineTransition[]; follow_up_config: PipelineFollowUpConfig; enforce_transitions?: boolean };
+type PipelineConfigResponse = { stages: PipelineStage[]; transitions: PipelineTransition[]; follow_up_config: PipelineFollowUpConfig; enforce_transitions?: boolean; pipeline?: PipelineSummary };
 type MembersResponse = { members: PipelineMember[] };
 type TransitionIntent = { lead: PipelineLead; target?: PipelineStage };
 type StagePageState = { leads: PipelineLead[]; cursor: string | null; hasMore: boolean; loading: boolean };
@@ -80,6 +85,42 @@ const fallbackTransitions = Object.entries(fallbackStatusTransitions).flatMap(([
 
 type Celebration = { key: number; name: string };
 
+const PIPELINE_ACTIVE_KEY = "atendon.pipeline.active.v1";
+function readStoredPipelineId(workspaceId: string | undefined, userId: string | undefined): string | null {
+  if (!workspaceId || !userId || typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(`${PIPELINE_ACTIVE_KEY}:${workspaceId}:${userId}`);
+  } catch {
+    return null;
+  }
+}
+function writeStoredPipelineId(workspaceId: string | undefined, userId: string | undefined, pipelineId: string | null) {
+  if (!workspaceId || !userId || typeof window === "undefined") return;
+  try {
+    if (pipelineId) window.localStorage.setItem(`${PIPELINE_ACTIVE_KEY}:${workspaceId}:${userId}`, pipelineId);
+    else window.localStorage.removeItem(`${PIPELINE_ACTIVE_KEY}:${workspaceId}:${userId}`);
+  } catch {
+    // storage cheio/bloqueado: a seleção continua válida só nesta sessão.
+  }
+}
+
+/**
+ * Pipeline ativo: ?pipeline=<id> na URL vence; senão o salvo por
+ * workspace+usuário (se ainda existir entre os ativos); senão o padrão.
+ */
+function resolveActivePipeline(
+  pipelines: PipelineSummary[],
+  urlPipelineId: string | null,
+  storedPipelineId: string | null
+): PipelineSummary | null {
+  if (pipelines.length === 0) return null;
+  const byUrl = urlPipelineId ? pipelines.find((pipeline) => pipeline.id === urlPipelineId) : undefined;
+  if (byUrl) return byUrl;
+  const stored = storedPipelineId ? pipelines.find((pipeline) => pipeline.id === storedPipelineId) : undefined;
+  if (stored) return stored;
+  return pipelines.find((pipeline) => pipeline.is_default) ?? pipelines[0]!;
+}
+
 const CONFETTI_COLORS = ["var(--primary)", "var(--success)", "var(--warning)"];
 
 /**
@@ -113,16 +154,19 @@ function PipelineWinBurst() {
   );
 }
 
-export default function PipelinePage() {
+function PipelinePageContent() {
   const canMove = usePermission("leads.update_status");
+  const canManagePipeline = usePermission("pipeline.manage");
   const organizationEnabled = useCaseOrganizationEnabled();
+  const searchParams = useSearchParams();
+  const urlPipelineId = searchParams?.get("pipeline") ?? null;
+  const [manuallySelectedPipelineId, setManuallySelectedPipelineId] = useState<string | null>(null);
   const [filters, setFilters] = useState<PipelineFilterState>({ ...EMPTY_PIPELINE_FILTERS });
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [pendingLeadIds, setPendingLeadIds] = useState<Set<string>>(() => new Set());
   const [intent, setIntent] = useState<TransitionIntent | null>(null);
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
-  const [showAllStages, setShowAllStages] = useState(false);
   const [actionError, setActionError] = useState("");
   const [celebration, setCelebration] = useState<Celebration | null>(null);
   const { data: session } = useSWR<PanelSession>("/me", fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
@@ -152,6 +196,41 @@ export default function PipelinePage() {
     if (session?.activeWorkspace?.id && session.user.id) writePipelineViewPreference(session.activeWorkspace.id, session.user.id, mode);
   }
 
+  const { data: pipelinesData, mutate: mutatePipelines } = useSWR<PipelinesResponse>(
+    organizationEnabled === true ? "/organization/pipelines" : null,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 10_000 }
+  );
+  const pipelines = useMemo(() => pipelinesData?.pipelines ?? [], [pipelinesData?.pipelines]);
+  // Persistência: leitura única após a sessão carregar; escrita na troca manual.
+  const [storedPipelineId, setStoredPipelineId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!session?.activeWorkspace?.id || !session.user.id) return;
+    setStoredPipelineId(readStoredPipelineId(session.activeWorkspace.id, session.user.id));
+  }, [session?.activeWorkspace?.id, session?.user.id]);
+  const activePipeline = useMemo(
+    () => resolveActivePipeline(pipelines, urlPipelineId, manuallySelectedPipelineId ?? storedPipelineId),
+    [manuallySelectedPipelineId, pipelines, storedPipelineId, urlPipelineId]
+  );
+
+  // URL vence: ?pipeline=<id> na barra sempre reflete a seleção atual.
+  function selectPipeline(pipelineId: string | null) {
+    setManuallySelectedPipelineId(pipelineId);
+    writeStoredPipelineId(session?.activeWorkspace?.id, session?.user.id, pipelineId);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (pipelineId) url.searchParams.set("pipeline", pipelineId);
+    else url.searchParams.delete("pipeline");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+
+  function handlePipelinesChanged() {
+    // Lista + configuração do pipeline ativo (cores/ordem/leads mudam juntos).
+    void mutatePipelines();
+    void mutatePipeline();
+    return true;
+  }
+
   const queryFilters = useMemo(() => ({
     ...filters,
     busca: debouncedSearch,
@@ -160,7 +239,7 @@ export default function PipelinePage() {
       ? ""
       : filters.pipeline_stage_id
   }), [debouncedSearch, filters, organizationEnabled]);
-  const leadsKey = `/scheduling/leads?${[buildPipelineFilterQuery(queryFilters), `limit=${PIPELINE_PAGE_SIZE}`].filter(Boolean).join("&")}`;
+  const leadsKey = `/scheduling/leads?${[buildPipelineFilterQuery(queryFilters), activePipeline ? `pipeline_id=${activePipeline.id}` : "", `limit=${PIPELINE_PAGE_SIZE}`].filter(Boolean).join("&")}`;
   // Server-side keyset pagination: the SWR key fetches the first page (what
   // the 15s poll refreshes). List view appends older pages by cursor; kanban
   // loads more per column (anchored on that column's oldest loaded lead). The
@@ -169,11 +248,16 @@ export default function PipelinePage() {
   const [pageState, setPageState] = useState<{ cursor: string | null; hasMore: boolean; fetchedPages: number }>({ cursor: null, hasMore: false, fetchedPages: 0 });
   const [loadingMore, setLoadingMore] = useState(false);
   const [stagePages, setStagePages] = useState<Record<string, StagePageState>>({});
+  // Override otimista por lead: { pipeline_stage_id, status } aplicado sobre
+  // TODAS as fontes (página 1 + extras + páginas por coluna) até a revalidação
+  // terminar; em erro é limpo (rollback) e em 409 o quadro é revalidado.
+  const [stageOverrides, setStageOverrides] = useState<Map<string, { pipeline_stage_id: string | null; status: string }>>(() => new Map());
   useEffect(() => {
     setExtraLeads([]);
     setPageState({ cursor: null, hasMore: false, fetchedPages: 0 });
     setLoadingMore(false);
     setStagePages({});
+    setStageOverrides(new Map());
   }, [leadsKey]);
   const { data, error: leadsError, mutate } = useSWR<PipelineResponse>(leadsKey, fetcher, {
     refreshInterval: 15_000,
@@ -185,17 +269,14 @@ export default function PipelinePage() {
     if (!page || pageState.fetchedPages > 0) return;
     setPageState((current) => current.fetchedPages > 0 ? current : { cursor: page.next_cursor, hasMore: page.has_more, fetchedPages: 0 });
   }, [data?.page, pageState.fetchedPages]);
+  const pipelineConfigKey = organizationEnabled === true
+    ? (activePipeline ? `/organization/pipeline?pipeline_id=${activePipeline.id}` : "/organization/pipeline")
+    : null;
   const { data: pipelineData, error: pipelineError, mutate: mutatePipeline } = useSWR<PipelineConfigResponse>(
-    organizationEnabled === true ? "/organization/pipeline" : null,
+    pipelineConfigKey,
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 10_000 }
   );
-  function handleToggleFreeMovement(value: boolean) {
-    // O PATCH já foi persistido pelo PipelineSettings; revalida para o quadro
-    // refletir imediatamente o novo modo (livre/governado).
-    void mutatePipeline();
-    return value;
-  }
   const { data: membersData } = useSWR<MembersResponse>(canReadMembers ? "/workspaces/current/members" : null, fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
@@ -216,7 +297,16 @@ export default function PipelinePage() {
     }
     return merged;
   }, [data?.leads, extraLeads, stagePages]);
-  const total = data?.total ?? leads.length;
+  // Overrides por cima do merge: cada id recebe o override UMA vez (a cópia
+  // vencedora do dedupe), então nenhuma fonte mostra o valor antigo.
+  const overriddenLeads = useMemo(() => {
+    if (stageOverrides.size === 0) return leads;
+    return leads.map((lead) => {
+      const override = stageOverrides.get(lead.id);
+      return override ? { ...lead, status: override.status, pipeline_stage_id: override.pipeline_stage_id, ai_follow_up: null } : lead;
+    });
+  }, [leads, stageOverrides]);
+  const total = data?.total ?? overriddenLeads.length;
   const configuredStages = useMemo(() => organizationEnabled === false
     ? fallbackStages
     : (pipelineData?.stages ?? []).filter((stage) => !stage.archived_at).sort((left, right) => left.position - right.position), [organizationEnabled, pipelineData?.stages]);
@@ -226,9 +316,11 @@ export default function PipelinePage() {
       : buildOperationalPipelineStages(configuredStages, pipelineData?.follow_up_config),
     [configuredStages, organizationEnabled, pipelineData?.follow_up_config]
   );
-  const boardStages = useMemo(() => showAllStages
-    ? stages
-    : stages.filter((stage) => ["novo", "em_atendimento", "qualificado", "em_negociacao", "fechado", "perdido"].includes(stage.technical_status)), [showAllStages, stages]);
+  // Modo legado (organizationEnabled === false) mantém a projeção de colunas
+  // comerciais; com organização ativa TODAS as etapas do pipeline são colunas.
+  const boardStages = useMemo(() => (organizationEnabled === false
+    ? stages.filter((stage) => ["novo", "em_atendimento", "qualificado", "em_negociacao", "fechado", "perdido"].includes(stage.technical_status))
+    : stages), [organizationEnabled, stages]);
   const allowedTransitions = useMemo(() => new Set(organizationEnabled === false
     ? fallbackTransitions
     : pipelineData?.enforce_transitions === false
@@ -247,16 +339,16 @@ export default function PipelinePage() {
   const loading = (!data && !leadsError) || organizationEnabled === null || (organizationEnabled === true && !pipelineData && !pipelineError);
   const visibleLeads = useMemo(() => {
     if (organizationEnabled === false && filters.pipeline_stage_id.startsWith("fallback:")) {
-      return leads.filter((lead) => `fallback:${lead.status}` === filters.pipeline_stage_id);
+      return overriddenLeads.filter((lead) => `fallback:${lead.status}` === filters.pipeline_stage_id);
     }
     if (isOperationalPipelineStageId(filters.pipeline_stage_id)) {
-      return leads.filter((lead) => currentPipelineStageId(lead, stages, false) === filters.pipeline_stage_id);
+      return overriddenLeads.filter((lead) => currentPipelineStageId(lead, stages, false) === filters.pipeline_stage_id);
     }
-    return leads;
-  }, [filters.pipeline_stage_id, leads, organizationEnabled, stages]);
+    return overriddenLeads;
+  }, [filters.pipeline_stage_id, organizationEnabled, overriddenLeads, stages]);
   const loadError = leadsError?.message ?? pipelineError?.message;
   const hasActiveFilters = Object.values(filters).some(Boolean);
-  const selectedItems = useMemo(() => leads.filter((lead) => selectedIds.has(lead.id)).map((lead) => ({ id: lead.id, expected_updated_at: lead.atualizado_em })), [leads, selectedIds]);
+  const selectedItems = useMemo(() => overriddenLeads.filter((lead) => selectedIds.has(lead.id)).map((lead) => ({ id: lead.id, expected_updated_at: lead.atualizado_em })), [overriddenLeads, selectedIds]);
 
   useRealtimeSignals({
     onCatchUp: () => { if (document.visibilityState === "visible") void mutate(); },
@@ -306,7 +398,7 @@ export default function PipelinePage() {
     // oldest lead already loaded in that column (the global page-1 stream
     // interleaves stages, so the column defines its own page chain).
     const anchor = state?.cursor ?? (() => {
-      const columnLeads = leads.filter((lead) => pipelineBoardStageId(lead, stages, showAllStages) === stage.id);
+      const columnLeads = leads.filter((lead) => pipelineBoardStageId(lead, stages, organizationEnabled !== false) === stage.id);
       const last = columnLeads.at(-1);
       return last ? encodeLeadPageCursor(last) : null;
     })();
@@ -349,7 +441,7 @@ export default function PipelinePage() {
     const map = new Map<string, { remaining: number | null; loading: boolean; visible: boolean }>();
     for (const stage of stages) {
       const state = stagePages[stage.id];
-      const loaded = leads.filter((lead) => pipelineBoardStageId(lead, stages, showAllStages) === stage.id).length;
+      const loaded = leads.filter((lead) => pipelineBoardStageId(lead, stages, organizationEnabled !== false) === stage.id).length;
       const serverCount = organizationEnabled === true
         ? pipelineData?.stages.find((candidate) => candidate.id === (stage.operational_source_stage_id ?? stage.id))?.lead_count
         : undefined;
@@ -361,7 +453,7 @@ export default function PipelinePage() {
       map.set(stage.id, { remaining, loading: Boolean(state?.loading), visible });
     }
     return map;
-  }, [leads, organizationEnabled, pipelineData?.stages, showAllStages, stagePages, stages]);
+  }, [leads, organizationEnabled, pipelineData?.stages, stagePages, stages]);
 
   function targetsForLead(lead: PipelineLead): PipelineStage[] {
     const sourceId = organizationEnabled === false ? `fallback:${lead.status}` : lead.pipeline_stage_id;
@@ -398,13 +490,12 @@ export default function PipelinePage() {
       return;
     }
     setPendingLeadIds((current) => new Set(current).add(lead.id));
-    const optimisticLeads = leads.map((item) => item.id === lead.id ? {
-      ...item,
-      status: persistenceStage.technical_status,
+    // Override otimista: vale para página 1 + extras + páginas por coluna até
+    // a revalidação terminar (sucesso limpa; erro limpa = rollback visual).
+    setStageOverrides((current) => new Map(current).set(lead.id, {
       pipeline_stage_id: persistenceStage.id,
-      ai_follow_up: null
-    } : item);
-    const optimisticData: PipelineResponse = { ...(data ?? {}), leads: optimisticLeads };
+      status: persistenceStage.technical_status
+    }));
     try {
       let expectedUpdatedAt = lead.atualizado_em;
       if (commercial && "responsavel_member_id" in commercial && commercial.responsavel_member_id) {
@@ -424,15 +515,26 @@ export default function PipelinePage() {
             body: JSON.stringify(buildPipelineTransitionPayload({ stage: persistenceStage, expectedUpdatedAt, commercial }))
           });
         }
-        return optimisticData;
-      }, { optimisticData, rollbackOnError: true, revalidate: true });
+        await mutate();
+        return undefined;
+      }, { optimisticData: data, populateCache: false, rollbackOnError: false, revalidate: false });
       // Fechamento bem-sucedido: confete + toast (ref. Pipeline.dc.html).
       if (persistenceStage.technical_status === "fechado") {
         setCelebration({ key: Date.now(), name: lead.nome ?? "Lead" });
       }
       setIntent(null);
     } catch (cause) {
+      // Erro = rollback visual (override some, card volta de onde estava).
+      setStageOverrides((current) => {
+        const next = new Map(current);
+        next.delete(lead.id);
+        return next;
+      });
       setActionError(cause instanceof Error ? cause.message : "Falha ao mover lead");
+      if (cause instanceof ApiError && cause.status === 409) {
+        // Lead alterado por outra operação: o servidor é a verdade.
+        void mutate();
+      }
     } finally {
       setPendingLeadIds((current) => {
         const next = new Set(current);
@@ -451,6 +553,7 @@ export default function PipelinePage() {
       <header className="pipeline-page__header">
         <div className="flex min-w-0 items-baseline gap-2">
           <h1 className="truncate">{hasWorkspaceScope ? "Pipeline" : "Meu pipeline"}</h1>
+          {organizationEnabled === true ? <PipelineManager pipelines={pipelines} activePipeline={activePipeline} channels={pipelinesData?.channels ?? []} canManage={canManagePipeline} onSelect={selectPipeline} onChanged={handlePipelinesChanged} /> : null}
           <div className="pipeline-page__view" aria-label="Visualização do pipeline">
             <Button type="button" aria-pressed={viewMode === "kanban"} onClick={() => changeView("kanban")}>Kanban</Button>
             <Button type="button" aria-pressed={viewMode === "list"} onClick={() => changeView("list")}>Lista</Button>
@@ -459,9 +562,7 @@ export default function PipelinePage() {
         </div>
         <div className="pipeline-page__actions">
           <SavedViewsControl resource="pipeline" filters={pipelineFiltersForSavedView(filters)} onApply={(saved) => setFilters(applyPipelineSavedView(saved))} />
-          <IconButton label="Mostrar todas as etapas" className="pipeline-page__stage-toggle" aria-pressed={showAllStages} onClick={() => setShowAllStages((current) => !current)}><Eye size={16} aria-hidden="true" /></IconButton>
           <PipelineViewPreferences value={preferences} onChange={setPreferences} />
-          <PipelineSettings stages={pipelineData?.stages ?? []} transitions={pipelineData?.transitions ?? []} followUpConfig={pipelineData?.follow_up_config} enforceTransitions={pipelineData?.enforce_transitions} onChanged={mutatePipeline} onToggleFreeMovement={handleToggleFreeMovement} />
         </div>
       </header>
 
@@ -495,7 +596,11 @@ export default function PipelinePage() {
           leads={visibleLeads}
           allowedTransitions={allowedTransitions}
           legacy={organizationEnabled === false}
-          showAllStages={showAllStages}
+          pipelineId={activePipeline?.id}
+          manageStages={canManagePipeline && organizationEnabled === true}
+          onStagesChanged={handlePipelinesChanged}
+          transitions={pipelineData?.transitions}
+          enforceTransitions={pipelineData?.enforce_transitions}
           loading={loading}
           loadError={loadError}
           hasActiveFilters={hasActiveFilters}
@@ -537,4 +642,9 @@ export default function PipelinePage() {
       </div>
     </Shell>
   );
+}
+
+// useSearchParams exige Suspense no App Router (?pipeline=<id> seleciona o pipeline).
+export default function PipelinePage() {
+  return <Suspense fallback={null}><PipelinePageContent /></Suspense>;
 }

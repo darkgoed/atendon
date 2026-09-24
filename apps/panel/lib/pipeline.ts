@@ -70,12 +70,66 @@ export type PipelineStage = {
   is_default: boolean;
   lead_count?: number;
   archived_at?: string | null;
+  pipeline_id?: string;
+  automation?: PipelineStageAutomation;
   operational_kind?: "ai_follow_up" | "call";
   operational_source_stage_id?: string;
   follow_up_attempt?: number;
 };
 
+export type PipelineStageAutomation = { add_tag_ids?: string[]; assign_member_id?: string | null };
+
 export type PipelineTransition = { from_stage_id: string; to_stage_id: string };
+
+/** Pipeline da empresa (GET /organization/pipelines). */
+export type PipelineSummary = {
+  id: string;
+  name: string;
+  color: string;
+  position: number;
+  is_default: boolean;
+  enforce_transitions: boolean;
+  archived_at?: string | null;
+  stage_count: number;
+  lead_count: number;
+  channel_ids: string[];
+};
+
+/** Canal (WhatsApp/Instagram) e o pipeline de entrada vinculado (NULL = padrão). */
+export type PipelineChannelLink = {
+  id: string;
+  label: string;
+  channel: "whatsapp" | "instagram" | string;
+  phone_number?: string | null;
+  instagram_username?: string | null;
+  pipeline_id: string | null;
+};
+
+export type PipelinesResponse = { pipelines: PipelineSummary[]; channels?: PipelineChannelLink[] };
+
+/**
+ * Comportamento da etapa (technical_status) em linguagem de produto. É o que
+ * a etapa faz com o contato ao recebê-lo — não uma etapa pré-criada.
+ */
+export const STAGE_BEHAVIOR_OPTIONS: ReadonlyArray<{ value: CanonicalPipelineStatus; label: string }> = [
+  { value: "em_atendimento", label: "Etapa comum" },
+  { value: "novo", label: "Entrada" },
+  { value: "aguardando_resposta", label: "Aguardando resposta" },
+  { value: "qualificado", label: "Qualificado" },
+  { value: "agendado", label: "Reunião agendada" },
+  { value: "em_negociacao", label: "Negociação — pede próxima ação" },
+  { value: "proposta_enviada", label: "Proposta — pede próxima ação" },
+  { value: "follow_up", label: "Follow-up — pede próxima ação" },
+  { value: "fechado", label: "Ganho — pede dados da venda" },
+  { value: "perdido", label: "Perdido — pede motivo" }
+];
+
+export function stageBehaviorLabel(status: string): string {
+  return STAGE_BEHAVIOR_OPTIONS.find((option) => option.value === status)?.label ?? pipelineStatusLabel(status);
+}
+
+/** Paleta de cores das etapas/pipelines (hex — o backend exige #RRGGBB). */
+export const PIPELINE_COLOR_SWATCHES = ["#64748B", "#3B82F6", "#14B8A6", "#22C55E", "#F59E0B", "#F97316", "#EF4444", "#8B5CF6"] as const;
 export type PipelineFollowUpConfig = { enabled: boolean; max_count: number };
 export type PipelineAiFollowUpProgress = {
   count: number;

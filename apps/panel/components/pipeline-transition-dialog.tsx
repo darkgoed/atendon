@@ -2,8 +2,10 @@
 
 import { ArrowRight, X } from "@/components/icons";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
+import useSWR from "swr";
 import { ModalDialog } from "@/components/modal-dialog";
 import { pipelineStageAutomationLabel } from "@/components/pipeline-board";
+import { api } from "@/lib/api";
 import { instantFromLocalMinute } from "@/lib/timezone";
 import { lossReasonRequiresNote, useLossReasons } from "@/lib/loss-reasons";
 import {
@@ -12,8 +14,18 @@ import {
   type PipelineCommercialInput,
   type PipelineLead,
   type PipelineMember,
-  type PipelineStage
+  type PipelineStage,
+  type PipelineTransition,
+  type PipelinesResponse
 } from "@/lib/pipeline";
+
+/** Resposta de GET /organization/pipeline?pipeline_id=<id> (spec, contrato 9). */
+type PipelineDetailResponse = {
+  stages: PipelineStage[];
+  transitions: PipelineTransition[];
+  members: PipelineMember[];
+  enforce_transitions?: boolean;
+};
 
 export function PipelineTransitionDialog({
   lead,
@@ -48,11 +60,43 @@ export function PipelineTransitionDialog({
   const [lossReasonNote, setLossReasonNote] = useState("");
   const [validationError, setValidationError] = useState("");
   const { reasons, error: reasonsError } = useLossReasons();
-  const target = useMemo(() => targets.find((stage) => stage.id === targetId) ?? null, [targetId, targets]);
+
+  // Cross-pipeline: o select só existe com ≥2 pipelines; default = pipeline do
+  // contato — as etapas destino vêm sempre do pipeline atual dele (grafo/
+  // carregamento do pai), senão o padrão da organização.
+  const currentPipelineId = initialTarget?.pipeline_id ?? targets[0]?.pipeline_id ?? null;
+  const { data: pipelinesData } = useSWR<PipelinesResponse>("/organization/pipelines", (url: string) => api<PipelinesResponse>(url), {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000
+  });
+  const pipelines = useMemo(() => pipelinesData?.pipelines ?? [], [pipelinesData]);
+  const defaultPipelineId = pipelines.find((pipeline) => pipeline.is_default)?.id ?? null;
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
+  const activePipelineId = selectedPipelineId || currentPipelineId || defaultPipelineId;
+  const hasPipelineChoice = pipelines.length >= 2;
+
+  // Mesmo pipeline (ou nenhum escolhido ainda) = etapas vindas do pai (grafo
+  // já aplicado). Outro pipeline = busca o quadro dele e lista TODAS as etapas
+  // ativas como destino — cross-pipeline ignora o grafo (espec 16).
+  const otherPipelineId = activePipelineId && activePipelineId !== currentPipelineId ? activePipelineId : null;
+  const { data: otherPipelineData } = useSWR<PipelineDetailResponse>(
+    otherPipelineId ? `/organization/pipeline?pipeline_id=${otherPipelineId}` : null,
+    (url: string) => api<PipelineDetailResponse>(url),
+    { revalidateOnFocus: false }
+  );
+  const effectiveTargets: PipelineStage[] = otherPipelineId
+    ? (otherPipelineData?.stages ?? [])
+        .filter((stage) => !stage.archived_at)
+        .sort((left, right) => left.position - right.position)
+    : targets;
+  const target = useMemo(() => effectiveTargets.find((stage) => stage.id === targetId) ?? null, [targetId, effectiveTargets]);
   const requirement = pipelineTransitionRequirement(target?.technical_status ?? "");
-  const firstTargetId = targets[0]?.id;
+  const firstTargetId = effectiveTargets[0]?.id;
   const noteRequired = lossReasonRequiresNote(reasons, lossReason);
 
+  // Reset do destino e dos campos comerciais quando o lead, a lista de etapas
+  // ou o pipeline escolhido mudam (etapas de outro pipeline exigem campos
+  // próprios — o requirement é recalculado a partir do novo target).
   useEffect(() => {
     setTargetId(initialTarget?.id ?? firstTargetId ?? "");
     setSaleValue("");
@@ -66,6 +110,13 @@ export function PipelineTransitionDialog({
     setLossReasonNote("");
     setValidationError("");
   }, [firstTargetId, initialTarget?.id, lead.id, lead.responsavel_member_id]);
+
+  // Texto curto de apoio: só faz sentido quando a lista de etapas é de OUTRO pipeline.
+  const chosenPipeline = pipelines.find((pipeline) => pipeline.id === otherPipelineId) ?? null;
+  const currentPipeline = pipelines.find((pipeline) => pipeline.id === currentPipelineId) ?? null;
+  const crossPipelineHint = currentPipeline && chosenPipeline
+    ? `O contato sai de ${currentPipeline.name} e entra em ${chosenPipeline.name}.`
+    : "";
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -130,10 +181,20 @@ export function PipelineTransitionDialog({
         </button>
       </div>
       <form className="mt-5 grid gap-4" aria-busy={pending} onSubmit={submit}>
+        {hasPipelineChoice ? (
+          <label className="field">
+            <span className="label">Pipeline</span>
+            <select className="input" value={activePipelineId ?? ""} onChange={(event) => { setSelectedPipelineId(event.target.value); setValidationError(""); }} disabled={pending}>
+              {pipelines.map((pipeline) => <option key={pipeline.id} value={pipeline.id}>{pipeline.name}</option>)}
+            </select>
+          </label>
+        ) : null}
+        {crossPipelineHint ? <p className="pipeline-note">{crossPipelineHint}</p> : null}
+
         <label className="field">
           <span className="label">Etapa de destino</span>
           <select className="input" value={targetId} onChange={(event) => { setTargetId(event.target.value); setValidationError(""); }} data-autofocus disabled={pending}>
-            {targets.map((stage) => <option key={stage.id} value={stage.id}>{stage.name} · {pipelineStatusLabel(stage.technical_status)} · {pipelineStageAutomationLabel(stage)}</option>)}
+            {effectiveTargets.map((stage) => <option key={stage.id} value={stage.id}>{stage.name} · {pipelineStatusLabel(stage.technical_status)} · {pipelineStageAutomationLabel(stage)}</option>)}
           </select>
         </label>
 

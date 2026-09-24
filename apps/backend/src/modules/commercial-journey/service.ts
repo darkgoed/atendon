@@ -73,14 +73,28 @@ function assertFuture(value: string, now = new Date()) {
   return parsed;
 }
 
-export async function defaultStageId(client: PoolClient, tenantId: string, status: LeadTechnicalStatus) {
+/**
+ * Etapa que representa `status` no PIPELINE DO LEAD (0184: pipelines são
+ * independentes — automação nunca tira o lead do próprio pipeline). Quando o
+ * pipeline não tem etapa com esse comportamento, o lead permanece na etapa
+ * atual (o status técnico muda, a coluna não).
+ */
+export async function defaultStageId(client: PoolClient, tenantId: string, status: LeadTechnicalStatus, leadId: string) {
   const result = await client.query<{ id: string }>(
-    `SELECT id FROM pipeline_stages
-     WHERE tenant_id=$1 AND technical_status=$2 AND is_default AND archived_at IS NULL
-     FOR SHARE`,
-    [tenantId,status]
+    `SELECT COALESCE(
+       (SELECT candidate.id FROM pipeline_stages candidate
+        WHERE candidate.tenant_id=current_stage.tenant_id AND candidate.pipeline_id=current_stage.pipeline_id
+          AND candidate.technical_status=$3 AND candidate.archived_at IS NULL
+        ORDER BY candidate.is_default DESC,candidate.position,candidate.id
+        LIMIT 1),
+       current_stage.id
+     ) id
+     FROM scheduling_leads lead
+     JOIN pipeline_stages current_stage ON current_stage.tenant_id=lead.tenant_id AND current_stage.id=lead.pipeline_stage_id
+     WHERE lead.tenant_id=$1 AND lead.id=$2`,
+    [tenantId,leadId,status]
   );
-  if (!result.rows[0]) throw httpError(409,`Etapa padrão ausente para ${status}`);
+  if (!result.rows[0]) throw httpError(409,`Etapa ausente para ${status}`);
   return result.rows[0].id;
 }
 
@@ -251,7 +265,7 @@ export async function applyAppointmentHandoff(
     actor: JourneyActor;
   }
 ) {
-  const stageId = await defaultStageId(client,input.tenantId,"agendado");
+  const stageId = await defaultStageId(client,input.tenantId,"agendado",input.leadId);
   await client.query(
     `UPDATE scheduling_leads SET
        unit_id=$3,status='agendado',pipeline_stage_id=$4,
@@ -365,7 +379,7 @@ export async function concludeAppointmentJourney(
     const { appointment,lead } = await lockAppointmentAndLead(client,tenantId,appointmentId,expectedAssignedMemberId);
     if (!['confirmado','reagendado','no_show'].includes(appointment.status)) throw httpError(409,`Transição de agendamento não permitida: ${appointment.status} -> concluido`);
     const targetStatus = OUTCOME_PIPELINE_STAGE[input.outcome];
-    const stageId = await defaultStageId(client,tenantId,targetStatus);
+    const stageId = await defaultStageId(client,tenantId,targetStatus,lead.id);
     const nextAction = "next_action" in input ? input.next_action : null;
     const nextActionAt = "next_action_at" in input ? assertFuture(input.next_action_at) : null;
     const saleValue = "sale_value" in input ? input.sale_value : null;
@@ -417,7 +431,7 @@ export async function markAppointmentNoShowJourney(
     const recoveryMemberId = await deterministicRecoveryMemberId(client,tenantId,[
       lead.sdr_member_id,lead.assigned_member_id,appointment.assigned_member_id,lead.closer_member_id
     ]);
-    const stageId = await defaultStageId(client,tenantId,"follow_up");
+    const stageId = await defaultStageId(client,tenantId,"follow_up",lead.id);
     const updated = (await client.query<AppointmentRow>(
       `UPDATE scheduling_appointments SET status='no_show',result_pending_at=NULL,
          commercial_outcome=NULL,sale_value=NULL,loss_reason=NULL,
@@ -456,7 +470,7 @@ export async function cancelAppointmentJourney(
     if (!['confirmado','reagendado'].includes(appointment.status)) throw httpError(409,`Transição de agendamento não permitida: ${appointment.status} -> cancelado`);
     const recovering = input.disposition === "recover";
     const targetStatus: LeadTechnicalStatus = recovering ? "follow_up" : "perdido";
-    const stageId = await defaultStageId(client,tenantId,targetStatus);
+    const stageId = await defaultStageId(client,tenantId,targetStatus,lead.id);
     const nextActionAt = recovering ? assertFuture(input.next_action_at) : null;
     const resolvedLoss = recovering
       ? null

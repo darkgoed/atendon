@@ -74,6 +74,7 @@ const leadFiltersSchema = z.object({
 
 const pipelineFiltersSchema = z.object({
   busca: z.string().trim().max(200).optional(),
+  pipeline_id: organizationUuid.optional(),
   pipeline_stage_id: z.union([
     organizationUuid,
     operationalPipelineStageId
@@ -112,13 +113,20 @@ export const savedViewListQuerySchema = z.object({
   resource: savedViewResourceSchema.optional()
 }).strict();
 
+export const stageAutomationSchema = z.object({
+  add_tag_ids: z.array(organizationUuid).max(20).optional(),
+  assign_member_id: organizationUuid.nullable().optional()
+}).strict();
+
 export const stageCreateSchema = z.object({
+  pipeline_id: organizationUuid.optional(),
   name: z.string().trim().min(1).max(80),
   color,
-  position: z.number().int().min(0).max(1_000_000),
+  position: z.number().int().min(0).max(1_000_000).optional(),
   capacity_target: optionalNullableCapacity,
-  technical_status: technicalStatusSchema,
-  is_default: z.boolean().default(false)
+  technical_status: technicalStatusSchema.default("em_atendimento"),
+  is_default: z.boolean().optional().default(false),
+  automation: stageAutomationSchema.optional()
 }).strict();
 
 export const stageUpdateSchema = z.object({
@@ -127,7 +135,8 @@ export const stageUpdateSchema = z.object({
   position: z.number().int().min(0).max(1_000_000).optional(),
   capacity_target: optionalNullableCapacity,
   technical_status: technicalStatusSchema.optional(),
-  is_default: z.boolean().optional()
+  is_default: z.boolean().optional(),
+  automation: stageAutomationSchema.optional()
 }).strict().refine((value) => Object.keys(value).length > 0, "Informe ao menos um campo");
 
 export const archiveStageSchema = z.object({
@@ -142,14 +151,64 @@ export const stageTransitionsSchema = z.object({
   }
 });
 
+export const pipelineCreateSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  color: color.optional()
+}).strict();
+
+export const pipelineUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  color: color.optional(),
+  is_default: z.literal(true).optional(),
+  enforce_transitions: z.boolean().optional()
+}).strict().refine((value) => Object.keys(value).length > 0, "Informe ao menos um campo");
+
+export const pipelineArchiveSchema = z.object({
+  replacement_pipeline_id: organizationUuid.optional()
+}).strict();
+
+export const pipelineOrderSchema = z.object({
+  pipeline_ids: z.array(organizationUuid).min(1)
+}).strict().superRefine((value, context) => {
+  if (new Set(value.pipeline_ids).size !== value.pipeline_ids.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Pipelines duplicados" });
+  }
+});
+
+export const pipelineChannelsSchema = z.object({
+  session_ids: z.array(organizationUuid)
+}).strict();
+
+export const pipelineDuplicateSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional()
+}).strict();
+
+export const pipelineIdParams = z.object({ pipelineId: organizationUuid }).strict();
+
+export const pipelineListQuerySchema = z.object({
+  pipeline_id: organizationUuid.optional(),
+  include_archived: z.enum(["true"]).optional()
+}).strict();
+
+export const stageOrderSchema = z.object({
+  stage_ids: z.array(organizationUuid).min(1)
+}).strict().superRefine((value, context) => {
+  if (new Set(value.stage_ids).size !== value.stage_ids.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Etapas duplicadas" });
+  }
+});
+
+export const stageDuplicateParams = z.object({ stageId: organizationUuid }).strict();
+
+export const pipelineSettingsSchema = z.object({
+  enforce_transitions: z.boolean(),
+  pipeline_id: organizationUuid.optional()
+}).strict();
+
 export const moveLeadStageSchema = z.object({
   stage_id: organizationUuid,
   expected_updated_at: z.string().datetime({ offset: true }).optional(),
   commercial: commercialTransitionPayloadSchema.optional()
-}).strict();
-
-export const pipelineSettingsSchema = z.object({
-  enforce_transitions: z.boolean()
 }).strict();
 
 const bulkItems = z.array(z.object({

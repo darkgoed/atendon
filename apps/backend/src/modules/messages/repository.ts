@@ -683,10 +683,23 @@ export class MessageRepository {
       WITH conv AS (
         INSERT INTO conversations
           (tenant_id, session_id, contact_phone, contact_name, contact_jid, facebook_attribution,
-           contact_presence, contact_presence_updated_at, contact_last_seen_at, queue_id)
+           contact_presence, contact_presence_updated_at, contact_last_seen_at, queue_id,
+           ai_active, handoff_reason)
         SELECT $1, s.id, $3, $4, $5, $13::jsonb, 'available', now(), now(),
-               (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)
+               (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1),
+               COALESCE(agent_birth.is_active, false),
+               CASE WHEN COALESCE(agent_birth.is_active, false) THEN NULL ELSE 'agent_disabled' END
         FROM whatsapp_sessions s
+        LEFT JOIN LATERAL (
+          SELECT cfg.is_active
+          FROM agent_configs cfg
+          JOIN agent_config_versions v
+            ON v.id=cfg.active_version_id AND v.tenant_id=cfg.tenant_id
+           AND v.agent_config_id=cfg.id AND v.status='active'
+          WHERE cfg.tenant_id=$1 AND (cfg.session_id=s.id OR cfg.session_id IS NULL)
+          ORDER BY (cfg.session_id IS NOT NULL) DESC, cfg.updated_at DESC, cfg.id
+          LIMIT 1
+        ) agent_birth ON true
         WHERE s.id = $2 AND s.tenant_id = $1
         ON CONFLICT (tenant_id, session_id, contact_phone) DO UPDATE
         SET contact_name = COALESCE(
@@ -712,10 +725,10 @@ export class MessageRepository {
         RETURNING id, ai_active, ai_commercial_override_at, facebook_attribution, contact_name
       ),
       automatic_lead AS (
-        INSERT INTO scheduling_leads(tenant_id,phone,name,source,facebook_attribution)
+        INSERT INTO scheduling_leads(tenant_id,phone,name,source,facebook_attribution,origin_session_id)
         SELECT $1,$3,conv.contact_name,
                CASE WHEN conv.facebook_attribution <> '{}'::jsonb THEN 'facebook' ELSE 'whatsapp' END,
-               conv.facebook_attribution
+               conv.facebook_attribution,$2
         FROM conv
         WHERE $18::boolean
           AND NOT EXISTS (
@@ -1609,6 +1622,41 @@ export class MessageRepository {
     );
   }
 
+  /**
+   * Desativar o agente tem que valer para as conversas já abertas na hora, não
+   * só quando o contato escrever de novo (comportamento do flip preguiçoso em
+   * `markAiUnavailable`). Sem isto toda conversa aberta segue `ai_active=true`:
+   * some do filtro humano ("Abertas"), fica presa no bucket da IA e o atendente
+   * precisa pausar a IA uma por uma. Converte apenas conversas cujo agente
+   * EFETIVO (config da conexão, senão a compartilhada) ficou inativo — conexões
+   * com config própria ativa mantêm a IA. Não há caminho de volta automático:
+   * religar o agente não devolve conversas que ficaram com o humano.
+   */
+  async markConversationsAgentDisabled(tenantId: string): Promise<number> {
+    const result = await this.db.query(
+      `UPDATE conversations conversation
+       SET ai_active=false, handoff_reason='agent_disabled', handoff_error_code=NULL
+       WHERE conversation.tenant_id=$1
+         AND conversation.ai_active=true
+         AND NOT EXISTS (
+           SELECT 1 FROM LATERAL (
+             SELECT cfg.is_active
+             FROM agent_configs cfg
+             JOIN agent_config_versions v
+               ON v.id=cfg.active_version_id AND v.tenant_id=cfg.tenant_id
+              AND v.agent_config_id=cfg.id AND v.status='active'
+             WHERE cfg.tenant_id=conversation.tenant_id
+               AND (cfg.session_id=conversation.session_id OR cfg.session_id IS NULL)
+             ORDER BY (cfg.session_id IS NOT NULL) DESC, cfg.updated_at DESC, cfg.id
+             LIMIT 1
+           ) effective_agent
+           WHERE effective_agent.is_active
+         )`,
+      [tenantId]
+    );
+    return result.rowCount ?? 0;
+  }
+
   async getPendingHandoffNotification(id: string): Promise<HandoffNotification | null> {
     const result = await this.db.query<{
       id: string;
@@ -2333,8 +2381,8 @@ export class MessageRepository {
          RETURNING id
        ),
        automatic_lead AS (
-         INSERT INTO scheduling_leads(tenant_id,phone,source)
-         SELECT $1,$3,'whatsapp' FROM conv
+         INSERT INTO scheduling_leads(tenant_id,phone,source,origin_session_id)
+         SELECT $1,$3,'whatsapp',$2 FROM conv
          WHERE NOT EXISTS (
            SELECT 1 FROM scheduling_leads existing
            WHERE existing.tenant_id=$1

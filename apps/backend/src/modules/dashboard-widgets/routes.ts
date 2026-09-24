@@ -204,8 +204,11 @@ async function loadWidgetData(
     return {
       stages: (await db.query(
         `SELECT stage.id,stage.name,stage.color,stage.position,stage.capacity_target,
-                stage.technical_status AS status,count(lead.id)::int count
+                stage.technical_status AS status,stage.pipeline_id,pipeline.name AS pipeline_name,
+                count(lead.id)::int count
          FROM pipeline_stages stage
+         JOIN pipelines pipeline ON pipeline.id=stage.pipeline_id AND pipeline.tenant_id=stage.tenant_id
+           AND pipeline.archived_at IS NULL
          LEFT JOIN scheduling_leads lead
            ON lead.tenant_id=stage.tenant_id
           AND lead.pipeline_stage_id=stage.id
@@ -213,8 +216,9 @@ async function loadWidgetData(
           AND ($2::boolean OR lead.assigned_member_id=$3)
          WHERE stage.tenant_id=$1 AND stage.archived_at IS NULL
          GROUP BY stage.id,stage.name,stage.color,stage.position,
-                  stage.capacity_target,stage.technical_status
-         ORDER BY stage.position,stage.id`,
+                  stage.capacity_target,stage.technical_status,stage.pipeline_id,
+                  pipeline.name,pipeline.position
+         ORDER BY pipeline.position,stage.position,stage.id`,
         [session.tenantId, workspaceScope, scope.type === "mine" ? scope.memberId : null]
       )).rows
     };

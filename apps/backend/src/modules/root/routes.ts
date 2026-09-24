@@ -84,9 +84,10 @@ type WorkspacePresetCounts = {
 // (única é a restrição composta (id,tenant_id), que existe para as FKs
 // compostas) — a cópia usa IDs NOVOS e remapeia as pipeline_transitions de
 // origem → destino 1:1. Fluxos preservam o id porque a PK é composta
-// (tenant_id,id) e o id do fluxo é semântico. As etapas SEMEADAS pelo trigger
-// (0098/0112) são removidas antes da cópia — o tenant novo não tem leads, e as
-// transições semeadas cascateiam com a exclusão das etapas.
+// (tenant_id,id) e o id do fluxo é semântico. Os pipelines SEMEADOS pelo
+// trigger são removidos antes da cópia (etapas/transições cascateiam) — o
+// tenant novo não tem leads. A automação de etapa (tags/membro) NÃO copia:
+// ids de etiqueta/membro do modelo não pertencem ao tenant alvo.
 async function copyWorkspacePreset(
   client: PoolClient,
   targetTenantId: string,
@@ -98,7 +99,8 @@ async function copyWorkspacePreset(
   const copied: WorkspacePresetCounts = { pipeline_stages: 0, tags: 0, custom_fields: 0, flows: 0 };
 
   if (options.pipeline) {
-    await client.query("DELETE FROM pipeline_stages WHERE tenant_id=$1", [targetTenantId]);
+    // Etapas cascateiam com pipelines (FK composta 0184); transições cascateiam com as etapas.
+    await client.query("DELETE FROM pipelines WHERE tenant_id=$1", [targetTenantId]);
     // Mapa de origem → destino (ids novos, globalmente únicos) numa temp table
     // da transação: as transições precisam apontar para as etapas copiadas.
     await client.query("CREATE TEMP TABLE preset_stage_map(old_id uuid PRIMARY KEY,new_id uuid NOT NULL) ON COMMIT DROP");
@@ -106,14 +108,29 @@ async function copyWorkspacePreset(
       "INSERT INTO preset_stage_map SELECT id,gen_random_uuid() FROM pipeline_stages WHERE tenant_id=$1",
       [sourceTenantId]
     );
+    await client.query("CREATE TEMP TABLE preset_pipeline_map(old_id uuid PRIMARY KEY,new_id uuid NOT NULL) ON COMMIT DROP");
+    await client.query(
+      "INSERT INTO preset_pipeline_map SELECT id,gen_random_uuid() FROM pipelines WHERE tenant_id=$1",
+      [sourceTenantId]
+    );
+    await client.query(
+      `INSERT INTO pipelines(id,tenant_id,name,color,position,is_default,enforce_transitions,archived_at)
+       SELECT preset_pipeline_map.new_id,$1,source_pipeline.name,source_pipeline.color,source_pipeline.position,
+              source_pipeline.is_default,source_pipeline.enforce_transitions,source_pipeline.archived_at
+       FROM pipelines source_pipeline
+       JOIN preset_pipeline_map ON preset_pipeline_map.old_id=source_pipeline.id
+       WHERE source_pipeline.tenant_id=$2`,
+      [targetTenantId, sourceTenantId]
+    );
     const stages = await client.query(
       `INSERT INTO pipeline_stages(
-         id,tenant_id,name,color,position,capacity_target,technical_status,is_default,archived_at
+         id,tenant_id,pipeline_id,name,color,position,capacity_target,technical_status,is_default,automation,archived_at
        )
-       SELECT preset_stage_map.new_id,$1,source_stage.name,source_stage.color,source_stage.position,source_stage.capacity_target,
-              source_stage.technical_status,source_stage.is_default,source_stage.archived_at
+       SELECT preset_stage_map.new_id,$1,preset_pipeline_map.new_id,source_stage.name,source_stage.color,source_stage.position,source_stage.capacity_target,
+              source_stage.technical_status,source_stage.is_default,'{}'::jsonb,source_stage.archived_at
        FROM pipeline_stages source_stage
        JOIN preset_stage_map ON preset_stage_map.old_id=source_stage.id
+       JOIN preset_pipeline_map ON preset_pipeline_map.old_id=source_stage.pipeline_id
        WHERE source_stage.tenant_id=$2`,
       [targetTenantId, sourceTenantId]
     );

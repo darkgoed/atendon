@@ -858,10 +858,10 @@ export class QualificationService {
             [input.tenantId, existingLead.rows[0].id, input.contactName ?? null]
           )
         : await client.query<{ id: string; created: boolean }>(
-            `INSERT INTO scheduling_leads(tenant_id,phone,name,source)
-             VALUES($1,$2,$3,$4)
+            `INSERT INTO scheduling_leads(tenant_id,phone,name,source,origin_session_id)
+             VALUES($1,$2,$3,$4,$5)
              RETURNING id,true created`,
-            [input.tenantId, input.contactPhone, input.contactName ?? null, definition.origem]
+            [input.tenantId, input.contactPhone, input.contactName ?? null, definition.origem, input.sessionId]
           );
       const leadId = lead.rows[0].id;
       await ensureCaseAssignment(client, {
@@ -1216,12 +1216,12 @@ export class QualificationService {
         const moved = await client.query<{ id: string }>(
           `UPDATE scheduling_leads l SET pipeline_stage_id=$3,updated_at=now()
            WHERE l.id=$2 AND l.tenant_id=$1
-             AND EXISTS (SELECT 1 FROM pipeline_stages s WHERE s.tenant_id=$1 AND s.id=$3 AND s.archived_at IS NULL AND s.technical_status=l.status)
+             AND EXISTS (SELECT 1 FROM pipeline_stages s WHERE s.tenant_id=$1 AND s.id=$3 AND s.archived_at IS NULL)
            RETURNING id`, [ctx.tenantId, ctx.leadId, step.stage_id]
         );
         return moved.rows[0]
           ? { ok: true, detail: { acao: "stage_move", stage_id: step.stage_id } }
-          : { ok: false, detail: { acao: "stage_move", motivo: "estagio_invalido_para_status_atual" } };
+          : { ok: false, detail: { acao: "stage_move", motivo: "estagio_invalido" } };
       }
       case "assign_agent": {
         const assigned = await client.query<{ assigned_member_id: string }>(

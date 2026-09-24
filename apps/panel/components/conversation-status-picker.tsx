@@ -48,8 +48,10 @@ export function ConversationStatusPicker({
 }) {
   const canMove = usePermission("leads.update_status");
   const organizationEnabled = useCaseOrganizationEnabled();
+  // Escopo no pipeline da etapa do contato (contrato 9): ausente = padrão.
+  const pipelineScope = pipelineStage.pipeline_id ? `?pipeline_id=${pipelineStage.pipeline_id}` : "";
   const { data } = useSWR<PipelineResponse>(
-    canMove && organizationEnabled === true ? "/organization/pipeline" : null,
+    canMove && organizationEnabled === true ? `/organization/pipeline${pipelineScope}` : null,
     (url: string) => api<PipelineResponse>(url),
     { revalidateOnFocus: false, dedupingInterval: 10_000 }
   );

@@ -31,6 +31,7 @@ import {
   applyAppointmentHandoff,
   cancelAppointmentJourney,
   concludeAppointmentJourney,
+  defaultStageId,
   markAppointmentNoShowJourney,
   type JourneyActor
 } from "../commercial-journey/service.js";
@@ -3052,11 +3053,7 @@ export async function enviarPropostaParceiro(tenantId: string, leadId: string, p
     const lead = await client.query<{ status: string; assigned_member_id: string | null }>("SELECT status,assigned_member_id FROM scheduling_leads WHERE id=$1 AND tenant_id=$2 FOR UPDATE", [leadId, tenantId]);
     if (!lead.rows[0]) throw httpError(404, "Lead não encontrado");
     if (expectedAssignedMemberId && lead.rows[0].assigned_member_id !== expectedAssignedMemberId) throw httpError(404, "Lead não encontrado");
-    const stage = await client.query<{ id: string }>(
-      "SELECT id FROM pipeline_stages WHERE tenant_id=$1 AND technical_status='proposta_enviada' AND is_default AND archived_at IS NULL",
-      [tenantId]
-    );
-    if (!stage.rows[0]) throw httpError(409,"Etapa padrão de proposta enviada não configurada");
+    const stage = { rows: [{ id: await defaultStageId(client, tenantId, "proposta_enviada", leadId) }] };
     const nextActionAt = new Date(Date.now()+24*60*60*1000);
     await client.query(
       `UPDATE scheduling_leads SET partner_id=$3,status='proposta_enviada',pipeline_stage_id=$4,

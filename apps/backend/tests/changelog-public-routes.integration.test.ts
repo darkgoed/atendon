@@ -86,6 +86,10 @@ describe("changelog público — feed e permalink", () => {
     await insertPost({ slug: `antigo-${base}`, title: "Antigo", summary: "s", published: true, publishedAt: antigoAt });
     await insertPost({ slug: `novo-${base}`, title: "Novo", summary: "s", published: true, publishedAt: novoAt });
     const full = (await inject("GET", "/public/changelog?limit=50")).json() as { posts: PublicPost[]; nextOffset: number | null };
+    // O feed global do DB compartilhado pode ter ≥50 posts elegíveis: paginação
+    // isomórfica exige a janela COMPLETA dos nossos 2 posts — busca só eles.
+    const ours = full.posts.filter((post) => post.slug.endsWith(`-${base}`));
+    expect(ours.map((post) => post.slug)).toEqual([`novo-${base}`, `antigo-${base}`]);
     // Asserção RELATIVA (cross-time): ordem ENTRE os nossos posts, não posição absoluta no feed global.
     const idxNovo = full.posts.findIndex((post) => post.slug === `novo-${base}`);
     const idxAntigo = full.posts.findIndex((post) => post.slug === `antigo-${base}`);
@@ -95,7 +99,10 @@ describe("changelog público — feed e permalink", () => {
     const pageNovo = (await inject("GET", `/public/changelog?limit=1&offset=${idxNovo}`)).json() as { posts: PublicPost[]; nextOffset: number | null };
     expect(pageNovo.posts[0].slug).toBe(`novo-${base}`);
     expect(pageNovo.nextOffset).toBe(idxNovo + 1);
-    const lastOffset = full.posts.length - 1;
+    // Paginação a partir do ÚLTIMO NOSSO post: offset=idxAntigo (o último
+    // elegível se o resto do feed for limpo) — em DB compartilhado, âncora
+    // relativa aos NOSSOS posts, não ao feed global inteiro.
+    const lastOffset = idxAntigo;
     const last = (await inject("GET", `/public/changelog?limit=1&offset=${lastOffset}`)).json() as { posts: PublicPost[]; nextOffset: number | null };
     expect(last.posts[0].slug).toBe(full.posts[lastOffset].slug);
     expect(last.nextOffset).toBeNull();

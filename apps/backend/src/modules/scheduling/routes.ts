@@ -245,6 +245,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
       status: leadStatus.optional(), unidade_id: slug.optional(), categoria_id: slug.optional(), parceiro_id: slug.optional(), busca: z.string().trim().max(200).optional(),
       estrelas: z.coerce.number().int().min(1).max(5).optional(),
       pipeline_stage_id: z.string().uuid().optional(),
+      pipeline_id: z.string().uuid().optional(),
       sdr_member_id: z.string().uuid().optional(),
       closer_member_id: z.string().uuid().optional(),
       team_id: z.string().uuid().optional(),
@@ -293,6 +294,10 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
     if (query.team_id) {
       params.push(query.team_id);
       conditions.push(`l.assigned_member_id IN (SELECT m2.id FROM workspace_members m2 WHERE m2.workspace_id=l.tenant_id AND m2.team_id=$${params.length})`);
+    }
+    if (query.pipeline_id) {
+      params.push(query.pipeline_id);
+      conditions.push(`l.pipeline_stage_id IN (SELECT id FROM pipeline_stages WHERE tenant_id=$1 AND pipeline_id=$${params.length})`);
     }
     if (query.fila_humana) conditions.push("l.requires_human_decision=true");
     if (query.action_bucket==="result_pending") conditions.push("latest_appointment.result_pending_at IS NOT NULL");
@@ -346,7 +351,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
               jsonb_build_object(
                 'id',stage.id,'name',stage.name,'color',stage.color,'position',stage.position,
                 'capacity_target',stage.capacity_target,'technical_status',stage.technical_status,
-                'is_default',stage.is_default
+                'is_default',stage.is_default,'pipeline_id',stage.pipeline_id
               ) pipeline_stage,
               COALESCE(tags.items,'[]'::jsonb) tags,
               COALESCE((awaiting_reply.sender IN ('agent','human')),false) awaiting_reply
@@ -497,7 +502,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
               jsonb_build_object(
                 'id',stage.id,'name',stage.name,'color',stage.color,'position',stage.position,
                 'capacity_target',stage.capacity_target,'technical_status',stage.technical_status,
-                'is_default',stage.is_default
+                'is_default',stage.is_default,'pipeline_id',stage.pipeline_id
               ) pipeline_stage,
               COALESCE(tags.items,'[]'::jsonb) tags
        FROM scheduling_leads l

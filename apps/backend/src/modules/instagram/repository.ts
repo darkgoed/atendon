@@ -450,10 +450,26 @@ export class InstagramRepository {
         [tenantId, event.providerUserId, sessionId]
       );
       const conversation = await client.query<{ id: string }>(
-        `INSERT INTO conversations(
+        `WITH agent_birth AS (
+           SELECT COALESCE((
+             SELECT cfg.is_active
+             FROM agent_configs cfg
+             JOIN agent_config_versions v
+               ON v.id=cfg.active_version_id AND v.tenant_id=cfg.tenant_id
+              AND v.agent_config_id=cfg.id AND v.status='active'
+             WHERE cfg.tenant_id=$1 AND (cfg.session_id=$2 OR cfg.session_id IS NULL)
+             ORDER BY (cfg.session_id IS NOT NULL) DESC, cfg.updated_at DESC, cfg.id
+             LIMIT 1
+           ), false) is_active
+         )
+         INSERT INTO conversations(
            tenant_id,session_id,contact_phone,instagram_contact_id,lead_id,contact_thread_id,
-           last_message_at,provider_last_user_message_at,messaging_window_expires_at,status
-         ) VALUES($1,$2,NULL,$3,$4,$5,$6::timestamptz,$6::timestamptz,$6::timestamptz+interval '24 hours','open')
+           last_message_at,provider_last_user_message_at,messaging_window_expires_at,status,
+           ai_active,handoff_reason
+         ) SELECT $1,$2,NULL,$3,$4,$5,$6::timestamptz,$6::timestamptz,$6::timestamptz+interval '24 hours','open',
+           agent_birth.is_active,
+           CASE WHEN agent_birth.is_active THEN NULL ELSE 'agent_disabled' END
+         FROM agent_birth
          ON CONFLICT(tenant_id,session_id,instagram_contact_id)
            WHERE instagram_contact_id IS NOT NULL
          DO UPDATE SET

@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowClockwise, DotsThree } from "@/components/icons";
+import { ArrowClockwise, GripVertical } from "@/components/icons";
+import { NewStageColumn, PipelineStageMenu } from "@/components/pipeline-stage-menu";
 import {
   AnimatePresence,
   LayoutGroup,
@@ -18,15 +19,19 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   type RefObject
 } from "react";
 import { PipelineCard } from "@/components/pipeline-card";
 import {
+  PIPELINE_COLOR_SWATCHES,
   pipelineBoardStageId,
   type PipelineLead,
   type PipelinePreferences,
-  type PipelineStage
+  type PipelineStage,
+  type PipelineTransition
 } from "@/lib/pipeline";
+import { api } from "@/lib/api";
 
 /*
   Mecânica de drag portada do kanban de referência (comments.md L11-1093):
@@ -126,7 +131,7 @@ export function PipelineBoard({
   leads,
   allowedTransitions,
   legacy,
-  showAllStages = false,
+  showAllStages,
   loading,
   loadError,
   hasActiveFilters,
@@ -140,7 +145,12 @@ export function PipelineBoard({
   onColumnLoadMore,
   onToggleSelected,
   onMoveRequest,
-  onRetry
+  onRetry,
+  pipelineId,
+  manageStages = false,
+  onStagesChanged,
+  transitions,
+  enforceTransitions
 }: {
   stages: PipelineStage[];
   leads: PipelineLead[];
@@ -161,6 +171,13 @@ export function PipelineBoard({
   onToggleSelected: (leadId: string) => void;
   onMoveRequest: (lead: PipelineLead, target?: PipelineStage) => void;
   onRetry: () => void;
+  /** Pipeline ativo (necessário para gerenciar etapas). */
+  pipelineId?: string;
+  /** pipeline.manage: alça de reordenar, menu ⋯ da etapa e coluna "+ Nova etapa". */
+  manageStages?: boolean;
+  onStagesChanged?: () => unknown | Promise<unknown>;
+  transitions?: PipelineTransition[];
+  enforceTransitions?: boolean;
 }) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [slot, setSlot] = useState<Slot | null>(null);
@@ -191,14 +208,71 @@ export function PipelineBoard({
   const onMoveRequestRef = useRef(onMoveRequest);
   onMoveRequestRef.current = onMoveRequest;
 
+  // Ordem das etapas: otimista local até o backend confirmar (onStagesChanged
+  // revalida e devolve a ordem persistida); em erro volta à ordem do servidor.
+  const canManageStages = Boolean(manageStages && pipelineId && !legacy);
+  const [stageOrder, setStageOrder] = useState<string[] | null>(null);
+  const [stageOrderError, setStageOrderError] = useState("");
+  const [draggingStageId, setDraggingStageId] = useState<string | null>(null);
+  const [stageDropTarget, setStageDropTarget] = useState<string | null>(null);
+  const orderedStages = useMemo(() => {
+    if (!stageOrder) return stages;
+    const rank = new Map(stageOrder.map((id, index) => [id, index]));
+    const persistable = stages.filter((stage) => !stage.operational_kind)
+      .sort((left, right) => (rank.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(right.id) ?? Number.MAX_SAFE_INTEGER));
+    let next = 0;
+    // Colunas operacionais de IA mantêm o próprio lugar; só as persistíveis trocam.
+    return stages.map((stage) => stage.operational_kind ? stage : persistable[next++]!);
+  }, [stageOrder, stages]);
+
+  async function persistStageOrder(ids: string[]) {
+    if (!pipelineId) return;
+    setStageOrder(ids);
+    setStageOrderError("");
+    try {
+      await api(`/organization/pipelines/${pipelineId}/stages/order`, { method: "PUT", body: JSON.stringify({ stage_ids: ids }) });
+      await onStagesChanged?.();
+    } catch (cause) {
+      setStageOrderError(cause instanceof Error ? cause.message : "Falha ao salvar a ordem das etapas");
+    } finally {
+      setStageOrder(null);
+    }
+  }
+
+  function persistableIds() {
+    return orderedStages.filter((stage) => !stage.operational_kind).map((stage) => stage.id);
+  }
+
+  function moveStage(stageId: string, direction: -1 | 1) {
+    const ids = persistableIds();
+    const from = ids.indexOf(stageId);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= ids.length) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]!);
+    void persistStageOrder(ids);
+  }
+
+  function dropStage(targetId: string) {
+    const draggedId = draggingStageId;
+    setDraggingStageId(null);
+    setStageDropTarget(null);
+    if (!draggedId || draggedId === targetId) return;
+    const ids = persistableIds();
+    const from = ids.indexOf(draggedId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]!);
+    void persistStageOrder(ids);
+  }
+
   const stageById = useMemo(() => new Map(stages.map((stage) => [stage.id, stage])), [stages]);
   const stageByIdRef = useRef(stageById);
   stageByIdRef.current = stageById;
 
   const leadsByStage = useMemo(() => new Map(stages.map((stage) => [
     stage.id,
-    leads.filter((lead) => pipelineBoardStageId(lead, stages, showAllStages) === stage.id)
-  ])), [leads, showAllStages, stages]);
+    leads.filter((lead) => pipelineBoardStageId(lead, stages, showAllStages ?? !legacy) === stage.id)
+  ])), [leads, legacy, showAllStages, stages]);
 
   /**
    * Governança de transições — a mesma de hoje: o destino precisa existir em
@@ -593,12 +667,13 @@ export function PipelineBoard({
   }
 
   if (!loading && stages.length === 0) {
-    return <section className="grid min-h-64 flex-1 place-items-center border border-dashed border-[var(--border)] p-6 text-center text-sm text-[var(--text-secondary)]">Nenhuma etapa ativa no pipeline. Abra “Configurar” para revisar as etapas.</section>;
+    return <section className="grid min-h-64 flex-1 place-items-center border border-dashed border-[var(--border)] p-6 text-center text-sm text-[var(--text-secondary)]">Nenhuma etapa ativa neste pipeline.</section>;
   }
 
   return (
     <>
       <p className="sr-only" role="status" aria-live="polite">{liveStatus}</p>
+      {stageOrderError ? <p className="pipeline-error" role="alert">{stageOrderError}</p> : null}
       <div className="pipeline-board-dock">
         <section
           ref={trackRef}
@@ -613,8 +688,9 @@ export function PipelineBoard({
             ? [1, 2, 3, 4].map((item) => <PipelineColumnSkeleton key={item} width={pipelineColumnWidth(preferences.columnWidth)} />)
             : (
               <LayoutGroup>
-                {stages.map((stage) => {
+                {orderedStages.map((stage) => {
                   const items = leadsByStage.get(stage.id) ?? [];
+                  const reorderable = canManageStages && !stage.operational_kind;
                   const droppable = Boolean(drag && canDropIn(stage));
                   const isTarget = Boolean(drag && slot && slot.stageId === stage.id && (stage.id === drag.fromStageId || canDropIn(stage)));
                   const visibleItems = drag?.pointer ? items.filter((lead) => lead.id !== drag.lead.id) : items;
@@ -652,9 +728,34 @@ export function PipelineBoard({
                       onGrabKeyDown={(event, lead, index) => onCardKeyDown(event, lead, stage.id, index)}
                       onToggleSelected={onToggleSelected}
                       onMoveRequest={onMoveRequest}
+                      stageMenu={reorderable ? (
+                        <PipelineStageMenu
+                          stage={stage}
+                          stages={orderedStages}
+                          enforceTransitions={enforceTransitions}
+                          transitions={transitions}
+                          onChanged={() => onStagesChanged?.()}
+                          onMoveStage={moveStage}
+                        />
+                      ) : undefined}
+                      stageReorder={reorderable ? {
+                        dragging: draggingStageId === stage.id,
+                        dropTarget: Boolean(draggingStageId && draggingStageId !== stage.id && stageDropTarget === stage.id),
+                        onDragStart: () => setDraggingStageId(stage.id),
+                        onDragEnd: () => { setDraggingStageId(null); setStageDropTarget(null); },
+                        onDragOver: () => { if (draggingStageId) setStageDropTarget(stage.id); },
+                        onDrop: () => dropStage(stage.id)
+                      } : undefined}
                     />
                   );
                 })}
+                {canManageStages && !loading ? (
+                  <NewStageColumn
+                    pipelineId={pipelineId!}
+                    color={PIPELINE_COLOR_SWATCHES[stages.filter((stage) => !stage.operational_kind).length % PIPELINE_COLOR_SWATCHES.length]!}
+                    onChanged={() => onStagesChanged?.()}
+                  />
+                ) : null}
               </LayoutGroup>
             )}
         </section>
@@ -724,7 +825,9 @@ export function PipelineColumn({
   onGrabPointerDown,
   onGrabKeyDown,
   onToggleSelected,
-  onMoveRequest
+  onMoveRequest,
+  stageMenu,
+  stageReorder
 }: {
   stage: PipelineStage;
   /** Todos os leads da etapa (contrato/aria/capacidade). */
@@ -755,6 +858,10 @@ export function PipelineColumn({
   onGrabKeyDown: (event: ReactKeyboardEvent<HTMLElement>, lead: PipelineLead, index: number) => void;
   onToggleSelected: (leadId: string) => void;
   onMoveRequest: (lead: PipelineLead, target?: PipelineStage) => void;
+  /** Menu ⋯ da etapa (pipeline.manage). */
+  stageMenu?: ReactNode;
+  /** Reordenar a coluna arrastando a alça (HTML5 DnD — não conflita com o drag de cards por ponteiro). */
+  stageReorder?: { dragging: boolean; dropTarget: boolean; onDragStart: () => void; onDragEnd: () => void; onDragOver: () => void; onDrop: () => void };
 }) {
   const capacity = stage.capacity_target ? Math.min(100, Math.round((leads.length / stage.capacity_target) * 100)) : null;
   const dimmed = Boolean(dragging && !droppable && !dropActive);
@@ -769,13 +876,35 @@ export function PipelineColumn({
     <section
       ref={registerColumn}
       data-pipeline-column={stage.id}
-      className={`pipeline-column ${dropActive ? "pipeline-column--active" : ""} ${dimmed ? "pipeline-column--dimmed" : ""}`}
+      className={`pipeline-column ${dropActive ? "pipeline-column--active" : ""} ${dimmed ? "pipeline-column--dimmed" : ""} ${stageReorder?.dragging ? "pipeline-column--reordering" : ""} ${stageReorder?.dropTarget ? "pipeline-column--reorder-target" : ""}`}
       style={{ width: pipelineColumnWidth(preferences.columnWidth) }}
       aria-label={`${stage.name}, ${leads.length} lead(s)`}
       data-drop-state={dropActive ? "active" : droppable ? "available" : dragging ? "unavailable" : "idle"}
+      onDragOver={stageReorder ? (event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; stageReorder.onDragOver(); } : undefined}
+      onDrop={stageReorder ? (event) => { event.preventDefault(); stageReorder.onDrop(); } : undefined}
     >
       <header className="pipeline-column__header">
         <div className="flex min-w-0 items-center gap-2">
+          {stageReorder ? (
+            <span
+              className="pipeline-column__grip"
+              draggable
+              role="button"
+              tabIndex={-1}
+              aria-label={`Reordenar etapa ${stage.name}`}
+              title="Arraste para reordenar"
+              onDragStart={(event) => {
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", stage.id);
+                const column = event.currentTarget.closest("section");
+                if (column) event.dataTransfer.setDragImage(column, 24, 18);
+                stageReorder.onDragStart();
+              }}
+              onDragEnd={stageReorder.onDragEnd}
+            >
+              <GripVertical size={14} aria-hidden="true" />
+            </span>
+          ) : null}
           <span className="pipeline-column__dot" style={{ backgroundColor: tone }} aria-hidden="true" />
           <span className="pipeline-column__stage-name">{stage.name}</span>
           <span className="rounded bg-[var(--surface-active)] px-1.5 py-0.5 type-caption leading-none text-[var(--text-secondary)]" data-stage-kind={stage.operational_kind ?? "manual"}>{pipelineStageAutomationLabel(stage)}</span>
@@ -791,7 +920,7 @@ export function PipelineColumn({
             </motion.span>
             {stage.capacity_target ? `/${stage.capacity_target}` : ""}
           </span>
-          <span className="pipeline-column__menu" aria-hidden="true"><DotsThree size={15} weight="bold" /></span>
+          {stageMenu}
         </div>
         <div className="pipeline-column__summary">
           <span className="mono font-medium text-[var(--text-secondary)]">{formatStageValue(leads)}</span>
