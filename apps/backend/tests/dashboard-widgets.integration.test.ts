@@ -103,7 +103,10 @@ describe("dashboard widget REST resources", () => {
     expect(operatorCatalog.json().widgets.map((widget: { key: string }) => widget.key)).not.toContain("whatsapp_connection");
     expect((await app.inject({ url: "/dashboard/widgets/whatsapp_connection", headers: { cookie: operatorACookie } })).statusCode).toBe(403);
     expect((await app.inject({ url: "/dashboard/widgets/open_conversations", headers: { cookie: operatorACookie } })).statusCode).toBe(200);
-  });
+    // ~30 requests reais sequenciais: 2849ms isolado, >5s (default) sob a suíte
+    // completa. Timeout EXPLÍCITO apenas neste teste — sem timeout global — e
+    // todas as asserções preservadas.
+  }, 20_000);
 
   it("counts and selects only active WhatsApp sessions, not a non-primary Instagram session", async () => {
     await pool.query(

@@ -94,6 +94,10 @@ test("Compose define o stack completo, redes internas e volumes legados estávei
   assert.equal(config.services["evolution-api"].environment.CACHE_REDIS_URI, "redis://redis:6379/1");
   assert.match(config.services["evolution-api"].environment.DATABASE_CONNECTION_URI, /@evolution-postgres:5432\/evolution$/);
 
+  // Queue 114 (24/09/2026): healthcheck timeout 5s falhou com ExitCode=-1 (estouro) sob carga;
+  // chamada HTTP seguinte respondeu 200 com teto de 12s (latência não medida) → timeout subiu para 15s.
+  assert.equal(config.services["evolution-api"].healthcheck.timeout, "15s");
+
   assert.equal(config.services["atendon-panel"].depends_on["atendon-api"].condition, "service_healthy");
   assert.equal(config.services["database-provision"].depends_on.postgres.condition, "service_healthy");
   assert.equal(config.services["database-migrate"].depends_on["database-provision"].condition, "service_completed_successfully");

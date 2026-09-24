@@ -79,7 +79,7 @@ describe("personalizable dashboard UI", () => {
   it("envia o target no toggle e impede alternar um alvo herdado antes de salvar override", () => {
     expect(agent).toContain('body: JSON.stringify({ isActive: next, sessionId: target || null })');
     expect(agent).toContain('const targetNeedsOverride = Boolean(target && scope === "shared")');
-    expect(agent).toContain('disabled={!canManage || !form || changingStatus || targetNeedsOverride}');
+    expect(agent).toContain('disabled={!canManage || !form || changingStatus || saving || removingOverride || targetNeedsOverride}');
     expect(agent).toContain("Salve as alterações para criar um prompt exclusivo antes de alterar o status deste número.");
   });
 });

@@ -662,7 +662,13 @@ th[aria-sort="descending"]::after { content: " ↓"; color: var(--primary-text);
   background: var(--surface-elevated);
   box-shadow: var(--shadow-dialog);
   transform: translate(-50%, -50%);
-  animation: popIn var(--duration-normal) var(--ease-out);
+  animation: dialogIn var(--duration-normal) var(--ease-out);
+}
+/* O popIn do Dialog: animação substitui o transform inteiro, então cada keyframe repete a centralização.
+   Mesmas funções nas duas pontas = interpolação par a par em qualquer engine (a longhand `translate` só existe no Safari 14.1+). */
+@keyframes dialogIn {
+  from { opacity: 0; transform: translate(-50%, -50%) translateY(4px) scale(.99); }
+  to { opacity: 1; transform: translate(-50%, -50%) translateY(0) scale(1); }
 }
 .dialog--sm { width: min(420px, calc(100vw - var(--space-6))); }
 .dialog--lg { width: min(760px, calc(100vw - var(--space-6))); }

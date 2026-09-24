@@ -1,6 +1,8 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { FileArrowDown } from "@/components/icons";
+import { Dialog } from "@/components/ui/dialog";
 import { VoiceMessagePlayer } from "@/components/ui/voice-input";
 
 export interface ConversationMediaMessage {
@@ -26,15 +28,37 @@ function formatBytes(bytes?: number | null): string {
 
 export function ConversationMessageMedia({ conversationId, message }: { conversationId: string; message: ConversationMediaMessage }) {
   const src = apiMediaUrl(conversationId, message.id);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // Opens the same authenticated src in a modal (no new tab). Without a Radix
+  // Dialog.Trigger nothing restores focus, so it goes back to our trigger on close.
+  function mediaViewer(alt: string, title: string, label: string, thumbClassName: string) {
+    return (
+      <>
+        <button ref={triggerRef} type="button" onClick={() => setViewerOpen(true)} aria-label={label} className="block max-w-full cursor-zoom-in">
+          {/* Authenticated media must load directly so the browser forwards the session cookie. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt={alt} loading="lazy" className={thumbClassName} />
+        </button>
+        <Dialog
+          open={viewerOpen}
+          onOpenChange={(open) => {
+            setViewerOpen(open);
+            if (!open) requestAnimationFrame(() => triggerRef.current?.focus());
+          }}
+          title={title}
+          size="xl"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt={alt} className="mx-auto block max-h-[70vh] max-w-full object-contain" />
+        </Dialog>
+      </>
+    );
+  }
 
   if (message.media_is_sticker) {
-    return (
-      <a href={src} target="_blank" rel="noreferrer" aria-label="Abrir figurinha em tamanho original" className="block">
-        {/* Authenticated media must load directly so the browser forwards the session cookie. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt="Figurinha" loading="lazy" className="max-h-48 max-w-48 object-contain sm:max-h-56 sm:max-w-56" />
-      </a>
-    );
+    return mediaViewer("Figurinha", "Figurinha", "Abrir figurinha em tamanho original", "max-h-48 max-w-48 object-contain sm:max-h-56 sm:max-w-56");
   }
 
   if (message.media_type === "audio") {
@@ -55,11 +79,7 @@ export function ConversationMessageMedia({ conversationId, message }: { conversa
   if (message.media_type === "image") {
     return (
       <div className="overflow-hidden">
-        <a href={src} target="_blank" rel="noreferrer" aria-label="Abrir imagem em tamanho original">
-          {/* Authenticated media must load directly so the browser forwards the session cookie. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt={message.content || fileName} loading="lazy" className="media-preview-frame w-auto max-w-full rounded-md object-contain" />
-        </a>
+        {mediaViewer(message.content || fileName, fileName, "Abrir imagem em tamanho original", "media-preview-frame w-auto max-w-full rounded-md object-contain")}
         {message.content && message.content !== fileName ? <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--text)]">{message.content}</p> : null}
       </div>
     );

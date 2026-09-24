@@ -119,8 +119,17 @@ export default function FluxosPage() {
         <div>
           <h1>Fluxos</h1>
           <p className="sub">Atendimento automático por robô: mensagens, perguntas, esperas e ações no CRM.</p>
+          {canManage ? null : (
+            <p id="fluxos-manage-hint" className="sub">Você não tem permissão para criar ou alterar fluxos. Peça acesso a um administrador.</p>
+          )}
         </div>
-        <Button type="button" tone="primary" disabled={!canManage || busyId !== null} onClick={novoFluxo}>
+        <Button
+          type="button"
+          tone="primary"
+          disabled={!canManage || busyId !== null}
+          aria-describedby={canManage ? undefined : "fluxos-manage-hint"}
+          onClick={novoFluxo}
+        >
           <Plus size={16} aria-hidden="true" /> Novo fluxo
         </Button>
       </header>

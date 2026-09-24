@@ -34,6 +34,7 @@ import {
   composeTransactionalReply,
   customerTransactionalOutcomeExists,
   successfulCustomerTransactionalOutcomeExists,
+  type TransactionalAction,
   type TransactionalClaim,
   type TransactionalOutcome
 } from "./transactional-outcome.js";
@@ -64,7 +65,7 @@ import {
 } from "../realtime/ai-turn-contract.js";
 import { capabilityForAiTool, filterAiToolsByCapabilities } from "../../capabilities/ai-tools.js";
 import { consumeAiInteraction, reconcileAiTurnFromUsageLogs } from "../../billing/ai-consumption.js";
-import type { CapabilityKey } from "../operations/feature-flags.js";
+import { isFeatureFlagEnabled, type CapabilityKey, type FeatureFlagQueryable } from "../operations/feature-flags.js";
 import type {
   AiTurnProgressPublisher,
   AiTurnProgressSession
@@ -90,6 +91,42 @@ const SPECIFIC_PRODUCT_MODEL_PATTERNS = [
 ];
 
 const STICKER_DIRECTIVE = /\[\[FIGURINHA:([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\]\]/giu;
+
+const SUCCEEDED_APPOINTMENT_TRANSACTION_ACTIONS = new Set<TransactionalAction>([
+  "schedule_meeting", "schedule_visit", "reschedule_meeting", "reschedule_visit"
+]);
+
+/**
+ * Composição da resposta transacional do turno respeitando
+ * `scheduling_meeting_confirmation_v1`: com a flag desligada e um agendamento
+ * concluído no turno, a resposta ao contato é só factual (dia/hora/link) — o
+ * texto do modelo pode pedir nova confirmação quando o prompt legado do agente
+ * instrui isso. A composição determinística existente é reutilizada com o texto
+ * do modelo vazio (successfulAppointmentText), sem detectar frases por regex —
+ * e só quando o fato que o compositor renderizaria é o agendamento concluído:
+ * cancelamento posterior ou abstenção já são determinísticos e não podem perder
+ * os fatos verdadeiros do turno.
+ */
+export function composeTransactionalReplyForTurn(
+  modelText: string,
+  outcomes: readonly TransactionalOutcome[],
+  meetingConfirmationRequestsEnabled: boolean,
+  hasActiveAppointment = false
+): { text: string; claims: TransactionalClaim[] } {
+  if (meetingConfirmationRequestsEnabled) {
+    return composeTransactionalReply(modelText, outcomes, hasActiveAppointment);
+  }
+  // Rodando com o texto do modelo vazio, o compositor resolve sozinho qual é o
+  // fato final do turno; os claims retornados nomeiam esse fato.
+  const factual = composeTransactionalReply("", outcomes, hasActiveAppointment);
+  const rendersSucceededAppointment = factual.claims.some((claim) =>
+    claim.claimType === "transaction_status"
+    && claim.normalizedValue === "succeeded"
+    && SUCCEEDED_APPOINTMENT_TRANSACTION_ACTIONS.has(claim.action));
+  return rendersSucceededAppointment
+    ? factual
+    : composeTransactionalReply(modelText, outcomes, hasActiveAppointment);
+}
 
 export function stickerCatalogPrompt(catalog: AiStickerCatalogItem[]): string {
   if (!catalog.length) return "";
@@ -1295,6 +1332,33 @@ export class MessageProcessor {
       capabilityEnabled("leads_v1"),
       capabilityEnabled("appointments_v1")
     ]);
+    // Pedidos de confirmação ao contato em reuniões criadas pela IA seguem a
+    // flag por tenant. Doubles antigos sem `.db` (unit tests anteriores ao
+    // catálogo de flags) preservam o legado: sem leitura de flag possível, o
+    // pedido de confirmação permanece ATIVO como antes da migration 0127.
+    // Produção sempre usa MessageRepository, que tem `.db` — aí a flag do
+    // tenant é sempre lida (nunca bypassada pelo default) e a leitura falha
+    // FECHADA: qualquer erro de lookup deixa o pedido DESLIGADO neste turno,
+    // nunca reativa o comportamento legado (opt-out de tenant não pode ser
+    // violado por um erro transitório de banco).
+    let meetingConfirmationRequestsEnabled = true;
+    const meetingConfirmationFlagDb = (this.repository as unknown as { db?: FeatureFlagQueryable }).db;
+    if (meetingConfirmationFlagDb) {
+      try {
+        meetingConfirmationRequestsEnabled = await isFeatureFlagEnabled(
+          meetingConfirmationFlagDb,
+          message.tenantId,
+          "scheduling_meeting_confirmation_v1"
+        );
+      } catch (error) {
+        meetingConfirmationRequestsEnabled = false;
+        logger.warn({
+          err: error,
+          tenantId: message.tenantId,
+          conversationId: context.conversationId
+        }, "Feature flag lookup failed; confirmation requests stay disabled for this turn");
+      }
+    }
     // Registro anti no-show: uma resposta afirmativa do contato promove o
     // agendamento a CONFIRMADO. Fica antes de qualquer ramo que encerre o
     // turno (inclusive o de reação com 👍), senão um "sim" seguido de "ok"
@@ -2280,7 +2344,7 @@ export class MessageProcessor {
           "The compact AI recovery did not produce customer-visible text"
         );
       }
-      const composed = composeTransactionalReply(parsed.text, transactionalOutcomes, hasActiveAppointment);
+      const composed = composeTransactionalReplyForTurn(parsed.text, transactionalOutcomes, meetingConfirmationRequestsEnabled, hasActiveAppointment);
       const text = await revalidateOfferedMeetingSlots(composed.text.trim());
       if (!text) return false;
       await publishPreview([text]);
@@ -2344,7 +2408,7 @@ export class MessageProcessor {
             "The model attempted human handoff without an explicit contact request"
           );
         }
-        const composed = composeTransactionalReply(parsed.text, transactionalOutcomes, hasActiveAppointment);
+        const composed = composeTransactionalReplyForTurn(parsed.text, transactionalOutcomes, meetingConfirmationRequestsEnabled, hasActiveAppointment);
         replyClaims = composed.claims;
         parsed = { handoff: false, text: composed.text || internalOnlyFallback };
         if (tripzZulu && tripzZuluSignals.exclusiveOffers) {

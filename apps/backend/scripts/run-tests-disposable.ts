@@ -5,6 +5,7 @@ import pg from "pg";
 import { runMigrations } from "../src/db/migration-runner.js";
 import { databaseTarget, resolveTestDatabaseUrl } from "./test-database.js";
 import { loadTestEnvironment } from "./test-environment.js";
+import { installTestOnlyTriggers } from "./test-triggers.js";
 
 loadTestEnvironment();
 
@@ -32,6 +33,9 @@ try {
     await migrationClient.connect();
     const directory = fileURLToPath(new URL("../src/db/migrations", import.meta.url));
     await runMigrations(migrationClient, directory, () => undefined);
+    // Same test-only fixtures as scripts/migrate-test.ts; without them legacy
+    // integration fixtures (stage 'fechado', flag overrides) fail on a fresh DB.
+    await installTestOnlyTriggers(migrationClient);
   } finally {
     await migrationClient.end();
   }

@@ -18,7 +18,6 @@ const suffix = randomUUID();
 let tenantId = "";
 let foreignTenantId = "";
 let sessionId = "";
-let foreignSessionId = "";
 let otherPipelineId = "";
 let defaultPipelineId = "";
 let entryStageOfOther = "";
@@ -83,10 +82,10 @@ beforeAll(async () => {
     `INSERT INTO whatsapp_sessions(tenant_id,status,pipeline_id) VALUES($1,'connected',$2) RETURNING id`,
     [tenantId, otherPipelineId]
   )).rows[0].id;
-  foreignSessionId = (await pool.query<{ id: string }>(
-    "INSERT INTO whatsapp_sessions(tenant_id,status) VALUES($1,'connected') RETURNING id",
+  await pool.query(
+    "INSERT INTO whatsapp_sessions(tenant_id,status) VALUES($1,'connected')",
     [foreignTenantId]
-  )).rows[0].id;
+  );
 
   const email = `pipeline-consumers-${suffix}@test.local`;
   const password = "pipeline-consumers-password";

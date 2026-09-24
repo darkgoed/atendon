@@ -123,14 +123,6 @@ async function loadPipelineRow(client: PoolClient, tenantId: string, pipelineId:
   return result.rows[0];
 }
 
-async function assertPipelineActive(client: PoolClient, tenantId: string, pipelineId: string) {
-  const result = await client.query<PipelineRow>(
-    "SELECT * FROM pipelines WHERE tenant_id=$1 AND id=$2",
-    [tenantId,pipelineId]
-  );
-  if (!result.rows[0] || result.rows[0].archived_at) throw httpError(404,"Pipeline não encontrado");
-}
-
 async function stageById(client: PoolClient, tenantId: string, stageId: string, lock = false): Promise<StageRow> {
   const result = await client.query<StageRow>(
     `SELECT * FROM pipeline_stages WHERE tenant_id=$1 AND id=$2 ${lock ? "FOR UPDATE" : ""}`,

@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { z } from "zod";
-import { requireRoot, requireSession } from "../../auth/session.js";
+import { requirePermission, requireRoot, requireSession } from "../../auth/session.js";
 import { db } from "../../db/client.js";
 import {
   deleteTenantFeatureFlagOverride,
@@ -21,6 +21,11 @@ import {
 const globalBody = z.object({ enabled: z.boolean().nullable() }).strict();
 const killSwitchBody = z.object({ enabled: z.boolean() }).strict();
 const overrideBody = z.object({ enabled: z.boolean() }).strict();
+// Tenant manager toggle for R1 (AI meeting confirmation). Flag key and tenant
+// are never taken from the request: the route always acts on the caller's own
+// tenant via requirePermission("agent.manage").
+const aiMeetingConfirmationBody = z.object({ enabled: z.boolean() }).strict();
+const AI_MEETING_CONFIRMATION_FLAG = "scheduling_meeting_confirmation_v1";
 const flagParams = z.object({ key: featureFlagKeySchema });
 const tenantFlagParams = z.object({
   tenantId: z.string().uuid(),
@@ -95,6 +100,46 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
     const session = await requireSession(request);
     const flags = await listEffectiveFeatureFlags(db, session.tenantId);
     return { flags: effectiveFeatureFlagMap(flags) };
+  });
+
+  app.put("/settings/ai-meeting-confirmation", async (request) => {
+    const session = await requirePermission(request, "agent.manage");
+    const body = aiMeetingConfirmationBody.parse(request.body);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const changed = await setTenantFeatureFlagOverride(
+        client,
+        session.tenantId,
+        AI_MEETING_CONFIRMATION_FLAG,
+        body.enabled,
+        session.userId
+      );
+      await client.query(
+        `INSERT INTO audit_logs(actor_user_id,workspace_id,actor_scope,action,resource_type,resource_id,metadata,ip_address,user_agent)
+         VALUES($1,$2,$3,'feature_flag.tenant_override.update','feature_flag_override',$4,$5,$6,$7)`,
+        [
+          session.userId,
+          session.tenantId,
+          session.actorScope,
+          AI_MEETING_CONFIRMATION_FLAG,
+          { previous_enabled: changed.previous, enabled: changed.current },
+          request.ip,
+          typeof request.headers["user-agent"] === "string"
+            ? request.headers["user-agent"]
+            : null
+        ]
+      );
+      const effective = (await listEffectiveFeatureFlags(client, session.tenantId))
+        .find((flag) => flag.key === AI_MEETING_CONFIRMATION_FLAG);
+      await client.query("COMMIT");
+      return { enabled: effective?.enabled ?? body.enabled };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   });
 
   app.get("/capabilities", async (request) => {

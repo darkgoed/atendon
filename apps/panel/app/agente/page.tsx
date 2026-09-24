@@ -1,11 +1,13 @@
 "use client";
 
 import { ArrowCounterClockwise, Power } from "@/components/icons";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import useSWR, { useSWRConfig } from "swr";
 import { Shell } from "@/components/shell";
 import { PageHeader } from "@/components/ui/layout";
-import { IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
+import { IconButton, SaveButton, SaveToast, Switch, useSaveFeedback } from "@/components/ui";
 import { api } from "@/lib/api";
+import type { PanelSession } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
 import styles from "../channels-ai.module.css";
 
@@ -50,6 +52,8 @@ export default function Agent() {
 
 
   const [availableTools, setAvailableTools] = useState<string[]>([]);
+  // Nomes salvos que o servidor não oferece mais (releases antigas): avisados e fora do PUT.
+  const [obsoleteTools, setObsoleteTools] = useState<string[]>([]);
   const [dirtyState, setDirty] = useState(false);
   const dirty = dirtyState && canManage;
   const [state, setState] = useState("");
@@ -63,6 +67,17 @@ export default function Agent() {
   const targetNeedsOverride = Boolean(target && scope === "shared");
 
   const [stateTone, setStateTone] = useState<"info" | "success" | "error">("info");
+  // Save em voo: trava síncrona (o `saving` só chega no próximo render) e marcas do rascunho (cada
+  // edição) e do alvo (cada troca) no clique — a resposta do PUT só confirma o que ainda está na tela.
+  const [saving, setSaving] = useState(false);
+  // A trava é de escrita, compartilhada com o status e a remoção do exclusivo: o PUT também grava isActive
+  // e desfaria (ou seria desfeito por) um PATCH /agent/status em voo, e recriaria o exclusivo de um DELETE
+  // em voo, então nenhuma delas sai junto com outra.
+  const writingRef = useRef(false);
+  // Alvo e promessa da última escrita: a leitura do mesmo alvo espera por ela.
+  const lastWriteRef = useRef<{ target: string; done: Promise<unknown> } | null>(null);
+  const editRef = useRef(0);
+  const targetGenRef = useRef(0);
 
   useEffect(() => {
     api<{ connections?: Array<{ id: string; label: string; is_primary: boolean }> }>("/connections")
@@ -71,11 +86,23 @@ export default function Agent() {
   }, []);
 
   useEffect(() => {
+    // O formulário pertence ao alvo: nada se salva nele enquanto o novo carrega (ou se a carga falhar)
+    // e a resposta atrasada de um alvo anterior é descartada.
+    let current = true;
+    setForm(undefined);
     setLoaded(false);
-    api<AgentResponse>(target ? `/agent?session_id=${target}` : "/agent")
+    // Quem sai e volta ao alvo com uma escrita dele em voo o relê depois dela: lido antes, viria com o valor
+    // anterior, e o selo e o próximo save repetiriam esse valor.
+    const write = lastWriteRef.current;
+    const load = () => api<AgentResponse>(target ? `/agent?session_id=${target}` : "/agent");
+    (write?.target === target ? write.done.catch(() => undefined).then(load) : load())
       .then(({ agent, available_tools: tools, scope: loadedScope }) => {
+        if (!current) return;
         if (!agent) throw new Error("Agente não configurado");
-        setAvailableTools(tools ?? []);
+        const known = tools ?? [];
+        const obsolete = (agent.enabled_tools ?? []).filter((tool) => !known.includes(tool));
+        setAvailableTools(known);
+        setObsoleteTools(obsolete);
         setScope(loadedScope ?? "shared");
         const loadedForm: AgentForm = {
           systemPrompt: agent.system_prompt,
@@ -91,63 +118,95 @@ export default function Agent() {
           mediaFallbackAudio: agent.media_fallback_audio,
           mediaFallbackImage: agent.media_fallback_image,
           mediaFallbackDocument: agent.media_fallback_document,
-          enabledTools: agent.enabled_tools ?? []
+          enabledTools: (agent.enabled_tools ?? []).filter((tool) => known.includes(tool))
         };
         setForm(loadedForm);
-        setDirty(false);
+        setDirty(obsolete.length > 0);
 
 
       })
       .catch((error: unknown) => {
+        if (!current) return;
         setStateTone("error");
         setState(error instanceof Error ? error.message : "Erro ao carregar o agente");
       })
-      .finally(() => setLoaded(true));
+      .finally(() => {
+        if (current) setLoaded(true);
+      });
+    return () => {
+      current = false;
+    };
   }, [target]);
 
   function change(values: Partial<AgentForm>) {
     if (form && canManage) {
+      editRef.current += 1;
       setForm({ ...form, ...values });
       setDirty(true);
     }
   }
 
+  function track<T>(request: Promise<T>) {
+    lastWriteRef.current = { target, done: request };
+    return request;
+  }
+
   async function saveAgent() {
-    if (!form || !canManage) return;
+    if (!form || !canManage || writingRef.current) return;
+    const edit = editRef.current;
+    const generation = targetGenRef.current;
+    writingRef.current = true;
+    setSaving(true);
+    save.reset();
     setStateTone("info");
     setState("Salvando…");
     try {
-      await api("/agent", {
+      await track(api("/agent", {
         method: "PUT",
         body: JSON.stringify({ ...form, sessionId: target || null })
-      });
-      setForm(form);
+      }));
+      if (targetGenRef.current !== generation) return; // outro alvo na tela: nada deste save vale para ele
+      setObsoleteTools([]);
       if (target) setScope("connection");
-
+      if (editRef.current !== edit) {
+        setState(""); // o que foi editado em voo segue pendente
+        return;
+      }
       setDirty(false);
       setStateTone("success");
       setState("Alterações salvas.");
+      save.markDone();
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao salvar";
       setStateTone("error");
-      setState(error instanceof Error ? error.message : "Erro ao salvar");
+      setState(targetGenRef.current === generation ? message : `Não foi possível salvar as alterações feitas antes da troca: ${message}`);
+    } finally {
+      writingRef.current = false;
+      setSaving(false);
     }
   }
 
   async function toggleAgent() {
-    if (!form || changingStatus || !canManage) return;
+    if (!form || writingRef.current || !canManage) return;
     const next = !form.isActive;
     if (!next && !window.confirm("Desativar totalmente a IA? Novas mensagens continuarão registradas, mas não receberão resposta automática.")) return;
+    const generation = targetGenRef.current;
+    writingRef.current = true;
     setChangingStatus(true);
     setState("");
     try {
-      await api("/agent/status", { method: "PATCH", body: JSON.stringify({ isActive: next, sessionId: target || null }) });
+      await track(api("/agent/status", { method: "PATCH", body: JSON.stringify({ isActive: next, sessionId: target || null }) }));
+      // A tela trocou de alvo (se voltou a este, o releu depois desta escrita): selo e aviso daqui não valem para ela.
+      if (targetGenRef.current !== generation) return;
       setForm((current) => current ? { ...current, isActive: next } : current);
       setStateTone("success");
       setState(next ? "IA ativada" : "IA totalmente desativada");
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao alterar o status da IA";
       setStateTone("error");
-      setState(error instanceof Error ? error.message : "Erro ao alterar o status da IA");
+      setState(targetGenRef.current === generation ? message : `Não foi possível alterar o status da IA antes da troca: ${message}`);
     } finally {
+      writingRef.current = false;
       setChangingStatus(false);
     }
   }
@@ -162,19 +221,27 @@ export default function Agent() {
   }
 
   async function removeOverride() {
-    if (!target || !canManage || removingOverride) return;
+    if (!target || !canManage || writingRef.current) return;
     if (!window.confirm("Remover o prompt exclusivo deste número? Ele volta a usar o prompt compartilhado.")) return;
+    const generation = targetGenRef.current;
+    writingRef.current = true;
     setRemovingOverride(true);
     try {
-      await api(`/agent/override/${target}`, { method: "DELETE" });
+      await track(api(`/agent/override/${target}`, { method: "DELETE" }));
+      // A tela trocou de número (se voltou a este, o releu depois do DELETE): não a leva ao compartilhado.
+      if (targetGenRef.current !== generation) return;
       setScope("shared");
+      targetGenRef.current += 1;
+      save.reset();
       setTarget("");
       setStateTone("success");
       setState("Prompt exclusivo removido. O número voltou ao prompt compartilhado.");
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao remover o prompt exclusivo";
       setStateTone("error");
-      setState(error instanceof Error ? error.message : "Erro ao remover o prompt exclusivo");
+      setState(targetGenRef.current === generation ? message : `Não foi possível remover o prompt exclusivo antes da troca: ${message}`);
     } finally {
+      writingRef.current = false;
       setRemovingOverride(false);
     }
   }
@@ -193,7 +260,7 @@ export default function Agent() {
                 className="input"
                 aria-label="Número que usa este prompt"
                 value={target}
-                onChange={(event) => setTarget(event.target.value)}
+                onChange={(event) => { targetGenRef.current += 1; setState(""); save.reset(); setTarget(event.target.value); }}
               >
                 <option value="">Todos os números</option>
                 {connections.map((connection) => (
@@ -207,11 +274,11 @@ export default function Agent() {
           <span className={`mono rounded-full border px-3 py-2 type-caption font-semibold uppercase tracking-[.12em] ${form?.isActive ? "border-[var(--primary-border)] text-[var(--primary-text)]" : "border-[var(--warning-border)] text-[var(--warning-text)]"}`}>
             {form?.isActive ? "IA ligada" : "IA desligada"}
           </span>
-          <button type="button" className={`btn active:scale-[.98] ${form?.isActive ? "warn" : "primary"}`} disabled={!canManage || !form || changingStatus || targetNeedsOverride} onClick={toggleAgent}>
+          <button type="button" className={`btn active:scale-[.98] ${form?.isActive ? "warn" : "primary"}`} disabled={!canManage || !form || changingStatus || saving || removingOverride || targetNeedsOverride} onClick={toggleAgent}>
             <Power size={16} aria-hidden="true" />
             {changingStatus ? "Alterando…" : form?.isActive ? "Desativar IA" : "Ativar IA"}
           </button>
-          <SaveButton type="button" state={save.state} disabled={!canManage || !dirty || !form || form.enabledTools.length === 0} onClick={() => void save.run(saveAgent)}>
+          <SaveButton type="button" state={saving ? "busy" : save.state} disabled={!canManage || !dirty || !form || form.enabledTools.length === 0 || changingStatus || removingOverride} onClick={() => void saveAgent()}>
             Salvar alterações
           </SaveButton>
           <SaveToast show={save.done}>Agente salvo</SaveToast>
@@ -227,7 +294,7 @@ export default function Agent() {
           {scope === "connection" && canManage ? (
             <>
               {" "}
-              <IconButton type="button" label="Voltar ao prompt compartilhado" size="sm" className="ml-2 align-middle" disabled={removingOverride} onClick={() => void removeOverride()}>
+              <IconButton type="button" label="Voltar ao prompt compartilhado" size="sm" className="ml-2 align-middle" disabled={removingOverride || saving || changingStatus} onClick={() => void removeOverride()}>
                 <ArrowCounterClockwise size={14} aria-hidden="true" />
               </IconButton>
             </>
@@ -256,6 +323,11 @@ export default function Agent() {
               <div className="line-section grid gap-4">
                 <div className="cardtitle channels-ai-section-title">Ferramentas habilitadas</div>
                 <p className="sub">O agente só enxerga e executa as ferramentas selecionadas.</p>
+                {obsoleteTools.length > 0 ? (
+                  <p className="sub warning" role="alert">
+                    Ferramentas que não existem mais nesta versão e serão removidas ao salvar: <span className="mono">{obsoleteTools.join(", ")}</span>
+                  </p>
+                ) : null}
                 <div className="grid gap-2 md:grid-cols-2">
                   {availableTools.map((tool) => (
                     <label key={tool} className="flex items-center gap-2 rounded border border-[var(--border)] p-3 text-xs">
@@ -310,7 +382,8 @@ export default function Agent() {
           </div>
         </fieldset>
       )}
-
+      {/* Opção do workspace fora do formulário do alvo: trocar de número não a desmonta com o PUT dela em voo. */}
+      <MeetingConfirmationSetting canManage={canManage} />
 
     </div></Shell>
   );
@@ -319,4 +392,55 @@ export default function Agent() {
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="field"><span className="label">{label}</span>{children}</label>;
+}
+
+type MeetingConfirmationFlags = { flags: { scheduling_meeting_confirmation_v1?: boolean } };
+
+// Opção do workspace (não do número nem do prompt): salva na hora, fora do PUT /agent.
+function MeetingConfirmationSetting({ canManage }: { canManage: boolean }) {
+  // A chave leva o workspace ativo: trocar de workspace refaz o GET em vez de exibir o valor do anterior.
+  const { data: session } = useSWR<PanelSession>("/me", (path: string) => api<PanelSession>(path), { revalidateOnFocus: false, dedupingInterval: 10_000 });
+  const workspaceId = session?.activeWorkspace?.id;
+  const key = workspaceId ? (["/feature-flags", workspaceId] as const) : null;
+  const { data, error } = useSWR(key, ([path]) => api<MeetingConfirmationFlags>(path));
+  // Grava na chave do clique: o mutate do useSWR segue a chave atual e, se o workspace mudar durante o PUT, gravaria no novo.
+  const { mutate } = useSWRConfig();
+  const [saving, setSaving] = useState(false);
+  // Trava síncrona: toques no mesmo tick ainda veem o `saving` antigo do closure.
+  const savingRef = useRef(false);
+  // A mensagem pertence ao workspace em que foi gerada: trocar de workspace a descarta, mesmo com o PUT ainda em curso.
+  const [feedback, setFeedback] = useState<{ workspaceId: string | undefined; tone: "success" | "error"; text: string }>();
+  if (feedback && feedback.workspaceId !== workspaceId) setFeedback(undefined);
+  const status = feedback ?? (error ? { tone: "error", text: "Não foi possível carregar esta opção." } : undefined);
+
+  async function change(enabled: boolean) {
+    if (!canManage || !data || savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    setFeedback(undefined);
+    try {
+      const saved = await api<{ enabled: boolean }>("/settings/ai-meeting-confirmation", { method: "PUT", body: JSON.stringify({ enabled }) });
+      await mutate(key, { flags: { ...data.flags, scheduling_meeting_confirmation_v1: saved.enabled } }, { revalidate: false });
+      setFeedback({ workspaceId, tone: "success", text: saved.enabled ? "Confirmação de agendamentos ativada." : "Confirmação de agendamentos desativada." });
+    } catch (cause) {
+      setFeedback({ workspaceId, tone: "error", text: cause instanceof Error ? cause.message : "Erro ao salvar a confirmação de agendamentos" });
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="line-section mt-[var(--space-5)] grid gap-4">
+      <div className="cardtitle channels-ai-section-title">Agendamentos pela IA</div>
+      <div className="flex items-center justify-between gap-3">
+        <label htmlFor="ai-meeting-confirmation" className="text-sm">Pedir ao contato que confirme agendamentos criados pela IA</label>
+        <Switch id="ai-meeting-confirmation" aria-describedby="ai-meeting-confirmation-hint" aria-busy={saving} checked={data?.flags.scheduling_meeting_confirmation_v1 === true} disabled={!canManage || !data || saving} onCheckedChange={(enabled) => void change(enabled)} />
+      </div>
+      <div className="grid gap-1">
+        <p id="ai-meeting-confirmation-hint" className="sub">Vale para todo o workspace, em todos os números. Salva na hora, sem o botão Salvar alterações.</p>
+        <p className={status ? (status.tone === "error" ? "error" : "accent") : undefined} role="status" aria-live="polite">{status?.text}</p>
+      </div>
+    </section>
+  );
 }

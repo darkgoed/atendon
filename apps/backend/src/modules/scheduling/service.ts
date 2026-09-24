@@ -38,6 +38,7 @@ import {
 import type { CancellationInput, ConcludeAppointmentInput, NoShowInput } from "../commercial-journey/schemas.js";
 import { stageRequiresCommercialPayload } from "../commercial-journey/domain.js";
 import { resolveLossReason } from "../commercial-journey/loss-reasons.js";
+import { isFeatureFlagEnabled } from "../operations/feature-flags.js";
 import { createMeetRoomIdentity, insertMeetRoom, participantJoinUrl } from "../meet/service.js";
 import { publicHttpsAgent, resolvePublicHttpsUrl, type LookupAll } from "../../security/outbound-url.js";
 import { loadSchedulingUnit, lockAndLoadOverlappingAppointments } from "./repository.js";
@@ -2090,6 +2091,21 @@ export async function createAppointment(
       const recurring = await client.query<RecurringTimeBlockRow>(`SELECT * FROM scheduling_attendant_recurring_time_blocks WHERE tenant_id=$1 AND member_id=$2 AND active=true AND starts_on <= ($3 AT TIME ZONE timezone)::date AND (ends_on IS NULL OR ends_on >= ($3 AT TIME ZONE timezone)::date)`, [tenantId, assignedAttendant.memberId, start]);
       if (recurring.rows.some(row => recurringOccurrences(row, start, end).length > 0)) throw httpError(409, "O horário está bloqueado");
     }
+    // O primeiro pedido de confirmação é da IA (sem ator humano) e segue a
+    // flag por tenant: ligada, o estado nasce `solicitada` para que a resposta
+    // do contato possa promovê-lo a `confirmada` (Momento 1 na conversa);
+    // desligada, nenhum pedido sai — nem IA nem worker — e o agendamento
+    // continua criado. Agendamento criado por atendente no painel não passa
+    // por esse pedido, então continua `nao_solicitada` com a flag ligada ou
+    // desligada. Lida na MESMA transação (client) para enxergar o override
+    // vigente.
+    const aiConfirmationEnabled = options.actor?.userId
+      ? false
+      : await isFeatureFlagEnabled(client, tenantId, "scheduling_meeting_confirmation_v1");
+    const confirmationState = options.actor?.userId || !aiConfirmationEnabled
+      ? "nao_solicitada"
+      : "solicitada";
+    const confirmationRequestedAt = confirmationState === "solicitada" ? new Date() : null;
     const result = await client.query(
       `INSERT INTO scheduling_appointments(
          lead_id,tenant_id,unit_id,start_at,end_at,status,
@@ -2112,13 +2128,8 @@ export async function createAppointment(
         meetRoomIdentity?.publicCode ?? null,
         atendonMeetUrl,
         atendonMeetAutomation ? new Date() : null,
-        // Quando quem agenda é a IA (sem ator humano), ela pede a confirmação
-        // no mesmo turno, conforme a seção 21 do prompt. O estado já nasce
-        // `solicitada` para que a resposta do contato possa promovê-lo a
-        // `confirmada`. Agendamento criado por atendente no painel não passa
-        // por esse pedido, então continua `nao_solicitada`.
-        options.actor?.userId ? "nao_solicitada" : "solicitada",
-        options.actor?.userId ? null : new Date()
+        confirmationState,
+        confirmationRequestedAt
       ]
     );
     if (meetRoomIdentity) {

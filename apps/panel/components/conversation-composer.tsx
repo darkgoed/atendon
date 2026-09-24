@@ -1,7 +1,7 @@
 "use client";
 
-import { ArrowBendUpLeft, File, Microphone, Paperclip, PaperPlaneRight, X } from "@/components/icons";
-import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { ArrowBendUpLeft, Check, File, MagicWand, Microphone, Paperclip, PaperPlaneRight, X } from "@/components/icons";
+import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { VoiceInput, VoiceMessagePlayer } from "@/components/ui/voice-input";
 import { Button, Input, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -13,6 +13,7 @@ import styles from "@/components/conversation-quick-replies.module.css";
 
 type MediaType = "audio" | "image" | "video" | "document";
 type Attachment = { file: globalThis.File; mediaType: MediaType };
+type CopilotSuggestion = { suggestion: string; context_complete: boolean; messages_used: number; messages_total: number };
 export type ReplyTarget = { id: string; content: string; sender: "contact" | "agent" | "human" };
 
 export type ConversationComposerCapabilities = {
@@ -108,6 +109,9 @@ export function ConversationComposer({
   const discardRecordingRef = useRef(false);
   const recordingTimerRef = useRef<number | null>(null);
   const sendAttemptRef = useRef<{ signature: string; key: string } | null>(null);
+  const [suggestion, setSuggestion] = useState<CopilotSuggestion | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const copilotRequestRef = useRef<object | null>(null);
   const channelCapabilities = capabilities?.channel === channel ? capabilities : undefined;
   const capabilitiesUnavailable = channel === "instagram" && (!channelCapabilities || Boolean(capabilitiesError));
   const windowExpiresAt = channelCapabilities?.window_expires_at
@@ -120,6 +124,8 @@ export function ConversationComposer({
   const canSend = !capabilitiesUnavailable && !windowExpired && (channelCapabilities?.can_send ?? true);
   const supports = (mediaType: MediaType) => canSend && (channelCapabilities?.[mediaType] ?? (channel !== "instagram" && mediaType !== "video"));
   const canSendText = canSend && (channelCapabilities?.text ?? channel !== "instagram");
+  // O rascunho só aceita texto (digitado ou sugestão da IA) quando o canal permite enviá-lo.
+  const draftLocked = sending || recording || attachment?.mediaType === "audio" || !canSendText;
   const canAttach = (["image", "audio", "video", "document"] as const).some(supports);
   const acceptedFiles = (["image", "video", "audio", "document"] as const)
     .filter(supports)
@@ -143,6 +149,15 @@ export function ConversationComposer({
     const timer = window.setTimeout(() => setNow(Date.now()), Math.min(delay, 2_147_483_647));
     return () => window.clearTimeout(timer);
   }, [windowExpiresAt]);
+
+  // Trocar de conversa invalida a geração em voo: sucesso ou erro atrasado da
+  // conversa anterior nunca tocam o composer atual. Layout, não passivo: invalida
+  // no próprio commit da troca, sem janela até a limpeza passiva.
+  useLayoutEffect(() => () => {
+    copilotRequestRef.current = null;
+    setSuggestion(null);
+    setGenerating(false);
+  }, [conversationId]);
 
   useEffect(() => {
     if (!attachment) {
@@ -285,6 +300,43 @@ export function ConversationComposer({
     }
   }
 
+  // Copiloto (SPEC R3): gera só no clique; a sugestão fica num chip à parte e
+  // só entra no rascunho quando o operador escolhe usá-la — nunca é enviada.
+  async function generateSuggestion() {
+    if (copilotRequestRef.current) return; // trava síncrona: clique duplo no mesmo tick
+    const previous = suggestion?.suggestion.trim().slice(0, 4_000);
+    const request = {};
+    copilotRequestRef.current = request;
+    setGenerating(true);
+    onError("");
+    try {
+      const result = await api<Partial<CopilotSuggestion> | undefined>(`/conversations/${conversationId}/copilot-suggestion`, {
+        method: "POST",
+        body: JSON.stringify(previous ? { previous_suggestion: previous } : {})
+      });
+      // Resposta vazia ou fora do contrato (204, {}, texto em branco, sem metadados) nunca vira chip falso.
+      if (typeof result?.suggestion !== "string" || !result.suggestion.trim() || typeof result.context_complete !== "boolean"
+        || !Number.isFinite(result.messages_used) || !Number.isFinite(result.messages_total)) {
+        throw new Error("A IA não retornou uma sugestão válida. Tente novamente.");
+      }
+      if (copilotRequestRef.current === request) setSuggestion(result as CopilotSuggestion);
+    } catch (error) {
+      if (copilotRequestRef.current === request) onError(error instanceof Error ? error.message : "Falha ao gerar a sugestão da IA");
+    } finally {
+      if (copilotRequestRef.current === request) {
+        copilotRequestRef.current = null;
+        setGenerating(false);
+      }
+    }
+  }
+
+  function applySuggestion() {
+    if (!suggestion) return;
+    if (draft.trim() && !window.confirm("Substituir o rascunho atual pela sugestão da IA?")) return;
+    setDraft(suggestion.suggestion);
+    textareaRef.current?.focus();
+  }
+
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     // O popup de respostas rápidas intercepta Enter/Tab/setas ANTES do
     // submit-guard: Enter seleciona e insere, nunca envia (preventDefault +
@@ -329,6 +381,28 @@ export function ConversationComposer({
             <span className="line-clamp-2">{replyTo.content}</span>
           </span>
           <Button type="button" onClick={onCancelReply} className="btn shrink-0 p-1.5" aria-label="Cancelar resposta" disabled={sending}>
+            <X size={14} />
+          </Button>
+        </div>
+      ) : null}
+      {suggestion ? (
+        <div className="composer-reply-chip mb-3" role="group" aria-label="Sugestão da IA">
+          <span className="min-w-0 flex-1">
+            <strong>
+              <MagicWand size={11} className="mr-1 inline" aria-hidden="true" />
+              Sugestão da IA
+            </strong>
+            <span className="line-clamp-2" title={suggestion.suggestion}>{suggestion.suggestion}</span>
+            {!suggestion.context_complete ? (
+              <span className="block text-xs text-[var(--warning-text)]">
+                {`Histórico parcial: a sugestão considerou as ${suggestion.messages_used} mensagens mais recentes de ${suggestion.messages_total}.`}
+              </span>
+            ) : null}
+          </span>
+          <Button type="button" onClick={applySuggestion} className="btn shrink-0 p-1.5" aria-label="Usar sugestão" disabled={draftLocked}>
+            <Check size={14} />
+          </Button>
+          <Button type="button" onClick={() => setSuggestion(null)} className="btn shrink-0 p-1.5" aria-label="Descartar sugestão">
             <X size={14} />
           </Button>
         </div>
@@ -415,7 +489,7 @@ export function ConversationComposer({
             className="conversation-composer__textarea input max-h-32"
             placeholder={attachment?.mediaType === "audio" ? "Áudio pronto para enviar" : attachment ? "Adicionar uma legenda" : channel === "instagram" ? "Responder pelo Instagram" : "Responder pelo WhatsApp conectado"}
             autoComplete="off"
-            disabled={sending || recording || attachment?.mediaType === "audio" || !canSendText}
+            disabled={draftLocked}
           />
         </label>
         <div className="conversation-composer__actions">
@@ -424,6 +498,9 @@ export function ConversationComposer({
         </Button>
         <Button type="button" className="conversation-composer__tool active:scale-95" onClick={startRecording} aria-label="Gravar áudio" disabled={sending || recording || !supports("audio")}>
           <Microphone size={16} aria-hidden="true" />
+        </Button>
+        <Button type="button" className="conversation-composer__tool active:scale-95" onClick={generateSuggestion} aria-label={generating ? "Gerando sugestão da IA" : suggestion ? "Gerar outra sugestão da IA" : "Gerar sugestão da IA"} disabled={generating}>
+          {generating ? <span className="on-spinner" aria-hidden="true" /> : <MagicWand size={16} aria-hidden="true" />}
         </Button>
           <div className="conversation-composer__quick-replies" role="group" aria-label="Respostas rápidas" tabIndex={0}>
             <span className="chip-action">Enviar proposta</span>

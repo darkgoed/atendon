@@ -1,17 +1,22 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 
 const viewports = [
   { name: "mobile", width: 360, height: 800 },
   { name: "tablet", width: 768, height: 1024 },
   { name: "desktop", width: 1440, height: 900 }
 ] as const;
+// The config emulates reduced motion (entrances shrink to .01ms), which would hide mid-animation geometry bugs.
+test.use({ contextOptions: { reducedMotion: "no-preference" } });
 
 const conversationId = "10000000-0000-4000-8000-000000000003";
 const tinyPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64"
 );
+// Wide intrinsic size, so the 360px thumbnail grid and image viewer are really stressed for overflow.
+const wideImageWidth = 2400;
+const wideImage = `<svg xmlns="http://www.w3.org/2000/svg" width="${wideImageWidth}" height="1200"><rect width="100%" height="100%" fill="#3a7bd5"/></svg>`;
 
 const session = {
   user: { id: "20000000-0000-4000-8000-000000000001", email: "revisao.tripz@example.test", isRoot: false, name: "Revisão Tripz" },
@@ -95,6 +100,7 @@ async function installFixture(page: Page) {
       return json(route, { messages: firstAssets, has_more: true, next_cursor: "older-page-cursor" });
     }
     if (/\/conversations\/[^/]+\/messages\/[^/]+\/media$/.test(path) && method === "GET") {
+      if (path.endsWith("/asset-image-old/media")) return route.fulfill({ status: 200, contentType: "image/svg+xml", body: wideImage });
       return route.fulfill({ status: 200, contentType: "image/png", body: tinyPng });
     }
     if (path === `/conversations/${conversationId}/contact` && method === "PATCH") {
@@ -127,16 +133,98 @@ async function expectNoOverflow(page: Page) {
   expect(metrics.panelScroll, `contact panel overflowed by ${metrics.panelScroll - metrics.panelClient}px`).toBeLessThanOrEqual(metrics.panelClient + 1);
 }
 
-async function expectA11y(page: Page) {
-  const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+async function expectA11y(page: Page, include?: string) {
+  const builder = new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]);
+  const result = await (include ? builder.include(include) : builder).analyze();
   expect(result.violations.map(({ id, impact, nodes }) => ({ id, impact, nodes: nodes.map(({ target }) => target) }))).toEqual([]);
+}
+
+// Pauses the next dialog entrance on its first frame (animationstart), so its geometry is sampled DURING the
+// animation whatever the machine speed; the caller then seeks/resumes it through the Web Animations API.
+async function holdDialogEntrance(page: Page) {
+  await page.evaluate(() => {
+    const hold = (event: AnimationEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.getAttribute("role") !== "dialog") return;
+      document.removeEventListener("animationstart", hold, true);
+      for (const animation of target.getAnimations()) { animation.pause(); animation.currentTime = 0; }
+      target.dataset.e2eEntrance = event.animationName;
+    };
+    document.addEventListener("animationstart", hold, true);
+  });
+}
+
+// Soft, so one run reports every viewport/phase: the whole dialog stays inside the viewport and centered.
+async function expectDialogInViewport(page: Page, dialog: Locator, phase: string) {
+  const { width, height } = page.viewportSize()!;
+  const box = (await dialog.boundingBox())!;
+  const at = `${phase} ${width}x${height}`;
+  expect.soft(box.x, `${at}: left edge`).toBeGreaterThanOrEqual(0);
+  expect.soft(box.y, `${at}: top edge`).toBeGreaterThanOrEqual(0);
+  expect.soft(box.x + box.width, `${at}: right edge`).toBeLessThanOrEqual(width + 1);
+  expect.soft(box.y + box.height, `${at}: bottom edge`).toBeLessThanOrEqual(height + 1);
+  expect.soft(Math.abs(box.x + box.width / 2 - width / 2), `${at}: distance from horizontal center`).toBeLessThanOrEqual(1);
+  return box;
+}
+
+// SPEC R2: an image thumbnail is a button (not a link) that opens the same
+// authenticated media URL in a Dialog, without a new page. Escape and the
+// backdrop close only the Dialog and return focus to the thumbnail.
+async function expectImageViewer(page: Page, panel: Locator, screenshotPath: string) {
+  const thumb = panel.getByRole("button", { name: "Abrir praia-historico.png" });
+  const src = await thumb.locator("img").getAttribute("src");
+  expect(src).toMatch(new RegExp(`/conversations/${conversationId}/messages/asset-image-old/media$`));
+  await expect(panel.getByRole("link", { name: /praia-historico/ })).toHaveCount(0);
+  const dialog = page.getByRole("dialog", { name: "praia-historico.png" });
+
+  for (const dismiss of ["Escape", "backdrop"] as const) {
+    await holdDialogEntrance(page);
+    await thumb.click();
+    await expect(dialog).toBeVisible();
+    // Entrance held on its first frame: still transparent (really mid-animation), yet already centered in the viewport.
+    await expect(dialog).toHaveAttribute("data-e2e-entrance", /\S/);
+    expect(Number(await dialog.evaluate((element) => getComputedStyle(element).opacity))).toBeLessThan(1);
+    await expectDialogInViewport(page, dialog, "entrance onset");
+    await expectNoOverflow(page);
+    await dialog.evaluate((element) => {
+      for (const animation of element.getAnimations()) animation.currentTime = Number(animation.effect?.getComputedTiming().duration) / 2;
+    });
+    await expectDialogInViewport(page, dialog, "entrance midpoint");
+    await dialog.evaluate(async (element) => {
+      for (const animation of element.getAnimations()) animation.play();
+      await Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished));
+    });
+    const image = dialog.getByRole("img", { name: "praia-historico.png" });
+    await expect(image).toHaveAttribute("src", src!);
+    await expect.poll(() => image.evaluate((img: HTMLImageElement) => (img.complete ? img.naturalWidth : 0))).toBe(wideImageWidth);
+    const box = await expectDialogInViewport(page, dialog, "settled");
+    const imageBox = (await image.boundingBox())!;
+    expect(imageBox.x).toBeGreaterThanOrEqual(box.x - 1);
+    expect(imageBox.x + imageBox.width).toBeLessThanOrEqual(box.x + box.width + 1);
+    await expectNoOverflow(page);
+
+    if (dismiss === "Escape") {
+      await expectA11y(page, "[role='dialog']");
+      await page.screenshot({ path: screenshotPath, animations: "disabled" });
+      await page.keyboard.press("Escape");
+    } else {
+      await page.locator(".overlay-backdrop").click({ position: { x: 2, y: 2 } });
+    }
+    await expect(dialog).toBeHidden();
+    await expect(panel).toBeVisible();
+    await expect(thumb).toBeFocused();
+    await expect(page).toHaveURL(new RegExp(`/conversas\\?id=${conversationId}$`));
+  }
 }
 
 test("contact drawer pushes the desktop chat and remains complete, paginated, accessible and responsive", async ({ page }, testInfo) => {
   const consoleErrors: string[] = [];
   const serverErrors: string[] = [];
+  const openedPages: string[] = [];
   page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
   page.on("response", (response) => { if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`); });
+  // Popups are tabs/windows opened by the app; AxeBuilder's own blank finishRun pages are context pages, not popups.
+  page.on("popup", (opened) => openedPages.push(opened.url()));
   const state = await installFixture(page);
 
   for (const viewport of viewports) {
@@ -175,7 +263,7 @@ test("contact drawer pushes the desktop chat and remains complete, paginated, ac
     await expect(panel.getByRole("link", { name: /voos-confirmados\.pdf/ })).toBeVisible();
     await panel.getByRole("button", { name: "Carregar mais conteúdo" }).click();
     await panel.getByRole("tab", { name: "Mídia" }).click();
-    await expect(panel.getByRole("link", { name: "Abrir praia-historico.png" })).toBeVisible();
+    await expectImageViewer(page, panel, testInfo.outputPath(`conversation-image-viewer-${viewport.name}.png`));
 
     await expectNoOverflow(page);
     await expectA11y(page);
@@ -207,4 +295,5 @@ test("contact drawer pushes the desktop chat and remains complete, paginated, ac
   expect(state.assetsPageCalls).toBeGreaterThanOrEqual(viewports.length * 2);
   expect(serverErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);
+  expect(openedPages).toEqual([]);
 });

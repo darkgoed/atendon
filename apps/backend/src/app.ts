@@ -15,6 +15,7 @@ import { config } from "./config.js";
 import { db } from "./db/client.js";
 import { logger } from "./logger.js";
 import { MessageRepository } from "./modules/messages/repository.js";
+import { registerCopilotSuggestionRoutes } from "./modules/messages/copilot-suggestion.js";
 import { parseIdempotencyKey, payloadFingerprint } from "./modules/messages/idempotency.js";
 import { AiFollowUpProcessor } from "./modules/messages/ai-follow-up.js";
 import { enqueueFollowUpOnce } from "./modules/messages/follow-up-idempotency.js";
@@ -2915,6 +2916,8 @@ export function buildApp(options: {
   });
   void app.register(registerConversationQueueRoutes);
   void app.register(registerMessagingRoutes, { gateway: messageGateway });
+  // R3: copiloto sob demanda — exposto uma única vez pelo buildApp do orquestrador.
+  void app.register(registerCopilotSuggestionRoutes);
   void app.register(registerChangelogRoutes);
 
   return app;

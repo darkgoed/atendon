@@ -3,7 +3,7 @@ import { withTenantTransaction } from "../db/tenant-transaction.js";
 import { ensureOpenPeriod } from "./usage-period.js";
 import { expireRollover } from "./rollover.js";
 import { getBillingSettings } from "./settings.js";
-import { reconcileAiTurnFromUsageLogs } from "./ai-consumption.js";
+import { reconcileAiTurnFromUsageLogs, releaseAiReservation, type AiReservationRow } from "./ai-consumption.js";
 import { createInvoiceForUsagePeriod } from "./invoices.js";
 import { createChargeForInvoice, type ChargeDeps } from "./charges.js";
 import { CHARGEABLE_SUBSCRIPTION_STATUSES } from "./types.js";
@@ -102,11 +102,16 @@ export async function runBillingReconciliationBatch(limit = 100, chargeDeps: Cha
         if (logs.rowCount) { await reconcileAiTurnFromUsageLogs(row.tenant_id, row.purpose, row.logical_turn_id); result.reconciled++; continue; }
       }
       await withTenantTransaction(db, row.tenant_id, async (client) => {
+        // Re-checagem dentro da transação: um usage_log pode ter chegado entre o
+        // pre-check lá fora e aqui — turno cobrado nunca é liberado como expirado.
+        if (row.logical_turn_id) {
+          const charged = await client.query(`SELECT 1 FROM usage_logs WHERE tenant_id=$1 AND request_id=$2::uuid LIMIT 1`, [row.tenant_id, row.logical_turn_id]);
+          if (charged.rowCount) return;
+        }
         const settings = await getBillingSettings(client);
-        const expired = await client.query<{ id: string; usage_period_id: string; billable_amount_brl_cents: string }>(`SELECT id, usage_period_id, billable_amount_brl_cents FROM ai_usage_ledger WHERE id=$1 AND reconciled=false AND created_at <= now() - make_interval(mins => $2) FOR UPDATE`, [row.id, settings.reservation_ttl_minutes]);
+        const expired = await client.query<AiReservationRow>(`SELECT id, usage_period_id, consumption_type, billable_amount_brl_cents, pricing_snapshot FROM ai_usage_ledger WHERE id=$1 AND reconciled=false AND created_at <= now() - make_interval(mins => $2) FOR UPDATE`, [row.id, settings.reservation_ttl_minutes]);
         const item = expired.rows[0]; if (!item) return;
-        await client.query(`UPDATE usage_periods SET reserved_cents=GREATEST(0,reserved_cents-$2), updated_at=now() WHERE id=$1`, [item.usage_period_id, item.billable_amount_brl_cents]);
-        await client.query(`UPDATE ai_usage_ledger SET reconciled=true, reconciled_at=now(), pricing_snapshot=COALESCE(pricing_snapshot,'{}'::jsonb) || $2::jsonb WHERE id=$1 AND reconciled=false`, [item.id, JSON.stringify({ reconciliation: "expired_without_usage_logs" })]);
+        await releaseAiReservation(client, row.tenant_id, item, "expired_without_usage_logs");
         result.expiredReservations++;
       });
     } catch (error) { result.errors.push(`ledger:${row.id}:${error instanceof Error ? error.message : "unknown"}`); }

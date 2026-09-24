@@ -1,5 +1,8 @@
 import { readFile } from "node:fs/promises";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { ConversationMessageMedia, type ConversationMediaMessage } from "../components/conversation-message-media";
 import {
   audioDisplayName,
   formatAudioDuration,
@@ -64,9 +67,16 @@ describe("audio waveform", () => {
     expect(media).not.toContain("{fileName}</div>");
     expect(media).not.toContain("message.content && message.content !== rawFileName");
     expect(media).toContain('message.media_type === "image"');
-    expect(media).toContain('alt={message.content || fileName}');
+    expect(media).toContain("mediaViewer(message.content || fileName,");
+    expect(media).toContain("alt={alt}");
     expect(media).toContain("<FileArrowDown");
     expect(media).toContain('media_is_sticker');
-    expect(media).toContain('alt="Figurinha"');
+    expect(media).toContain('mediaViewer("Figurinha",');
+
+    const html = (message: ConversationMediaMessage) =>
+      renderToStaticMarkup(createElement(ConversationMessageMedia, { conversationId: "c1", message }));
+    expect(html({ id: "i1", content: "Por do sol", media_type: "image", media_file_name: "serra.jpg" })).toContain('alt="Por do sol"');
+    expect(html({ id: "i2", content: "", media_type: "image", media_file_name: "serra.jpg" })).toContain('alt="serra.jpg"');
+    expect(html({ id: "s1", content: "", media_type: "image", media_is_sticker: true })).toContain('alt="Figurinha"');
   });
 });

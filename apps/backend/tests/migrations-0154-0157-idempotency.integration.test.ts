@@ -18,6 +18,16 @@ const databaseUrl = new URL(sourceUrl);
 databaseUrl.pathname = `/${databaseName}`;
 const adminPool = new pg.Pool({ connectionString: adminUrl.toString() });
 const pool = new pg.Pool({ connectionString: databaseUrl.toString() });
+// pg-pool emite 'error' quando uma conexão ociosa morre no servidor — p.ex.
+// 57P01 do pg_terminate_backend do próprio teardown ou um socket atrasado.
+// Sem listener isso vira uncaughtException e derruba a suíte inteira (exit 1)
+// mesmo com todos os testes passando. Falhas genuínas continuam visíveis:
+// toda query aguardada lança o erro do cliente que a atendeu.
+for (const [target, label] of [[pool, "0154-0157 pool"], [adminPool, "0154-0157 admin"]] as const) {
+  target.on("error", (error: Error) => {
+    console.error(`[${label}] conexão ociosa encerrada pelo servidor: ${(error as { code?: string }).code ?? "unknown"}`);
+  });
+}
 let databaseCreated = false;
 let temporaryRoot = "";
 let tenantId = "";
@@ -55,6 +65,20 @@ async function snapshot(client: pg.Pool | pg.Client): Promise<EssentialSnapshot>
   return result.rows[0];
 }
 
+async function runStagedMigrations(stagedDirectory: string): ReturnType<typeof runMigrations> {
+  const migrationClient = new pg.Client({ connectionString: databaseUrl.toString() });
+  await migrationClient.connect();
+  try {
+    return await runMigrations(migrationClient, stagedDirectory, () => undefined);
+  } finally {
+    // Sem este finally, um erro em runMigrations deixaria o client conectado
+    // e o pg_terminate_backend do afterAll mataria uma conexão viva
+    // (57P01 não tratado). O end() de um client já quebrado não é sinal
+    // genuíno; o erro real da migration continua propagando.
+    await migrationClient.end().catch(() => undefined);
+  }
+}
+
 beforeAll(async () => {
   const files = (await readdir(migrationDirectory)).filter((file) => file.endsWith(".sql")).sort();
   const cutoff = files.indexOf("0157_connection_channel.sql");
@@ -69,10 +93,7 @@ beforeAll(async () => {
 
   await adminPool.query(`CREATE DATABASE "${databaseName}" TEMPLATE template0`);
   databaseCreated = true;
-  const migrationClient = new pg.Client({ connectionString: databaseUrl.toString() });
-  await migrationClient.connect();
-  const result = await runMigrations(migrationClient, stagedDirectory, () => undefined);
-  await migrationClient.end();
+  const result = await runStagedMigrations(stagedDirectory);
   // Isolate the historical proof from later migrations: 0158 adds triggers,
   // indexes and foreign keys that intentionally depend on 0157's channel.
   expect(result.applied).toEqual(stagedFiles);
@@ -114,7 +135,7 @@ beforeAll(async () => {
   } finally {
     client.release();
   }
-});
+}, 120_000); // replay de ~157 migrations excede o hookTimeout default (10s) sob carga
 
 afterAll(async () => {
   if (tenantId) await pool.query("DELETE FROM tenants WHERE id=$1", [tenantId]);

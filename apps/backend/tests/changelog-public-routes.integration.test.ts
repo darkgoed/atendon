@@ -13,6 +13,8 @@ const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const app = buildChangelogApp();
 const rootEmail = `changelog-public-${randomUUID()}@test.local`;
 let rootCookie = "";
+// Posts do teste de feed (globais) — removidos no afterAll; mídia/leitura cascateiam.
+const feedTestSlugs: string[] = [];
 
 type Method = "GET" | "POST";
 async function inject(method: Method, url: string, cookie?: string) {
@@ -44,6 +46,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
+  await pool.query("DELETE FROM changelog_posts WHERE slug = ANY($1)", [feedTestSlugs]);
   await pool.end();
 });
 
@@ -77,19 +80,25 @@ async function insertPost(options: {
 }
 
 describe("changelog público — feed e permalink", () => {
-  it("feed ordenado por chave relativa + paginação determinística (nextOffset null no fim)", async () => {
+  it("feed ordenado por chave relativa + paginação determinística (nextOffset null só no fim real)", async () => {
     const base = randomUUID().slice(0, 8);
     // Timestamps FUTUROS: elegíveis (a elegibilidade não filtra futuro) e no topo global —
     // imunes a posts now()/passado criados por outros arquivos da suíte em paralelo.
     const novoAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     const antigoAt = new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString();
+    // Controle positivo determinístico: post elegível DEPOIS do nosso antigo (+22h,
+    // ainda na janela futura imune) — existe página seguinte ao nosso último post
+    // próprio até isolado em DB limpo; nextOffset null só no fim REAL do feed.
+    const controleAt = new Date(Date.now() + 22 * 60 * 60 * 1000).toISOString();
+    await insertPost({ slug: `controle-${base}`, title: "Controle", summary: "s", published: true, publishedAt: controleAt });
     await insertPost({ slug: `antigo-${base}`, title: "Antigo", summary: "s", published: true, publishedAt: antigoAt });
     await insertPost({ slug: `novo-${base}`, title: "Novo", summary: "s", published: true, publishedAt: novoAt });
+    feedTestSlugs.push(`controle-${base}`, `antigo-${base}`, `novo-${base}`);
     const full = (await inject("GET", "/public/changelog?limit=50")).json() as { posts: PublicPost[]; nextOffset: number | null };
     // O feed global do DB compartilhado pode ter ≥50 posts elegíveis: paginação
-    // isomórfica exige a janela COMPLETA dos nossos 2 posts — busca só eles.
+    // isomórfica exige a janela COMPLETA dos nossos 3 posts — busca só eles.
     const ours = full.posts.filter((post) => post.slug.endsWith(`-${base}`));
-    expect(ours.map((post) => post.slug)).toEqual([`novo-${base}`, `antigo-${base}`]);
+    expect(ours.map((post) => post.slug)).toEqual([`novo-${base}`, `antigo-${base}`, `controle-${base}`]);
     // Asserção RELATIVA (cross-time): ordem ENTRE os nossos posts, não posição absoluta no feed global.
     const idxNovo = full.posts.findIndex((post) => post.slug === `novo-${base}`);
     const idxAntigo = full.posts.findIndex((post) => post.slug === `antigo-${base}`);
@@ -99,13 +108,26 @@ describe("changelog público — feed e permalink", () => {
     const pageNovo = (await inject("GET", `/public/changelog?limit=1&offset=${idxNovo}`)).json() as { posts: PublicPost[]; nextOffset: number | null };
     expect(pageNovo.posts[0].slug).toBe(`novo-${base}`);
     expect(pageNovo.nextOffset).toBe(idxNovo + 1);
-    // Paginação a partir do ÚLTIMO NOSSO post: offset=idxAntigo (o último
-    // elegível se o resto do feed for limpo) — em DB compartilhado, âncora
-    // relativa aos NOSSOS posts, não ao feed global inteiro.
+    // O fim dos NOSSOS posts NÃO é o fim do feed: âncora relativa ao antigo — o
+    // controle garante página seguinte (RED se alguém voltar a exigir null aqui).
     const lastOffset = idxAntigo;
     const last = (await inject("GET", `/public/changelog?limit=1&offset=${lastOffset}`)).json() as { posts: PublicPost[]; nextOffset: number | null };
     expect(last.posts[0].slug).toBe(full.posts[lastOffset].slug);
-    expect(last.nextOffset).toBeNull();
+    expect(last.nextOffset).toBe(lastOffset + 1);
+    // Fim REAL: segue nextOffset em chunks de 50 (teto público) até null — sem
+    // overfit a count global nem a inserts concorrentes.
+    let offset = lastOffset + 1;
+    let ended = false;
+    const tail: string[] = [];
+    for (let guard = 0; guard < 50; guard++) {
+      const page = (await inject("GET", `/public/changelog?limit=50&offset=${offset}`)).json() as { posts: PublicPost[]; nextOffset: number | null };
+      tail.push(...page.posts.map((post) => post.slug));
+      if (page.nextOffset === null) { ended = true; break; }
+      expect(page.nextOffset).toBe(offset + 50);
+      offset = page.nextOffset;
+    }
+    expect(ended).toBe(true);
+    expect(tail).toContain(`controle-${base}`);
   });
 
   it("permalink 200 com whitelist EXATA (toEqual)", async () => {

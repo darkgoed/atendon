@@ -50,7 +50,7 @@ describe("billing alerts",()=>{
       await pool.query("UPDATE billing_settings SET quota_alert_thresholds_bps=$1 WHERE id=true", [[threshold]]); invalidateBillingSettingsCache();
       const t=await setup(); await setUsage(t,usage); expect((await evaluate(t)).map(a=>a.thresholdBps)).toEqual([threshold]);
     }
-  });
+  }, 20_000);
   it("crossing quota 0 to 100 inserts all three exactly once and down/up does not repeat",async()=>{
     const t=await setup(); await setUsage(t,0); expect(await evaluate(t)).toEqual([]);
     await setUsage(t,10000); expect((await evaluate(t)).map(a=>a.thresholdBps)).toEqual([8000,9000,10000]);

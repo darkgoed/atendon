@@ -14,7 +14,7 @@ import {
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ContactAvatar } from "./contact-avatar";
 import { ConversationNotes } from "./conversation-notes";
-import { Button, IconButton, Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
+import { Button, Dialog, IconButton, Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { instagramDisplayIdentity, instagramDisplayName } from "@/lib/channel-identity";
 import { shouldSubmitOnEnter } from "@/lib/compat";
 
@@ -87,6 +87,8 @@ export function ConversationContactPanel({
   const [saveError, setSaveError] = useState("");
   const [draftName, setDraftName] = useState(conversation.contact_name ?? "");
   const nameSave = useSaveFeedback();
+  const [viewerId, setViewerId] = useState<string | null>(null);
+  const viewerTriggerRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -104,7 +106,9 @@ export function ConversationContactPanel({
     focusPanel();
     const focusFrame = window.requestAnimationFrame(focusPanel);
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      // Radix layers (e.g. the image dialog) dismiss on Escape in the capture
+      // phase and preventDefault: that Escape closes the layer, not the panel.
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       event.preventDefault();
       onCloseRef.current();
     };
@@ -143,6 +147,7 @@ export function ConversationContactPanel({
     () => messages.filter((message) => message.media_type === "document"),
     [messages]
   );
+  const viewerImage = media.find((message) => message.id === viewerId);
   const links = useMemo(() => {
     const seen = new Set<string>();
     return messages.flatMap((message) => {
@@ -284,11 +289,17 @@ export function ConversationContactPanel({
             media.length ? (
               <div id="contact-panel-media" className="mt-3 grid grid-cols-3 gap-1.5" role="tabpanel" aria-labelledby="contact-panel-media-tab">
                 {media.map((message) => (
-                  <a key={message.id} href={mediaUrl(conversation.id, message.id)} target="_blank" rel="noreferrer" className="conversation-contact-panel__media-thumb" aria-label={`Abrir ${message.media_file_name ?? "imagem"}`}>
+                  <button
+                    key={message.id}
+                    type="button"
+                    className="conversation-contact-panel__media-thumb"
+                    aria-label={`Abrir ${message.media_file_name ?? "imagem"}`}
+                    onClick={(event) => { viewerTriggerRef.current = event.currentTarget; setViewerId(message.id); }}
+                  >
                     {/* Authenticated media is loaded directly so the browser forwards the session cookie. */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={mediaUrl(conversation.id, message.id)} alt={message.media_file_name ?? "Imagem da conversa"} loading="lazy" />
-                  </a>
+                  </button>
                 ))}
               </div>
             ) : <p id="contact-panel-media" className="conversation-contact-panel__empty" role="tabpanel" aria-labelledby="contact-panel-media-tab">Nenhuma imagem compartilhada.</p>
@@ -342,6 +353,22 @@ export function ConversationContactPanel({
           </section>
         ) : null}
       </div>
+      <Dialog
+        open={Boolean(viewerImage)}
+        onOpenChange={(open) => {
+          if (open) return;
+          setViewerId(null);
+          // No Radix Dialog.Trigger here, so focus goes back to the thumbnail that opened it.
+          window.requestAnimationFrame(() => viewerTriggerRef.current?.focus());
+        }}
+        title={viewerImage?.media_file_name ?? "Imagem da conversa"}
+        size="xl"
+      >
+        {viewerImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={mediaUrl(conversation.id, viewerImage.id)} alt={viewerImage.media_file_name ?? "Imagem da conversa"} className="mx-auto block max-h-[70vh] max-w-full object-contain" />
+        ) : null}
+      </Dialog>
       <SaveToast show={nameSave.done}>Contato salvo</SaveToast>
     </aside>
   );

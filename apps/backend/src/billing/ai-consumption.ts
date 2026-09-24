@@ -1,5 +1,6 @@
 import { db } from "../db/client.js";
 import { withTenantTransaction } from "../db/tenant-transaction.js";
+import type { PoolClient } from "pg";
 import { buildAiTurnIdempotencyKey } from "./ai-metering.js";
 import { ensureOpenPeriod } from "./usage-period.js";
 import { estimateInteractionCents, getActivePricingRule, priceInteraction, type AiCostInput } from "./pricing.js";
@@ -7,7 +8,16 @@ import { evaluateAlerts } from "./alerts.js";
 import { appendFinancialLedgerEntry, grantUsageCredit } from "./ledger.js";
 import { detectPaymentVelocity } from "./fraud-signals.js";
 
-type AiPurpose = "inbound_reply" | "follow_up";
+type AiPurpose = "inbound_reply" | "follow_up" | "copilot_suggestion";
+
+/** Linha de reserva JÁ travada (FOR UPDATE) pronta para liberação. */
+export type AiReservationRow = {
+  id: string;
+  usage_period_id: string;
+  consumption_type: ConsumeResult["consumptionType"];
+  billable_amount_brl_cents: string;
+  pricing_snapshot: { sourceId?: string } | null;
+};
 export type ConsumeResult = {
   allowed: boolean;
   reason?: "AI_DISABLED" | "QUOTA_EXCEEDED" | "CREDIT_CAP_REACHED" | "BILLING_UNAVAILABLE";
@@ -93,7 +103,7 @@ export async function consumeAiInteraction(
       const ledger = await client.query<{ id: string }>(
         `INSERT INTO ai_usage_ledger (tenant_id, subscription_id, usage_period_id, interaction_key, logical_turn_id, purpose, consumption_type, billable_amount_brl_cents, pricing_strategy, pricing_snapshot, reconciled)
          VALUES ($1,$2,$3,$4,$5::uuid,$6,$7,$8,$9,$10,$11) RETURNING id`,
-        [tenantId, sub.id, period.id, interactionKey, /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(logicalTurnId) ? logicalTurnId : null, purpose, type, type === "OVERAGE" ? estimatedCents : 0, rule.strategy, JSON.stringify({ ...rule.config, version: rule.version, metadata }), false],
+        [tenantId, sub.id, period.id, interactionKey, /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(logicalTurnId) ? logicalTurnId : null, purpose, type, type === "OVERAGE" ? estimatedCents : 0, rule.strategy, JSON.stringify({ ...rule.config, version: rule.version, sourceId, metadata }), false],
       );
       const column = type === "INCLUDED" ? "included_usage" : type === "ROLLOVER" ? "rollover_usage" : type === "BONUS" ? "bonus_usage" : "overage_usage";
       await client.query(`UPDATE usage_periods SET ${column}=${column}+1, reserved_cents=reserved_cents+$2, updated_at=now() WHERE id=$1`, [period.id, type === "OVERAGE" ? estimatedCents : 0]);
@@ -126,6 +136,71 @@ export async function consumeAiInteraction(
     // A subscribed tenant must not receive free AI when accounting is unhealthy.
     return { allowed: false, reason: "BILLING_UNAVAILABLE" };
   }
+}
+
+/**
+ * Libera a reserva de um turno que falhou ANTES de o provedor gerar uso.
+ * Transacional e idempotente: só atua se o ledger ainda estiver não-conciliado
+ * E não existir usage_logs para o requestId — se o provedor chegou a cobrar
+ * (usage_logs presente), a reconciliação normal permanece responsável; nunca
+ * oferecer IA grátis que o provedor cobrou. Erros são engolidos de propósito:
+ * liberar é best-effort, o lote de reconciliação segue como rede de segurança.
+ */
+export async function releaseAiInteractionWithoutUsage(
+  tenantId: string,
+  purpose: AiPurpose,
+  logicalTurnId: string,
+): Promise<void> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(logicalTurnId)) return;
+  try {
+    await withTenantTransaction(db, tenantId, async (client) => {
+      await client.query("SELECT id FROM tenant_subscriptions WHERE tenant_id=$1 FOR UPDATE", [tenantId]);
+      const charged = await client.query("SELECT 1 FROM usage_logs WHERE tenant_id=$1 AND request_id=$2::uuid LIMIT 1", [tenantId, logicalTurnId]);
+      if (charged.rowCount) return;
+      const reservation = await client.query<AiReservationRow>(
+        `SELECT id, usage_period_id, consumption_type, billable_amount_brl_cents, pricing_snapshot
+           FROM ai_usage_ledger WHERE tenant_id=$1 AND interaction_key=$2 AND reconciled=false FOR UPDATE`,
+        [tenantId, buildAiTurnIdempotencyKey(tenantId, purpose, logicalTurnId)],
+      );
+      const item = reservation.rows[0];
+      if (item) await releaseAiReservation(client, tenantId, item, "released_without_usage");
+    });
+  } catch (error) { console.error(`[billing] failed to release AI reservation without usage for tenant ${tenantId}`, error); }
+}
+
+/**
+ * Núcleo compartilhado (transacional) de liberação de uma reserva JÁ travada:
+ * devolve o contador do período correspondente, a reserva em reserved_cents e a
+ * unidade consumida do ledger de origem (rollover/grant), marcando reconciled.
+ * O reconciler TTL usa o mesmo caminho — sem isso, vencer o TTL consumia cota
+ * incluída/rollover/bônus para sempre. Caller define o marcador de reconciliação.
+ */
+export async function releaseAiReservation(client: PoolClient, tenantId: string, item: AiReservationRow, reconciliation: string): Promise<void> {
+  const type = item.consumption_type;
+  const column = type === "INCLUDED" ? "included_usage" : type === "ROLLOVER" ? "rollover_usage" : type === "BONUS" ? "bonus_usage" : "overage_usage";
+  await client.query(`UPDATE usage_periods SET ${column}=GREATEST(0,${column}-1), reserved_cents=GREATEST(0,reserved_cents-$2), updated_at=now() WHERE id=$1`, [item.usage_period_id, item.billable_amount_brl_cents]);
+  const sourceId = item.pricing_snapshot?.sourceId;
+  if (type === "ROLLOVER" && sourceId) await client.query("UPDATE rollover_ledger SET consumed_amount=GREATEST(0,consumed_amount-1) WHERE id=$2 AND tenant_id=$1", [tenantId, sourceId]);
+  if (type === "BONUS" && sourceId) await client.query("UPDATE usage_grants SET consumed_amount=GREATEST(0,consumed_amount-1) WHERE id=$2 AND tenant_id=$1", [tenantId, sourceId]);
+  // Lançamento compensatório: liberar uma reserva OVERAGE sem estornar o CREDIT
+  // estimado deixa saldo fantasma no financial_ledger (ROOT /root/billing/ledger).
+  // Idempotente pela chave (source_event_id, correlation_id): a mesma liberação
+  // repetida (lote TTL, falha de provedor) cai no índice único e não duplica.
+  // Mesma transação e ANTES do mark reconciled — se o append falhar (ex. saldo
+  // insuficiente), o rollback da transação deixa a reserva aberta e consistente.
+  const amountCents = Number(item.billable_amount_brl_cents);
+  if (type === "OVERAGE" && amountCents > 0) {
+    await appendFinancialLedgerEntry(client, tenantId, {
+      direction: "DEBIT",
+      amountCents,
+      actorType: "AI_RESERVATION",
+      reason: "AI usage reservation release",
+      sourceEventId: `ai-reservation-release:${item.id}`,
+      correlationId: item.usage_period_id,
+      metadata: { reservationId: item.id, reconciliation },
+    });
+  }
+  await client.query(`UPDATE ai_usage_ledger SET reconciled=true, reconciled_at=now(), pricing_snapshot=COALESCE(pricing_snapshot,'{}'::jsonb) || $2::jsonb WHERE id=$1 AND reconciled=false`, [item.id, JSON.stringify({ reconciliation })]);
 }
 
 export async function grantAiUsageBonus(input: { tenantId: string; amount: number; reason: string; idempotencyKey: string; grantedByUserId?: string | null; expiresAt?: Date | null }) {
@@ -181,6 +256,28 @@ export async function reconcileAiInteraction(tenantId: string, purpose: AiPurpos
           reserved_cents=CASE WHEN $3='OVERAGE' THEN GREATEST(0,reserved_cents-$5) ELSE reserved_cents END, updated_at=now() WHERE id=$1`,
         [row.usage_period_id, priced.providerCostUsdMicros, row.consumption_type, priced.billableAmountBrlCents, n(row.reserved)],
       );
+      // True-up do lançamento append-only: a reserva creditou o ESTIMATE, mas o
+      // valor real pode divergir — sem este ajuste o saldo ficaria preso no
+      // estimate para sempre (corrigir exige um lançamento, nunca UPDATE).
+      // Subestimado → CREDIT da diferença; superestimado → DEBIT. Estimate 0
+      // (sem CREDIT na reserva) credita o valor real inteiro. Delta 0 não lança.
+      // Idempotente pela chave única (source_event_id, correlation_id): nem uma
+      // segunda reconciliação sequencial chega aqui (linha já reconciliada), e
+      // uma corrida concorrente cai no índice único sem duplicar o DEBIT.
+      if (row.consumption_type === "OVERAGE") {
+        const deltaCents = priced.billableAmountBrlCents - n(row.reserved);
+        if (deltaCents !== 0) {
+          await appendFinancialLedgerEntry(client, tenantId, {
+            direction: deltaCents > 0 ? "CREDIT" : "DEBIT",
+            amountCents: Math.abs(deltaCents),
+            actorType: "AI_RESERVATION",
+            reason: "AI usage reservation reconciliation",
+            sourceEventId: `ai-reservation-reconcile:${row.id}`,
+            correlationId: row.usage_period_id,
+            metadata: { reservationId: row.id, estimatedCents: n(row.reserved), actualCents: priced.billableAmountBrlCents },
+          });
+        }
+      }
       await client.query("SAVEPOINT billing_alerts");
       try { await evaluateAlerts(client, tenantId); await client.query("RELEASE SAVEPOINT billing_alerts"); }
       catch (error) { await client.query("ROLLBACK TO SAVEPOINT billing_alerts"); console.error(`[billing] alert evaluation failed for tenant ${tenantId}`, error); }

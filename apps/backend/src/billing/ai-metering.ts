@@ -6,7 +6,7 @@ import { db } from "../db/client.js";
 import { withTenantTransaction } from "../db/tenant-transaction.js";
 
 export const AI_INTERACTION_METRIC = "MAX_AI_INTERACTIONS";
-type AiPurpose = "inbound_reply" | "follow_up";
+type AiPurpose = "inbound_reply" | "follow_up" | "copilot_suggestion";
 
 export function buildAiTurnIdempotencyKey(tenantId: string, purpose: AiPurpose, logicalTurnId: string): string {
   return createHash("sha256").update(`${tenantId}\0${purpose}\0${logicalTurnId}`, "utf8").digest("hex");
