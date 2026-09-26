@@ -504,6 +504,38 @@ describe("Tripz AI tenant-safe persistence", () => {
     await repository.deleteConversation(ownerScope, detail.conversation.id);
   });
 
+  it("scopes provider request/token budget to the current attempt but keeps cost across user retries", async () => {
+    const detail = await repository.createConversation(ownerScope, "Retry budget");
+    const current = await repository.createUserMessage(ownerScope, {
+      conversationId: detail.conversation.id,
+      content: "Monte a proposta",
+      attachmentIds: [],
+      idempotencyKey: "tripz-retry-budget"
+    });
+    const ids = { conversationId: detail.conversation.id, messageId: current.message.id };
+    await repository.markMessageProcessing(ownerScope, { ...ids, status: "processing" });
+    // Três chamadas falhas (502/timeout) e uma resposta truncada paga no primeiro attempt.
+    for (const requestIndex of [1, 2, 3]) {
+      await repository.recordUsage(ownerScope, {
+        ...ids, purpose: "conversation", model: "test/model",
+        inputTokens: requestIndex === 3 ? 100 : 0,
+        outputTokens: requestIndex === 3 ? 4_096 : 0,
+        costUsd: requestIndex === 3 ? 0.05 : 0,
+        durationMs: 1, requestIndex
+      });
+    }
+    expect(await repository.getUsageBudget(ownerScope, ids))
+      .toEqual({ providerRequests: 3, inputTokens: 100, outputTokens: 4_096, costUsd: 0.05 });
+    await repository.markMessageProcessing(ownerScope, { ...ids, status: "failed", errorCode: "TRIPZ_AI_OPENROUTER_UNAVAILABLE" });
+    await repository.retryUserMessage(ownerScope, detail.conversation.id, current.message.id);
+    expect(await repository.markMessageProcessing(ownerScope, { ...ids, status: "processing" })).toBe(true);
+    // Nova tentativa do usuário: chamadas/tokens zeram, custo acumulado do turno permanece.
+    expect(await repository.getUsageBudget(ownerScope, ids))
+      .toEqual({ providerRequests: 0, inputTokens: 0, outputTokens: 0, costUsd: 0.05 });
+    await repository.markMessageProcessing(ownerScope, { ...ids, status: "failed", errorCode: "TRIPZ_TEST_CLEANUP" });
+    await repository.deleteConversation(ownerScope, detail.conversation.id);
+  });
+
   it("frees storage quota when an attachment or a whole conversation is deleted", async () => {
     const tenant = (await pool.query<{ id: string }>(
       "INSERT INTO tenants(name,status,storage_quota_bytes) VALUES($1,'active',30) RETURNING id",

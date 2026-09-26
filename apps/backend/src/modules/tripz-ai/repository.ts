@@ -1036,14 +1036,23 @@ export class TripzAiRepository implements TripzRepositoryPort {
       output_tokens: number;
       cost_usd: string | number;
     }>(
-      `SELECT count(usage.id)::int provider_requests,
-              COALESCE(sum(usage.input_tokens),0)::int input_tokens,
-              COALESCE(sum(usage.output_tokens),0)::int output_tokens,
+      // Chamadas e tokens contam só o attempt atual (desde o claim): uma
+      // queda do provedor não esgota a "Tentar novamente" do usuário. O custo
+      // soma todos os attempts da mensagem — o teto de custo do turno vale.
+      `SELECT count(usage.id) FILTER (WHERE current_attempt)::int provider_requests,
+              COALESCE(sum(usage.input_tokens) FILTER (WHERE current_attempt),0)::int input_tokens,
+              COALESCE(sum(usage.output_tokens) FILTER (WHERE current_attempt),0)::int output_tokens,
               COALESCE(sum(usage.cost_usd),0) cost_usd
        FROM tripz_ai_conversations conversation
+       LEFT JOIN tripz_ai_messages message
+         ON message.tenant_id=conversation.tenant_id
+        AND message.conversation_id=conversation.id AND message.id=$5
        LEFT JOIN tripz_ai_usage_logs usage
          ON usage.tenant_id=conversation.tenant_id
         AND usage.conversation_id=conversation.id AND usage.message_id=$5
+       CROSS JOIN LATERAL (
+         SELECT usage.created_at >= COALESCE(message.processing_started_at,'-infinity') current_attempt
+       ) attempt
        WHERE conversation.tenant_id=$1 AND conversation.id=$2
          AND (conversation.created_by_user_id=$3 OR $4::boolean)
        GROUP BY conversation.id`,
