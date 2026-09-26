@@ -36,7 +36,6 @@ async function legacyOpenPeriod(t: string, limit: number, usage = 0) {
 async function openPeriod(t: string) {
   return (await pool.query<{ usage_unit: string; included_limit: string | null; included_usage: string; id: string }>("SELECT usage_unit,included_limit,included_usage,id FROM usage_periods WHERE tenant_id=$1 AND status='OPEN'", [t])).rows[0];
 }
-async function scalar<T = unknown>(sql: string, args: unknown[] = []) { return (await pool.query<{ value: T }>(sql, args)).rows[0]?.value; }
 
 beforeAll(async () => {
   await app.ready();

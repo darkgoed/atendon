@@ -21,6 +21,7 @@ type TestConnection = {
   calendar_name: string | null;
   calendar_timezone: string | null;
   buffer_minutes: number | null;
+  auth_error?: string | null;
 };
 type TestRoute = { pipeline_id: string; team_id: string | null; connection_id: string | null };
 
@@ -115,7 +116,7 @@ beforeEach(() => {
       state.routes = [];
       return Promise.resolve({});
     }
-    if (path === "/scheduling/google-calendar/oauth/start?member_id=m-2") {
+    if (path.startsWith("/scheduling/google-calendar/oauth/start?member_id=")) {
       return Promise.resolve({ authorization_url: "https://accounts.google.com/o/oauth2/auth?state=nonce" });
     }
     return Promise.reject(new Error(`rota inesperada ${options?.method ?? "GET"} ${path}`));
@@ -181,6 +182,19 @@ describe("Google Agenda — configuração por atendente", () => {
 
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith("https://accounts.google.com/o/oauth2/auth?state=nonce"));
     expect(apiMock.mock.calls.some(([path]) => path === "/scheduling/google-calendar/oauth/start?member_id=m-2")).toBe(true);
+  });
+
+  it("conta com acesso revogado no Google avisa e reconecta pelo OAuth do mesmo atendente", async () => {
+    state.connections = [{ ...mariaConnected, auth_error: "O acesso ao Google Agenda foi revogado ou expirou; reconecte a conta" }, joaoWithoutCalendar];
+    const user = userEvent.setup();
+    renderPanel();
+
+    expect(await screen.findByText(/O Google recusou o acesso desta conta/)).toBeInTheDocument();
+    // Só a conta revogada mostra o aviso.
+    expect(screen.getAllByRole("button", { name: "Reconectar com Google" })).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Reconectar com Google" }));
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith("https://accounts.google.com/o/oauth2/auth?state=nonce"));
+    expect(apiMock.mock.calls.some(([path]) => path === "/scheduling/google-calendar/oauth/start?member_id=m-1")).toBe(true);
   });
 
   it("mostra feedback do callback OAuth quando o login é cancelado e o replaceState mantém a rota aninhada", async () => {

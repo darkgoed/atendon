@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { config } from "../../config.js";
 
@@ -5,6 +6,7 @@ import { config } from "../../config.js";
 // deste módulo, e googleFetch recusa qualquer origem fora desta lista.
 const GOOGLE_OAUTH_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
 const GOOGLE_CALENDAR_API_URL = "https://www.googleapis.com/calendar/v3";
 const GOOGLE_ALLOWED_ORIGINS = new Set([
@@ -25,6 +27,14 @@ export const GOOGLE_CALENDAR_SCOPES = [
   "openid",
   "email"
 ] as const;
+// Escopos sem os quais a integração não funciona. Com consentimento granular o
+// usuário pode desmarcar qualquer um: a conexão só é aceita com todos.
+const REQUIRED_CALENDAR_SCOPES = GOOGLE_CALENDAR_SCOPES.filter((scope) => scope.startsWith("https://"));
+
+/** PKCE S256 (RFC 7636): code_challenge = BASE64URL(SHA256(code_verifier)). */
+export function pkceChallenge(codeVerifier: string): string {
+  return createHash("sha256").update(codeVerifier, "ascii").digest("base64url");
+}
 
 export type GoogleCalendarOptions = {
   oauthClientId?: string;
@@ -51,7 +61,9 @@ const tokenResponseSchema = z.object({
   access_token: z.string().min(1),
   refresh_token: z.string().min(1).optional(),
   expires_in: z.number().int().positive().default(3600),
-  token_type: z.string().default("Bearer")
+  token_type: z.string().default("Bearer"),
+  // Escopos EFETIVAMENTE concedidos (separados por espaço); o Google sempre devolve na troca de código.
+  scope: z.string().optional()
 });
 
 // Falha fechada: docs OIDC do Google marcam email_verified como booleano; só e-mail verificado (true) é aceito.
@@ -120,6 +132,31 @@ export class GoogleCalendarApiError extends Error {
   }
 }
 
+// Acesso revogado/expirado no Google (token endpoint devolveu invalid_grant):
+// definitivo até o usuário reconectar — retentar só repete a recusa. Subclasse
+// para que todo catch/rethrow existente de GoogleCalendarApiError continue valendo.
+export class GoogleCalendarAuthRevokedError extends GoogleCalendarApiError {
+  constructor() {
+    super("O acesso ao Google Agenda foi revogado ou expirou; reconecte a conta", "failed", 400);
+    this.name = "GoogleCalendarAuthRevokedError";
+  }
+}
+
+// invalid_grant é terminal até reconectar: registra na conexão (painel pede
+// reconexão; reconciliação para de insistir). A reconexão (callback) limpa.
+export async function markCalendarConnectionAuthRevoked(
+  client: { query: (sql: string, params: unknown[]) => Promise<unknown> },
+  tenantId: string,
+  connectionId: string
+): Promise<void> {
+  await client.query(
+    `UPDATE scheduling_calendar_connections
+     SET auth_error=$3, auth_error_at=now(), updated_at=now()
+     WHERE tenant_id=$1 AND id=$2 AND auth_error IS NULL`,
+    [tenantId, connectionId, new GoogleCalendarAuthRevokedError().message]
+  );
+}
+
 async function googleFetch(fetcher: typeof fetch, timeoutMs: number, url: string, init: RequestInit): Promise<Response> {
   const origin = new URL(url).origin;
   if (!GOOGLE_ALLOWED_ORIGINS.has(origin)) throw new Error(`Origem fixa do Google violada: ${origin}`);
@@ -154,7 +191,7 @@ export class GoogleCalendarOAuthClient {
     return Boolean(this.options.oauthClientId?.trim() && this.options.oauthClientSecret?.trim());
   }
 
-  authorizationUrl(state: string, redirectUri: string): string {
+  authorizationUrl(state: string, redirectUri: string, codeChallenge?: string): string {
     if (!this.isConfigured()) throw new GoogleCalendarConfigurationError("O OAuth do Google Calendar não está configurado no servidor");
     const url = new URL(GOOGLE_OAUTH_AUTH_URL);
     url.search = new URLSearchParams({
@@ -165,12 +202,13 @@ export class GoogleCalendarOAuthClient {
       access_type: "offline",
       prompt: "consent",
       include_granted_scopes: "true",
-      state
+      state,
+      ...(codeChallenge ? { code_challenge: codeChallenge, code_challenge_method: "S256" } : {})
     }).toString();
     return url.toString();
   }
 
-  async exchangeCode(code: string, redirectUri: string): Promise<{ email: string; refreshToken: string }> {
+  async exchangeCode(code: string, redirectUri: string, codeVerifier?: string): Promise<{ email: string; refreshToken: string }> {
     if (!this.isConfigured()) throw new GoogleCalendarConfigurationError("O OAuth do Google Calendar não está configurado no servidor");
     let tokenResponse: Response;
     try {
@@ -182,7 +220,8 @@ export class GoogleCalendarOAuthClient {
           code,
           client_id: this.options.oauthClientId!.trim(),
           client_secret: this.options.oauthClientSecret!.trim(),
-          redirect_uri: redirectUri
+          redirect_uri: redirectUri,
+          ...(codeVerifier ? { code_verifier: codeVerifier } : {})
         })
       });
     } catch {
@@ -192,6 +231,13 @@ export class GoogleCalendarOAuthClient {
     const token = tokenResponseSchema.safeParse(await tokenResponse.json().catch(() => null));
     if (!token.success || !token.data.refresh_token) {
       throw new GoogleCalendarApiError("O Google não forneceu acesso permanente; conecte a conta novamente", "failed");
+    }
+    // Falha fechada no consentimento granular: sem TODOS os escopos da agenda a
+    // conexão nasceria quebrada (sync/freeBusy 403 em loop). Resposta sem scope
+    // também é recusada — não dá para provar o que foi concedido.
+    const granted = new Set((token.data.scope ?? "").split(/\s+/).filter(Boolean));
+    if (REQUIRED_CALENDAR_SCOPES.some((scope) => !granted.has(scope))) {
+      throw new GoogleCalendarApiError("Permissões do Google Agenda incompletas; conecte novamente e aceite todas as permissões", "failed");
     }
 
     let userResponse: Response;
@@ -209,6 +255,26 @@ export class GoogleCalendarOAuthClient {
       throw new GoogleCalendarApiError("O Google não retornou um e-mail verificado", "failed");
     }
     return { email: user.data.email.toLocaleLowerCase("en-US"), refreshToken: token.data.refresh_token };
+  }
+
+  /**
+   * Revoga o refresh token no Google (best-effort). Revogar derruba a concessão
+   * INTEIRA (conta Google × client OAuth) — quem chama garante que nenhuma
+   * outra integração usa a mesma conta com este client. true = revogado ou já
+   * inválido (400).
+   */
+  async revokeToken(refreshToken: string): Promise<boolean> {
+    if (!this.isConfigured()) return false;
+    try {
+      const response = await googleFetch(this.fetcher, this.timeoutMs, GOOGLE_REVOKE_URL, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ token: refreshToken })
+      });
+      return response.ok || response.status === 400;
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -253,7 +319,12 @@ export class GoogleCalendarClient {
     } catch {
       throw new GoogleCalendarApiError("Não foi possível renovar o acesso ao Google Calendar");
     }
-    if (!response.ok) throw googleHttpError(response.status, "O Google recusou a renovação do acesso ao Calendar", false);
+    if (!response.ok) {
+      // invalid_grant = refresh token revogado/expirado (docs OAuth do Google): terminal.
+      const body = await response.json().catch(() => null) as { error?: unknown } | null;
+      if (response.status === 400 && body?.error === "invalid_grant") throw new GoogleCalendarAuthRevokedError();
+      throw googleHttpError(response.status, "O Google recusou a renovação do acesso ao Calendar", false);
+    }
     let token: z.infer<typeof tokenResponseSchema>;
     try {
       token = tokenResponseSchema.parse(await response.json());

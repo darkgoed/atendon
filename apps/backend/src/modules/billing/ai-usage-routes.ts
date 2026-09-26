@@ -19,14 +19,20 @@ const uuid = z.string().uuid();
 const MAX_WINDOW_DAYS = 92;
 
 const usageQuery = z.object({
-  from: day,
-  to: day,
-  groupBy: z.enum(["model", "agent", "day"]).default("model"),
+  // `period=current`: janela = ciclo de cobrança ABERTO do tenant (instantes
+  // exatos de usage_periods, sem truncar para dia UTC — o dia de renovação e o
+  // fuso ficam corretos por construção). Sem período aberto → from/to.
+  period: z.literal("current").optional(),
+  from: day.optional(),
+  to: day.optional(),
+  groupBy: z.enum(["model", "provider", "agent", "day"]).default("model"),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
-const rootUsageQuery = usageQuery.extend({
-  groupBy: z.enum(["tenant", "model", "agent"]).default("tenant"),
+const rootUsageQuery = usageQuery.omit({ period: true }).extend({
+  from: day,
+  to: day,
+  groupBy: z.enum(["tenant", "model", "provider", "agent"]).default("tenant"),
   tenantId: uuid.optional(),
 });
 
@@ -81,7 +87,7 @@ const ledgerByTurn = `
   ) t ON ul.request_id IS NOT NULL`;
 
 const callsSelect = `
-  SELECT ul.id, ul.created_at, ul.ai_model AS model, ul.input_tokens, ul.output_tokens,
+  SELECT ul.id, ul.created_at, ul.ai_model AS model, ul.provider, ul.input_tokens, ul.output_tokens,
          ul.cached_input_tokens, ul.cache_write_input_tokens, ul.reasoning_tokens,
          ${effectiveCostExpr}::text AS cost_usd,
          CASE WHEN ul.cost_reported THEN 'provider'
@@ -99,7 +105,7 @@ type UsageQuery = z.infer<typeof usageQuery>;
 type RootUsageQuery = z.infer<typeof rootUsageQuery>;
 
 type BucketRow = { key: string; tenant_name: string | null; calls: number; input_tokens: string; output_tokens: string; cached_input_tokens: string; cache_write_input_tokens: string; reasoning_tokens: string; cost_usd: string };
-type CallRow = { id: string; created_at: Date; model: string; input_tokens: string; output_tokens: string; cached_input_tokens: string; cache_write_input_tokens: string; reasoning_tokens: string; cost_usd: string; cost_source: string; request_id: string | null; conversation_id: string | null; message_id: string | null; call_reason: string | null; agent_config_version_id: string | null; provider_cost_usd_micros: string | null; provider_cost_brl_cents: string | null; billable_amount_brl_cents: string | null; normalized_credits: string | null; reconciled: boolean | null };
+type CallRow = { id: string; created_at: Date; model: string; provider: string | null; input_tokens: string; output_tokens: string; cached_input_tokens: string; cache_write_input_tokens: string; reasoning_tokens: string; cost_usd: string; cost_source: string; request_id: string | null; conversation_id: string | null; message_id: string | null; call_reason: string | null; agent_config_version_id: string | null; provider_cost_usd_micros: string | null; provider_cost_brl_cents: string | null; billable_amount_brl_cents: string | null; normalized_credits: string | null; reconciled: boolean | null };
 type CallSummaryRow = { calls: number; input_tokens: string; output_tokens: string; cached_input_tokens: string; cache_write_input_tokens: string; reasoning_tokens: string; cost_usd: string };
 type TurnSummaryRow = { turns: number; reconciled_turns: number; provider_cost_usd_micros: string; provider_cost_brl_cents: string; billable_amount_brl_cents: string; normalized_credits: string };
 
@@ -119,6 +125,7 @@ const callJson = (row: CallRow) => ({
   id: row.id,
   createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   model: row.model,
+  provider: row.provider,
   inputTokens: num(row.input_tokens),
   outputTokens: num(row.output_tokens),
   cachedInputTokens: num(row.cached_input_tokens),
@@ -147,8 +154,31 @@ const callJson = (row: CallRow) => ({
  * `rootTenantFilter` é o filtro OPCIONAL do ROOT (null = todos os tenants).
  * Todas as queries de dados recebem escopo de tenant explícito quando existir.
  */
-async function buildReport(tenantScope: string | null, rootTenantFilter: string | null, q: UsageQuery | RootUsageQuery) {
-  const [start, end] = windowBounds(q.from, q.to);
+type ReportWindow = { start: Date; end: Date; from: string; to: string; source: "billing_period" | "dates"; timezone?: string };
+
+function dateWindow(from: string | undefined, to: string | undefined): ReportWindow {
+  if (!from || !to) throw Object.assign(new Error("Informe from e to (ou period=current)"), { statusCode: 400 });
+  const [start, end] = windowBounds(from, to);
+  return { start, end, from, to, source: "dates" };
+}
+
+/**
+ * Ciclo aberto E vigente do tenant; o ledger/cota usam exatamente este
+ * intervalo. Período vencido ainda não rotacionado pelo reconciler (troca de
+ * ciclo em curso) não é "o ciclo atual" → o chamador cai no fallback de datas.
+ */
+async function currentPeriodWindow(tenantId: string): Promise<ReportWindow | null> {
+  const r = await db.query<{ start_at: Date; end_at: Date; timezone: string }>(
+    `SELECT u.start_at, u.end_at, t.timezone FROM usage_periods u JOIN tenants t ON t.id=u.tenant_id
+      WHERE u.tenant_id=$1 AND u.status='OPEN' AND u.start_at <= now() AND u.end_at > now() LIMIT 1`, [tenantId]);
+  const row = r.rows[0];
+  if (!row) return null;
+  // Fuso do workspace só para EXIBIR as datas; a janela são os instantes exatos.
+  return { start: row.start_at, end: row.end_at, from: row.start_at.toISOString(), to: row.end_at.toISOString(), source: "billing_period", timezone: row.timezone };
+}
+
+async function buildReport(tenantScope: string | null, rootTenantFilter: string | null, q: UsageQuery | RootUsageQuery, window: ReportWindow) {
+  const { start, end } = window;
   const limit = q.limit;
   const offset = q.offset;
 
@@ -193,6 +223,11 @@ async function buildReport(tenantScope: string | null, rootTenantFilter: string 
                    FROM usage_logs ul JOIN tenants tn ON tn.id = ul.tenant_id
                   WHERE ${tenantPredicate} AND ul.created_at >= $2 AND ul.created_at < $3
                   GROUP BY 1, 2 ORDER BY 9 DESC LIMIT $4`;
+  } else if (q.groupBy === "provider") {
+    // Provider real da chamada (0194); histórico sem registro = 'unknown'.
+    bucketSql = `SELECT COALESCE(ul.provider,'unknown') AS key, NULL::text AS tenant_name, ${callAgg}
+                   FROM usage_logs ul WHERE ${tenantPredicate} AND ul.created_at >= $2 AND ul.created_at < $3
+                  GROUP BY 1 ORDER BY 9 DESC LIMIT $4`;
   } else {
     bucketSql = `SELECT ul.ai_model AS key, NULL::text AS tenant_name, ${callAgg}
                    FROM usage_logs ul WHERE ${tenantPredicate} AND ul.created_at >= $2 AND ul.created_at < $3
@@ -213,7 +248,9 @@ async function buildReport(tenantScope: string | null, rootTenantFilter: string 
   const t = turns.rows[0];
   return {
     summary: {
-      window: { from: q.from, to: q.to },
+      // billing_period: from/to são instantes ISO [início, fim) do ciclo;
+      // dates: dias YYYY-MM-DD inclusivos informados pelo chamador.
+      window: { from: window.from, to: window.to, source: window.source, ...(window.timezone ? { timezone: window.timezone } : {}) },
       calls: {
         count: c.calls,
         inputTokens: num(c.input_tokens),
@@ -243,12 +280,13 @@ export async function registerAiUsageRoutes(app: FastifyInstance): Promise<void>
   app.get("/billing/ai-usage", async (request) => {
     const session = await requireWorkspace(request);
     const q = parseOr400(usageQuery, request.query);
-    return buildReport(session.tenantId, null, q);
+    const window = (q.period === "current" ? await currentPeriodWindow(session.tenantId) : null) ?? dateWindow(q.from, q.to);
+    return buildReport(session.tenantId, null, q, window);
   });
 
   app.get("/root/billing/ai-usage", async (request) => {
     await requireRoot(request);
     const q = parseOr400(rootUsageQuery, request.query);
-    return buildReport(null, q.tenantId ?? null, q);
+    return buildReport(null, q.tenantId ?? null, q, dateWindow(q.from, q.to));
   });
 }

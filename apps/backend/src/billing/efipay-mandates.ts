@@ -31,6 +31,7 @@ import { withTenantTransaction } from "../db/tenant-transaction.js";
 import { config } from "../config.js";
 import { AI_CREDIT_PACK_CREDITS, AI_CREDIT_PACK_PRICE_CENTS } from "./credit-packs.js";
 import { EfiPixAutomaticClient, type EfiTransport } from "./providers/efipay-pix-automatic.js";
+import { closeUnpaidCycleInvoice } from "./efipay-monthly-batch.js";
 
 export type MonthlyPixMandateStatus = "CREATING" | "PENDING" | "APPROVED" | "CANCELLED" | "REJECTED" | "EXPIRED";
 export type MonthlyPixMandateView = {
@@ -231,6 +232,15 @@ export async function getMonthlyPixMandate(tenantId: string): Promise<MonthlyPix
   return await syncRecurrence(efiClient((await requireProductionEfipay()).credentialsEncrypted), row);
 }
 
+/** GET /v2/cobr; 404 (cobrança inexistente na Efí) vira null, outros erros propagam. */
+async function getChargeOrNull(client: EfiPixAutomaticClient, txid: string): Promise<{ status?: string } | null> {
+  try { return await client.getCharge(txid); }
+  catch (error) {
+    if (error instanceof Error && error.message === "Efi Pix API error (404)") return null;
+    throw error;
+  }
+}
+
 export async function stopMonthlyPixMandate(tenantId: string, actorUserId: string): Promise<MonthlyPixMandateView | null> {
   if (!actorUserId.trim()) throw new Error("actor is required");
 
@@ -243,8 +253,8 @@ export async function stopMonthlyPixMandate(tenantId: string, actorUserId: strin
     // PATCH /v2/cobr devolve 400 ("data igual ou maior que a data prevista da
     // primeira tentativa de liquidação"). Fica PENDING; webhook/reconciliação
     // a fecham, e o lote roda mesmo com o mandato CANCELLED.
-    const charges = (await client.query<{ id: string; txid: string }>(
-      `SELECT id,txid FROM ai_credit_pix_charges
+    const charges = (await client.query<{ id: string; txid: string; invoice_id: string | null }>(
+      `SELECT id,txid,invoice_id FROM ai_credit_pix_charges
         WHERE mandate_id=$1 AND status='PENDING' AND due_on>CURRENT_DATE ORDER BY due_on`,
       [row.id])).rows;
     return { row, charges };
@@ -262,15 +272,34 @@ export async function stopMonthlyPixMandate(tenantId: string, actorUserId: strin
       try {
         await client.cancelCharge(charge.txid);
       } catch {
-        const remoteStatus = (await client.getCharge(charge.txid)).status ?? "";
+        const remote = await getChargeOrNull(client, charge.txid);
+        if (remote === null) {
+          // Cobrança só local (o lote falhou antes do PUT): encerra-a sob o lock
+          // do mandato — o PUT do lote exige esse lock + cobrança PENDING — e
+          // reconfirma o 404 já com o lock, contra um PUT que venceu a corrida.
+          await withTenantTransaction(db, tenantId, async (tx) => {
+            await tx.query("SELECT 1 FROM ai_credit_pix_mandates WHERE id=$1 FOR NO KEY UPDATE", [target.row.id]);
+            if (await getChargeOrNull(client, charge.txid) !== null) {
+              throw new Error(`cobrança ${charge.txid} criada na Efí durante a parada; tente novamente`);
+            }
+            const cancelled = await tx.query(
+              "UPDATE ai_credit_pix_charges SET status='CANCELLED',updated_at=now() WHERE id=$1 AND status='PENDING'", [charge.id]);
+            if (cancelled.rowCount) await closeUnpaidCycleInvoice(tx, charge.invoice_id, "cancelled");
+          });
+          continue;
+        }
+        const remoteStatus = remote.status ?? "";
         if (remoteStatus === "CRIADA" || remoteStatus === "ATIVA") {
           throw new Error(`Efí recusou cancelar a cobrança futura ${charge.txid}; mandato segue ativo`);
         }
         if (remoteStatus !== "CANCELADA") continue; // CONCLUIDA/EXPIRADA/REJEITADA: estado de outro fluxo
       }
-      await db.query(
-        "UPDATE ai_credit_pix_charges SET status='CANCELLED',updated_at=now() WHERE id=$1 AND status='PENDING'",
-        [charge.id]);
+      await withTenantTransaction(db, tenantId, async (tx) => {
+        const cancelled = await tx.query(
+          "UPDATE ai_credit_pix_charges SET status='CANCELLED',updated_at=now() WHERE id=$1 AND status='PENDING'",
+          [charge.id]);
+        if (cancelled.rowCount) await closeUnpaidCycleInvoice(tx, charge.invoice_id, "cancelled");
+      });
     }
   }
 
@@ -279,6 +308,16 @@ export async function stopMonthlyPixMandate(tenantId: string, actorUserId: strin
   // um): nada aqui alega revogar a autorização no banco do pagador — isso cabe
   // ao titular, no app do próprio banco.
   await withTenantTransaction(db, tenantId, async (client) => {
+    // Lock do mandato ANTES de marcar CANCELLED: o lote só faz PUT de cobrança
+    // segurando este mesmo lock com o mandato APPROVED. Cobrança futura nascida
+    // depois do snapshot da TX1 (lote concorrente) já pode estar ATIVA na Efí —
+    // parar agora a deixaria viva. Stop não conclui; o retry a inclui na TX1.
+    await client.query("SELECT 1 FROM ai_credit_pix_mandates WHERE id=$1 FOR NO KEY UPDATE", [target.row.id]);
+    const late = await client.query(
+      `SELECT 1 FROM ai_credit_pix_charges
+        WHERE mandate_id=$1 AND status='PENDING' AND due_on>CURRENT_DATE AND NOT (id = ANY($2::uuid[])) LIMIT 1`,
+      [target.row.id, target.charges.map((c) => c.id)]);
+    if (late.rowCount) throw new Error("nova cobrança futura criada durante a parada; tente novamente");
     const cancelled = (await client.query<MandateRow>(
       `UPDATE ai_credit_pix_mandates SET status='CANCELLED',cancelled_at=now(),updated_at=now()
         WHERE id=$1 AND status IN ${ACTIVE_STATUSES_SQL}

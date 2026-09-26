@@ -352,10 +352,14 @@ describe("stopMonthlyPixMandate", () => {
     const paidInvoice = (await pool.query<{ id: string }>(
       "INSERT INTO invoices(tenant_id,kind,amount_cents,currency,status) VALUES($1,'credit_package',15700,'BRL','paid') RETURNING id", [tenant])).rows[0].id;
     await insertCharge(mandate.id, txidFor(`${mandate.id}-paid`), futureDate(-30), "APPROVED", paidInvoice);
-    await insertCharge(mandate.id, txidFor(`${mandate.id}-future`), futureDate(30));
+    const futureInvoice = (await pool.query<{ id: string }>(
+      "INSERT INTO invoices(tenant_id,kind,amount_cents,currency,status) VALUES($1,'credit_package',15700,'BRL','pending') RETURNING id", [tenant])).rows[0].id;
+    await insertCharge(mandate.id, txidFor(`${mandate.id}-future`), futureDate(30), "PENDING", futureInvoice);
 
     const stopped = await stopMonthlyPixMandate(tenant, ACTOR);
     expect(stopped?.status).toBe("CANCELLED");
+    // Fatura do ciclo futuro cancelado deixa de estar em aberto.
+    expect((await pool.query<{ status: string }>("SELECT status FROM invoices WHERE id=$1", [futureInvoice])).rows[0].status).toBe("cancelled");
 
     const patch = requestsOf("PATCH", `/v2/cobr/${txidFor(`${mandate.id}-future`)}`);
     expect(patch).toHaveLength(1);
@@ -363,15 +367,57 @@ describe("stopMonthlyPixMandate", () => {
     expect(fake.requests.filter((r) => r.path === `/v2/cobr/${txidFor(`${mandate.id}-paid`)}`)).toHaveLength(0);
 
     const charges = await pool.query<{ txid: string; status: string; invoice_id: string | null }>(
-      "SELECT txid,status,invoice_id FROM ai_credit_pix_charges WHERE mandate_id=$1 ORDER BY (invoice_id IS NULL), txid", [mandate.id]);
+      "SELECT txid,status,invoice_id FROM ai_credit_pix_charges WHERE mandate_id=$1 ORDER BY (status<>'APPROVED'), txid", [mandate.id]);
     expect(charges.rows).toEqual([
       { txid: txidFor(`${mandate.id}-paid`), status: "APPROVED", invoice_id: paidInvoice }, // pagamento preservado
-      { txid: txidFor(`${mandate.id}-future`), status: "CANCELLED", invoice_id: null },
+      { txid: txidFor(`${mandate.id}-future`), status: "CANCELLED", invoice_id: futureInvoice },
     ]);
     expect((await pool.query<{ status: string }>("SELECT status FROM invoices WHERE id=$1", [paidInvoice])).rows[0].status).toBe("paid");
     const auditRows = await pool.query<{ action: string; metadata: Record<string, unknown> }>(
       "SELECT action,metadata FROM audit_logs WHERE workspace_id=$1 AND action='PIX_MANDATE_STOPPED'", [tenant]);
     expect(auditRows.rows[0]?.metadata).toEqual({ futureCharges: 1 });
+  });
+
+  it("cobrança futura criada pelo lote durante a parada: stop não conclui; retry a cancela", async () => {
+    const tenant = await newTenant();
+    const mandate = await startMonthlyPixMandate(tenant, ACTOR);
+    await pool.query("UPDATE ai_credit_pix_mandates SET status='APPROVED',approved_at=now() WHERE id=$1", [mandate.id]);
+    await insertCharge(mandate.id, txidFor(`${mandate.id}-f1`), futureDate(30));
+    // Lote concorrente: cria a próxima cobrança logo após o snapshot da TX1
+    // (simulado no 1º PATCH, que acontece entre a TX1 e a parada final).
+    let injected = false;
+    const inner = transport;
+    setEfiPixMandateOverridesForTests({ providerCode, transport: async (request) => {
+      if (!injected && request.method === "PATCH") {
+        injected = true;
+        await insertCharge(mandate.id, txidFor(`${mandate.id}-f2`), futureDate(60));
+      }
+      return inner(request);
+    } });
+    const error = await catchError(stopMonthlyPixMandate(tenant, ACTOR));
+    expect(error.message).toMatch(/tente novamente/);
+    expect((await mandateRow(tenant))?.status).toBe("APPROVED");
+
+    expect((await stopMonthlyPixMandate(tenant, ACTOR))?.status).toBe("CANCELLED");
+    expect(requestsOf("PATCH", `/v2/cobr/${txidFor(`${mandate.id}-f2`)}`)).toHaveLength(1);
+    const pending = await pool.query("SELECT 1 FROM ai_credit_pix_charges WHERE mandate_id=$1 AND status='PENDING'", [mandate.id]);
+    expect(pending.rowCount).toBe(0);
+  });
+
+  it("cobrança futura só local (404 na Efí): stop encerra localmente e o lote nunca a envia", async () => {
+    const tenant = await newTenant();
+    const mandate = await startMonthlyPixMandate(tenant, ACTOR);
+    await pool.query("UPDATE ai_credit_pix_mandates SET status='APPROVED',approved_at=now() WHERE id=$1", [mandate.id]);
+    const txid = txidFor(`${mandate.id}-local`);
+    await insertCharge(mandate.id, txid, futureDate(30));
+    const inner = transport;
+    setEfiPixMandateOverridesForTests({ providerCode, transport: async (request) => {
+      if (request.path === `/v2/cobr/${txid}`) { fake.requests.push(request); return { statusCode: 404, text: "{}" }; }
+      return inner(request);
+    } });
+    expect((await stopMonthlyPixMandate(tenant, ACTOR))?.status).toBe("CANCELLED");
+    const row = await pool.query<{ status: string }>("SELECT status FROM ai_credit_pix_charges WHERE txid=$1", [txid]);
+    expect(row.rows[0].status).toBe("CANCELLED");
   });
 
   it("Efí recusa cancelar cobrança futura: stop falha e não conclui; retry funciona", async () => {

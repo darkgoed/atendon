@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
+import { acquireSharedProviderLock, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
 
 /**
  * Conta de cobranca do tenant e listagem de faturas do ROOT.
@@ -35,6 +36,11 @@ async function login(email: string) {
 
 let rootCookie = "";
 let memberCookie = "";
+
+// Serializa com as outras suítes que mexem na linha global billing_providers(mercadopago).
+let releaseSharedProviderLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseSharedProviderLock = await acquireSharedProviderLock(); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseSharedProviderLock?.(); });
 
 beforeAll(async () => {
   await app.ready();

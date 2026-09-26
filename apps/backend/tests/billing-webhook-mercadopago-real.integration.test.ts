@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
 import { encryptCredentials, encryptWebhookSecret } from "../src/billing/providers/credentials.js";
+import { acquireSharedProviderLock, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const app = buildApp();
@@ -45,6 +46,11 @@ async function state() {
   const subscription = await pool.query<{ status: string; current_period_end: string }>("SELECT status,current_period_end FROM tenant_subscriptions WHERE id=$1", [subscriptionId]);
   return { invoice: invoice.rows[0].status, subscription: subscription.rows[0] };
 }
+
+// Serializa com as outras suítes que mexem na linha global billing_providers(mercadopago).
+let releaseSharedProviderLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseSharedProviderLock = await acquireSharedProviderLock(); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseSharedProviderLock?.(); });
 
 beforeAll(async () => {
   globalThis.fetch = (async (input: URL | RequestInfo) => {

@@ -3,6 +3,7 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { config } from "../src/config.js";
 import { runMercadoPagoReconciliationBatch } from "../src/billing/mercadopago-reconciliation.js";
+import { acquireSharedProviderLock, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 let providerId = "";
@@ -39,6 +40,11 @@ async function seedPayment(overrides: { status?: string; amountCents?: number; c
   )).rows[0].id;
   return { tenantId, invoiceId, paymentId, externalId, reference, amount, currency };
 }
+
+// Serializa com as outras suítes que mexem na linha global billing_providers(mercadopago).
+let releaseSharedProviderLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseSharedProviderLock = await acquireSharedProviderLock(); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseSharedProviderLock?.(); });
 
 beforeAll(async () => {
   // Outras suítes removem/recriam a linha production; o teste não pode depender

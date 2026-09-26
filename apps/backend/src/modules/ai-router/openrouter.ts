@@ -13,6 +13,7 @@ const toolCallSchema = z.object({
 const responseSchema = z.object({
   id: z.string().optional(),
   model: z.string().optional(),
+  provider: z.string().optional(),
   choices: z.array(z.object({
     finish_reason: z.string().nullable().optional(),
     message: z.object({ content: z.string().nullable(), tool_calls: z.array(toolCallSchema).optional() })
@@ -34,6 +35,7 @@ const responseSchema = z.object({
 const transcriptionResponseSchema = z.object({
   text: z.string().min(1),
   model: z.string().optional(),
+  provider: z.string().optional(),
   usage: z.object({
     input_tokens: z.number().int().nonnegative().default(0),
     output_tokens: z.number().int().nonnegative().default(0),
@@ -111,6 +113,8 @@ export type ResponseFormat =
 export interface AiUsageRecord {
   providerRequestId?: string;
   model: string;
+  /** Provedor REAL que atendeu (campo `provider` da resposta OpenRouter); ausente = desconhecido. */
+  provider?: string;
   inputTokens: number;
   outputTokens: number;
   reasoningTokens?: number;
@@ -410,6 +414,7 @@ export class OpenRouterClient implements AiRouter {
     const usage: AiUsageRecord = {
       providerRequestId: response.headers.get("X-Generation-Id") ?? undefined,
       model: payload.model ?? model,
+      provider: payload.provider,
       inputTokens: payload.usage?.input_tokens ?? 0,
       outputTokens: payload.usage?.output_tokens ?? 0,
       reasoningTokens: 0,
@@ -533,6 +538,7 @@ export class OpenRouterClient implements AiRouter {
     const usage: AiUsageRecord = {
       providerRequestId: payload.id,
       model: payload.model ?? input.model,
+      provider: payload.provider,
       inputTokens: payload.usage?.prompt_tokens ?? 0,
       outputTokens: payload.usage?.completion_tokens ?? 0,
       reasoningTokens: payload.usage?.completion_tokens_details?.reasoning_tokens ?? 0,
@@ -807,6 +813,7 @@ export class OpenRouterClient implements AiRouter {
       const requestUsage = {
         providerRequestId: payload.id,
         model: payload.model ?? input.model,
+        provider: payload.provider,
         inputTokens: payload.usage?.prompt_tokens ?? 0,
         outputTokens: payload.usage?.completion_tokens ?? 0,
         reasoningTokens: payload.usage?.completion_tokens_details?.reasoning_tokens ?? 0,

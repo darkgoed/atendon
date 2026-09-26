@@ -102,6 +102,31 @@ describe("créditos normalizados de IA (tokens equivalentes por custo)", () => {
     expect(await scalar("SELECT included_usage AS value FROM usage_periods WHERE tenant_id=$1", [t])).toBe("2850");
   });
 
+  it("mesmo modelo, providers distintos: créditos vêm do preço do provider REAL gravado em usage_logs", async () => {
+    const t = await tenant("byprovider"), p = await plan({ credits: 10_000_000 }); await subscribe(t, p); await period(t);
+    const model = `prov-model-${randomUUID()}`;
+    await pool.query(
+      `INSERT INTO ai_model_prices(model,provider,input_price_per_million_micros,output_price_per_million_micros)
+       VALUES($1,NULL,600000,0),($1,'cheapco',60000,0),($1,'premiumco',6000000,0)`, [model]);
+    try {
+      const credits: Record<string, number> = {};
+      for (const provider of ["cheapco", "premiumco", null]) {
+        const turnId = randomUUID();
+        await consumeAiInteraction(t, "inbound_reply", turnId);
+        // Custo NÃO reportado (cost_reported=false) → tabela por (provider, model).
+        await pool.query(
+          "INSERT INTO usage_logs(tenant_id,ai_model,provider,input_tokens,output_tokens,cost_usd,cost_reported,request_id) VALUES($1,$2,$3,10000,0,0,false,$4)",
+          [t, model, provider, turnId]);
+        await reconcileAiTurnFromUsageLogs(t, "inbound_reply", turnId);
+        credits[provider ?? "legacy"] = Number(await scalar("SELECT normalized_credits AS value FROM ai_usage_ledger WHERE tenant_id=$1 AND logical_turn_id=$2::uuid", [t, turnId]));
+      }
+      // 10k tokens: cheapco $0.06/M=600 micros→1000 cr; premiumco $6/M→100000 cr; legado (sem provider) → genérico $0.60/M → 10000 cr.
+      expect(credits).toEqual({ cheapco: 1000, premiumco: 100_000, legacy: 10_000 });
+    } finally {
+      await pool.query("DELETE FROM ai_model_prices WHERE model=$1", [model]);
+    }
+  });
+
   it("modelo sem preço e sem custo informado não tem bypass grátis (fallback referência)", async () => {
     const t = await tenant("nobypass"), p = await plan({ credits: 100_000 }); await subscribe(t, p); await period(t);
     const turnId = randomUUID();

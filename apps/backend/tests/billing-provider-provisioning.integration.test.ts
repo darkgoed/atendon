@@ -3,6 +3,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { config } from "../src/config.js";
 import { getProvider, listProviders, saveEncryptedCredentials, disconnect, updateCommercialConfig } from "../src/billing/providers/store.js";
+import { acquireSharedProviderLock, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
 
 /**
  * Provisionamento de billing_providers (0140).
@@ -17,6 +18,11 @@ import { getProvider, listProviders, saveEncryptedCredentials, disconnect, updat
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const MIGRATION = new URL("../src/db/migrations/0140_billing_provider_provisioning.sql", import.meta.url);
 let actor = "";
+
+// Serializa com as outras suítes que mexem na linha global billing_providers(mercadopago).
+let releaseSharedProviderLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseSharedProviderLock = await acquireSharedProviderLock(); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseSharedProviderLock?.(); });
 
 beforeAll(async () => {
   actor = (await pool.query<{ id: string }>(

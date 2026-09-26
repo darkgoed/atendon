@@ -2,11 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import {
   GOOGLE_CALENDAR_SCOPES,
   GoogleCalendarApiError,
+  GoogleCalendarAuthRevokedError,
   GoogleCalendarClient,
   GoogleCalendarConfigurationError,
   GoogleCalendarOAuthClient,
-  atendonCalendarEventId
+  atendonCalendarEventId,
+  pkceChallenge
 } from "../src/modules/scheduling/google-calendar.js";
+
+// Resposta real do Google na troca de código traz os escopos CONCEDIDOS.
+const GRANTED = GOOGLE_CALENDAR_SCOPES.join(" ");
 
 const clientConfig = {
   oauthClientId: "client.apps.googleusercontent.com",
@@ -69,7 +74,7 @@ describe("GoogleCalendarOAuthClient", () => {
 
   it("troca o código por e-mail verificado e refresh token sem expor tokens nas URLs", async () => {
     const fetcher = vi.fn()
-      .mockResolvedValueOnce(tokenResponse({ refresh_token: "refresh-permanente" }))
+      .mockResolvedValueOnce(tokenResponse({ refresh_token: "refresh-permanente", scope: GRANTED }))
       .mockResolvedValueOnce(jsonResponse({ email: "Owner@Example.com", email_verified: true }));
     const client = new GoogleCalendarOAuthClient(clientConfig, fetcher as unknown as typeof fetch);
 
@@ -97,10 +102,10 @@ describe("GoogleCalendarOAuthClient", () => {
   it("exige acesso permanente e e-mail verificado na troca de código", async () => {
     const noRefresh = vi.fn().mockResolvedValueOnce(jsonResponse({ access_token: "a", expires_in: 3600 }));
     const unverified = vi.fn()
-      .mockResolvedValueOnce(tokenResponse({ refresh_token: "r" }))
+      .mockResolvedValueOnce(tokenResponse({ refresh_token: "r", scope: GRANTED }))
       .mockResolvedValueOnce(jsonResponse({ email: "a@b.com", email_verified: false }));
     const unverifiedMissingFlag = vi.fn()
-      .mockResolvedValueOnce(tokenResponse({ refresh_token: "r" }))
+      .mockResolvedValueOnce(tokenResponse({ refresh_token: "r", scope: GRANTED }))
       .mockResolvedValueOnce(jsonResponse({ email: "a@b.com" }));
     const refused = vi.fn().mockResolvedValueOnce(new Response(null, { status: 400 }));
 
@@ -117,6 +122,53 @@ describe("GoogleCalendarOAuthClient", () => {
     await expect(new GoogleCalendarOAuthClient(clientConfig, refused as unknown as typeof fetch).exchangeCode("c", REDIRECT_URI))
       .rejects.toMatchObject({ status: 400, outcome: "failed" });
   });
+
+  it("PKCE S256: challenge na URL e verifier só no corpo da troca", async () => {
+    // Vetor do RFC 7636, apêndice B.
+    expect(pkceChallenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")).toBe("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
+    const url = new URL(new GoogleCalendarOAuthClient(clientConfig).authorizationUrl("s", REDIRECT_URI, "desafio"));
+    expect(url.searchParams.get("code_challenge")).toBe("desafio");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(url.searchParams.has("code_verifier")).toBe(false);
+
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(tokenResponse({ refresh_token: "r", scope: GRANTED }))
+      .mockResolvedValueOnce(jsonResponse({ email: "a@b.com", email_verified: true }));
+    await new GoogleCalendarOAuthClient(clientConfig, fetcher as unknown as typeof fetch).exchangeCode("c", REDIRECT_URI, "verificador");
+    expect(asUrlParams(fetcher.mock.calls[0][1])).toMatchObject({ code_verifier: "verificador" });
+  });
+
+  it("recusa consentimento granular sem todos os escopos da agenda (ou sem scope na resposta)", async () => {
+    const partial = GOOGLE_CALENDAR_SCOPES.filter((scope) => !scope.endsWith("/calendar.events")).join(" ");
+    for (const scope of [partial, undefined, "openid email"]) {
+      const fetcher = vi.fn().mockResolvedValueOnce(tokenResponse({ refresh_token: "r", ...(scope === undefined ? {} : { scope }) }));
+      await expect(new GoogleCalendarOAuthClient(clientConfig, fetcher as unknown as typeof fetch).exchangeCode("c", REDIRECT_URI))
+        .rejects.toMatchObject({ outcome: "failed", message: expect.stringContaining("Permissões do Google Agenda incompletas") });
+      // Nem chega ao userinfo: o refresh token não sai do método.
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    }
+    // Escopos extras de include_granted_scopes (ex.: Meet já concedido) não atrapalham.
+    const extra = vi.fn()
+      .mockResolvedValueOnce(tokenResponse({ refresh_token: "r", scope: `${GRANTED} https://www.googleapis.com/auth/meetings.space.created` }))
+      .mockResolvedValueOnce(jsonResponse({ email: "a@b.com", email_verified: true }));
+    await expect(new GoogleCalendarOAuthClient(clientConfig, extra as unknown as typeof fetch).exchangeCode("c", REDIRECT_URI))
+      .resolves.toMatchObject({ refreshToken: "r" });
+  });
+
+  it("revoga o refresh token no endpoint oficial; 400 (já inválido) conta como revogado", async () => {
+    const ok = vi.fn().mockResolvedValueOnce(new Response(null, { status: 200 }));
+    await expect(new GoogleCalendarOAuthClient(clientConfig, ok as unknown as typeof fetch).revokeToken("rt")).resolves.toBe(true);
+    const [url, init] = ok.mock.calls[0];
+    expect(url).toBe("https://oauth2.googleapis.com/revoke");
+    expect(init).toMatchObject({ method: "POST", redirect: "error" });
+    expect(asUrlParams(init)).toEqual({ token: "rt" });
+    const stale = vi.fn().mockResolvedValueOnce(new Response(null, { status: 400 }));
+    await expect(new GoogleCalendarOAuthClient(clientConfig, stale as unknown as typeof fetch).revokeToken("rt")).resolves.toBe(true);
+    const down = vi.fn().mockRejectedValueOnce(new Error("rede"));
+    await expect(new GoogleCalendarOAuthClient(clientConfig, down as unknown as typeof fetch).revokeToken("rt")).resolves.toBe(false);
+    const unavailable = vi.fn().mockResolvedValueOnce(new Response(null, { status: 503 }));
+    await expect(new GoogleCalendarOAuthClient(clientConfig, unavailable as unknown as typeof fetch).revokeToken("rt")).resolves.toBe(false);
+  });
 });
 
 describe("GoogleCalendarClient", () => {
@@ -124,6 +176,19 @@ describe("GoogleCalendarClient", () => {
     const client = new GoogleCalendarClient({});
     await expect(client.listCalendars("refresh")).rejects.toBeInstanceOf(GoogleCalendarConfigurationError);
     await expect(client.upsertEvent("refresh", "cal", "evento", eventFields)).rejects.toBeInstanceOf(GoogleCalendarConfigurationError);
+  });
+
+  it("invalid_grant na renovação vira GoogleCalendarAuthRevokedError (terminal); outros 400 não", async () => {
+    const revoked = vi.fn().mockResolvedValueOnce(jsonResponse({ error: "invalid_grant", error_description: "Token has been expired or revoked." }, 400));
+    const error = await makeClient(revoked).listCalendars("rt").catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(GoogleCalendarAuthRevokedError);
+    // Subclasse: todo catch existente de GoogleCalendarApiError continua valendo.
+    expect(error).toBeInstanceOf(GoogleCalendarApiError);
+    expect(error).toMatchObject({ outcome: "failed" });
+    const otherClient = vi.fn().mockResolvedValueOnce(jsonResponse({ error: "invalid_client" }, 401));
+    const other = await makeClient(otherClient).listCalendars("rt").catch((caught: unknown) => caught);
+    expect(other).toBeInstanceOf(GoogleCalendarApiError);
+    expect(other).not.toBeInstanceOf(GoogleCalendarAuthRevokedError);
   });
 
   it("renova o access token uma vez por conexão e reutiliza entre chamadas", async () => {

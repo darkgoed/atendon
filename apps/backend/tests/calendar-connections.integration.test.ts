@@ -6,6 +6,7 @@ import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
 import { decryptSecret, encryptSecret } from "../src/modules/ai-router/secret-box.js";
+import { GOOGLE_CALENDAR_SCOPES, pkceChallenge } from "../src/modules/scheduling/google-calendar.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 // As rotas já vêm registradas pelo orquestrador: buildApp (app.ts) inclui
@@ -39,6 +40,10 @@ function jsonResponse(body: unknown, status = 200): Response {
 // Servidor Google falso: token/userinfo/calendarList determinísticos por teste.
 function stubGoogleFetch(options: {
   tokenStatus?: number;
+  tokenBody?: Record<string, unknown>;
+  scope?: string;
+  refreshToken?: string;
+  revokeStatus?: number;
   user?: unknown;
   userStatus?: number;
   calendarList?: unknown[];
@@ -49,8 +54,14 @@ function stubGoogleFetch(options: {
     const url = String(input);
     fetchCalls.push({ url, init });
     if (url === config.GOOGLE_MEET_TOKEN_URL) {
-      return jsonResponse({ access_token: "at", refresh_token: "rt", expires_in: 3600 }, options.tokenStatus ?? 200);
+      return jsonResponse(options.tokenBody ?? {
+        access_token: "at",
+        refresh_token: options.refreshToken ?? "rt",
+        expires_in: 3600,
+        scope: options.scope ?? GOOGLE_CALENDAR_SCOPES.join(" ")
+      }, options.tokenStatus ?? 200);
     }
+    if (url === "https://oauth2.googleapis.com/revoke") return new Response(null, { status: options.revokeStatus ?? 200 });
     if (url === config.GOOGLE_MEET_OAUTH_USERINFO_URL) {
       return jsonResponse(options.user ?? { email: "atendente@test.local", email_verified: true }, options.userStatus ?? 200);
     }
@@ -296,6 +307,11 @@ describe("Google Calendar team sync integration", () => {
       headers: { cookie: adminCookie }
     });
     expect(String(hijacked.headers.location)).toContain("calendar_oauth=denied");
+    // O gerente da tentativa não ganhou conexão (nem para o seu membro).
+    expect((await pool.query(
+      "SELECT 1 FROM scheduling_calendar_connections WHERE tenant_id=$1 AND member_id=ANY($2::uuid[])",
+      [tenantId, [operatorMemberId, adminMemberId]]
+    )).rows).toHaveLength(0);
   }, 20_000);
 
   it("callback consumes the nonce and reports denial/error even when Google refuses", async () => {
@@ -457,8 +473,87 @@ describe("Google Calendar team sync integration", () => {
     expect(row.rows[0]).toEqual({ calendar_id: "equipe@test.local", calendar_name: "Agenda Equipe", calendar_timezone: "UTC" });
   }, 20_000);
 
-  it("reconnecting keeps the connection but clears the selected calendar", async () => {
+  it("PKCE S256: verifier guardado com o nonce, challenge na URL, verifier na troca", async () => {
     stubGoogleFetch({});
+    const start = new URL((await startOauth(memberId)).authorization_url);
+    const nonce = start.searchParams.get("state")!;
+    const stored = (await pool.query<{ code_verifier: string | null }>(
+      "SELECT code_verifier FROM scheduling_calendar_oauth_states WHERE nonce=$1", [nonce]
+    )).rows[0]!.code_verifier;
+    expect(stored).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(start.searchParams.get("code_challenge")).toBe(pkceChallenge(stored!));
+    expect(start.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(start.toString()).not.toContain(stored!);
+    // O payload da API nunca expõe o verifier.
+    const callback = await app.inject({
+      method: "GET",
+      url: `/scheduling/google-calendar/oauth/callback?code=pkce-code&state=${nonce}`,
+      headers: { cookie }
+    });
+    expect(String(callback.headers.location)).toContain("calendar_oauth=connected");
+    const exchange = fetchCalls.find((call) => call.url === config.GOOGLE_MEET_TOKEN_URL)!;
+    expect(Object.fromEntries(exchange.init!.body as URLSearchParams)).toMatchObject({ code: "pkce-code", code_verifier: stored });
+  }, 20_000);
+
+  it("callback sem sessão válida volta ao painel (denied) sem consumir o nonce", async () => {
+    stubGoogleFetch({});
+    const nonce = nonceFrom((await startOauth(memberId)).authorization_url);
+    const anonymous = await app.inject({
+      method: "GET",
+      url: `/scheduling/google-calendar/oauth/callback?code=x&state=${nonce}`
+    });
+    expect(anonymous.statusCode).toBe(302);
+    expect(String(anonymous.headers.location)).toContain("/configuracoes/google-calendar?calendar_oauth=denied");
+    expect(fetchCalls).toHaveLength(0);
+    // Outro tenant logado também não consome/usa o nonce alheio.
+    const foreign = await app.inject({
+      method: "GET",
+      url: `/scheduling/google-calendar/oauth/callback?code=x&state=${nonce}`,
+      headers: { cookie: otherCookie }
+    });
+    expect(String(foreign.headers.location)).toContain("calendar_oauth=denied");
+    expect((await pool.query("SELECT used_at FROM scheduling_calendar_oauth_states WHERE nonce=$1", [nonce])).rows[0].used_at).toBeNull();
+  }, 20_000);
+
+  it("consentimento granular sem calendar.events é recusado e não altera a conexão", async () => {
+    const before = (await pool.query<{ refresh_token_encrypted: string }>(
+      "SELECT refresh_token_encrypted FROM scheduling_calendar_connections WHERE tenant_id=$1 AND id=$2", [tenantId, connectionId]
+    )).rows[0]!.refresh_token_encrypted;
+    stubGoogleFetch({
+      refreshToken: "rt-parcial",
+      scope: GOOGLE_CALENDAR_SCOPES.filter((scope) => !scope.endsWith("/calendar.events")).join(" ")
+    });
+    const nonce = nonceFrom((await startOauth(memberId)).authorization_url);
+    const callback = await app.inject({
+      method: "GET",
+      url: `/scheduling/google-calendar/oauth/callback?code=partial&state=${nonce}`,
+      headers: { cookie }
+    });
+    expect(String(callback.headers.location)).toContain("calendar_oauth=error");
+    expect((await pool.query<{ refresh_token_encrypted: string }>(
+      "SELECT refresh_token_encrypted FROM scheduling_calendar_connections WHERE tenant_id=$1 AND id=$2", [tenantId, connectionId]
+    )).rows[0]!.refresh_token_encrypted).toBe(before);
+  }, 20_000);
+
+  it("acesso revogado (invalid_grant) marca a conexão; reconectar a MESMA conta limpa e mantém a agenda", async () => {
+    await pool.query(
+      "UPDATE scheduling_calendar_connections SET calendar_id='equipe@test.local',calendar_name='Equipe' WHERE tenant_id=$1 AND id=$2",
+      [tenantId, connectionId]
+    );
+    stubGoogleFetch({ tokenStatus: 400, tokenBody: { error: "invalid_grant", error_description: "Token has been expired or revoked." } });
+    const listed = await app.inject({
+      method: "GET",
+      url: `/scheduling/google-calendar/connections/${connectionId}/calendars`,
+      headers: { cookie }
+    });
+    expect(listed.statusCode).toBe(502);
+    expect(listed.json().error).toContain("revogado");
+    const meta = await app.inject({ method: "GET", url: "/scheduling/google-calendar/connections", headers: { cookie } });
+    const revoked = (meta.json() as { connections: Array<{ id: string; auth_error: string | null }> })
+      .connections.find((connection) => connection.id === connectionId)!;
+    expect(revoked.auth_error).toContain("revogado");
+
+    stubGoogleFetch({ refreshToken: "rt-renovado" });
     const nonce = nonceFrom((await startOauth(memberId)).authorization_url);
     const reconnect = await app.inject({
       method: "GET",
@@ -466,11 +561,40 @@ describe("Google Calendar team sync integration", () => {
       headers: { cookie }
     });
     expect(String(reconnect.headers.location)).toContain("calendar_oauth=connected");
-    const rows = await pool.query<{ count: number; calendar_id: string | null }>(
-      "SELECT count(*)::int AS count, (SELECT calendar_id FROM scheduling_calendar_connections WHERE tenant_id=$1) AS calendar_id FROM scheduling_calendar_connections WHERE tenant_id=$1",
+    const row = (await pool.query<{
+      count: number; calendar_id: string | null; auth_error: string | null; refresh_token_encrypted: string;
+    }>(
+      `SELECT (SELECT count(*)::int FROM scheduling_calendar_connections WHERE tenant_id=$1) AS count,
+              calendar_id,auth_error,refresh_token_encrypted
+       FROM scheduling_calendar_connections WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, connectionId]
+    )).rows[0]!;
+    expect(row).toMatchObject({ count: 1, calendar_id: "equipe@test.local", auth_error: null });
+    expect(decryptSecret(row.refresh_token_encrypted, config.DATA_ENCRYPTION_KEY)).toBe("rt-renovado");
+  }, 20_000);
+
+  it("reconectar com OUTRA conta Google mantém a conexão mas limpa a agenda selecionada", async () => {
+    stubGoogleFetch({ user: { email: "outra-conta@test.local", email_verified: true } });
+    const nonce = nonceFrom((await startOauth(memberId)).authorization_url);
+    const reconnect = await app.inject({
+      method: "GET",
+      url: `/scheduling/google-calendar/oauth/callback?code=fresh-code&state=${nonce}`,
+      headers: { cookie }
+    });
+    expect(String(reconnect.headers.location)).toContain("calendar_oauth=connected");
+    const rows = await pool.query<{ count: number; calendar_id: string | null; google_email: string }>(
+      "SELECT count(*)::int AS count, (SELECT calendar_id FROM scheduling_calendar_connections WHERE tenant_id=$1) AS calendar_id, (SELECT google_email FROM scheduling_calendar_connections WHERE tenant_id=$1) AS google_email FROM scheduling_calendar_connections WHERE tenant_id=$1",
       [tenantId]
     );
-    expect(rows.rows[0]).toMatchObject({ count: 1, calendar_id: null });
+    expect(rows.rows[0]).toMatchObject({ count: 1, calendar_id: null, google_email: "outra-conta@test.local" });
+    // Volta para a conta original (os testes seguintes usam atendente@test.local).
+    stubGoogleFetch({});
+    const back = nonceFrom((await startOauth(memberId)).authorization_url);
+    expect(String((await app.inject({
+      method: "GET",
+      url: `/scheduling/google-calendar/oauth/callback?code=back&state=${back}`,
+      headers: { cookie }
+    })).headers.location)).toContain("calendar_oauth=connected");
   }, 20_000);
 
   it("blocks disconnect with future linked appointments and orphans only history", async () => {
@@ -544,6 +668,9 @@ describe("Google Calendar team sync integration", () => {
     });
     expect(deleted.statusCode).toBe(200);
     expect(deleted.json()).toEqual({ disconnected: true });
+    // Conta exclusiva desta conexão: token revogado no Google (não fica ativo lá).
+    const revokeCall = fetchCalls.find((call) => call.url === "https://oauth2.googleapis.com/revoke");
+    expect(Object.fromEntries(revokeCall!.init!.body as URLSearchParams)).toEqual({ token: "rt" });
     const orphan = await pool.query<{ connection_id: string | null }>(
       "SELECT connection_id FROM scheduling_appointment_calendar_events WHERE appointment_id=$1",
       [appointmentId]
@@ -693,7 +820,7 @@ describe("Google Calendar team sync integration", () => {
     );
   }, 20_000);
 
-  it("blocks reconnect while future linked appointments exist, keeping old auth", async () => {
+  it("blocks reconnect to ANOTHER account while future linked appointments exist; same account recovers", async () => {
     const lead = (await pool.query<{ id: string }>(
       `INSERT INTO scheduling_leads(tenant_id,phone,name,unit_id,status,source,qualification_stars)
        VALUES($1,$2,'Lead Reconnect','cal-room','qualificado','test',5) RETURNING id`,
@@ -709,14 +836,15 @@ describe("Google Calendar team sync integration", () => {
        VALUES($1,$2,$3,'equipe@test.local','evt_future')`,
       [futureAppointment, tenantId, connectionId]
     );
-    stubGoogleFetch({});
+    // Outra conta Google não enxerga os eventos já criados: trocar a credencial
+    // deixaria o evento futuro órfão → guarda 409 (redirect de erro, sem token).
+    stubGoogleFetch({ user: { email: "outra-conta@test.local", email_verified: true } });
     const nonce = nonceFrom((await startOauth(memberId)).authorization_url);
     const reconnect = await app.inject({
       method: "GET",
       url: `/scheduling/google-calendar/oauth/callback?code=fresh-code&state=${nonce}`,
       headers: { cookie }
     });
-    // Guarda 409 dentro do callback → redirect de erro, sem expor token.
     expect(String(reconnect.headers.location)).toContain("calendar_oauth=error");
     // Auth antiga preservada: o token da conexão recriada nos invariants não mudou.
     const row = (await pool.query<{ refresh_token_encrypted: string }>(
@@ -729,6 +857,31 @@ describe("Google Calendar team sync integration", () => {
       "SELECT connection_id FROM scheduling_appointment_calendar_events WHERE appointment_id=$1",
       [futureAppointment]
     )).rows[0]?.connection_id).toBe(connectionId);
+
+    // MESMA conta (recuperação de acesso revogado): sem guarda, token trocado,
+    // vínculo intacto e a pendência volta a rodar já (attempts/available_at zerados).
+    await pool.query(
+      `UPDATE scheduling_calendar_sync_outbox SET attempts=7, available_at=now() + interval '6 hours'
+       WHERE tenant_id=$1 AND appointment_id=$2`,
+      [tenantId, futureAppointment]
+    );
+    stubGoogleFetch({ refreshToken: "rt-mesma-conta" });
+    const same = nonceFrom((await startOauth(memberId)).authorization_url);
+    expect(String((await app.inject({
+      method: "GET",
+      url: `/scheduling/google-calendar/oauth/callback?code=same&state=${same}`,
+      headers: { cookie }
+    })).headers.location)).toContain("calendar_oauth=connected");
+    const renewed = (await pool.query<{ refresh_token_encrypted: string }>(
+      "SELECT refresh_token_encrypted FROM scheduling_calendar_connections WHERE tenant_id=$1 AND id=$2",
+      [tenantId, connectionId]
+    )).rows[0]!;
+    expect(decryptSecret(renewed.refresh_token_encrypted, config.DATA_ENCRYPTION_KEY)).toBe("rt-mesma-conta");
+    const outbox = (await pool.query<{ attempts: number; due: boolean }>(
+      "SELECT attempts, available_at <= now() AS due FROM scheduling_calendar_sync_outbox WHERE tenant_id=$1 AND appointment_id=$2",
+      [tenantId, futureAppointment]
+    )).rows[0];
+    expect(outbox).toMatchObject({ attempts: 0, due: true });
     // Limpeza para não vazar estado aos testes seguintes.
     await pool.query(
       "DELETE FROM scheduling_calendar_sync_outbox WHERE tenant_id=$1 AND appointment_id=$2",

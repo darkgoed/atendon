@@ -54,10 +54,10 @@ beforeAll(async () => {
       "INSERT INTO scheduling_units(tenant_id,id,name,opening_time,closing_time,operating_days,slot_duration_min,simultaneous_capacity) VALUES($1,'unit','Unit','08:00','18:00',ARRAY[1,2,3,4,5]::smallint[],60,3)",
       [tenantId]
     );
-    const sessionId = (await client.query<{ id: string }>(
-      "INSERT INTO whatsapp_sessions(tenant_id,status) VALUES($1,'connected') RETURNING id",
+    await client.query(
+      "INSERT INTO whatsapp_sessions(tenant_id,status) VALUES($1,'connected')",
       [tenantId]
-    )).rows[0].id;
+    );
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");

@@ -7,10 +7,14 @@ import { config } from "../../config.js";
 import { db } from "../../db/client.js";
 import { withTransaction } from "../../db/transaction.js";
 import { decryptSecret, encryptSecret } from "../ai-router/secret-box.js";
+import { HTTP_RATE_LIMITS } from "../../security/http-rate-limit.js";
 import {
   createGoogleCalendarClient,
   createGoogleCalendarOAuthClient,
-  GoogleCalendarConfigurationError
+  GoogleCalendarAuthRevokedError,
+  GoogleCalendarConfigurationError,
+  markCalendarConnectionAuthRevoked,
+  pkceChallenge
 } from "./google-calendar.js";
 import { httpError } from "./service.js";
 
@@ -49,9 +53,10 @@ type ConnectionMeta = {
   calendar_timezone: string | null;
   buffer_minutes: number;
   connected_at: Date;
+  auth_error: string | null;
 };
 
-const CONNECTION_META_SELECT = `SELECT id,member_id,google_email,calendar_id,calendar_name,calendar_timezone,buffer_minutes,connected_at
+const CONNECTION_META_SELECT = `SELECT id,member_id,google_email,calendar_id,calendar_name,calendar_timezone,buffer_minutes,connected_at,auth_error
   FROM scheduling_calendar_connections`;
 
 function connectionPayload(row: ConnectionMeta) {
@@ -65,7 +70,9 @@ function connectionPayload(row: ConnectionMeta) {
     buffer_minutes: row.buffer_minutes,
     connected_at: row.connected_at.toISOString(),
     // Só calendar_id selecionado habilita sincronização.
-    configured: Boolean(row.calendar_id)
+    configured: Boolean(row.calendar_id),
+    // Google recusou a renovação (invalid_grant): painel pede reconexão.
+    auth_error: row.auth_error
   };
 }
 
@@ -84,9 +91,18 @@ function calendarClient() {
   return createGoogleCalendarClient();
 }
 
+async function listConnectionCalendars(tenantId: string, connection: ConnectionRow) {
+  try {
+    return await calendarClient().listCalendars(connectionRefreshToken(connection));
+  } catch (error) {
+    if (error instanceof GoogleCalendarAuthRevokedError) await markCalendarConnectionAuthRevoked(db, tenantId, connection.id);
+    throw error;
+  }
+}
+
 // Keyring {current, previous} (mesmo contrato de calendar-booking/calendar-sync):
 // tokens gravados antes da rotação continuam legíveis nas rotas do painel.
-function connectionRefreshToken(connection: ConnectionRow): string {
+function connectionRefreshToken(connection: Pick<ConnectionRow, "refresh_token_encrypted">): string {
   return decryptSecret(connection.refresh_token_encrypted, {
     current: config.DATA_ENCRYPTION_KEY,
     previous: config.DATA_ENCRYPTION_KEY_PREVIOUS ? [config.DATA_ENCRYPTION_KEY_PREVIOUS] : []
@@ -145,23 +161,44 @@ async function connectGoogleCalendar(tenantId: string, memberId: string, identit
   // em voo/pendente isso revogaria a credencial que o worker precisa para apagar
   // eventos remotos → órfãos silenciosos. 409 preserva a auth antiga; o callback
   // do OAuth converte em redirect calendar_oauth=error (sem expor token).
+  // MESMA conta Google: o token novo gerencia os mesmos eventos/agendas — é o
+  // caminho de recuperação de acesso revogado (invalid_grant). Sem guarda e sem
+  // limpar a agenda: o sync pendente volta a convergir. Sem isso, conexão
+  // revogada com agendamentos futuros ficava presa (reconectar e desconectar 409).
   await withTransaction(db, async (client) => {
     await client.query("SELECT id FROM tenants WHERE id=$1 FOR UPDATE", [tenantId]);
-    const existing = (await client.query<{ id: string }>(
-      "SELECT id FROM scheduling_calendar_connections WHERE tenant_id=$1 AND member_id=$2 FOR UPDATE",
+    const existing = (await client.query<{ id: string; google_email: string }>(
+      "SELECT id,google_email FROM scheduling_calendar_connections WHERE tenant_id=$1 AND member_id=$2 FOR UPDATE",
       [tenantId, memberId]
     )).rows[0];
-    if (existing) await assertCalendarSyncSettled(client, tenantId, existing.id);
+    const sameAccount = existing?.google_email === identity.email;
+    if (existing && !sameAccount) await assertCalendarSyncSettled(client, tenantId, existing.id);
     await client.query(
       `INSERT INTO scheduling_calendar_connections(tenant_id,member_id,google_email,refresh_token_encrypted)
        VALUES($1,$2,$3,$4)
        ON CONFLICT(tenant_id,member_id) DO UPDATE SET
          google_email=EXCLUDED.google_email,
          refresh_token_encrypted=EXCLUDED.refresh_token_encrypted,
-         calendar_id=NULL, calendar_name=NULL, calendar_timezone=NULL,
+         calendar_id=CASE WHEN $5 THEN scheduling_calendar_connections.calendar_id END,
+         calendar_name=CASE WHEN $5 THEN scheduling_calendar_connections.calendar_name END,
+         calendar_timezone=CASE WHEN $5 THEN scheduling_calendar_connections.calendar_timezone END,
+         auth_error=NULL, auth_error_at=NULL,
          connected_at=now(), updated_at=now()`,
-      [tenantId, memberId, identity.email, encryptSecret(identity.refreshToken, config.DATA_ENCRYPTION_KEY)]
+      [tenantId, memberId, identity.email, encryptSecret(identity.refreshToken, config.DATA_ENCRYPTION_KEY), sameAccount]
     );
+    // Sync que falhou por acesso revogado volta a rodar já, sem esperar o backoff.
+    if (existing && sameAccount) {
+      await client.query(
+        `UPDATE scheduling_calendar_sync_outbox ob SET available_at=now(), attempts=0
+         FROM scheduling_appointments a
+         LEFT JOIN scheduling_appointment_calendar_events e
+           ON e.appointment_id=a.id AND e.tenant_id=a.tenant_id
+         WHERE ob.tenant_id=$1 AND ob.claimed_at IS NULL
+           AND a.id=ob.appointment_id AND a.tenant_id=ob.tenant_id
+           AND (e.connection_id=$2 OR a.assigned_member_id=$3)`,
+        [tenantId, existing.id, memberId]
+      );
+    }
   });
 }
 
@@ -241,40 +278,53 @@ export async function registerGoogleCalendarRoutes(app: FastifyInstance) {
     return { connection: connectionPayload(row) };
   });
 
-  app.get("/scheduling/google-calendar/oauth/start", async (request) => {
+  app.get("/scheduling/google-calendar/oauth/start", { config: { rateLimit: HTTP_RATE_LIMITS.sensitiveWrite } }, async (request) => {
     const session = await requirePermission(request, "units.manage");
     const { member_id } = memberIdQuery.parse(request.query);
     if (!await memberIsActive(session.tenantId, member_id)) throw httpError(404, "Membro não encontrado");
     const nonce = randomBytes(32).toString("base64url");
+    // PKCE S256: o verifier fica só no servidor, amarrado ao nonce one-time.
+    const codeVerifier = randomBytes(32).toString("base64url");
     // authorizationUrl falha fechada (503) ANTES de gravar o nonce no banco.
-    const authorizationUrl = createGoogleCalendarOAuthClient().authorizationUrl(nonce, googleCalendarOAuthRedirectUri());
+    const authorizationUrl = createGoogleCalendarOAuthClient()
+      .authorizationUrl(nonce, googleCalendarOAuthRedirectUri(), pkceChallenge(codeVerifier));
+    // Higiene: states vencidos há mais de 1 dia não servem nem para auditoria de replay.
+    await db.query("DELETE FROM scheduling_calendar_oauth_states WHERE expires_at < now() - interval '1 day'");
     await db.query(
-      `INSERT INTO scheduling_calendar_oauth_states(nonce,tenant_id,user_id,member_id,expires_at)
-       VALUES($1,$2,$3,$4,now() + interval '10 minutes')`,
-      [nonce, session.tenantId, session.userId, member_id]
+      `INSERT INTO scheduling_calendar_oauth_states(nonce,tenant_id,user_id,member_id,expires_at,code_verifier)
+       VALUES($1,$2,$3,$4,now() + interval '10 minutes',$5)`,
+      [nonce, session.tenantId, session.userId, member_id, codeVerifier]
     );
     return { authorization_url: authorizationUrl };
   });
 
   app.get("/scheduling/google-calendar/oauth/callback", async (request, reply) => {
-    const session = await requirePermission(request, "units.manage");
+    // Painel de Calendar é a rota aninhada /configuracoes/google-calendar (o
+    // [resource] dinâmico só renderiza chaves válidas, google-calendar incluída).
+    const returnUrl = new URL("/configuracoes/google-calendar", config.PANEL_PUBLIC_URL);
+    // Retorno do Google sem sessão válida (expirou/outro navegador): redirect
+    // amigável em vez de JSON 401 cru; o nonce fica intacto e expira sozinho.
+    let session: Awaited<ReturnType<typeof requirePermission>>;
+    try {
+      session = await requirePermission(request, "units.manage");
+    } catch {
+      returnUrl.searchParams.set("calendar_oauth", "denied");
+      return reply.redirect(returnUrl.toString());
+    }
     const query = z.object({
       code: z.string().min(1).optional(),
       state: z.string().min(1).optional(),
       error: z.string().optional()
     }).parse(request.query);
-    // Painel de Calendar é a rota aninhada /configuracoes/google-calendar (o
-    // [resource] dinâmico só renderiza chaves válidas, google-calendar incluída).
-    const returnUrl = new URL("/configuracoes/google-calendar", config.PANEL_PUBLIC_URL);
     if (!query.state) {
       returnUrl.searchParams.set("calendar_oauth", "denied");
       return reply.redirect(returnUrl.toString());
     }
     // Consome o nonce atomicamente ANTES do erro do OAuth também (one-time use).
-    const state = (await db.query<{ member_id: string }>(
+    const state = (await db.query<{ member_id: string; code_verifier: string | null }>(
       `UPDATE scheduling_calendar_oauth_states SET used_at=now()
        WHERE nonce=$1 AND tenant_id=$2 AND user_id=$3 AND used_at IS NULL AND expires_at>now()
-       RETURNING member_id`,
+       RETURNING member_id,code_verifier`,
       [query.state, session.tenantId, session.userId]
     )).rows[0];
     if (query.error || !query.code || !state) {
@@ -288,7 +338,7 @@ export async function registerGoogleCalendarRoutes(app: FastifyInstance) {
       return reply.redirect(returnUrl.toString());
     }
     try {
-      const identity = await createGoogleCalendarOAuthClient().exchangeCode(query.code, googleCalendarOAuthRedirectUri());
+      const identity = await createGoogleCalendarOAuthClient().exchangeCode(query.code, googleCalendarOAuthRedirectUri(), state.code_verifier ?? undefined);
       await connectGoogleCalendar(session.tenantId, state.member_id, identity);
       returnUrl.searchParams.set("calendar_oauth", "connected");
     } catch (error) {
@@ -304,7 +354,7 @@ export async function registerGoogleCalendarRoutes(app: FastifyInstance) {
     const { id } = idParams.parse(request.params);
     const connection = await loadConnection(session.tenantId, id);
     // minAccessRole=writer vem do servidor Google; a lista já só traz agendas graváveis.
-    const calendars = await calendarClient().listCalendars(connectionRefreshToken(connection));
+    const calendars = await listConnectionCalendars(session.tenantId, connection);
     return { calendars: calendars.map((calendar) => ({
       id: calendar.id, name: calendar.name, timezone: calendar.timeZone, primary: calendar.primary
     })) };
@@ -315,7 +365,7 @@ export async function registerGoogleCalendarRoutes(app: FastifyInstance) {
     const { id } = idParams.parse(request.params);
     const { calendar_id } = calendarBody.parse(request.body);
     const connection = await loadConnection(session.tenantId, id);
-    const chosen = (await calendarClient().listCalendars(connectionRefreshToken(connection))).find((calendar) => calendar.id === calendar_id);
+    const chosen = (await listConnectionCalendars(session.tenantId, connection)).find((calendar) => calendar.id === calendar_id);
     if (!chosen) throw httpError(400, "Calendário inválido ou sem permissão de escrita");
     // Google HTTP fora da transação; UPDATE + enfileiramento dos agendamentos
     // afetados são atômicos (mesma transação).
@@ -383,10 +433,10 @@ export async function registerGoogleCalendarRoutes(app: FastifyInstance) {
     // pendência não bloqueia e o vínculo vira órfão por FK — o evento antigo
     // permanece no Google (worker marca "vínculo órfão" sem token para
     // apagá-lo); órfão histórico é intencional.
-    return withTransaction(db, async (client) => {
+    const removed = await withTransaction(db, async (client) => {
       await client.query("SELECT id FROM tenants WHERE id=$1 FOR UPDATE", [session.tenantId]);
-      const locked = (await client.query(
-        "SELECT id FROM scheduling_calendar_connections WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+      const locked = (await client.query<{ google_email: string; refresh_token_encrypted: string }>(
+        "SELECT google_email,refresh_token_encrypted FROM scheduling_calendar_connections WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
         [session.tenantId, id]
       )).rows[0];
       if (!locked) throw httpError(404, "Conexão não encontrada");
@@ -395,9 +445,28 @@ export async function registerGoogleCalendarRoutes(app: FastifyInstance) {
         "DELETE FROM scheduling_calendar_connections WHERE tenant_id=$1 AND id=$2",
         [session.tenantId, id]
       );
-      // Não usa nem apaga o token global do Meet; histórico passado vira órfão por FK.
-      return { disconnected: true };
+      // Revogar no Google derruba a concessão INTEIRA (conta × client OAuth,
+      // compartilhado com o Meet): só revoga se nenhuma outra conexão de agenda
+      // (qualquer tenant) nem o Meet usa a mesma conta Google.
+      const shared = (await client.query<{ shared: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM scheduling_calendar_connections WHERE lower(google_email)=lower($1))
+             OR EXISTS (SELECT 1 FROM scheduling_google_meet_settings WHERE lower(oauth_email)=lower($1)) AS shared`,
+        [locked.google_email]
+      )).rows[0]!.shared;
+      return { ...locked, shared };
     });
+    // Best-effort DEPOIS do commit: falha do Google não desfaz a desconexão
+    // local (o token já foi apagado do banco; o usuário ainda pode revogar em
+    // myaccount.google.com). Histórico passado vira órfão por FK.
+    let revoked = false;
+    if (!removed.shared) {
+      try {
+        revoked = await createGoogleCalendarOAuthClient()
+          .revokeToken(connectionRefreshToken(removed));
+      } catch { /* token ilegível (chave rotacionada): nada a revogar daqui */ }
+    }
+    if (!removed.shared && !revoked) request.log.warn({ connectionId: id }, "Google Calendar token revoke failed");
+    return { disconnected: true };
   });
 
   app.get("/scheduling/google-calendar/routes", async (request) => {

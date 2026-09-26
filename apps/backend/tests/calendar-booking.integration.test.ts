@@ -12,8 +12,7 @@ import { encryptSecret } from "../src/modules/ai-router/secret-box.js";
 import { setCalendarBookingClientFactory, type CalendarBookingClient } from "../src/modules/scheduling/calendar-booking.js";
 import {
   GoogleCalendarApiError,
-  GoogleCalendarConfigurationError,
-  GoogleCalendarClient
+  GoogleCalendarConfigurationError
 } from "../src/modules/scheduling/google-calendar.js";
 import {
   cancelAppointment,
@@ -27,7 +26,6 @@ const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const NOW = new Date("2026-10-05T09:00:00Z");
 const SLOT_START = "2026-10-05T13:00:00Z";
 const SLOT_END = "2026-10-05T14:00:00Z";
-const OWNER_ACTOR = { userId: "", actorScope: "workspace" as const };
 
 type FakeEvent = { start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string }; transparency?: "transparent" | "opaque" };
 type FakeState = {

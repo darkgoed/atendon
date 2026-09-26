@@ -149,4 +149,17 @@ describe("AI follow-up billing: usage_logs.request_id", () => {
     expect(await reported(reportedFalse)).toEqual({ cost_reported: false });
     expect(await reported(omitted)).toEqual({ cost_reported: true });
   });
+
+  it("persists the REAL provider of each call normalized; absent provider stays NULL (generic model price)", async () => {
+    const x = await setup(2);
+    const conversationId = await conversation(x.t);
+    const withProvider = `test-${randomUUID()}`;
+    const withoutProvider = `test-${randomUUID()}`;
+    await followUps.recordAiUsage({ tenantId: x.t, conversationId, providerRequestId: withProvider, model: "test/model", provider: " DeepInfra ", inputTokens: 1, outputTokens: 1, costUsd: 0 });
+    await followUps.recordAiUsage({ tenantId: x.t, conversationId, providerRequestId: withoutProvider, model: "test/model", inputTokens: 1, outputTokens: 1, costUsd: 0 });
+    const provider = async (id: string) => (await pool.query<{ provider: string | null }>(
+      "SELECT provider FROM usage_logs WHERE tenant_id=$1 AND provider_request_id=$2", [x.t, id])).rows[0];
+    expect(await provider(withProvider)).toEqual({ provider: "deepinfra" });
+    expect(await provider(withoutProvider)).toEqual({ provider: null });
+  });
 });

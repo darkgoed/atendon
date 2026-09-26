@@ -10,7 +10,7 @@ import { setEfiPixMandateOverridesForTests } from "../src/billing/efipay-mandate
 import type { EfiTransport } from "../src/billing/providers/efipay-pix-automatic.js";
 
 /**
- * Rotas do mandato Pix Automato (Efí) contra o serviço REAL (efipay-mandates.ts)
+ * Rotas do mandato Pix Automático (Efí) contra o serviço REAL (efipay-mandates.ts)
  * com provider DEDICADO por execução + transport falso injetado
  * (setEfiPixMandateOverridesForTests) — as linhas globais de billing_providers
  * nunca são reconfiguradas e o override é sempre restaurado. Cobre: 401 sem
@@ -105,7 +105,7 @@ afterAll(async()=>{
   await pool.end();
 });
 
-describe("rotas do mandato Pix Automato (Efí)",()=>{
+describe("rotas do mandato Pix Automático (Efí)",()=>{
   it("GET exige apenas workspace; POST/DELETE exigem billing.manage; sem sessão é 401",async()=>{
     for(const method of ["GET","POST","DELETE"] as const)expect((await app.inject({method,url:PATH})).statusCode).toBe(401);
     expect((await app.inject({url:PATH,headers:{cookie:readCookie}})).statusCode).toBe(200);
@@ -162,6 +162,7 @@ describe("rotas do mandato Pix Automato (Efí)",()=>{
     expect(stopped.json().mandate.status).toBe("CANCELLED");
     expect(String(stopped.json().remoteRevocation)).toContain("não oferece API");
     expect(String(stopped.json().remoteRevocation)).toContain("app do banco");
+    expect(String(stopped.json().remoteRevocation)).toContain("vencimento hoje");
     expect((await pool.query<{status:string}>("SELECT status FROM ai_credit_pix_mandates WHERE tenant_id=$1",[tenantA])).rows[0]).toMatchObject({status:"CANCELLED"});
     expect((await app.inject({url:PATH,headers:{cookie:cookieB}})).json().mandate.status).toBe("PENDING");
     // Stop sem mandato em curso é idempotente: mandate null, sem erro.

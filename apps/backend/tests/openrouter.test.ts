@@ -77,6 +77,7 @@ describe("OpenRouterClient", () => {
     const fetcher = vi.fn().mockResolvedValue(Response.json({
       id: "gen-cache-1",
       model: "anthropic/claude-haiku-4.5",
+      provider: "Anthropic",
       choices: [{ message: { content: "Resposta" } }],
       usage: {
         prompt_tokens: 5200,
@@ -128,6 +129,7 @@ describe("OpenRouterClient", () => {
     });
     expect(onUsage).toHaveBeenCalledWith(expect.objectContaining({
       providerRequestId: "gen-cache-1",
+      provider: "Anthropic",
       requestId: "00000000-0000-4000-8000-000000000003",
       processingAttempt: 2,
       providerRequestIndex: 1,

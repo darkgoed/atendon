@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
 import { encryptCredentials, encryptWebhookSecret } from "../src/billing/providers/credentials.js";
+import { acquireSharedProviderLock, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
 
 /**
  * §18 — o webhook de cobrança precisa ser idempotente de verdade.
@@ -55,6 +56,11 @@ async function subscription() {
     [tenantId]
   )).rows[0];
 }
+
+// Serializa com as outras suítes que mexem na linha global billing_providers(mercadopago).
+let releaseSharedProviderLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseSharedProviderLock = await acquireSharedProviderLock(); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseSharedProviderLock?.(); });
 
 beforeAll(async () => {
   globalThis.fetch = (async (input: URL | RequestInfo) => {

@@ -11,6 +11,7 @@ import { ensureOpenPeriod } from "../src/billing/usage-period.js";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import type { BillingProvider, PaymentInput, ProviderResult, WebhookResult } from "../src/billing/providers/types.js";
 import { encryptCredentials, encryptWebhookSecret } from "../src/billing/providers/credentials.js";
+import { acquireSharedProviderLock, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
 
 /**
  * Venda real de pacotes adicionais de créditos normalizados de IA:
@@ -146,6 +147,11 @@ async function deliver(x: Fixture, invoiceId: string, rawResourceId: string, act
 
 let savedMercadoPago: { inserted: boolean; credentials: string | null; secret: string | null; status: string; enabled: boolean; homologated: boolean | null } | null = null;
 
+// Serializa com as outras suítes que mexem na linha global billing_providers(mercadopago).
+let releaseSharedProviderLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseSharedProviderLock = await acquireSharedProviderLock(); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseSharedProviderLock?.(); });
+
 beforeAll(async () => {
   await pool.query("SELECT 1");
   originalFetch = globalThis.fetch;
@@ -190,6 +196,10 @@ afterAll(async () => {
     await client.query("BEGIN");
     for (const id of tenants) await client.query("DELETE FROM tenants WHERE id=$1", [id]);
     await client.query("DELETE FROM tenants WHERE slug LIKE 'credit-pack-%'");
+    // billing_events.tenant_id é ON DELETE SET NULL: os eventos desta suíte
+    // continuam presos ao provider e bloqueariam o DELETE abaixo (FK), fazendo
+    // o ROLLBACK deixar faturas pagas no mercadopago global para outras suítes.
+    await client.query("DELETE FROM billing_events WHERE provider_id=$1 AND external_event_id LIKE $2", [mpProviderId, `%${runId}-%`]);
     if (savedMercadoPago?.inserted) {
       await client.query("DELETE FROM billing_providers WHERE id=$1", [mpProviderId]);
     } else if (savedMercadoPago) {

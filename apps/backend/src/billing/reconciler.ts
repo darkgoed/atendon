@@ -109,12 +109,26 @@ export async function runBillingReconciliationBatch(limit = 100, chargeDeps: Cha
           if (charged.rowCount) return;
         }
         const settings = await getBillingSettings(client);
-        const expired = await client.query<AiReservationRow>(`SELECT id, usage_period_id, consumption_type, billable_amount_brl_cents, pricing_snapshot FROM ai_usage_ledger WHERE id=$1 AND reconciled=false AND created_at <= now() - make_interval(mins => $2) FOR UPDATE`, [row.id, settings.reservation_ttl_minutes]);
+        const expired = await client.query<AiReservationRow>(`SELECT id, usage_period_id, consumption_type, billable_amount_brl_cents, pricing_snapshot FROM ai_usage_ledger WHERE id=$1 AND reconciled=false AND COALESCE((pricing_snapshot->>'reservedAt')::timestamptz, created_at) <= now() - make_interval(mins => $2) FOR UPDATE`, [row.id, settings.reservation_ttl_minutes]);
         const item = expired.rows[0]; if (!item) return;
         await releaseAiReservation(client, row.tenant_id, item, "expired_without_usage_logs");
         result.expiredReservations++;
       });
     } catch (error) { result.errors.push(`ledger:${row.id}:${error instanceof Error ? error.message : "unknown"}`); }
+  }
+  // Rede de segurança do uso TARDIO: reserva liberada sem cobrança cujo
+  // usage_log chegou depois (o reconcile disparado pelo turno falhou ou nem
+  // rodou). reconcileAiTurnFromUsageLogs reabre e cobra de forma idempotente.
+  const late = await db.query<{ tenant_id: string; logical_turn_id: string; purpose: "inbound_reply" | "follow_up" | "copilot_suggestion" }>(
+    `SELECT l.tenant_id, l.logical_turn_id::text, l.purpose FROM ai_usage_ledger l
+      WHERE l.reconciled=true AND l.logical_turn_id IS NOT NULL
+        AND l.pricing_snapshot->>'reconciliation' IN ('expired_without_usage_logs','released_without_usage')
+        AND EXISTS (SELECT 1 FROM usage_logs u WHERE u.tenant_id=l.tenant_id AND u.request_id=l.logical_turn_id
+                    AND (COALESCE(u.input_tokens,0)+COALESCE(u.output_tokens,0)+COALESCE(u.cached_input_tokens,0)+COALESCE(u.cache_write_input_tokens,0) > 0 OR COALESCE(u.cost_usd,0) > 0))
+      ORDER BY l.reconciled_at LIMIT $1`, [limit]);
+  for (const row of late.rows) {
+    try { await reconcileAiTurnFromUsageLogs(row.tenant_id, row.purpose, row.logical_turn_id); result.reconciled++; }
+    catch (error) { result.errors.push(`late:${row.logical_turn_id}:${error instanceof Error ? error.message : "unknown"}`); }
   }
   return result;
 }

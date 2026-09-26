@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { config } from "../../config.js";
 import { db } from "../../db/client.js";
+import { normalizeAiProvider } from "../../billing/pricing.js";
 import type { AiRouter, ReasoningEffort } from "../ai-router/openrouter.js";
 import { OpenRouterClient } from "../ai-router/openrouter.js";
 import { decryptSecret } from "../ai-router/secret-box.js";
@@ -210,8 +211,8 @@ export async function qualifyLeadFromConversation(
       await db.query(
         `INSERT INTO usage_logs(
            tenant_id,conversation_id,ai_model,input_tokens,output_tokens,cost_usd,
-           provider_request_id,purpose,cost_reported
-         ) VALUES($1,$2,$3,$4,$5,$6,$7,'attendance',$8)
+           provider_request_id,purpose,cost_reported,provider
+         ) VALUES($1,$2,$3,$4,$5,$6,$7,'attendance',$8,$9)
          ON CONFLICT(provider_request_id) WHERE provider_request_id IS NOT NULL DO NOTHING`,
         [
           tenantId,
@@ -221,7 +222,8 @@ export async function qualifyLeadFromConversation(
           usage.outputTokens,
           usage.costUsd,
           usage.providerRequestId ?? null,
-          usage.costReported ?? true
+          usage.costReported ?? true,
+          normalizeAiProvider(usage.provider)
         ]
       );
     }

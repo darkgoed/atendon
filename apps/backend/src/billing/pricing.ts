@@ -2,7 +2,8 @@ import type { PoolClient } from "pg";
 import { db } from "../db/client.js";
 import { getBillingSettings } from "./settings.js";
 
-export type AiCostInput = { model: string | null; inputTokens: number; outputTokens: number; cachedTokens: number; cacheWriteTokens?: number; providerCostUsd?: number | null };
+/** provider: provedor REAL que atendeu a chamada (ex.: OpenRouter `provider`); null = desconhecido → preço genérico do modelo. */
+export type AiCostInput = { model: string | null; provider?: string | null; inputTokens: number; outputTokens: number; cachedTokens: number; cacheWriteTokens?: number; providerCostUsd?: number | null };
 export type PricedInteraction = {
   providerCostUsdMicros: number; providerCostBrlCents: number; billableAmountBrlCents: number;
   pricingStrategy: string; pricingSnapshot: Record<string, unknown>; usdBrlRateMicros: number;
@@ -13,6 +14,11 @@ export type PricedInteraction = {
 type PricingRule = { id: string; version: number; strategy: string; markup_bps: number | null; fixed_price_per_interaction_cents: number | null; config: Record<string, unknown>; active: boolean; created_by_user_id: string | null; created_at: Date };
 let ruleCache: { value: PricingRule; expiresAt: number } | undefined;
 const TTL_MS = 30_000;
+/** Nome canônico do provider (mesma regra do CHECK da 0194): lower(trim), vazio = null. */
+export function normalizeAiProvider(provider: string | null | undefined): string | null {
+  const value = provider?.trim().toLowerCase();
+  return value ? value : null;
+}
 export function invalidateActivePricingRuleCache(): void { ruleCache = undefined; }
 export { invalidateActivePricingRuleCache as invalidatePricingRuleCache };
 
@@ -81,14 +87,18 @@ export async function priceInteraction(input: AiCostInput, client?: PoolClient):
     // Custo omitido ou zero (ex.: OpenRouter sem `usage.cost`) NÃO é dado real:
     // precifica pela tabela do modelo — modelo configurado 0/0 segue grátis;
     // sem preço configurado cai no preço de referência (nunca bypass grátis).
-    const prices = input.model ? await connection.query("SELECT input_price_per_million_micros, output_price_per_million_micros, cached_input_price_per_million_micros FROM ai_model_prices WHERE model=$1 AND effective_from <= now() AND (effective_to IS NULL OR effective_to > now()) ORDER BY effective_from DESC LIMIT 1", [input.model]) : { rows: [] };
+    // Preço por PAR (provider, model): o específico do provider vence; sem ele
+    // (ou provider desconhecido) vale o preço genérico do modelo (provider NULL).
+    const provider = normalizeAiProvider(input.provider);
+    const prices = input.model ? await connection.query("SELECT provider, input_price_per_million_micros, output_price_per_million_micros, cached_input_price_per_million_micros FROM ai_model_prices WHERE model=$1 AND (provider=$2 OR provider IS NULL) AND effective_from <= now() AND (effective_to IS NULL OR effective_to > now()) ORDER BY (provider IS NOT NULL) DESC, effective_from DESC LIMIT 1", [input.model, provider]) : { rows: [] };
+    snapshot.provider = provider;
     if (!prices.rows[0]) {
       inputPrice = getCreditReferencePricePerMillionMicros(rule);
       outputPrice = inputPrice; cachedPrice = inputPrice;
       snapshot.fallback = "unknown_model_reference_price";
       snapshot.costSource = "reference_fallback";
     }
-    else { inputPrice = Number(prices.rows[0].input_price_per_million_micros); outputPrice = Number(prices.rows[0].output_price_per_million_micros); cachedPrice = prices.rows[0].cached_input_price_per_million_micros == null ? null : Number(prices.rows[0].cached_input_price_per_million_micros); snapshot.costSource = "model_price_table"; }
+    else { inputPrice = Number(prices.rows[0].input_price_per_million_micros); outputPrice = Number(prices.rows[0].output_price_per_million_micros); cachedPrice = prices.rows[0].cached_input_price_per_million_micros == null ? null : Number(prices.rows[0].cached_input_price_per_million_micros); snapshot.costSource = "model_price_table"; snapshot.priceProvider = prices.rows[0].provider ?? null; }
     const cachedRead = Math.max(0, input.cachedTokens);
     const fresh = Math.max(0, input.inputTokens - cachedRead - cacheWriteTokens);
     // Cache-write não tem coluna de preço em ai_model_prices: precificado ao

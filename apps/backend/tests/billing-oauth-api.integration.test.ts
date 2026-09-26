@@ -6,6 +6,7 @@ import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { encryptCredentials } from "../src/billing/providers/credentials.js";
+import { acquireSharedProviderLock, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const suffix = randomUUID();
@@ -31,6 +32,11 @@ async function login(email: string) {
   return (Array.isArray(cookie) ? cookie[0] : cookie).split(";")[0];
 }
 async function provider(env: string) { return (await pool.query("SELECT * FROM billing_providers WHERE code='mercadopago' AND environment=$1", [env])).rows[0]; }
+
+// Serializa com as outras suítes que mexem na linha global billing_providers(mercadopago).
+let releaseSharedProviderLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseSharedProviderLock = await acquireSharedProviderLock(); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseSharedProviderLock?.(); });
 
 beforeAll(async () => {
   await app.ready();

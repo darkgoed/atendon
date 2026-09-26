@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { PoolClient } from "pg";
 import { config } from "../config.js";
 import { db } from "../db/client.js";
 import { withTenantTransaction } from "../db/tenant-transaction.js";
@@ -149,6 +150,17 @@ function pushError(result: EfiMonthlyBatchResult, mandateId: string, dueOn: stri
 }
 
 /**
+ * Encerra a fatura de um ciclo Efí que NÃO foi pago (cobrança cancelada,
+ * negada ou expirada). Só toca fatura ainda aberta: paga/estornada nunca muda.
+ */
+export async function closeUnpaidCycleInvoice(client: PoolClient, invoiceId: string | null, status: "cancelled" | "failed"): Promise<void> {
+  if (!invoiceId) return;
+  await client.query(
+    "UPDATE invoices SET status=$2,updated_at=now() WHERE id=$1 AND kind='credit_package' AND status IN ('pending','open','overdue')",
+    [invoiceId, status]);
+}
+
+/**
  * Rodízio: item examinado (falhou, ignorado ou ainda aguardando pagamento) vai
  * para o fim da fila (ORDER BY updated_at), para que `limit` linhas presas não
  * monopolizem o lote horário e deixem outras sem conciliação. Best-effort.
@@ -251,8 +263,10 @@ async function confirmPaidCharge(charge: PendingChargeRow): Promise<Exclude<Batc
       await client.query("UPDATE ai_credit_pix_charges SET status='APPROVED',updated_at=now() WHERE id=$1", [charge.charge_id]);
       return "settled";
     }
+    // KEY SHARE: garante existência sem conflitar com o lock NO KEY UPDATE do
+    // stop (evita deadlock cobrança→mandato x mandato→cobrança).
     const mandate = await client.query<{ status: string }>(
-      "SELECT status FROM ai_credit_pix_mandates WHERE id=$1 FOR UPDATE", [charge.mandate_id]);
+      "SELECT status FROM ai_credit_pix_mandates WHERE id=$1 FOR KEY SHARE", [charge.mandate_id]);
     // Mandato já vinculado à cobrança: qualquer status serve (ex. CANCELLED
     // após stopMonthlyPixMandate); cobrança paga antes da parada deve ser
     // honrada. Só mandato ausente é rejeitado.
@@ -286,6 +300,9 @@ async function applyFailureStatus(charge: PendingChargeRow, mapped: string): Pro
     const fresh = current.rows[0];
     if (!fresh || fresh.status !== "PENDING") return "skipped";
     await client.query("UPDATE ai_credit_pix_charges SET status=$2,updated_at=now() WHERE id=$1", [charge.charge_id, mapped]);
+    // A fatura do ciclo deixa de estar "em aberto": sem isto ela ficaria
+    // pending para sempre (histórico enganoso). Nada de grant/estorno aqui.
+    await closeUnpaidCycleInvoice(client, charge.invoice_id, mapped === "CANCELLED" ? "cancelled" : "failed");
     return "failed";
   });
 }
@@ -336,16 +353,27 @@ async function reconcilePendingCharge(charge: PendingChargeRow, client: EfiMonth
   }
   // PUT idempotente por txid; o PUT NUNCA concede — CONCLUIDA do PUT é
   // reconfirmada pelo GET autenticado antes de qualquer grant.
-  // Releitura fresca: o snapshot da seleção pode ter ficado velho (stop local
-  // concorrente durante o GET/rec) — mandato não mais APPROVED não recebe PUT.
-  const fresh = await db.query<{ status: string }>(
-    "SELECT status FROM ai_credit_pix_mandates WHERE id=$1", [charge.mandate_id]);
-  if (fresh.rows[0]?.status !== "APPROVED") { result.skipped++; return; }
-  const created = await client.createCharge(charge.txid, {
-    idRec: charge.external_id_rec,
-    originalCents: AI_CREDIT_PACK_PRICE_CENTS,
-    dataDeVencimento: charge.due_on
+  // Serialização com stopMonthlyPixMandate: o PUT acontece SEGURANDO o lock
+  // NO KEY UPDATE do mandato (o stop toma o mesmo lock durante toda a parada).
+  // Sem isso, um stop que comitasse entre a checagem e o PUT deixaria uma
+  // cobrança nova ATIVA na Efí após a parada (débito futuro indevido).
+  // ponytail: lock de linha durante 1 chamada HTTP (timeout do cliente Efí).
+  const created = await withTenantTransaction(db, charge.tenant_id, async (tx) => {
+    const fresh = await tx.query<{ status: string }>(
+      "SELECT status FROM ai_credit_pix_mandates WHERE id=$1 FOR NO KEY UPDATE", [charge.mandate_id]);
+    if (fresh.rows[0]?.status !== "APPROVED") return null;
+    // A própria cobrança também precisa seguir PENDING (o stop a encerra
+    // localmente quando ela nunca chegou à Efí).
+    const own = await tx.query<{ status: string }>(
+      "SELECT status FROM ai_credit_pix_charges WHERE id=$1", [charge.charge_id]);
+    if (own.rows[0]?.status !== "PENDING") return null;
+    return await client.createCharge(charge.txid, {
+      idRec: charge.external_id_rec,
+      originalCents: AI_CREDIT_PACK_PRICE_CENTS,
+      dataDeVencimento: charge.due_on
+    });
   });
+  if (!created) { result.skipped++; return; }
   const putStatus = remoteStatus(created.status);
   if (putStatus === "CONCLUIDA") {
     await confirmFromGet(client, charge, result);

@@ -5,7 +5,9 @@ import { decryptSecret, type SecretKeyring } from "../ai-router/secret-box.js";
 import { db } from "../../db/client.js";
 import {
   GoogleCalendarApiError,
+  GoogleCalendarAuthRevokedError,
   GoogleCalendarClient,
+  markCalendarConnectionAuthRevoked,
   atendonCalendarEventId,
   createGoogleCalendarClient,
   type GoogleCalendarEvent,
@@ -55,6 +57,9 @@ type WorkRow = {
   member_target_calendar_id: string | null;
   member_target_calendar_timezone: string | null;
   member_target_refresh_token_encrypted: string | null;
+  route_target_auth_error: string | null;
+  member_target_auth_error: string | null;
+  link_auth_error: string | null;
   link_connection_id: string | null;
   link_calendar_id: string | null;
   link_event_id: string | null;
@@ -71,12 +76,15 @@ export type CalendarSyncWork = {
     eventId: string;
     etag: string | null;
     refreshTokenEncrypted: string | null;
+    // Credencial marcada revogada (0195): nenhuma chamada ao Google até reconectar.
+    authRevoked: boolean;
   } | null;
   target: {
     connectionId: string;
     calendarId: string;
     refreshTokenEncrypted: string;
     calendarTimezone: string | null;
+    authRevoked: boolean;
   } | null;
   // Rota explícita de pipeline aponta para uma conexão cujo calendar_id é NULL
   // (reconexão limpa a seleção): destino indefinido, nunca o assignee.
@@ -144,6 +152,8 @@ const WORK_SELECT = `
          member_target.id member_target_connection_id,member_target.calendar_id member_target_calendar_id,
          member_target.calendar_timezone member_target_calendar_timezone,
          member_target.refresh_token_encrypted member_target_refresh_token_encrypted,
+         route_target.auth_error route_target_auth_error,member_target.auth_error member_target_auth_error,
+         linkconn.auth_error link_auth_error,
          link.connection_id link_connection_id,link.calendar_id link_calendar_id,
          link.event_id link_event_id,link.etag link_etag,
          linkconn.refresh_token_encrypted link_refresh_token_encrypted
@@ -196,7 +206,8 @@ function resolveTarget(row: WorkRow): CalendarSyncWork["target"] {
     refreshTokenEncrypted,
     calendarTimezone: (row.route_target_connection_id
       ? row.route_target_calendar_timezone
-      : row.member_target_calendar_timezone) ?? null
+      : row.member_target_calendar_timezone) ?? null,
+    authRevoked: Boolean(row.route_target_connection_id ? row.route_target_auth_error : row.member_target_auth_error)
   };
 }
 
@@ -228,7 +239,8 @@ function buildWork(row: WorkRow | null, job: CalendarSyncJob): CalendarSyncWork 
         calendarId: row.link_calendar_id,
         eventId: row.link_event_id,
         etag: row.link_etag,
-        refreshTokenEncrypted: row.link_refresh_token_encrypted
+        refreshTokenEncrypted: row.link_refresh_token_encrypted,
+        authRevoked: Boolean(row.link_auth_error)
       }
     : null;
   return {
@@ -404,13 +416,22 @@ export class CalendarSyncRepository {
   // Falha: solta o claim com backoff exponencial (cap 60min; após o teto de
   // tentativas, 6h — linha observável via attempts/last_error, nunca perdida).
   // Só o dono do claim registra a falha.
-  async recordFailure(work: CalendarSyncWork, error: unknown): Promise<void> {
+  async markAuthRevoked(tenantId: string, connectionId: string): Promise<void> {
+    await markCalendarConnectionAuthRevoked(this.pool, tenantId, connectionId);
+  }
+
+  // connectionId = conexão cuja credencial foi usada na chamada que falhou
+  // (invalid_grant marca SÓ ela como revogada; painel pede reconexão).
+  async recordFailure(work: CalendarSyncWork, error: unknown, connectionId?: string | null): Promise<void> {
     const message = errorMessage(error);
     const attempts = work.job.attempts;
     const backoffMs = attempts >= this.maxAttempts
       ? 6 * 60 * 60_000
       : Math.min(60 * 60_000, 30_000 * 2 ** Math.max(0, attempts - 1));
     await this.transaction(async (client) => {
+      if (error instanceof GoogleCalendarAuthRevokedError && connectionId) {
+        await markCalendarConnectionAuthRevoked(client, work.job.tenantId, connectionId);
+      }
       await client.query(
         `UPDATE scheduling_calendar_sync_outbox
          SET claimed_at=NULL,
@@ -449,6 +470,7 @@ export class CalendarSyncRepository {
            ON a.id=e.appointment_id AND a.tenant_id=e.tenant_id
          JOIN scheduling_calendar_connections c
            ON c.id=e.connection_id AND c.tenant_id=e.tenant_id AND c.calendar_id IS NOT NULL
+              AND c.auth_error IS NULL
          WHERE a.start_at > now()
            AND a.status IN ('confirmado','reagendado')
            AND (e.last_synced_at IS NULL
@@ -577,6 +599,11 @@ export class CalendarSyncProcessor {
     return client;
   }
 
+  private async revokedPending(work: CalendarSyncWork): Promise<"pending"> {
+    await this.repository.recordFailure(work, new GoogleCalendarAuthRevokedError());
+    return "pending";
+  }
+
   private refreshToken(refreshTokenEncrypted: string): string {
     return decryptSecret(refreshTokenEncrypted, this.keyring);
   }
@@ -609,11 +636,12 @@ export class CalendarSyncProcessor {
         // Credencial indisponível (desconectada): vínculo vira histórico órfão.
         return await this.repository.complete(work, { conflict: "vínculo órfão: exclusão remota indisponível" });
       }
+      if (work.link.authRevoked) return await this.revokedPending(work);
       try {
         await this.client(work.link.connectionId)
           .deleteEvent(this.refreshToken(work.link.refreshTokenEncrypted), work.link.calendarId, work.link.eventId);
       } catch (error) {
-        await this.repository.recordFailure(work, error);
+        await this.repository.recordFailure(work, error, work.link.connectionId);
         return "pending";
       }
       await this.repository.complete(work, {});
@@ -645,6 +673,9 @@ export class CalendarSyncProcessor {
     const rotated = Boolean(work.link
       && (work.link.connectionId !== work.target.connectionId
         || work.link.calendarId !== work.target.calendarId));
+    // Credencial revogada (a da exclusão antiga na rotação, ou a do destino):
+    // falha observável SEM chamar o Google — a reconexão re-enfileira na hora.
+    if (work.target.authRevoked || (rotated && work.link?.authRevoked)) return await this.revokedPending(work);
     if (rotated && work.link) {
       // Rotação de conta/agenda: o novo evento só nasce DEPOIS da exclusão
       // confirmada do antigo (200/404/410; deleteEvent trata 404/410 como
@@ -666,7 +697,7 @@ export class CalendarSyncProcessor {
             work.link.eventId
           );
       } catch (error) {
-        await this.repository.recordFailure(work, error);
+        await this.repository.recordFailure(work, error, work.link.connectionId);
         return "pending";
       }
     }
@@ -710,7 +741,7 @@ export class CalendarSyncProcessor {
           return await this.repository.complete(work, { conflict: "evento movido no Google; reconciliação manual" });
         }
       }
-      await this.repository.recordFailure(work, error);
+      await this.repository.recordFailure(work, error, work.target.connectionId);
       return "pending";
     }
   }
@@ -760,6 +791,11 @@ export async function reconcileLinkedCalendarEvents(
     } catch (error) {
       // 404/410: evento removido no Google — vira ADOÇÃO do cancelamento abaixo.
       // Demais erros: sem mudança local; próxima passada reavalia.
+      if (error instanceof GoogleCalendarAuthRevokedError) {
+        // Credencial morta: marca a conexão (sai da reconciliação até reconectar).
+        await repository.markAuthRevoked(link.tenantId, link.connectionId);
+        continue;
+      }
       if (error instanceof GoogleCalendarApiError && (error.status === 404 || error.status === 410)) {
         removed = true;
       } else {

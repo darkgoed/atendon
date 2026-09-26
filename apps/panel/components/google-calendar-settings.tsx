@@ -19,6 +19,8 @@ type CalendarConnection = {
   calendar_name: string | null;
   calendar_timezone: string | null;
   buffer_minutes: number | null;
+  // Google recusou a renovação (acesso revogado/expirado): pede reconexão.
+  auth_error?: string | null;
 };
 type ConnectionsResponse = { configured: boolean; connections: CalendarConnection[] };
 type CalendarOption = { id: string; name: string; timezone: string | null; primary: boolean };
@@ -87,11 +89,16 @@ export function GoogleCalendarSettings({ canManage }: { canManage: boolean }) {
 
   async function connectGoogle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canManage || !selectedMemberId || connecting) return;
+    await startGoogleOauth(selectedMemberId);
+  }
+
+  // Reconectar (acesso revogado) reaproveita o mesmo fluxo OAuth do atendente.
+  async function startGoogleOauth(memberId: string) {
+    if (!canManage || !memberId || connecting) return;
     setConnecting(true);
     setError("");
     try {
-      const response = await api<{ authorization_url: string }>(`/scheduling/google-calendar/oauth/start?member_id=${encodeURIComponent(selectedMemberId)}`);
+      const response = await api<{ authorization_url: string }>(`/scheduling/google-calendar/oauth/start?member_id=${encodeURIComponent(memberId)}`);
       window.location.assign(response.authorization_url);
     } catch (connectError) {
       setError(connectError instanceof Error ? connectError.message : "Falha ao iniciar o login com o Google");
@@ -264,6 +271,21 @@ export function GoogleCalendarSettings({ canManage }: { canManage: boolean }) {
                         ) : (
                           <span className="mt-1 block text-xs text-[var(--warning-text)]">Sem agenda selecionada — a sincronização deste atendente fica desativada.</span>
                         )}
+                        {connection.auth_error ? (
+                          <span className="mt-1 block text-xs text-[var(--warning-text)]" role="alert">
+                            O Google recusou o acesso desta conta (revogado ou expirado); a sincronização está parada.{" "}
+                            {canManage ? (
+                              <button
+                                type="button"
+                                className="underline"
+                                disabled={connecting}
+                                onClick={() => void startGoogleOauth(connection.member_id)}
+                              >
+                                Reconectar com Google
+                              </button>
+                            ) : "Peça a um administrador para reconectar."}
+                          </span>
+                        ) : null}
                       </div>
                       {canManage ? (
                         <IconButton

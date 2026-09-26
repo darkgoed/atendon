@@ -83,6 +83,7 @@ describe("uso — Pix Automático mensal", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Parar cobranças futuras" }));
     expect(await screen.findByText(/Cobranças futuras paradas neste painel/)).toBeTruthy();
+    expect(screen.getByText(/vencimento hoje já está em liquidação/)).toBeTruthy();
     expect(screen.getByText(/cancele-a lá para encerrar de vez/)).toBeTruthy();
     expect(pixWrites).toEqual(["DELETE"]);
     expect(screen.queryByRole("button", { name: "Parar cobranças futuras" })).toBeNull();

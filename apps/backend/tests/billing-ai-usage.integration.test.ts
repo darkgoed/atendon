@@ -37,11 +37,11 @@ async function q<T extends pg.QueryResultRow = pg.QueryResultRow>(sql: string, v
 }
 
 /** Insere uma chamada de provedor em usage_logs (0102) e devolve o id. */
-async function usageLog(values: { tenantId: string; model: string; input: number; output: number; reasoning?: number; cached?: number; cacheWrite?: number; costUsd: string; costReported?: boolean; pricedCostUsdMicros?: number | null; requestId?: string | null; messageId?: string | null; createdAt: string; callReason?: string }): Promise<string> {
+async function usageLog(values: { tenantId: string; model: string; provider?: string | null; input: number; output: number; reasoning?: number; cached?: number; cacheWrite?: number; costUsd: string; costReported?: boolean; pricedCostUsdMicros?: number | null; requestId?: string | null; messageId?: string | null; createdAt: string; callReason?: string }): Promise<string> {
   return (await q<Row>(
-    `INSERT INTO usage_logs(tenant_id, ai_model, input_tokens, output_tokens, reasoning_tokens, cached_input_tokens, cache_write_input_tokens, cost_usd, cost_reported, priced_cost_usd_micros, request_id, message_id, call_reason, created_at)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::uuid,$12::uuid,$13,$14::timestamptz) RETURNING id`,
-    [values.tenantId, values.model, values.input, values.output, values.reasoning ?? 0, values.cached ?? 0, values.cacheWrite ?? 0, values.costUsd, values.costReported ?? true, values.pricedCostUsdMicros ?? null, values.requestId ?? null, values.messageId ?? null, values.callReason ?? "inbound_reply", values.createdAt],
+    `INSERT INTO usage_logs(tenant_id, ai_model, input_tokens, output_tokens, reasoning_tokens, cached_input_tokens, cache_write_input_tokens, cost_usd, cost_reported, priced_cost_usd_micros, request_id, message_id, call_reason, created_at, provider)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::uuid,$12::uuid,$13,$14::timestamptz,$15) RETURNING id`,
+    [values.tenantId, values.model, values.input, values.output, values.reasoning ?? 0, values.cached ?? 0, values.cacheWrite ?? 0, values.costUsd, values.costReported ?? true, values.pricedCostUsdMicros ?? null, values.requestId ?? null, values.messageId ?? null, values.callReason ?? "inbound_reply", values.createdAt, values.provider ?? null],
   ))[0].id;
 }
 
@@ -97,7 +97,7 @@ beforeAll(async () => {
 
   // Turno T2 (D0, gemini-y): uma chamada, reserva NÃO reconciliada (custos 0).
   const turn2 = randomUUID();
-  await usageLog({ tenantId: tenantA, model: "gemini-y", input: 200, output: 100, reasoning: 5, costUsd: "0.004000", requestId: turn2, createdAt: `${D0}T12:00:00Z` });
+  await usageLog({ tenantId: tenantA, model: "gemini-y", provider: "google-vertex", input: 200, output: 100, reasoning: 5, costUsd: "0.004000", requestId: turn2, createdAt: `${D0}T12:00:00Z` });
   await ledgerRow({ tenantId: tenantA, periodId: periodA, turnId: turn2, purpose: "follow_up", reconciled: false, providerCostUsdMicros: 0, providerCostBrlCents: 0, billableBrlCents: 0, normalizedCredits: 0, createdAt: `${D0}T11:59:00Z` });
 
   // Turno T3 (D1, claude-x): chamada COM proveniência de agente e SEM request_id/ledger.
@@ -193,6 +193,13 @@ describe("Relatório de consumo/custo de IA (usage_logs + ai_usage_ledger)", () 
     // Chave é a VERSÃO histórica (id), nunca o nome atual do agente.
     expect(Object.keys(known)).not.toContain("name");
 
+    // Provider real (0194): gemini-y foi atendido por google-vertex; o histórico sem provider vira 'unknown'.
+    const providers = (await app.inject({ url: tenantUrl("&groupBy=provider"), ...h })).json().buckets;
+    expect(providers.find((b: { key: string }) => b.key === "google-vertex")?.calls).toBe(1);
+    expect(providers.find((b: { key: string }) => b.key === "unknown")?.calls).toBe(7);
+    const listed = (await app.inject({ url: tenantUrl("&limit=50"), ...h })).json().calls;
+    expect(listed.find((c: { model: string }) => c.model === "gemini-y")?.provider).toBe("google-vertex");
+
     const days = (await app.inject({ url: tenantUrl("&groupBy=day"), ...h })).json().buckets;
     const byDay = (key: string) => days.find((b: { key: string }) => b.key === key)?.calls ?? 0;
     expect(byDay(new Date().toISOString().slice(0, 10))).toBe(7);
@@ -250,6 +257,47 @@ describe("Relatório de consumo/custo de IA (usage_logs + ai_usage_ledger)", () 
       buckets: [],
       calls: [],
     });
+  });
+
+  it("period=current usa os instantes exatos do ciclo aberto (renovação/fuso), não dias UTC nem 30 dias", async () => {
+    const h = { headers: { cookie: cookieAdminA } };
+    // Ciclo vigente com início/fim fora da meia-noite UTC (renovação 03:00 UTC = 00:00 em São Paulo).
+    const start = new Date(Date.now() - 3 * 3_600_000); const end = new Date(Date.now() + 20 * 86_400_000);
+    const ok = await pool.query("UPDATE usage_periods SET start_at=$2, end_at=$3 WHERE id=$1 RETURNING id", [periodA, start, end]);
+    expect(ok.rowCount).toBe(1);
+    await q("UPDATE tenants SET timezone='America/Sao_Paulo' WHERE id=$1", [tenantA]);
+    try {
+      const inside = await usageLog({ tenantId: tenantA, model: "cycle-in", input: 1, output: 1, costUsd: "0.001", createdAt: new Date(start.getTime() + 60_000).toISOString() });
+      const before = await usageLog({ tenantId: tenantA, model: "cycle-out", input: 1, output: 1, costUsd: "0.001", createdAt: new Date(start.getTime() - 60_000).toISOString() });
+      const r = await app.inject({ url: "/billing/ai-usage?period=current&groupBy=model&limit=200", ...h });
+      expect(r.statusCode).toBe(200);
+      const body = r.json();
+      expect(body.summary.window).toEqual({ from: start.toISOString(), to: end.toISOString(), source: "billing_period", timezone: "America/Sao_Paulo" });
+      const models = body.buckets.map((b: { key: string }) => b.key);
+      expect(models).toContain("cycle-in");
+      expect(models).not.toContain("cycle-out");
+      // from/to extras não sobrepõem o ciclo quando ele existe.
+      const withDates = (await app.inject({ url: "/billing/ai-usage?period=current&from=2020-01-01&to=2020-01-03&groupBy=model", ...h })).json();
+      expect(withDates.summary.window.source).toBe("billing_period");
+      await q("DELETE FROM usage_logs WHERE id=ANY($1::uuid[])", [[inside, before]]);
+    } finally {
+      await q("UPDATE usage_periods SET start_at=now()-interval '1 month', end_at=now()+interval '1 month' WHERE id=$1", [periodA]);
+      await q("UPDATE tenants SET timezone='UTC' WHERE id=$1", [tenantA]);
+    }
+  });
+
+  it("period=current sem ciclo vigente (troca de ciclo pendente) cai no fallback de datas; sem datas → 400", async () => {
+    const h = { headers: { cookie: cookieAdminA } };
+    await q("UPDATE usage_periods SET start_at=now()-interval '2 months', end_at=now()-interval '1 minute' WHERE id=$1", [periodA]);
+    try {
+      const r = await app.inject({ url: tenantUrl("&period=current"), ...h });
+      expect(r.statusCode).toBe(200);
+      expect(r.json().summary.window.source).toBe("dates");
+      expect((await app.inject({ url: "/billing/ai-usage?period=current", ...h })).statusCode).toBe(400);
+      expect((await app.inject({ url: "/billing/ai-usage?period=last", ...h })).statusCode).toBe(400);
+    } finally {
+      await q("UPDATE usage_periods SET start_at=now()-interval '1 month', end_at=now()+interval '1 month' WHERE id=$1", [periodA]);
+    }
   });
 
   it("isola tenants: admin de A nunca vê dados de B, mesmo passando tenantId de B", async () => {

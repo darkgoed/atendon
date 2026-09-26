@@ -6,10 +6,11 @@ import { buildApp } from "../src/app.js";
 import { createChargeForInvoice } from "../src/billing/charges.js";
 import { saveEncryptedCredentials, setEnabled } from "../src/billing/providers/store.js";
 import type { BillingProvider, PaymentInput, ProviderResult, WebhookResult } from "../src/billing/providers/types.js";
+import { acquireSharedProviderLock, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
 
 /**
  * Efí (efipay): provisionamento inerte da migration 0193 + schema do mandato
- * Pix Automato. Prova três coisas:
+ * Pix Automático. Prova três coisas:
  * - as linhas efipay nascem desativadas, sem credencial, aceitando só
  *   pix_automatic, e a rota pública de webhook as rejeita sem tocar o registry;
  * - o schema trava duplicidade: um mandato em curso por tenant, SKU fixo
@@ -76,6 +77,11 @@ async function insertCharge(mandateId: string, txid: string, dueOn = "2026-10-01
 
 const txid = (len: number) => "a".repeat(len);
 
+// Serializa com as outras suítes que mexem na linha global billing_providers(mercadopago).
+let releaseSharedProviderLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseSharedProviderLock = await acquireSharedProviderLock(); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseSharedProviderLock?.(); });
+
 beforeAll(async () => {
   await pool.query("SELECT 1");
   await pool.query("INSERT INTO users(id,email,status) VALUES($1,$2,'active') ON CONFLICT (id) DO NOTHING", [ACTOR, `${ACTOR}@efipay-provisioning.test`]);
@@ -118,7 +124,7 @@ describe("provisionamento Efí (0193)", () => {
   });
 });
 
-describe("schema do mandato Pix Automato", () => {
+describe("schema do mandato Pix Automático", () => {
   it("aceita mandato com o SKU fixo e rejeita credits/price/status inválidos", async () => {
     const f = await tenantFixture();
     const id = await insertMandate(f.tenant, f.provider, "APPROVED");

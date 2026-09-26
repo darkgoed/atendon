@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import type { AppConfig } from "../../config.js";
 import { withTenantTransaction } from "../../db/tenant-transaction.js";
+import { normalizeAiProvider } from "../../billing/pricing.js";
 import type { ReasoningEffort } from "../ai-router/openrouter.js";
 import { decryptSecret } from "../ai-router/secret-box.js";
 import { DEFAULT_MEDIA_FALLBACK } from "../ai-router/defaults.js";
@@ -1285,7 +1286,7 @@ export class MessageRepository {
   }
 
   async recordAiUsage(input: {
-    tenantId: string; conversationId: string; messageId?: string; providerRequestId?: string; model: string;
+    tenantId: string; conversationId: string; messageId?: string; providerRequestId?: string; model: string; provider?: string;
     inputTokens: number; outputTokens: number; reasoningTokens?: number; cachedInputTokens?: number;
     cacheWriteInputTokens?: number; costUsd: number; costReported?: boolean; requestId?: string; processingAttempt?: number;
     providerRequestIndex?: number; callReason?: string; durationMs?: number; toolsUsed?: string[];
@@ -1304,9 +1305,9 @@ export class MessageRepository {
           provider_request_id, request_id, processing_attempt, provider_request_index,
           call_reason, duration_ms, tools_used, system_prompt_characters,
           history_message_count, history_characters, request_message_characters,
-          tool_schema_characters, tool_result_characters, cost_reported)
+          tool_schema_characters, tool_result_characters, cost_reported, provider)
        SELECT c.tenant_id, c.id, m.id, $4, $5, $6, $7, $8, $9, $10,
-              $11, $12::uuid, $13, $14, $15, $16, $17::text[], $18, $19, $20, $21, $22, $23, $24
+              $11, $12::uuid, $13, $14, $15, $16, $17::text[], $18, $19, $20, $21, $22, $23, $24, $25
        FROM conversations c
        LEFT JOIN messages m ON m.id=$3 AND m.conversation_id=c.id
        WHERE c.id=$2 AND c.tenant_id=$1
@@ -1321,7 +1322,7 @@ export class MessageRepository {
         input.toolsUsed ?? [], input.systemPromptCharacters ?? null, input.historyMessageCount ?? null,
         input.historyCharacters ?? null, input.requestMessageCharacters ?? null,
         input.toolSchemaCharacters ?? null, input.toolResultCharacters ?? null,
-        input.costReported ?? true
+        input.costReported ?? true, normalizeAiProvider(input.provider)
       ]
     );
     if (!result.rows[0] && !input.providerRequestId) throw new Error("Failed to record AI usage");

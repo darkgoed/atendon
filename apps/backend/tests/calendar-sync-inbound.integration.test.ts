@@ -40,7 +40,6 @@ const processor = new CalendarSyncProcessor(repo, () => fakeClient);
 // banco, dentro do horário da unidade 08:00-18:00 local).
 const NOW = new Date("2026-10-05T09:00:00Z");
 const SLOT_START = "2026-10-05T13:00:00.000Z";
-const SLOT_END = "2026-10-05T14:00:00.000Z";
 const MOVE_START = "2026-10-05T15:00:00.000Z";
 const MOVE_END = "2026-10-05T16:00:00.000Z";
 // Forma offset (-03:00) == 15:00-16:00Z: prova conversão de fuso na adoção.

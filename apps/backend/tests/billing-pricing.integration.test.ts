@@ -64,6 +64,32 @@ describe("billing pricing integration", () => {
     const free = await priceInteraction({ model: "zero-cost-free", inputTokens: 1, outputTokens: 0, cachedTokens: 0, providerCostUsd: 0 });
     expect(free.providerCostUsdMicros).toBe(0); expect(free.normalizedCredits).toBe(0); expect(free.billableAmountBrlCents).toBe(0);
   });
+  it("prices by provider+model: specific provider row wins, unknown provider falls back to the generic model price", async () => {
+    const model = `pp-${randomUUID()}`;
+    await pool.query(
+      `INSERT INTO ai_model_prices(model,provider,input_price_per_million_micros,output_price_per_million_micros)
+       VALUES($1,NULL,1000000,0),($1,'deepinfra',200000,0),($1,'anthropic',3000000,0)`, [model]);
+    try {
+      const deepinfra = await priceInteraction({ model, provider: "DeepInfra ", inputTokens: 1_000_000, outputTokens: 0, cachedTokens: 0 });
+      const anthropic = await priceInteraction({ model, provider: "anthropic", inputTokens: 1_000_000, outputTokens: 0, cachedTokens: 0 });
+      const unknown = await priceInteraction({ model, provider: "novita", inputTokens: 1_000_000, outputTokens: 0, cachedTokens: 0 });
+      const missing = await priceInteraction({ model, inputTokens: 1_000_000, outputTokens: 0, cachedTokens: 0 });
+      expect(deepinfra.providerCostUsdMicros).toBe(200_000);
+      expect(deepinfra.pricingSnapshot).toMatchObject({ provider: "deepinfra", priceProvider: "deepinfra", costSource: "model_price_table" });
+      expect(anthropic.providerCostUsdMicros).toBe(3_000_000);
+      expect(anthropic.normalizedCredits).toBeGreaterThan(deepinfra.normalizedCredits);
+      expect(unknown.providerCostUsdMicros).toBe(1_000_000);
+      expect(unknown.pricingSnapshot).toMatchObject({ provider: "novita", priceProvider: null });
+      expect(missing.providerCostUsdMicros).toBe(1_000_000);
+      // Custo reportado continua vencendo a tabela, qualquer que seja o provider.
+      const reported = await priceInteraction({ model, provider: "anthropic", inputTokens: 1_000_000, outputTokens: 0, cachedTokens: 0, providerCostUsd: 0.5 });
+      expect(reported.providerCostUsdMicros).toBe(500_000);
+      // Provider não normalizado é recusado pelo banco (CHECK 0194).
+      await expect(pool.query("INSERT INTO ai_model_prices(model,provider,input_price_per_million_micros,output_price_per_million_micros) VALUES($1,'DeepInfra',1,1)", [model])).rejects.toThrow();
+    } finally {
+      await pool.query("DELETE FROM ai_model_prices WHERE model=$1", [model]);
+    }
+  });
   it("derives provider cost from model token prices", async () => {
     await pool.query("INSERT INTO ai_model_prices(model,input_price_per_million_micros,output_price_per_million_micros) VALUES('priced-test',1000000,2000000)");
     const p = await priceInteraction({ model: "priced-test", inputTokens: 1000, outputTokens: 2000, cachedTokens: 0 });

@@ -262,6 +262,15 @@ export class EfiPixAutomaticClient {
     return { txid: str(payload.txid) ?? txid, status: str(payload.status), payload };
   }
 
+  /**
+   * GET /v2/pix/:e2eId (escopo pix.read) — Pix recebido com `devolucoes[]`
+   * (status EM_PROCESSAMENTO | DEVOLVIDO | NAO_REALIZADO, docs "Gestão de Pix").
+   */
+  async getPix(e2eId: string): Promise<Record<string, unknown>> {
+    if (!/^E[0-9A-Za-z]{31}$/.test(e2eId)) throw new Error("endToEndId inválido");
+    return (await this.request("GET", `/v2/pix/${e2eId}`)) as Record<string, unknown>;
+  }
+
   async cancelCharge(txid: string): Promise<EfiChargeResult> {
     const payload = (await this.request("PATCH", `/v2/cobr/${this.txid(txid)}`, { status: "CANCELADA" })) as Record<string, unknown>;
     return { txid: str(payload.txid) ?? txid, status: str(payload.status), payload };

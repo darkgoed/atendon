@@ -14,17 +14,20 @@ function policy(): DunningPolicy {
 }
 const tx = withTransaction;
 
+// Pacote de créditos (Pix avulso MP ou ciclo do Pix Automático Efí, que tem
+// due_date) nunca entra no dunning: é compra opcional, o débito Efí é agendado
+// pelo banco do pagador e o Pix avulso na Efí é recusado.
 export async function runDunningBatch(limit = 100, chargeDeps: ChargeDeps = {}): Promise<DunningResult> {
   const result: DunningResult = { attempted: 0, succeeded: 0, failed: 0, exhausted: 0, reactivated: 0, errors: [] };
   const p = policy();
   const pool = chargeDeps.db ?? db;
-  const candidates = await pool.query<{ id: string }>(`SELECT i.id FROM invoices i WHERE i.status IN ('open','pending') AND i.due_date IS NOT NULL AND i.due_date <= now() AND i.dunning_exhausted_at IS NULL AND NOT EXISTS (SELECT 1 FROM billing_dunning_attempts a WHERE a.invoice_id=i.id AND a.next_attempt_at IS NOT NULL AND a.next_attempt_at > now()) ORDER BY i.due_date, i.id LIMIT $1`, [limit]);
+  const candidates = await pool.query<{ id: string }>(`SELECT i.id FROM invoices i WHERE i.status IN ('open','pending') AND i.kind <> 'credit_package' AND i.due_date IS NOT NULL AND i.due_date <= now() AND i.dunning_exhausted_at IS NULL AND NOT EXISTS (SELECT 1 FROM billing_dunning_attempts a WHERE a.invoice_id=i.id AND a.next_attempt_at IS NOT NULL AND a.next_attempt_at > now()) ORDER BY i.due_date, i.id LIMIT $1`, [limit]);
   for (const { id } of candidates.rows) {
     let claim: { tenantId: string; method: string; attempt: number } | null = null;
     try {
       claim = await tx(pool, async (client) => {
         await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`dunning:${id}`]);
-        const invoice = (await client.query<{ tenant_id: string; subscription_id: string | null }>(`SELECT tenant_id,subscription_id FROM invoices WHERE id=$1 AND status IN ('open','pending') AND due_date <= now() AND dunning_exhausted_at IS NULL FOR UPDATE`, [id])).rows[0];
+        const invoice = (await client.query<{ tenant_id: string; subscription_id: string | null }>(`SELECT tenant_id,subscription_id FROM invoices WHERE id=$1 AND status IN ('open','pending') AND kind <> 'credit_package' AND due_date <= now() AND dunning_exhausted_at IS NULL FOR UPDATE`, [id])).rows[0];
         if (!invoice) return null;
         const previous = (await client.query<{ n: number }>("SELECT COALESCE(MAX(attempt_number),0)::int n FROM billing_dunning_attempts WHERE invoice_id=$1", [id])).rows[0].n;
         const attempt = previous + 1;

@@ -14,6 +14,7 @@ import {
 import {
   atendonCalendarEventId,
   GoogleCalendarApiError,
+  GoogleCalendarAuthRevokedError,
   type GoogleCalendarClient,
   type GoogleCalendarEvent,
   type GoogleCalendarEventFields
@@ -527,6 +528,48 @@ describe("CalendarSyncProcessor.process", () => {
     expect((await linkRow(appointmentId))?.sync_error).toBe(row?.last_error);
     expect(row?.claimed_at).toBeNull();
   });
+
+  it("invalid_grant no sync marca SÓ a conexão usada como revogada; retry continua com backoff", async () => {
+    const appointmentId = await createAppointment(memberA);
+    await syncAppointment(appointmentId);
+    await pool.query("UPDATE scheduling_appointments SET start_at=start_at + interval '1 hour', end_at=end_at + interval '1 hour' WHERE id=$1", [appointmentId]);
+    upsertError = new GoogleCalendarAuthRevokedError();
+    try {
+      expect(await processor.process(await claimOne(appointmentId))).toBe("pending");
+      const marks = await pool.query<{ id: string; auth_error: string | null }>(
+        "SELECT id,auth_error FROM scheduling_calendar_connections WHERE id=ANY($1::uuid[])", [[connA, connB]]
+      );
+      expect(marks.rows.find((row) => row.id === connA)?.auth_error).toContain("revogado");
+      expect(marks.rows.find((row) => row.id === connB)?.auth_error).toBeNull();
+      expect((await outboxRow(appointmentId))?.last_error).toContain("revogado");
+    } finally {
+      await pool.query("UPDATE scheduling_calendar_connections SET auth_error=NULL,auth_error_at=NULL WHERE id=$1", [connA]);
+    }
+  });
+});
+
+describe("conexão com acesso revogado", () => {
+  it("worker não chama o Google com conexão marcada (auth_error): falha observável e retry após reconectar", async () => {
+    const appointmentId = await createAppointment(memberA);
+    await syncAppointment(appointmentId);
+    await pool.query("UPDATE scheduling_calendar_connections SET auth_error='revogado',auth_error_at=now() WHERE id=$1", [connA]);
+    try {
+      await pool.query("UPDATE scheduling_appointments SET start_at=start_at + interval '1 hour', end_at=end_at + interval '1 hour' WHERE id=$1", [appointmentId]);
+      resetFake();
+      expect(await processor.process(await claimOne(appointmentId))).toBe("pending");
+      expect(calls.upserts).toHaveLength(0);
+      expect(calls.deletes).toHaveLength(0);
+      expect((await outboxRow(appointmentId))?.last_error).toContain("revogado");
+      // Cancelamento com vínculo na conexão revogada também não chama o Google.
+      await pool.query("UPDATE scheduling_appointments SET status='cancelado' WHERE id=$1", [appointmentId]);
+      await pool.query("UPDATE scheduling_calendar_sync_outbox SET available_at=now() WHERE appointment_id=$1", [appointmentId]);
+      expect(await processor.process(await claimOne(appointmentId))).toBe("pending");
+      expect(calls.deletes).toHaveLength(0);
+    } finally {
+      await pool.query("UPDATE scheduling_calendar_connections SET auth_error=NULL,auth_error_at=NULL WHERE id=$1", [connA]);
+      await pool.query("DELETE FROM scheduling_calendar_sync_outbox WHERE appointment_id=$1", [appointmentId]);
+    }
+  });
 });
 
 describe("reconciliação de vínculos", () => {
@@ -559,6 +602,28 @@ describe("reconciliação de vínculos", () => {
     await staleLink(appointmentId);
     expect(await reconcileLinkedCalendarEvents(repo, processor)).toBe(1);
     expect(await conflictAlertCount(appointmentId)).toBe(1); // sem spam por ciclo
+  });
+
+  it("invalid_grant na leitura marca a conexão e a tira da reconciliação até reconectar", async () => {
+    const appointmentId = await createAppointment(memberA);
+    await syncAppointment(appointmentId);
+    await staleLink(appointmentId);
+    getEventError = new GoogleCalendarAuthRevokedError();
+    try {
+      expect(await reconcileLinkedCalendarEvents(repo, processor)).toBe(1);
+      expect((await pool.query<{ auth_error: string | null }>(
+        "SELECT auth_error FROM scheduling_calendar_connections WHERE id=$1", [connA]
+      )).rows[0]?.auth_error).toContain("revogado");
+      // Sem adoção de cancelamento: credencial morta não é "evento removido".
+      expect((await pool.query<{ status: string }>("SELECT status FROM scheduling_appointments WHERE id=$1", [appointmentId])).rows[0]?.status)
+        .not.toBe("cancelado");
+      await staleLink(appointmentId);
+      expect(await reconcileLinkedCalendarEvents(repo, processor)).toBe(0);
+    } finally {
+      await pool.query("UPDATE scheduling_calendar_connections SET auth_error=NULL,auth_error_at=NULL WHERE id=$1", [connA]);
+      // Não deixa este vínculo reclamável pelos testes seguintes.
+      await pool.query("UPDATE scheduling_appointment_calendar_events SET last_synced_at=now() WHERE appointment_id=$1", [appointmentId]);
+    }
   });
 
   it("evento em sincronia limpa sync_error e atualiza etag", async () => {

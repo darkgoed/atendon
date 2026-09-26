@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { config } from "../src/config.js";
 import { runEfiPixMonthlyBatch, type EfiMonthlyBatchResult } from "../src/billing/efipay-monthly-batch.js";
 import type { EfiChargeInput } from "../src/billing/providers/efipay-pix-automatic.js";
+import { applyVerifiedEfiRefund } from "../src/billing/efipay-refunds.js";
 
 /**
  * Lote mensal Efí (Pix Automático) contra Postgres real e API Efí FALSA —
@@ -362,7 +363,18 @@ describe("reconciliação: grant só com CONCLUIDA autenticada", () => {
     expect(result.granted).toBe(0);
     expect((await chargeOf(f.mandate))!.status).toBe("CANCELLED");
     expect((await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM payments WHERE invoice_id=$1", [charge.invoice_id])).rows[0].n).toBe(0);
-    expect((await pool.query<{ status: string }>("SELECT status FROM invoices WHERE id=$1", [charge.invoice_id])).rows[0].status).toBe("pending");
+    // Fatura do ciclo não pago é encerrada (não fica "pendente" para sempre).
+    expect((await pool.query<{ status: string }>("SELECT status FROM invoices WHERE id=$1", [charge.invoice_id])).rows[0].status).toBe("cancelled");
+  });
+
+  it("cobrança EXPIRADA/NEGADA encerra a fatura como failed, nunca toca fatura paga", async () => {
+    const f = await fixture(5);
+    const fake = new FakeEfi();
+    await runBatch(fake);
+    const charge = (await chargeOf(f.mandate))!;
+    fake.charges.get(charge.txid)!.status = "EXPIRADA";
+    expect((await runBatch(fake)).failed).toBe(1);
+    expect((await pool.query<{ status: string }>("SELECT status FROM invoices WHERE id=$1", [charge.invoice_id])).rows[0].status).toBe("failed");
   });
 
   it("CONCLUIDA→CANCELADA sem evidência de devolução preserva o grant pago e não reconcede", async () => {
@@ -421,5 +433,59 @@ describe("concorrência e reexecução", () => {
     expect(a.created + b.created).toBe(1);
     expect((await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM ai_credit_pix_charges WHERE mandate_id=$1", [f.mandate])).rows[0].n).toBe(1);
     expect((await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM invoices WHERE tenant_id=$1", [f.tenant])).rows[0].n).toBe(1);
+  });
+});
+
+describe("estorno Efí: só DEVOLVIDO autenticado integral revoga (sem heurística)", () => {
+  const E2E = `E${"1".repeat(31)}`;
+  async function paidCharge(): Promise<{ tenant: string; charge: ChargeRow }> {
+    const f = await fixture(5);
+    const fake = new FakeEfi();
+    await runBatch(fake);
+    const charge = (await chargeOf(f.mandate))!;
+    fake.charges.get(charge.txid)!.status = "CONCLUIDA";
+    expect((await runBatch(fake)).granted).toBe(1);
+    return { tenant: f.tenant, charge };
+  }
+  const pixWith = (txid: string, devolucoes: unknown[], valor = "157.00") => ({
+    getPix: async (e2eId: string) => ({ endToEndId: e2eId, txid, valor, devolucoes })
+  });
+  const statusOf = async (charge: ChargeRow) => ({
+    invoice: (await pool.query<{ status: string }>("SELECT status FROM invoices WHERE id=$1", [charge.invoice_id])).rows[0].status,
+    purchase: (await pool.query<{ status: string }>("SELECT status FROM ai_credit_purchases WHERE invoice_id=$1", [charge.invoice_id])).rows[0].status,
+    remaining: Number((await pool.query<{ r: string }>(
+      "SELECT amount-consumed_amount AS r FROM usage_grants WHERE idempotency_key=$1", [`credit-pack:${charge.invoice_id}`])).rows[0].r)
+  });
+
+  it("EM_PROCESSAMENTO/NAO_REALIZADO/sem devoluções não descontam nada", async () => {
+    const { charge } = await paidCharge();
+    for (const devolucoes of [[], [{ valor: "157.00", status: "EM_PROCESSAMENTO" }], [{ valor: "157.00", status: "NAO_REALIZADO" }]]) {
+      expect(await applyVerifiedEfiRefund(charge.id, E2E, pixWith(charge.txid, devolucoes))).toBe("no_refund");
+    }
+    expect(await statusOf(charge)).toEqual({ invoice: "paid", purchase: "GRANTED", remaining: CREDITS });
+  });
+
+  it("devolução parcial não desconta: fica para revisão humana", async () => {
+    const { charge } = await paidCharge();
+    expect(await applyVerifiedEfiRefund(charge.id, E2E, pixWith(charge.txid, [{ valor: "50.00", status: "DEVOLVIDO" }]))).toBe("partial_review");
+    expect(await statusOf(charge)).toEqual({ invoice: "paid", purchase: "GRANTED", remaining: CREDITS });
+  });
+
+  it("Pix de outra cobrança/valor é recusado sem tocar o saldo", async () => {
+    const { charge } = await paidCharge();
+    await expect(applyVerifiedEfiRefund(charge.id, E2E, pixWith("outrotxid0000000000000000000", [{ valor: "157.00", status: "DEVOLVIDO" }]))).rejects.toThrow(/não corresponde/);
+    await expect(applyVerifiedEfiRefund(charge.id, E2E, pixWith(charge.txid, [{ valor: "157.00", status: "DEVOLVIDO" }], "1.00"))).rejects.toThrow(/não corresponde/);
+    expect(await statusOf(charge)).toEqual({ invoice: "paid", purchase: "GRANTED", remaining: CREDITS });
+  });
+
+  it("DEVOLVIDO integral revoga o saldo restante uma única vez (idempotente)", async () => {
+    const { charge } = await paidCharge();
+    const client = pixWith(charge.txid, [{ valor: "100.00", status: "DEVOLVIDO" }, { valor: "57.00", status: "DEVOLVIDO" }]);
+    const [a, b] = await Promise.all([applyVerifiedEfiRefund(charge.id, E2E, client), applyVerifiedEfiRefund(charge.id, E2E, client)]);
+    expect([a, b].sort()).toEqual(["already_refunded", "refunded"]);
+    expect(await statusOf(charge)).toEqual({ invoice: "refunded", purchase: "REVERSED", remaining: 0 });
+    expect(await applyVerifiedEfiRefund(charge.id, E2E, client)).toBe("already_refunded");
+    // Lote posterior não re-concede a fatura estornada.
+    expect((await pool.query<{ status: string }>("SELECT status FROM payments WHERE invoice_id=$1", [charge.invoice_id])).rows.map((r) => r.status)).toEqual(["refunded"]);
   });
 });
