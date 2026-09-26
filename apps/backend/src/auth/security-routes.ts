@@ -5,6 +5,7 @@ import { config } from "../config.js";
 import { db } from "../db/client.js";
 import { httpError, withTransaction } from "../modules/scheduling/service.js";
 import { HTTP_RATE_LIMITS } from "../security/http-rate-limit.js";
+import { consumeRateLimitRedis } from "../modules/messages/rate-limiter.js";
 import { listWorkspacesForUser } from "./workspace-service.js";
 import {
   createSessionToken,
@@ -53,6 +54,11 @@ const totpCodeSchema = z.object({
 const totpDeactivateSchema = z.object({
   current_password: z.string().min(1).max(200)
 }).strict();
+
+// Limite POR USUÁRIO (além do por IP): sem ele, ~1/333k por tentativa vira
+// alcançável trocando IP/desafio. Janela = TTL do desafio (5 min).
+const TOTP_VERIFY_MAX_ATTEMPTS = 5;
+const TOTP_VERIFY_WINDOW_MS = 5 * 60_000;
 
 const sessionIdParams = z.object({
   id: z.string().uuid()
@@ -180,6 +186,10 @@ export async function registerSecurityRoutes(app: FastifyInstance) {
     if (!state.enabled || !state.secretBase32) {
       clearTotpChallenge(reply);
       throw httpError(401, "Verificação em duas etapas não está ativa");
+    }
+    if (!await consumeRateLimitRedis(`totp-verify:${userId}`, TOTP_VERIFY_MAX_ATTEMPTS, TOTP_VERIFY_WINDOW_MS)) {
+      clearTotpChallenge(reply);
+      throw httpError(429, "Muitas tentativas de verificação; aguarde alguns minutos e faça login novamente");
     }
     if (!verifyTotp(state.secretBase32, body.code)) {
       // Desafio continua válido dentro do TTL — o usuário pode tentar de novo.

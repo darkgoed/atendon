@@ -3,6 +3,7 @@
 import { Readable } from "node:stream";
 import { randomUUID } from "node:crypto";
 import type { CaseScope } from "../../auth/case-scope.js";
+import type { PermissionKey } from "../../auth/rbac.js";
 import { conversationScopeCondition } from "../../auth/case-scope.js";
 import { db } from "../../db/client.js";
 import { withTransaction } from "../../db/transaction.js";
@@ -152,8 +153,17 @@ export async function importContacts(
     filename: string;
     mapping: { nome?: string; telefone?: string; email?: string; tags?: string; origem?: string; campanha?: string; custom?: Record<string, string> };
     options: { on_duplicate: "skip" | "update" | "flag" };
-  }
+  },
+  access: { permissions: PermissionKey[]; scope: CaseScope }
 ) {
+  // Mesmos gates das rotas dedicadas: valores/catálogo de campos exigem
+  // fields.manage (PUT custom-values), etiquetas exigem tags.apply.
+  if ((body.mapping.email || Object.keys(body.mapping.custom ?? {}).length) && !access.permissions.includes("fields.manage")) {
+    throw httpError(403, "Importar e-mail ou campos personalizados exige permissão para gerenciar campos");
+  }
+  if (body.mapping.tags && !access.permissions.includes("tags.apply")) {
+    throw httpError(403, "Importar etiquetas exige permissão para aplicar etiquetas");
+  }
   const { rows } = loadImportFile(body);
   if (rows.length < 2) throw httpError(400, "O arquivo não possui linhas de dados além do cabeçalho");
   const mapping = resolveMapping(rows[0], body.mapping);
@@ -232,6 +242,8 @@ export async function importContacts(
         email,
         emailFieldId: emailDef?.id,
         tagNames,
+        canCreateTags: access.permissions.includes("tags.manage"),
+        scope: access.scope,
         seenUpdatedPhones: updatedPhones,
         imported: () => result.imported++,
         updated: () => result.updated++,
@@ -280,6 +292,8 @@ type RowUpsert = {
   email: string;
   emailFieldId?: string;
   tagNames: string[];
+  canCreateTags: boolean;
+  scope: CaseScope;
   seenUpdatedPhones: Set<string>;
   imported: () => void;
   updated: () => void;
@@ -288,14 +302,16 @@ type RowUpsert = {
 };
 
 async function upsertImportedLead(tenantId: string, actor: ImportActor, filename: string, row: RowUpsert): Promise<string | null> {
-  return withTransaction(db, async (client) => {
+  // Contadores só após o COMMIT: linha que falha depois do INSERT/UPDATE é desfeita e não conta.
+  const committed: Array<() => void> = [];
+  const leadId = await withTransaction(db, async (client) => {
     // Transação-por-linha é decisão, não descuido: um erro numa linha do CSV
     // não derruba o import inteiro (isolamento por linha) e o advisory lock
     // (mesmo do upsertLead) serializa contra o painel para o mesmo telefone
     // dentro do tenant.
     await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`lead:${tenantId}:${row.phone}`]);
-    const existing = await client.query<{ id: string; name: string | null; source: string }>(
-      `SELECT id,name,source FROM scheduling_leads
+    const existing = await client.query<{ id: string; name: string | null; source: string; assigned_member_id: string | null }>(
+      `SELECT id,name,source,assigned_member_id FROM scheduling_leads
        WHERE tenant_id=$1 AND regexp_replace(phone,'\\D','','g')=regexp_replace($2,'\\D','','g')
        ORDER BY created_at,id LIMIT 1 FOR UPDATE`,
       [tenantId, row.phone]
@@ -308,7 +324,7 @@ async function upsertImportedLead(tenantId: string, actor: ImportActor, filename
         [tenantId, row.phone, row.nome, row.origem, row.campanha]
       );
       leadId = inserted.rows[0].id;
-      row.imported();
+      committed.push(row.imported);
       await client.query(
         `INSERT INTO scheduling_lead_events(lead_id,tenant_id,event_type,new_status,details,actor_user_id)
          VALUES($1,$2,'lead_criado',NULL,$3,$4)`,
@@ -322,6 +338,11 @@ async function upsertImportedLead(tenantId: string, actor: ImportActor, filename
       return null;
     } else {
       if (row.seenUpdatedPhones.has(row.phone)) return null; // já atualizado por este arquivo
+      // Escopo "mine": mesma regra de leadScopeCondition — só a própria carteira
+      // (inclusive lixeira), como POST /scheduling/leads.
+      if (row.scope.type === "mine" && (!row.scope.memberId || existing.rows[0].assigned_member_id !== row.scope.memberId)) {
+        throw httpError(403, "Contato pertence a outro responsável");
+      }
       row.seenUpdatedPhones.add(row.phone);
       leadId = existing.rows[0].id;
       // Atualização conservadora: célula vazia nunca apaga dado existente;
@@ -335,7 +356,7 @@ async function upsertImportedLead(tenantId: string, actor: ImportActor, filename
          WHERE tenant_id=$1 AND id=$2`,
         [tenantId, leadId, row.nome, row.origem === DEFAULT_SOURCE ? null : row.origem, row.campanha]
       );
-      row.updated();
+      committed.push(row.updated);
       await client.query(
         `INSERT INTO scheduling_lead_events(lead_id,tenant_id,event_type,details,actor_user_id)
          VALUES($1,$2,'lead_atualizado',$3,$4)`,
@@ -372,6 +393,7 @@ async function upsertImportedLead(tenantId: string, actor: ImportActor, filename
         [tenantId, tagName]
       )).rows[0];
       if (!tag) {
+        if (!row.canCreateTags) throw httpError(403, `Etiqueta "${tagName}" não existe no catálogo`);
         try {
           tag = (await client.query<{ id: string }>(
             `INSERT INTO lead_tags(tenant_id,name,color,created_by_user_id)
@@ -397,6 +419,8 @@ async function upsertImportedLead(tenantId: string, actor: ImportActor, filename
     }
     return leadId;
   });
+  committed.forEach((count) => count());
+  return leadId;
 }
 
 export type ExportQuery = {

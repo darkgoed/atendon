@@ -3,6 +3,7 @@ import { hash } from "bcryptjs";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
+import { encryptTotpSecret, generateTotpSecret, totpCode } from "../src/auth/totp.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
 import type { EmailMessage, EmailProvider } from "../src/mail/email-provider.js";
@@ -23,6 +24,9 @@ const disabledInviteEmail = `disabled-invite-${suffix}@test.local`;
 const failedEmail = `failed-email-${suffix}@test.local`;
 const initialOwnerEmail = `initial-owner-${suffix}@test.local`;
 const rootInvitedEmail = `root-invited-${suffix}@test.local`;
+const sidInvitedEmail = `sid-invited-${suffix}@test.local`;
+const totpInvitedEmail = `totp-invited-${suffix}@test.local`;
+const totpBruteEmail = `totp-brute-${suffix}@test.local`;
 
 let tenantA = "";
 let tenantB = "";
@@ -138,9 +142,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   setEmailProviderForTests(undefined);
-  await pool.query("DELETE FROM audit_logs WHERE actor_user_id IN (SELECT id FROM users WHERE email=ANY($1::text[]))", [[ownerEmail, adminEmail, operatorEmail, managedMemberEmail, rootEmail, invitedEmail, expiredEmail, disabledInviteEmail, failedEmail, initialOwnerEmail]]);
+  await pool.query("DELETE FROM audit_logs WHERE actor_user_id IN (SELECT id FROM users WHERE email=ANY($1::text[]))", [[ownerEmail, adminEmail, operatorEmail, managedMemberEmail, rootEmail, invitedEmail, expiredEmail, disabledInviteEmail, failedEmail, initialOwnerEmail, sidInvitedEmail, totpInvitedEmail, totpBruteEmail]]);
   await pool.query("DELETE FROM tenants WHERE id=ANY($1::uuid[])", [[tenantA, tenantB, tenantC, rootCreatedTenant].filter(Boolean)]);
-  await pool.query("DELETE FROM users WHERE email=ANY($1::text[])", [[ownerEmail, adminEmail, operatorEmail, managedMemberEmail, rootEmail, invitedEmail, expiredEmail, disabledInviteEmail, failedEmail, initialOwnerEmail, rootInvitedEmail]]);
+  await pool.query("DELETE FROM users WHERE email=ANY($1::text[])", [[ownerEmail, adminEmail, operatorEmail, managedMemberEmail, rootEmail, invitedEmail, expiredEmail, disabledInviteEmail, failedEmail, initialOwnerEmail, rootInvitedEmail, sidInvitedEmail, totpInvitedEmail, totpBruteEmail]]);
   await pool.end();
   await app.close();
 });
@@ -781,4 +785,148 @@ describe("SaaS foundation auth and RBAC", () => {
     expect(audit.rows.map((row) => row.action)).toEqual(["root.dev.contacts_and_messages.delete"]);
     expect(audit.rows.every((row) => row.actor_scope === "root")).toBe(true);
   });
+});
+
+describe("session reissue keeps per-session revocation", () => {
+  function cookieOf(response: { headers: Record<string, unknown> }, name = "atendon_session") {
+    const header = response.headers["set-cookie"] as string | string[] | undefined;
+    const cookies = Array.isArray(header) ? header : header ? [header] : [];
+    return cookies.find((cookie) => cookie.startsWith(`${name}=`))?.split(";")[0];
+  }
+  function sidOf(cookie: string) {
+    const payload = JSON.parse(Buffer.from(cookie.split("=")[1].split(".")[1], "base64url").toString("utf8"));
+    return payload.sid as string | undefined;
+  }
+  async function revoke(sid: string) {
+    await pool.query("UPDATE workspace_sessions SET revoked_at=now() WHERE id=$1", [sid]);
+  }
+
+  it("carries the sid through workspace switch and profile update", async () => {
+    const cookie = await login(ownerEmail);
+    const sid = sidOf(cookie);
+    expect(sid).toEqual(expect.any(String));
+    const switched = await app.inject({ method: "POST", url: "/workspaces/switch", headers: { cookie }, payload: { workspaceId: tenantB } });
+    expect(switched.statusCode).toBe(200);
+    const switchedCookie = cookieOf(switched)!;
+    expect(sidOf(switchedCookie)).toBe(sid);
+    const profile = await app.inject({ method: "PATCH", url: "/me/profile", headers: { cookie: switchedCookie }, payload: { name: "Owner Sid" } });
+    expect(profile.statusCode).toBe(200);
+    const profileCookie = cookieOf(profile)!;
+    expect(sidOf(profileCookie)).toBe(sid);
+
+    const sessions = await app.inject({ url: "/me/sessions", headers: { cookie: profileCookie } });
+    expect(sessions.json().items.find((item: { id: string }) => item.id === sid)).toMatchObject({ current: true });
+    await revoke(sid!);
+    expect((await app.inject({ url: "/me", headers: { cookie: switchedCookie } })).statusCode).toBe(401);
+    expect((await app.inject({ url: "/me", headers: { cookie: profileCookie } })).statusCode).toBe(401);
+  });
+
+  it("carries the ROOT sid into /root/workspaces/:id/access", async () => {
+    const rootCookie = await login(rootEmail);
+    const sid = sidOf(rootCookie);
+    const access = await app.inject({ method: "POST", url: `/root/workspaces/${tenantB}/access`, headers: { cookie: rootCookie } });
+    expect(access.statusCode).toBe(200);
+    const accessCookie = cookieOf(access)!;
+    expect(sidOf(accessCookie)).toBe(sid);
+    await revoke(sid!);
+    expect((await app.inject({ url: "/me", headers: { cookie: accessCookie } })).statusCode).toBe(401);
+  });
+
+  async function inviteToTenantB(email: string) {
+    const access = await app.inject({ method: "POST", url: `/root/workspaces/${tenantB}/access`, headers: { cookie: await login(rootEmail) } });
+    const cookie = cookieOf(access)!;
+    const roles = await app.inject({ url: "/workspaces/current/roles", headers: { cookie } });
+    const operatorRole = roles.json().roles.find((role: { name: string }) => role.name === "OPERADOR");
+    const invitation = await app.inject({ method: "POST", url: "/workspaces/current/invitations", headers: { cookie }, payload: { email, roleId: operatorRole.id } });
+    expect(invitation.statusCode).toBe(201);
+    return invitation.json().token as string;
+  }
+
+  it("records a revocable session when an invitation is accepted", async () => {
+    const token = await inviteToTenantB(sidInvitedEmail);
+    const accepted = await app.inject({ method: "POST", url: "/auth/accept-invitation", remoteAddress: "10.45.0.1", payload: { token, newPassword: "sid-invited-password", passwordConfirmation: "sid-invited-password" } });
+    expect(accepted.statusCode).toBe(200);
+    const cookie = cookieOf(accepted)!;
+    const sid = sidOf(cookie);
+    expect(sid).toEqual(expect.any(String));
+    expect((await app.inject({ url: "/me", headers: { cookie } })).statusCode).toBe(200);
+    await revoke(sid!);
+    expect((await app.inject({ url: "/me", headers: { cookie } })).statusCode).toBe(401);
+  });
+
+  it("does not issue a session on invitation accept when the account has 2FA enabled", async () => {
+    await pool.query("INSERT INTO users(email,password_hash,status,totp_enabled_at) VALUES($1,$2,'active',now())", [totpInvitedEmail, await hash(password, 4)]);
+    const token = await inviteToTenantB(totpInvitedEmail);
+    const accepted = await app.inject({ method: "POST", url: "/auth/accept-invitation", remoteAddress: "10.45.0.2", payload: { token, currentPassword: password } });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json()).toMatchObject({ accepted: true, totp_required: true });
+    expect(cookieOf(accepted)).toBeUndefined();
+    expect(cookieOf(accepted, "atendon_totp_challenge")).toEqual(expect.any(String));
+    const member = await pool.query(
+      "SELECT 1 FROM workspace_members m JOIN users u ON u.id=m.user_id WHERE u.email=$1 AND m.workspace_id=$2 AND m.status='active'",
+      [totpInvitedEmail, tenantB]
+    );
+    expect(member.rowCount).toBe(1);
+  });
+});
+
+describe("login rate limit behind the Docker/Traefik proxy", () => {
+  const octet = () => 1 + Math.floor(Math.random() * 250);
+  async function badLogin(remoteAddress: string, forwardedFor: string) {
+    return app.inject({
+      method: "POST",
+      url: "/auth/login",
+      remoteAddress,
+      headers: { "x-forwarded-for": forwardedFor },
+      payload: { email: `nobody-${suffix}@test.local`, password: "wrong-password" }
+    });
+  }
+
+  it("keys the bucket on the forwarded client IP when the hop is a private proxy", async () => {
+    const proxy = `172.18.${octet()}.1`;
+    const attacker = `203.0.113.${octet()}`;
+    const victim = `198.51.100.${octet()}`;
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 11; attempt++) statuses.push((await badLogin(proxy, attacker)).statusCode);
+    expect(statuses.at(-1)).toBe(429);
+    expect((await badLogin(proxy, victim)).statusCode).toBe(401);
+  }, 30_000);
+
+  it("ignores X-Forwarded-For sent straight from a public address", async () => {
+    const remote = `192.0.2.${octet()}`;
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 11; attempt++) statuses.push((await badLogin(remote, `198.51.100.${attempt + 1}`)).statusCode);
+    expect(statuses.at(-1)).toBe(429);
+  }, 30_000);
+});
+
+describe("TOTP verify brute force", () => {
+  it("locks the second factor per user after repeated wrong codes, across IPs and fresh challenges", async () => {
+    const secret = generateTotpSecret();
+    const user = await pool.query<{ id: string }>(
+      "INSERT INTO users(email,password_hash,status,totp_secret_encrypted,totp_enabled_at) VALUES($1,$2,'active',$3,now()) RETURNING id",
+      [totpBruteEmail, await hash(password, 4), encryptTotpSecret(secret)]
+    );
+    await pool.query(
+      `INSERT INTO workspace_members(workspace_id,user_id,role_id,status,joined_at)
+       SELECT $1,$2,id,'active',now() FROM workspace_roles WHERE workspace_id=$1 AND name='OPERADOR'`,
+      [tenantA, user.rows[0].id]
+    );
+    const now = Date.now();
+    const valid = new Set([-30_000, 0, 30_000].map((offset) => totpCode(secret, new Date(now + offset))));
+    const wrong = ["000000", "111111", "222222", "333333"].find((code) => !valid.has(code))!;
+
+    async function attempt(index: number, code: string) {
+      const login = await app.inject({ method: "POST", url: "/auth/login", remoteAddress: `10.46.${index}.1`, payload: { email: totpBruteEmail, password } });
+      expect(login.json()).toMatchObject({ totp_required: true });
+      const header = login.headers["set-cookie"];
+      const challenge = (Array.isArray(header) ? header : [header!]).find((cookie) => cookie.startsWith("atendon_totp_challenge="))!.split(";")[0];
+      return app.inject({ method: "POST", url: "/auth/totp/verify", remoteAddress: `10.47.${index}.1`, headers: { cookie: challenge }, payload: { code } });
+    }
+
+    for (let index = 0; index < 5; index++) expect((await attempt(index, wrong)).statusCode).toBe(401);
+    const locked = await attempt(5, totpCode(secret));
+    expect(locked.statusCode).toBe(429);
+    expect(locked.headers["set-cookie"] ?? "").not.toContain("atendon_session=");
+  }, 30_000);
 });

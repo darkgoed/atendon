@@ -469,6 +469,17 @@ describe("Evolution webhook ack status mapping", () => {
     expect(evolutionMessageStatusUpdates({ id: "wamid-6", status: 4 })).toEqual([{ externalId: "wamid-6", status: "read" }]);
   });
 
+  it("does not write the message id of an unrecognized status to console (bypasses pino redaction)", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      expect(evolutionMessageStatusUpdates({ id: "wamid-secret-42", status: "SOMETHING_ODD" })).toEqual([]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(warn.mock.calls)).not.toContain("wamid-secret-42");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("ignores entries missing an id or an unrecognized status", () => {
     expect(evolutionMessageStatusUpdates({ status: "READ" })).toEqual([]);
     expect(evolutionMessageStatusUpdates({ id: "wamid-7", status: "SOMETHING_UNKNOWN" })).toEqual([]);

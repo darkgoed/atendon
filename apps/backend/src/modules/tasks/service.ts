@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "../../db/client.js";
 import { httpError, instant, withTransaction } from "../scheduling/service.js";
 import type { WorkspaceSession } from "../../auth/session.js";
+import { leadScopeCondition, resolveCaseScope } from "../../auth/case-scope.js";
 
 // Tarefas internas por workspace (migration 0169; specs/active
 // v6-evolucao-estrutural-atendon.md, R6 e contrato "Tarefas").
@@ -115,10 +116,14 @@ async function assertAssigneeIsMember(client: Pick<PoolClient, "query">, tenantI
   }
 }
 
-async function assertLeadExists(client: Pick<PoolClient, "query">, tenantId: string, leadId: string) {
+// Escopo "mine": só leads da própria carteira — a tarefa expõe nome/telefone do lead.
+async function assertLeadExists(client: Pick<PoolClient, "query">, session: WorkspaceSession, leadId: string) {
+  const scope = await resolveCaseScope(client, session);
   const lead = await client.query(
-    "SELECT 1 FROM scheduling_leads WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL",
-    [leadId, tenantId]
+    `SELECT 1 FROM scheduling_leads lead
+     WHERE lead.id=$1 AND lead.tenant_id=$2 AND lead.deleted_at IS NULL
+       AND (${leadScopeCondition(scope, "lead", "$3")})`,
+    [leadId, session.tenantId, scope.memberId]
   );
   if (!lead.rows[0]) throw httpError(404, "Lead não encontrado");
 }
@@ -189,7 +194,7 @@ export async function createTask(
   // A leitura de retorno acontece DEPOIS do commit (getTask usa o pool):
   // dentro da transação a linha ainda não é visível a outra conexão.
   const taskId = await withTransaction(async (client) => {
-    if (input.lead_id) await assertLeadExists(client, session.tenantId, input.lead_id);
+    if (input.lead_id) await assertLeadExists(client, session, input.lead_id);
     const assigneeIds = input.assignee_id ? [input.assignee_id] : [];
     if (assigneeIds.length) await assertAssigneeIsMember(client, session.tenantId, assigneeIds);
     const inserted = await client.query<{ id: string }>(
