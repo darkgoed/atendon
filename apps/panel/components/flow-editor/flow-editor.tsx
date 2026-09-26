@@ -61,7 +61,7 @@ import {
   type Position as XYPos,
 } from "./flow-model";
 import { FlowConflictModal, type FlowConflict } from "./FlowConflictModal";
-import { IconButton, SaveButton, SaveToast, type SaveState } from "@/components/ui";
+import { HelpHint, IconButton, SaveButton, SaveToast, type SaveState } from "@/components/ui";
 import styles from "./flow-editor.module.css";
 
 export type SimTrace = {
@@ -351,6 +351,29 @@ type PropertiesProps = {
   onClose: () => void;
 };
 
+/* Ajuda contextual (pacote fluxos): explica o tipo da etapa no painel de
+   propriedades. Chave = nodeType do canvas (ações entram pelo id da ação,
+   ex. tag_add). Textos seguem a validação/preview de flow-model.ts e o
+   executor do backend (service.ts). */
+const STEP_HELP: Record<string, { title: string; text: string }> = {
+  trigger: { title: "Gatilho", text: "Define quando o robô assume a conversa: anúncio CTWA, mensagem igual a uma das palavras-chave (sem diferenciar maiúsculas nem acentos) ou sessão WhatsApp ligada por API." },
+  message: { title: "Mensagem", text: "Envia um texto fixo ao contato e segue para a próxima etapa." },
+  options: { title: "Opções", text: "Pergunta com opções fixas: a resposta escolhe o caminho no canvas e fica salva no campo de dados." },
+  boolean: { title: "Sim/Não", text: "Pergunta fechada de Sim ou Não; cada resposta segue um caminho no canvas." },
+  text: { title: "Texto livre", text: "Pergunta aberta: o que o contato digitar é salvo no campo de dados e o fluxo segue." },
+  final: { title: "Finalizar", text: "Encerra o fluxo enviando uma última mensagem ao contato." },
+  interactive: { title: "Interativo", text: "Mensagem com botões (até 3) ou lista do WhatsApp; cada escolha define a etapa seguinte." },
+  finalize: { title: "Encerramento", text: "Encerra o fluxo com um motivo interno, sem enviar mensagem." },
+  delay: { title: "Espera", text: "Pausa o fluxo pelos minutos informados (1 a 1440) antes de seguir; mensagem recebida nesse intervalo não antecipa a retomada." },
+  wait_for_reply: { title: "Aguardar resposta", text: "Pausa até o contato responder, com tempo limite em minutos (1 a 1440). Se o tempo acabar, segue pelo caminho do tempo esgotado." },
+  branch: { title: "Condição", text: "Compara uma variável salva no fluxo e desvia a conversa pelo caminho Sim ou Não." },
+  tag_add: { title: "Adicionar tag", text: "Aplica etiquetas ao contato no CRM, sem enviar mensagem." },
+  tag_remove: { title: "Remover tag", text: "Remove etiquetas do contato no CRM, sem enviar mensagem." },
+  stage_move: { title: "Mover de etapa", text: "Move o contato para outra etapa do pipeline do CRM." },
+  assign_agent: { title: "Atribuir agente", text: "Designa um responsável (agente) pelo atendimento no CRM." },
+  webhook: { title: "Webhook", text: "Chama uma URL externa via https (host público) para integrar outro sistema." },
+};
+
 function Properties({ node, definition, canManage, onDefinition, onDeleteStep, onClose }: PropertiesProps) {
   const step = node.id === TRIGGER_ID ? null : definition.steps[node.id] ?? null;
   const item = step ? paletteItemForStep(step) : undefined;
@@ -374,8 +397,18 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
   return (
     <aside className={styles.properties} aria-label="Propriedades da etapa">
       <div className={styles.propertiesHead}>
-        <span className={styles.propertiesBadge} style={withNt(node.nodeType)}>
-          {node.id === TRIGGER_ID ? "Gatilho" : item?.label ?? node.label}
+        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+          <span className={styles.propertiesBadge} style={withNt(node.nodeType)}>
+            {node.id === TRIGGER_ID ? "Gatilho" : item?.label ?? node.label}
+          </span>
+          {(() => {
+            const help = STEP_HELP[node.id === TRIGGER_ID ? "trigger" : node.nodeType];
+            return help ? (
+              <HelpHint label={`Ajuda: ${help.title}`} title={help.title} side="bottom" align="start">
+                {help.text}
+              </HelpHint>
+            ) : null;
+          })()}
         </span>
         <button type="button" className={styles.propertiesClose} onClick={onClose} aria-label="Fechar propriedades">
           <X size={14} aria-hidden="true" />
@@ -942,6 +975,9 @@ function FlowEditorInner(props: FlowEditorProps) {
             aria-label="Nome do fluxo"
           />
           <span className={styles.statusPill} data-on={props.ativo}>{props.ativo ? "Ativo" : "Inativo"}</span>
+          <HelpHint label="Ajuda: fluxo ativo" side="bottom">
+            O robô só atende por este fluxo quando ele está Ativo. Ativar e desativar são feitos na lista de fluxos.
+          </HelpHint>
         </div>
         <div className={styles.headerActions}>
           <span className={styles.nodeCount} aria-hidden="true">{graph.nodes.length} blocos</span>
@@ -959,6 +995,9 @@ function FlowEditorInner(props: FlowEditorProps) {
           >
             <Play size={15} aria-hidden="true" />
           </IconButton>
+          <HelpHint label="Ajuda: salvar e revisões" side="bottom" align="end">
+            Cada salvamento cria uma revisão do fluxo. Se outra pessoa salvar antes de você, o editor avisa o conflito em vez de sobrescrever — recarregue para receber a versão dela.
+          </HelpHint>
           <SaveButton
             state={props.saving ? "busy" : props.saveState ?? "idle"}
             data-testid="flow-save"

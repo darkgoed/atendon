@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, WarningCircle } from "@/components/icons";
+import { ArrowLeft, ArrowRight, CalendarX, WarningCircle } from "@/components/icons";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Empty } from "@/components/page-state";
+import { ModeBar, useFlashToast } from "@/components/ui";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { useRealtimeSignals } from "@/lib/realtime";
@@ -43,6 +44,11 @@ function AgendaContent() {
   const { units, unitsStatus, unitsError, unit, anchor, mode, days, availability, appointmentsData, appointmentsError, appointmentsLoading, appointments, timezone, today, loadUnits, loadAvailability, mutateAppointments, navigate, goToday, timeBlocks, timeBlocksError, mutateTimeBlocks } = data;
   const [appointmentView, setAppointmentView] = useState<AppointmentView>("all");
   const [timeBlockOpen, setTimeBlockOpen] = useState(false);
+  const [timeBlockRange, setTimeBlockRange] = useState<{ start: string; end: string } | null>(null);
+  // Modo bloqueio: o próximo clique num horário livre bloqueia em vez de agendar.
+  const [blockMode, setBlockMode] = useState(false);
+  const flash = useFlashToast();
+  const showFlash = flash.show;
   const [slotChoice, setSlotChoice] = useState<Slot | null>(null);
   const [deletingTimeBlockId, setDeletingTimeBlockId] = useState("");
   const [timeBlockActionError, setTimeBlockActionError] = useState("");
@@ -50,6 +56,24 @@ function AgendaContent() {
   const openedDeepLink = useRef(false);
   const periodKey = `${anchor}:${mode}:${unit}`;
   const actions = useAgendaActions({ permissions, unit, anchor, timezone, appointments, periodKey, loadAvailability, mutateAppointments });
+
+  // Resposta imediata: o resultado de cada ação aparece num toast breve.
+  useEffect(() => {
+    if (actions.notice) showFlash(actions.notice);
+  }, [actions.notice, showFlash]);
+  const blockAvailable = blockMode && mode !== "month" && unitsStatus === "ready" && Boolean(unit);
+  useEffect(() => {
+    if (!blockAvailable || timeBlockOpen || slotChoice) return;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setBlockMode(false); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [blockAvailable, slotChoice, timeBlockOpen]);
+
+  function openTimeBlock(range: { start: string; end: string } | null) {
+    setBlockMode(false);
+    setTimeBlockRange(range);
+    setTimeBlockOpen(true);
+  }
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -90,9 +114,10 @@ function AgendaContent() {
   const agendaError = availability.status === "error" ? availability.error : appointmentsError ? messageFrom(appointmentsError, "Não foi possível carregar os agendamentos.") : "";
   const agendaReady = (availability.status === "ready" || (availability.status === "loading" && hasAvailabilityForPeriod)) && Boolean(appointmentsData) && !agendaError;
 
-  async function refreshAfterTimeBlock() {
+  async function refreshAfterTimeBlock(summary?: string) {
     setTimeBlockActionError("");
     await Promise.allSettled([mutateTimeBlocks(), loadAvailability()]);
+    if (summary) showFlash(summary);
   }
 
   async function deleteTimeBlock(id: string) {
@@ -101,7 +126,7 @@ function AgendaContent() {
     setTimeBlockActionError("");
     try {
       await api(`/scheduling/attendants/me/time-blocks/${id}`, { method: "DELETE" });
-      await refreshAfterTimeBlock();
+      await refreshAfterTimeBlock("Bloqueio removido");
     } catch (error) {
       setTimeBlockActionError(messageFrom(error, "Não foi possível remover o bloqueio."));
     } finally {
@@ -111,9 +136,9 @@ function AgendaContent() {
 
   return (
     <Shell fitViewport>
-      <AgendaHeader canCreate={permissions.canCreate} canBlock={canBlockTime} unit={unit} mode={mode} view={appointmentView} pendingCount={pendingAppointmentsCount} onCreate={actions.beginManualCreate} onBlock={() => setTimeBlockOpen(true)} onMode={data.setMode} onView={setAppointmentView} />
-      <AgendaTimeBlockDialog open={timeBlockOpen} anchor={anchor} timezone={timezone} onClose={() => setTimeBlockOpen(false)} onSaved={refreshAfterTimeBlock} />
-      <AgendaSlotDialog open={Boolean(slotChoice)} slot={slotChoice} onClose={() => setSlotChoice(null)} onAddLead={() => { if (slotChoice) actions.beginCreate(slotChoice); setSlotChoice(null); }} onBlock={() => { setTimeBlockOpen(true); setSlotChoice(null); }} />
+      <AgendaHeader canCreate={permissions.canCreate} canBlock={canBlockTime} blocking={blockAvailable} unit={unit} mode={mode} view={appointmentView} pendingCount={pendingAppointmentsCount} onCreate={actions.beginManualCreate} onBlock={() => { if (blockAvailable) setBlockMode(false); else if (mode === "month" || !unit) openTimeBlock(null); else setBlockMode(true); }} onMode={data.setMode} onView={setAppointmentView} />
+      <AgendaTimeBlockDialog open={timeBlockOpen} anchor={anchor} timezone={timezone} initialRange={timeBlockRange} onClose={() => setTimeBlockOpen(false)} onSaved={refreshAfterTimeBlock} />
+      <AgendaSlotDialog open={Boolean(slotChoice)} slot={slotChoice} onClose={() => setSlotChoice(null)} onAddLead={() => { if (slotChoice) actions.beginCreate(slotChoice); setSlotChoice(null); }} onBlock={() => { openTimeBlock(slotChoice ? { start: slotChoice.start, end: slotChoice.end } : null); setSlotChoice(null); }} />
       {unitsStatus === "loading" ? <AgendaLoading label="Carregando unidades e agenda" /> : null}
       {unitsStatus === "error" ? <AgendaError message={unitsError} onRetry={loadUnits} /> : null}
       {unitsStatus === "ready" && units.length === 0 ? <Empty>Cadastre uma unidade para montar a agenda.</Empty> : null}
@@ -134,7 +159,6 @@ function AgendaContent() {
             </div>
           </nav>
           {!actions.createTarget && actions.actionError ? <p className="error mb-4" role="alert">{actions.actionError}</p> : null}
-          {actions.notice ? <p className="accent mb-4 text-sm" role="status" aria-live="polite">{actions.notice}</p> : null}
           {timeBlockActionError || timeBlocksError ? <p className="error mb-4" role="alert">{timeBlockActionError || messageFrom(timeBlocksError, "Não foi possível carregar seus bloqueios.")}</p> : null}
           <AgendaTimeBlockList blocks={timeBlocks} timezone={timezone} deletingId={deletingTimeBlockId} onDelete={deleteTimeBlock} />
           {availability.status === "loading" && hasAvailabilityForPeriod ? <p className="sub mb-4" role="status" aria-live="polite">Atualizando a disponibilidade sem ocultar os últimos dados válidos.</p> : null}
@@ -145,14 +169,25 @@ function AgendaContent() {
             <>
               {pendingAppointmentsCount > 0 ? <PendingWarning count={pendingAppointmentsCount} onShow={() => setAppointmentView("pending")} /> : null}
               {mode === "month" ? <AgendaMonth days={days} appointments={visibleAppointments} today={today} onSelect={(date) => { data.setMode("day"); data.setAnchor(date); }} /> : <div className={`agenda-scroll ${mode === "day" ? "agenda-scroll--day" : ""}`}>
-                <AgendaCalendar days={days} today={today} timezone={timezone} failedDays={availability.failedDays} timeGrid={timeGrid} now={now} dragging={actions.dragging} reschedulingId={actions.reschedulingId} pendingActionId={actions.pendingActionId} canReschedule={permissions.canReschedule} canCreate={permissions.canCreate} onDrag={actions.setDragging} onDrop={actions.drop} onCreate={actions.beginCreate} onOpen={actions.openAppointment} onSelectSlot={setSlotChoice} />
+                <AgendaCalendar days={days} today={today} timezone={timezone} failedDays={availability.failedDays} timeGrid={timeGrid} now={now} dragging={actions.dragging} reschedulingId={actions.reschedulingId} pendingActionId={actions.pendingActionId} canReschedule={permissions.canReschedule} canCreate={permissions.canCreate} blockMode={blockAvailable} onDrag={actions.setDragging} onDrop={actions.drop} onCreate={actions.beginCreate} onOpen={actions.openAppointment} onSelectSlot={(slot) => { if (blockAvailable) openTimeBlock({ start: slot.start, end: slot.end }); else setSlotChoice(slot); }} />
               </div>}
               <AgendaDetailDialog actions={actions} timezone={timezone} now={now} />
               <AgendaCreateDialog actions={actions} timezone={timezone} />
             </>
           ) : null}
+          {blockAvailable ? (
+            <ModeBar
+              live
+              icon={<CalendarX size={16} />}
+              title="Clique em um horário livre para bloquear"
+              description="Dias fechados e horários ocupados não podem ser bloqueados."
+              actions={<button type="button" className="mode-bar__link" onClick={() => openTimeBlock(null)}>Período personalizado</button>}
+              onCancel={() => setBlockMode(false)}
+            />
+          ) : null}
         </>
       ) : null}
+      {flash.toast}
     </Shell>
   );
 }

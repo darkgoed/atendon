@@ -106,6 +106,7 @@ export function NewLeadDialog({
         <Field
           label="Telefone / WhatsApp"
           hint="Brasil: DDD + número. Outros países: +código do país."
+          help={<>Se o telefone já tiver um contato — inclusive um contato excluído —, ele é reaproveitado e atualizado em vez de criar um duplicado.</>}
           error={!draft.telefone.trim() || phoneValid ? undefined : "Informe DDD + número (10 ou 11 dígitos) ou comece com + para internacional."}
         >
           <Input
@@ -120,7 +121,7 @@ export function NewLeadDialog({
           />
         </Field>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Origem (opcional)">
+          <Field label="Origem (opcional)" help={<>Para um telefone que ainda não existe no cadastro, a origem é exigida (ex.: Indicação, anúncio). Se o telefone já tem contato, pode ficar vazia.</>}>
             <Input value={draft.origem} onChange={(event) => set("origem", event.target.value)} maxLength={200} placeholder="Ex.: Indicação" />
           </Field>
           <Field label="Campanha (opcional)">

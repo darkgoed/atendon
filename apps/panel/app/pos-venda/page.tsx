@@ -20,7 +20,7 @@ import { ModalDialog } from "@/components/modal-dialog";
 import { PostSalesChecklist } from "@/components/post-sales-checklist";
 import { PostSalesSummaryStrip } from "@/components/post-sales-summary";
 import { Shell } from "@/components/shell";
-import { IconButton, Input, PageHeader, SaveButton, SaveToast, Select, Textarea, useSaveFeedback, type SaveState } from "@/components/ui";
+import { HelpHint, IconButton, Input, PageHeader, SaveButton, SaveToast, Select, Textarea, useSaveFeedback, type SaveState } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import {
   buildPostSaleQuery,
@@ -195,7 +195,7 @@ export default function PostSalesPage() {
       <div className="post-sales-page">
         <PageHeader
           className="post-sales-head"
-          title="Carteira de pós-venda"
+          title={<>Carteira de pós-venda <HelpHint label="Ajuda: o que é a carteira" title="Carteira de pós-venda">Clientes que já compraram e agora recebem acompanhamento: checklist de relacionamento, responsável e próxima ação.</HelpHint></>}
           actions={
             <div className="post-sales-head__actions">
               <Link className="btn" href="/pos-venda/cobranca">Cobranças de crediário</Link>
@@ -222,6 +222,7 @@ export default function PostSalesPage() {
               </label>
               <div className="post-sales-filters" aria-label="Filtros da carteira">
                 <Funnel size={15} aria-hidden="true" />
+                <HelpHint label="Ajuda: Filtros da carteira">“Atrasadas” reúne clientes com próxima ação vencida; “Sem ação”, quem não tem nada agendado.</HelpHint>
                 <Select value={filters.progress} onChange={(event) => changeFilter("progress", event.target.value as PostSaleFilters["progress"])} aria-label="Filtrar por progresso">
                   <option value="">Todo progresso</option>
                   <option value="not_started">Não iniciados</option>
@@ -323,7 +324,7 @@ export default function PostSalesPage() {
 
                   <section className="post-sales-detail__section post-sales-detail__section--checklist">
                     <div className="post-sales-section-title">
-                      <div><span className="label">Elemento principal</span><h3>Checklist de relacionamento</h3></div>
+                      <div><span className="label">Elemento principal</span><h3>Checklist de relacionamento <HelpHint label="Ajuda: Checklist de relacionamento">Lista de compromissos pós-venda definida pela empresa. Registre o resultado de cada item para acompanhar o progresso do cliente.</HelpHint></h3></div>
                       <span className="mono">{detail.client.checklist_accepted} aceito(s)</span>
                     </div>
                     <PostSalesChecklist entries={detail.checklist} savingId={savingEntryId} errors={entryErrors} onSave={saveChecklist} />

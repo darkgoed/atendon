@@ -32,10 +32,20 @@ export async function appendFinancialLedgerEntry(client: PoolClient, tenantId: s
 }
 
 export async function grantUsageCredit(client: PoolClient, input: { tenantId: string; usagePeriodId: string; amount: number; reason: string; idempotencyKey: string; grantedByUserId?: string | null; expiresAt?: Date | null }) {
+  // O consumo só debita grants na MESMA unidade do período (consumeAiInteraction
+  // casa usage_unit): derive do próprio período na MESMA transação, senão o
+  // default INTERACTION torna bônus em período CREDIT inutilizável enquanto
+  // bonus_granted infl. O caller pode já ter travado a linha — re-lock na
+  // mesma transação é no-op; períodos legados permanecem INTERACTION.
+  const period = await client.query<{ usage_unit: string }>(
+    "SELECT usage_unit FROM usage_periods WHERE id=$1 AND tenant_id=$2 FOR UPDATE",
+    [input.usagePeriodId, input.tenantId],
+  );
+  const usageUnit = period.rows[0]?.usage_unit === "CREDIT" ? "CREDIT" : "INTERACTION";
   const result = await client.query(
-    `INSERT INTO usage_grants(tenant_id,usage_period_id,amount,reason,idempotency_key,granted_by_user_id,expires_at)
-     VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (tenant_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING RETURNING *`,
-    [input.tenantId, input.usagePeriodId, input.amount, input.reason, input.idempotencyKey, input.grantedByUserId ?? null, input.expiresAt ?? null],
+    `INSERT INTO usage_grants(tenant_id,usage_period_id,usage_unit,amount,reason,idempotency_key,granted_by_user_id,expires_at)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (tenant_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING RETURNING *`,
+    [input.tenantId, input.usagePeriodId, usageUnit, input.amount, input.reason, input.idempotencyKey, input.grantedByUserId ?? null, input.expiresAt ?? null],
   );
   if (!result.rows[0]) return null;
   await client.query("UPDATE usage_periods SET bonus_granted=bonus_granted+$2,updated_at=now() WHERE id=$1", [input.usagePeriodId, input.amount]);

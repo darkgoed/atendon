@@ -7,18 +7,18 @@ const readStyleSource = async () => readStyleSources();
 
 let agendaDetail = "";
 let alerts = "";
-let configurations = "";
+let settingsSidebar = "";
 let conversations = "";
 let globalStyles = "";
 let rootWorkspaces = "";
 let manifest = "";
 
 beforeAll(async () => {
-  [agendaActions, agendaDetail, alerts, configurations, conversations, globalStyles, rootWorkspaces, manifest] = await Promise.all([
+  [agendaActions, agendaDetail, alerts, settingsSidebar, conversations, globalStyles, rootWorkspaces, manifest] = await Promise.all([
     readFile(new URL("../app/agenda/use-agenda-actions.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/agenda/agenda-detail-dialog.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/alertas/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/configuracoes/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/alertas/alertas-content.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/configuracoes/settings-sidebar.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/conversas/page.tsx", import.meta.url), "utf8"),
     readStyleSource(),
     readFile(new URL("../app/root/workspaces/page.tsx", import.meta.url), "utf8"),
@@ -54,8 +54,11 @@ describe("current comments.md tasks", () => {
   it("moves Alerts into root-only settings", () => {
     expect(manifest).toContain('href: "/alertas"');
     expect(manifest).toContain('rootOnly: true');
-    expect(configurations).toContain('{ href: "/alertas", label: "Alertas"');
-    expect(configurations).toContain("rootWorkspaceOnly: true");
+    // O destino "Alertas" mora na sidebar das configurações (o hub não tem mais
+    // settingsDestinations): a linha única pina label + gate root-only e a
+    // seguinte pina o remapeamento para a sub-rota /configuracoes/alertas.
+    expect(settingsSidebar).toContain('"/alertas": { label: "Alertas", Icon: BellRinging, rootWorkspaceOnly: true');
+    expect(settingsSidebar).toContain('"/alertas": "/configuracoes/alertas"');
     expect(alerts).toContain("canAccessRootWorkspace(session)");
   });
 

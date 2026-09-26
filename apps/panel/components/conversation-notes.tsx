@@ -11,7 +11,7 @@ import useSWR from "swr";
 import { Notepad } from "@/components/icons";
 import { api } from "@/lib/api";
 import { canAccessWithSession, type PanelSession } from "@/lib/session";
-import { IconButton } from "@/components/ui";
+import { HelpHint, IconButton, useFlashToast } from "@/components/ui";
 import { NoteComposer, NoteList, type NotesResponse } from "./notes-shared";
 import styles from "./conversation-notes.module.css";
 
@@ -28,14 +28,19 @@ export function ConversationNotes({ conversationId }: { conversationId: string }
     revalidateOnFocus: false
   });
   const canReply = Boolean(session && canAccessWithSession(session, ["conversations.reply"]));
+  const flash = useFlashToast();
+  const showFlash = flash.show;
 
   if (!open) {
     // Minimalismo (README §4): ação secundária vira IconButton — o nome
     // acessível "Nota interna" permanece exatamente igual.
     return (
-      <IconButton type="button" label="Nota interna" className={styles.trigger} aria-expanded={false} onClick={() => setOpen(true)}>
-        <Notepad size={16} aria-hidden="true" />
-      </IconButton>
+      <>
+        <IconButton type="button" label="Nota interna" className={styles.trigger} aria-expanded={false} onClick={() => setOpen(true)}>
+          <Notepad size={16} aria-hidden="true" />
+        </IconButton>
+        <HelpHint label="Ajuda: Nota interna">Anotação da equipe sobre esta conversa. O contato não recebe nem vê estas notas.</HelpHint>
+      </>
     );
   }
 
@@ -46,11 +51,12 @@ export function ConversationNotes({ conversationId }: { conversationId: string }
           endpoint={notesPath}
           textareaId="conversation-note-editor"
           canManage
-          onCreated={() => mutate()}
+          onCreated={() => { mutate(); showFlash("Nota interna salva"); }}
         />
       ) : null}
       {error ? <p className="error" role="alert">{error.message}</p> : null}
       <NoteList items={data?.items ?? []} emptyLabel="Nenhuma nota interna nesta conversa." />
+      {flash.toast}
     </div>
   );
 }

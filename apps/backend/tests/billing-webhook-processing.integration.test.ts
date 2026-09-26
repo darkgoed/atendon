@@ -24,6 +24,22 @@ let sandboxProviderId = "";
 let tenantId = "";
 let invoiceId = "";
 
+// Linhas reais de mercadopago podem já ter billing_events (FK
+// billing_events_provider_id_fkey) — nunca DELETE: snapshot + UPDATE in-place
+// com restore no afterAll; INSERT apenas quando a linha não existe.
+type ProviderSnap = {
+  id: string;
+  existed: boolean;
+  credentials_encrypted: string | null;
+  webhook_secret_encrypted: string | null;
+  enabled: boolean;
+  homologated: boolean;
+  last_event_at: string | null;
+};
+let sandboxSnap: ProviderSnap | undefined;
+let prodSnap: ProviderSnap | undefined;
+let suiteStartedAt = "";
+
 function signWithSecret(secret: string, resourceId: string, requestId: string, ts: string) {
   const manifest = `id:${resourceId.toLowerCase()};request-id:${requestId};ts:${ts};`;
   return createHmac("sha256", secret).update(manifest).digest("hex");
@@ -66,24 +82,50 @@ beforeAll(async () => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query("DELETE FROM billing_providers WHERE code=$1 AND environment=$2", ["mercadopago", "sandbox"]);
-    await client.query("DELETE FROM billing_providers WHERE code=$1 AND environment=$2", ["mercadopago", "production"]);
-    sandboxProviderId = (await client.query<{ id: string }>(
-      `INSERT INTO billing_providers(homologated,code,name,enabled,environment,credentials_encrypted,webhook_secret_encrypted)
-       VALUES(true,'mercadopago','Mercado Pago',true,'sandbox',$1,$2) RETURNING id`,
-      [
-        encryptCredentials({ accessToken: "token-sandbox" }, config.DATA_ENCRYPTION_KEY),
-        encryptWebhookSecret(sandboxWebhookSecret, config.DATA_ENCRYPTION_KEY)
-      ]
-    )).rows[0].id;
-    providerId = (await client.query<{ id: string }>(
-      `INSERT INTO billing_providers(homologated,code,name,enabled,environment,credentials_encrypted,webhook_secret_encrypted)
-       VALUES(true,'mercadopago','Mercado Pago',true,'production',$1,$2) RETURNING id`,
-      [
-        encryptCredentials({ accessToken: "token-production" }, config.DATA_ENCRYPTION_KEY),
-        encryptWebhookSecret(webhookSecret, config.DATA_ENCRYPTION_KEY)
-      ]
-    )).rows[0].id;
+    suiteStartedAt = (await client.query<{ t: string }>("SELECT now() AS t")).rows[0].t;
+    const fixProvider = async (environment: string, credentials: string, secret: string): Promise<ProviderSnap> => {
+      const existing = (await client.query<{
+        id: string; credentials_encrypted: string | null; webhook_secret_encrypted: string | null; enabled: boolean; homologated: boolean; last_event_at: string | null;
+      }>(
+        `SELECT id,credentials_encrypted,webhook_secret_encrypted,enabled,homologated,last_event_at
+         FROM billing_providers WHERE code=$1 AND environment=$2 FOR UPDATE`,
+        ["mercadopago", environment]
+      )).rows[0];
+      if (existing) {
+        await client.query(
+          `UPDATE billing_providers
+           SET credentials_encrypted=$2,webhook_secret_encrypted=$3,enabled=true,homologated=true,last_event_at=NULL
+           WHERE id=$1`,
+          [existing.id, credentials, secret]
+        );
+        return { existed: true, ...existing };
+      }
+      return {
+        existed: false,
+        id: (await client.query<{ id: string }>(
+          `INSERT INTO billing_providers(homologated,code,name,enabled,environment,credentials_encrypted,webhook_secret_encrypted)
+           VALUES(true,'mercadopago','Mercado Pago',true,$1,$2,$3) RETURNING id`,
+          [environment, credentials, secret]
+        )).rows[0].id,
+        credentials_encrypted: null,
+        webhook_secret_encrypted: null,
+        enabled: false,
+        homologated: false,
+        last_event_at: null
+      };
+    };
+    sandboxSnap = await fixProvider(
+      "sandbox",
+      encryptCredentials({ accessToken: "token-sandbox" }, config.DATA_ENCRYPTION_KEY),
+      encryptWebhookSecret(sandboxWebhookSecret, config.DATA_ENCRYPTION_KEY)
+    );
+    sandboxProviderId = sandboxSnap.id;
+    prodSnap = await fixProvider(
+      "production",
+      encryptCredentials({ accessToken: "token-production" }, config.DATA_ENCRYPTION_KEY),
+      encryptWebhookSecret(webhookSecret, config.DATA_ENCRYPTION_KEY)
+    );
+    providerId = prodSnap.id;
     tenantId = (await client.query<{ id: string }>(
       "INSERT INTO tenants(name,slug,status) VALUES($1,$2,'active') RETURNING id",
       [`webhook-${suffix}`, `webhook-${suffix}`]
@@ -110,20 +152,37 @@ beforeAll(async () => {
 
 afterAll(async () => {
   globalThis.fetch = originalFetch;
-  if (providerId) {
-    await pool.query("DELETE FROM billing_events WHERE provider_id=$1", [providerId]);
-  }
-  if (sandboxProviderId) {
-    await pool.query("DELETE FROM billing_events WHERE provider_id=$1", [sandboxProviderId]);
+  // Cleanup apenas do que esta suíte gerou: eventos com o suffix da run e
+  // rejeições invalid:% criadas dentro da janela da suíte. NUNCA DELETE de
+  // todos os eventos do provider — linhas reais/outras suítes os referenciam.
+  for (const snap of [sandboxSnap, prodSnap]) {
+    if (!snap) continue;
+    if (snap.existed) {
+      await pool.query(
+        `DELETE FROM billing_events
+         WHERE provider_id=$1
+           AND (external_event_id LIKE $2 OR (external_event_id LIKE 'invalid:%' AND created_at >= $3::timestamptz))`,
+        [snap.id, `%${suffix}%`, suiteStartedAt]
+      );
+    } else {
+      await pool.query("DELETE FROM billing_events WHERE provider_id=$1", [snap.id]);
+    }
   }
   if (tenantId) {
     await pool.query("DELETE FROM tenants WHERE id=$1", [tenantId]);
   }
-  if (providerId) {
-    await pool.query("DELETE FROM billing_providers WHERE id=$1", [providerId]);
-  }
-  if (sandboxProviderId) {
-    await pool.query("DELETE FROM billing_providers WHERE id=$1", [sandboxProviderId]);
+  for (const snap of [sandboxSnap, prodSnap]) {
+    if (!snap) continue;
+    if (snap.existed) {
+      await pool.query(
+        `UPDATE billing_providers
+         SET credentials_encrypted=$2,webhook_secret_encrypted=$3,enabled=$4,homologated=$5,last_event_at=$6
+         WHERE id=$1`,
+        [snap.id, snap.credentials_encrypted, snap.webhook_secret_encrypted, snap.enabled, snap.homologated, snap.last_event_at]
+      );
+    } else {
+      await pool.query("DELETE FROM billing_providers WHERE id=$1", [snap.id]);
+    }
   }
   await app.close();
   await pool.end();
@@ -204,6 +263,53 @@ describe("webhook de cobrança (§18)", () => {
     const after = await subscription();
     expect(after.current_period_end).toEqual(before.current_period_end);
     expect(after.status).toBe("ACTIVE");
+  });
+
+  it("rejeições repetidas de assinatura inválida produzem no máximo uma entrada por provider+janela, sem efeito financeiro", async () => {
+    // Mesma janela horária UTC do serviço (invalid:YYYYMMDDHH) e sempre do
+    // provider desta suíte: sem o filtro, contagens de outros providers/suítes
+    // vazam para as asserções.
+    const windowEventId = `invalid:${new Date().toISOString().slice(0, 13).replace(/\D/g, "")}`;
+    const invalidRows = () =>
+      pool.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM billing_events
+         WHERE provider_id=$1 AND external_event_id=$2`,
+        [providerId, windowEventId]
+      );
+    const before = await invalidRows();
+    // O teste anterior já pagou esta fatura — compare com o antes, sem hardcode.
+    const invoiceBefore = await pool.query<{ status: string }>("SELECT status FROM invoices WHERE id=$1", [invoiceId]);
+    const paymentsBefore = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM payments WHERE invoice_id=$1", [invoiceId]);
+
+    // Três tentativas na mesma janela: duas idênticas e uma diferente.
+    const identicalSignature = "f".repeat(64);
+    const attempts = [
+      await deliver(`inv-att-${suffix}`, "approved", identicalSignature),
+      await deliver(`inv-att-${suffix}`, "approved", identicalSignature),
+      await deliver(`other-att-${suffix}`, "pending", "0".repeat(64))
+    ];
+    for (const response of attempts) {
+      expect(response.statusCode).toBe(401);
+      expect(response.json().code).toBe("INVALID_WEBHOOK_SIGNATURE");
+    }
+
+    // No máximo UMA nova linha de rejeição, mesmo com 3 tentativas.
+    const afterRows = await invalidRows();
+    expect(afterRows.rows[0].n - before.rows[0].n).toBeLessThanOrEqual(1);
+
+    // A linha da janela registra o contador de tentativas (auditoria preservada).
+    const rejection = await pool.query<{ attempts: string | null }>(
+      `SELECT payload->>'attempts' AS attempts FROM billing_events
+       WHERE provider_id=$1 AND external_event_id=$2`,
+      [providerId, windowEventId]
+    );
+    expect(parseInt(rejection.rows[0].attempts ?? "0", 10)).toBeGreaterThanOrEqual(3);
+
+    // Nenhum efeito financeiro: fatura e pagamentos iguais ao estado anterior.
+    const invoiceAfter = await pool.query<{ status: string }>("SELECT status FROM invoices WHERE id=$1", [invoiceId]);
+    expect(invoiceAfter.rows[0].status).toBe(invoiceBefore.rows[0].status);
+    const paymentsAfter = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM payments WHERE invoice_id=$1", [invoiceId]);
+    expect(paymentsAfter.rows[0].n).toBe(paymentsBefore.rows[0].n);
   });
 
   it("provider desconhecido responde erro tratado, sem derrubar o servidor", async () => {

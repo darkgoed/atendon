@@ -4,7 +4,7 @@ import { BellRinging, DeviceMobile, Prohibit } from "@/components/icons";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
-import { Button } from "@/components/ui";
+import { Button, HelpHint } from "@/components/ui";
 import styles from "@/components/settings-panels.module.css";
 
 type PushPreferences = {
@@ -150,7 +150,7 @@ export function WebPushSettings() {
     <section className="border-t border-[var(--border)] pt-5" aria-labelledby="web-push-title">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h3 id="web-push-title" className="flex items-center gap-2 text-sm font-semibold"><BellRinging aria-hidden="true" /> Web Push discreto</h3>
+          <h3 id="web-push-title" className="flex items-center gap-2 text-sm font-semibold"><BellRinging aria-hidden="true" /> Web Push discreto <HelpHint label="Ajuda: Web Push" title="Web Push discreto">Cada dispositivo tem inscrição própria: ativar aqui não afeta os outros. O navegador pede permissão na ativação; se você bloqueou o site antes, libere nas configurações dele.</HelpHint></h3>
           <p className="sub mt-1 max-w-2xl text-xs">Funciona com o painel fechado. A tela bloqueada mostra somente o tipo e a urgência; nome, telefone e conteúdo da mensagem nunca fazem parte do payload.</p>
         </div>
         {subscription ? (

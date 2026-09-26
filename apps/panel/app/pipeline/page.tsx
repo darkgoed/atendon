@@ -45,7 +45,7 @@ import {
   type PipelineSummary
 } from "@/lib/pipeline";
 import { usePipelinePreferences } from "@/lib/use-pipeline-preferences";
-import { Button, IconButton, SaveToast } from "@/components/ui";
+import { Button, HelpHint, IconButton, SaveToast, useFlashToast } from "@/components/ui";
 import { readPipelineViewPreference, writePipelineViewPreference } from "@/lib/pipeline-view";
 
 type PipelinePageMeta = { limit: number; has_more: boolean; next_cursor: string | null };
@@ -169,6 +169,8 @@ function PipelinePageContent() {
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
   const [actionError, setActionError] = useState("");
   const [celebration, setCelebration] = useState<Celebration | null>(null);
+  const flash = useFlashToast();
+  const showFlash = flash.show;
   const { data: session } = useSWR<PanelSession>("/me", fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
   const [preferences, setPreferences] = usePipelinePreferences(session?.activeWorkspace?.id, session?.user.id);
   const hasWorkspaceScope = Boolean(session && hasWorkspaceWideCaseScope(session));
@@ -184,6 +186,21 @@ function PipelinePageContent() {
     const timer = window.setTimeout(() => setCelebration(null), 2600);
     return () => window.clearTimeout(timer);
   }, [celebration]);
+
+  // Seleção em massa: Esc limpa a seleção (a barra de modo mostra "Limpar Esc").
+  useEffect(() => {
+    if (intent) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      // Esc que fecha diálogo/menu/popover ou sai de um campo não limpa a seleção.
+      if (event.defaultPrevented || document.querySelector('[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"]')) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      setSelectedIds((current) => (current.size > 0 ? new Set<string>() : current));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [intent]);
 
   useEffect(() => {
     if (!session?.activeWorkspace?.id || !session.user.id) return;
@@ -226,9 +243,7 @@ function PipelinePageContent() {
 
   function handlePipelinesChanged() {
     // Lista + configuração do pipeline ativo (cores/ordem/leads mudam juntos).
-    void mutatePipelines();
-    void mutatePipeline();
-    return true;
+    return Promise.all([mutatePipelines(), mutatePipeline()]);
   }
 
   const queryFilters = useMemo(() => ({
@@ -523,6 +538,9 @@ function PipelinePageContent() {
         setCelebration({ key: Date.now(), name: lead.nome ?? "Lead" });
       }
       setIntent(null);
+      // Resposta imediata: confirma o movimento na API (o fechamento já tem o
+      // próprio toast; não duplicar).
+      if (persistenceStage.technical_status !== "fechado") showFlash(`Lead movido para ${stage.name}`);
     } catch (cause) {
       // Erro = rollback visual (override some, card volta de onde estava).
       setStageOverrides((current) => {
@@ -553,12 +571,13 @@ function PipelinePageContent() {
       <header className="pipeline-page__header">
         <div className="flex min-w-0 items-baseline gap-2">
           <h1 className="truncate">{hasWorkspaceScope ? "Pipeline" : "Meu pipeline"}</h1>
-          {organizationEnabled === true ? <PipelineManager pipelines={pipelines} activePipeline={activePipeline} channels={pipelinesData?.channels ?? []} canManage={canManagePipeline} onSelect={selectPipeline} onChanged={handlePipelinesChanged} /> : null}
+          {organizationEnabled === true ? <PipelineManager pipelines={pipelines} groups={pipelinesData?.groups ?? []} activePipeline={activePipeline} channels={pipelinesData?.channels ?? []} canManage={canManagePipeline} onSelect={selectPipeline} onChanged={handlePipelinesChanged} /> : null}
           <div className="pipeline-page__view" aria-label="Visualização do pipeline">
             <Button type="button" aria-pressed={viewMode === "kanban"} onClick={() => changeView("kanban")}>Kanban</Button>
             <Button type="button" aria-pressed={viewMode === "list"} onClick={() => changeView("list")}>Lista</Button>
           </div>
           <span className="mono pipeline-page__count" role="status" aria-live="polite">{loading ? "carregando…" : `${total} lead(s)`}</span>
+          <HelpHint label="Ajuda: Pipeline e etapas" title="Pipeline e etapas">Cada pipeline é um funil próprio, com suas etapas. Contatos entram no pipeline do canal que os trouxe, e ao mudar de etapa recebem as automações da etapa de destino (etiquetas e responsável).</HelpHint>
         </div>
         <div className="pipeline-page__actions">
           <SavedViewsControl resource="pipeline" filters={pipelineFiltersForSavedView(filters)} onApply={(saved) => setFilters(applyPipelineSavedView(saved))} />
@@ -639,6 +658,7 @@ function PipelinePageContent() {
       <BulkLeadActions selected={selectedItems} onClear={() => setSelectedIds(new Set())} onChanged={mutate} />
       {celebration ? <PipelineWinBurst key={celebration.key} /> : null}
       <SaveToast show={celebration !== null}>Negócio fechado · {celebration?.name}</SaveToast>
+      {flash.toast}
       </div>
     </Shell>
   );

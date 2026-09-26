@@ -3,17 +3,21 @@
 import { CalendarX, Trash, X } from "@/components/icons";
 import { type FormEvent, useEffect, useState } from "react";
 import { ModalDialog } from "@/components/modal-dialog";
+import { HelpHint } from "@/components/ui";
 import { api } from "@/lib/api";
 import { defaultManualAppointmentStart, instantFromLocalMinute, localMinute } from "@/lib/timezone";
 import type { AttendantTimeBlock } from "./agenda-types";
 import { messageFrom } from "./agenda-utils";
 
-export function AgendaTimeBlockDialog({ open, anchor, timezone, onClose, onSaved }: {
+export function AgendaTimeBlockDialog({ open, anchor, timezone, initialRange = null, onClose, onSaved }: {
   open: boolean;
   anchor: string;
   timezone: string;
+  /** Horário clicado na grade: o formulário já abre com ele preenchido. */
+  initialRange?: { start: string; end: string } | null;
   onClose: () => void;
-  onSaved: () => void | Promise<void>;
+  /** Recebe o resumo do bloqueio criado, para a resposta imediata da tela. */
+  onSaved: (summary: string) => void | Promise<void>;
 }) {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -25,13 +29,14 @@ export function AgendaTimeBlockDialog({ open, anchor, timezone, onClose, onSaved
 
   useEffect(() => {
     if (!open) return;
-    const initialStart = defaultManualAppointmentStart(anchor, timezone);
+    const initialStart = initialRange?.start ?? defaultManualAppointmentStart(anchor, timezone);
+    const initialEnd = initialRange?.end ?? new Date(new Date(initialStart).getTime() + 60 * 60_000).toISOString();
     setStart(localMinute(initialStart, timezone));
-    setEnd(localMinute(new Date(new Date(initialStart).getTime() + 60 * 60_000).toISOString(), timezone));
+    setEnd(localMinute(initialEnd, timezone));
     setReason("");
     setRecurring(false); setWeekdays([1, 2, 3, 4, 5]);
     setError("");
-  }, [anchor, open, timezone]);
+  }, [anchor, initialRange, open, timezone]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -51,7 +56,7 @@ export function AgendaTimeBlockDialog({ open, anchor, timezone, onClose, onSaved
         method: "POST",
         body: JSON.stringify(recurring ? { start_local_time: start.slice(11), end_local_time: end.slice(11), weekdays, starts_on: start.slice(0, 10), reason: reason.trim(), timezone } : { start: startInstant, end: endInstant, reason: reason.trim() })
       });
-      await onSaved();
+      await onSaved(recurring ? `Bloqueio recorrente criado · ${start.slice(11)} – ${end.slice(11)}` : `Horário bloqueado · ${start.slice(11)} – ${end.slice(11)}`);
       onClose();
     } catch (submitError) {
       setError(messageFrom(submitError, "Não foi possível bloquear esse horário."));
@@ -82,7 +87,7 @@ export function AgendaTimeBlockDialog({ open, anchor, timezone, onClose, onSaved
           <label className="field"><span className="label">Término</span><input className="input" type="datetime-local" value={end} onChange={(event) => setEnd(event.target.value)} required disabled={saving} /></label>
         </div>
         <label className="field"><span className="label">Motivo (obrigatório)</span><input className="input" value={reason} onChange={(event) => setReason(event.target.value)} minLength={1} maxLength={500} required placeholder="Ex.: compromisso pessoal" disabled={saving} /></label>
-        <fieldset className="grid gap-2"><legend className="label">Tipo de bloqueio</legend><label><input type="radio" checked={!recurring} onChange={() => setRecurring(false)} /> Único</label><label><input type="radio" checked={recurring} onChange={() => setRecurring(true)} /> Recorrente</label></fieldset>
+        <fieldset className="grid gap-2"><legend className="label">Tipo de bloqueio <HelpHint label="Ajuda: Tipo de bloqueio">Recorrente repete o bloqueio nos dias da semana escolhidos, no mesmo horário, a partir da data de início.</HelpHint></legend><label><input type="radio" checked={!recurring} onChange={() => setRecurring(false)} /> Único</label><label><input type="radio" checked={recurring} onChange={() => setRecurring(true)} /> Recorrente</label></fieldset>
         {recurring ? <fieldset className="grid gap-2"><legend className="label">Dias da semana</legend>{["Segunda","Terça","Quarta","Quinta","Sexta","Sábado","Domingo"].map((day, index) => <label key={day}><input type="checkbox" checked={weekdays.includes(index + 1)} onChange={() => setWeekdays((current) => current.includes(index + 1) ? current.filter((value) => value !== index + 1) : [...current, index + 1])} /> {day}</label>)}</fieldset> : null}
         {error ? <p className="error" role="alert">{error}</p> : null}
         <div className="flex justify-end gap-2 border-t border-[var(--border)] pt-4">

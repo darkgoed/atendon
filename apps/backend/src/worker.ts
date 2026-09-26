@@ -67,6 +67,7 @@ import {
   type ReconciliationResult
 } from "./modules/operations/event-reconciliation.js";
 import { isWithinBusinessHours } from "./modules/whatsapp/business-hours.js";
+import { startCalendarSyncWorker } from "./modules/scheduling/calendar-sync.js";
 import { startWebPushRuntime } from "./modules/web-push/runtime.js";
 import { aiTurnProgressStore } from "./modules/realtime/ai-turn-progress.js";
 import { reconcilePendingMeetingResults } from "./modules/commercial-journey/reconciliation.js";
@@ -86,6 +87,7 @@ import { runBillingReconciliationBatch, runSubscriptionLifecycleBatch } from "./
 import { runMercadoPagoReconciliationBatch } from "./billing/mercadopago-reconciliation.js";
 import { runDunningBatch } from "./billing/dunning.js";
 import { applyScheduledDowngrades } from "./billing/proration.js";
+import { runEfiPixMonthlyBatch } from "./billing/efipay-monthly-batch.js";
 import { runStorageRetention } from "./modules/organization/storage.js";
 import { listDueFlowWaits, purgeFlowExecutionLogs, QualificationService } from "./modules/qualification/service.js";
 import { QUALIFICATION_WAIT_QUEUE, qualificationWaitQueue, type QualificationWaitJob } from "./queue/qualification-wait-queue.js";
@@ -465,6 +467,15 @@ const flowLogRetentionTimer = setInterval(purgeFlowExecutionLogsJob, 24 * 60 * 6
 flowLogRetentionTimer.unref();
 purgeFlowExecutionLogsJob();
 
+// Google Calendar ↔ AtendON (0185/0189): drena a outbox de sincronização com
+// claim/lease/retry no próprio banco (idempotente por event ID determinístico)
+// e reconcilia eventos vinculados editados no Google. Timers vivem no módulo;
+// aqui só boot e limpeza no shutdown.
+const calendarSyncWorker = startCalendarSyncWorker({
+  intervalMs: Number(process.env.GOOGLE_CALENDAR_SYNC_INTERVAL_MS ?? 10_000),
+  linksIntervalMs: Number(process.env.GOOGLE_CALENDAR_LINKS_INTERVAL_MS ?? 300_000)
+});
+
 const reconcileTripzAiTurns = async (): Promise<void> => {
   const interruptedTurns = await tripzAiRepository.failStaleProcessingTurns({ limit: 100 });
   const turns = await tripzAiRepository.listQueuedTurnsForRecovery({ olderThanMs: 30_000, limit: 100 });
@@ -694,6 +705,36 @@ const oauthTokenRenewalTimer = setInterval(() => {
     .catch((error) => logger.error({ error }, "Mercado Pago OAuth token renewal batch failed"));
 }, Number(process.env.OAUTH_TOKEN_RENEWAL_INTERVAL_MS ?? OAUTH_TOKEN_RENEWAL_INTERVAL_MS));
 oauthTokenRenewalTimer.unref();
+// Reconciliação mensal Efí (Pix): lote idempotente; 1h com execução no boot.
+// Guarda de tick evita rodadas sobrepostas quando uma execução excede o
+// intervalo; log só de contagens numéricas (nunca credenciais).
+let efiMonthlyBatchRunning = false;
+const runEfiMonthlyBatchJob = (): void => {
+  if (efiMonthlyBatchRunning) return;
+  efiMonthlyBatchRunning = true;
+  void runEfiPixMonthlyBatch(50)
+    .then((result) => {
+      const counts = Object.fromEntries(Object.entries(result ?? {}).filter(([, value]) => typeof value === "number"));
+      if (Object.keys(counts).length > 0) logger.info({ counts }, "Efí Pix monthly reconciliation batch finished");
+      // Falhas por item não podem virar só contagem silenciosa — viram ERROR alertável.
+      const errors = result?.errors ?? [];
+      if (errors.length > 0) {
+        logger.error(
+          {
+            counts,
+            errors: errors.slice(0, 20).map((e) => ({ mandateId: e.mandateId, dueOn: e.dueOn, txid: e.txid, message: e.message.slice(0, 200) })),
+            errorCount: errors.length,
+          },
+          "Efí Pix monthly reconciliation batch had item failures",
+        );
+      }
+    })
+    .catch((error) => logger.error({ error }, "Efí Pix monthly reconciliation batch failed"))
+    .finally(() => { efiMonthlyBatchRunning = false; });
+};
+const efiMonthlyBatchTimer = setInterval(runEfiMonthlyBatchJob, Number(process.env.EFIPIX_MONTHLY_BATCH_INTERVAL_MS ?? 3_600_000));
+efiMonthlyBatchTimer.unref();
+runEfiMonthlyBatchJob();
 const changelogAiTimer = setInterval(() => {
   void reconcileChangelogAiGeneration()
     .catch((error) => logger.error({ error }, "Changelog AI reconciliation failed"));
@@ -765,12 +806,14 @@ async function shutdown(): Promise<void> {
   clearInterval(subscriptionLifecycleTimer);
   clearInterval(scheduledDowngradeTimer);
   clearInterval(oauthTokenRenewalTimer);
+  clearInterval(efiMonthlyBatchTimer);
   clearInterval(changelogPublishTimer);
   clearInterval(heartbeatTimer);
   clearInterval(tripzAiReconciler);
   clearInterval(qualificationWaitReconciler);
   clearInterval(qualificationOutboxPumpTimer);
   clearInterval(flowLogRetentionTimer);
+  await calendarSyncWorker.stop();
   await instagramScheduler.stop();
   try {
     const redis = await worker.client;

@@ -29,11 +29,13 @@ import { phoneE164Schema } from "../../phone.js";
 import { LEAD_TECHNICAL_STATUSES, domainAllowsStageTransition, leadSituation } from "../organization/domain.js";
 import {
   applyAppointmentHandoff,
+  assertExpectedAppointmentSnapshot,
   cancelAppointmentJourney,
   concludeAppointmentJourney,
   defaultStageId,
   markAppointmentNoShowJourney,
-  type JourneyActor
+  type JourneyActor,
+  type ExpectedAppointmentSnapshot
 } from "../commercial-journey/service.js";
 import type { CancellationInput, ConcludeAppointmentInput, NoShowInput } from "../commercial-journey/schemas.js";
 import { stageRequiresCommercialPayload } from "../commercial-journey/domain.js";
@@ -42,6 +44,13 @@ import { isFeatureFlagEnabled } from "../operations/feature-flags.js";
 import { createMeetRoomIdentity, insertMeetRoom, participantJoinUrl } from "../meet/service.js";
 import { publicHttpsAgent, resolvePublicHttpsUrl, type LookupAll } from "../../security/outbound-url.js";
 import { loadSchedulingUnit, lockAndLoadOverlappingAppointments } from "./repository.js";
+import {
+  assertGoogleCalendarAvailability,
+  assertPipelineRouteTeam,
+  loadPipelineCalendarRoute,
+  listGoogleCalendarBusyIntervals,
+  routeTeamExclusionIds
+} from "./calendar-booking.js";
 
 export const slug = z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100);
 export const uuid = z.string().uuid();
@@ -1468,6 +1477,50 @@ export async function selectAppointmentAttendant(
 /** @deprecated Compatibility alias for the previous closer terminology. */
 export const selectAppointmentCloser = selectAppointmentAttendant;
 
+/**
+ * Seleção automática tolerante a conflito no Google: roda a rotação local e,
+ * se o candidato escolhido estiver ocupado no Google Calendar (409), o exclui
+ * e roda para o próximo do pool. Fail-closed: falha do Google (502/503) propaga
+ * (nunca confirmar horário como livre); pool exaurido após conflitos → 409 real
+ * (o último conflito), nunca sucesso cego. O cursor rotativo é atualizado a
+ * cada seleção DENTRO da transação do chamador — o rollback do erro final não
+ * deixa efeito colateral de candidatos não usados.
+ */
+async function selectGoogleFreeAppointmentAttendant(
+  client: PoolClient,
+  tenantId: string,
+  interval: { start: Date; end: Date },
+  options: { excludeMemberIds?: string[]; excludeAppointmentId?: string; refuseAutomaticSelection?: boolean } = {}
+): Promise<{ attendant: AppointmentAttendantAssignment | null; googleChecked: boolean }> {
+  const excluded = new Set(options.excludeMemberIds ?? []);
+  let lastGoogleConflict: Error | null = null;
+  for (;;) {
+    const attendant = await selectAppointmentAttendant(client, tenantId, {
+      start: interval.start,
+      end: interval.end,
+      excludeAppointmentId: options.excludeAppointmentId,
+      excludeMemberIds: excluded.size > 0 ? [...excluded] : undefined
+    });
+    if (!attendant) {
+      if (lastGoogleConflict) throw lastGoogleConflict;
+      return { attendant: null, googleChecked: false };
+    }
+    if (options.refuseAutomaticSelection) {
+      throw httpError(409, "Selecione um closer disponível para este horário");
+    }
+    try {
+      await assertGoogleCalendarAvailability(client, tenantId, attendant.memberId, interval, {
+        excludeAppointmentId: options.excludeAppointmentId
+      });
+      return { attendant, googleChecked: true };
+    } catch (error) {
+      if ((error as { statusCode?: number }).statusCode !== 409) throw error;
+      excluded.add(attendant.memberId);
+      lastGoogleConflict = error as Error;
+    }
+  }
+}
+
 async function loadExplicitAppointmentAttendant(
   client: PoolClient,
   tenantId: string,
@@ -1637,6 +1690,29 @@ export async function listAppointmentAssignees(
       suggested: false
     };
   });
+  // Fail-closed: quem está livre localmente precisa estar livre também na Google
+  // Agenda do responsável (mesma checagem do commit do agendamento). 409 → remove
+  // da oferta com placeholder sem detalhes do evento externo; 502/503 propaga —
+  // nunca oferecer "livre" sem confirmação do Google.
+  const client = await db.connect();
+  try {
+    for (const member of base.filter((item) => item.selectable)) {
+      try {
+        await assertGoogleCalendarAvailability(client, tenantId, member.member_id, interval, { excludeAppointmentId });
+      } catch (error) {
+        if ((error as { statusCode?: number }).statusCode !== 409) throw error;
+        member.selectable = false;
+        member.conflicts.push({
+          id: "google-calendar",
+          start: interval.start.toISOString(),
+          end: interval.end.toISOString(),
+          lead_name: "Ocupado na Google Agenda"
+        });
+      }
+    }
+  } finally {
+    client.release();
+  }
   const selectable = base.filter((member) => member.selectable);
   if (selectable.length) {
     const minimumLoad = Math.min(...selectable.map((member) => member.future_meetings_count));
@@ -1683,20 +1759,34 @@ export async function reassignAppointmentAssignee(
     if (!appointmentStatus.safeParse(appointment.status).success || !["confirmado", "reagendado"].includes(appointment.status)) {
       throw httpError(409, "Somente reuniões ativas podem ser reatribuídas");
     }
-    if (appointment.assigned_member_id === memberId) return loadMappedAppointment(client, tenantId, appointmentId);
+    // Rota da etapa (google-calendar-team-sync): conexão fixa força o dono da
+    // conexão; equipe exige membro da equipe; sem rota mantém o responsável pedido.
+    const calendarRoute = await loadPipelineCalendarRoute(client, tenantId, appointment.lead_id);
+    const targetMemberId = calendarRoute?.kind === "connection" ? calendarRoute.ownerMemberId : memberId;
+    if (appointment.assigned_member_id === targetMemberId) return loadMappedAppointment(client, tenantId, appointmentId);
 
-    if (memberId) {
+    if (targetMemberId) {
+      await assertPipelineRouteTeam(client, tenantId, calendarRoute, targetMemberId);
       await loadExplicitAppointmentAttendant(
         client,
         tenantId,
-        memberId,
+        targetMemberId,
         { start: appointment.start_at, end: appointment.end_at },
         appointmentId
+      );
+      // Falha fechada antes do commit: conflito externo → 409; Google falhou →
+      // 502/503. O evento vinculado próprio é excluído apenas por intervalo exato.
+      await assertGoogleCalendarAvailability(
+        client,
+        tenantId,
+        targetMemberId,
+        { start: appointment.start_at, end: appointment.end_at },
+        { excludeAppointmentId: appointmentId }
       );
       const transferred = await transferCaseAssignment(client, {
         tenantId,
         selector: { leadId: appointment.lead_id },
-        targetMemberId: memberId,
+        targetMemberId,
         actor,
         manager: true,
         preserveAutomation: true
@@ -1736,14 +1826,14 @@ export async function reassignAppointmentAssignee(
     await client.query(
       `UPDATE scheduling_leads SET closer_member_id=$3,handoff_at=now(),handoff_by_user_id=$4,updated_at=now()
        WHERE tenant_id=$1 AND id=$2`,
-      [tenantId,appointment.lead_id,memberId,actor.userId]
+      [tenantId,appointment.lead_id,targetMemberId,actor.userId]
     );
     await client.query(
       `INSERT INTO audit_logs(actor_user_id,workspace_id,actor_scope,action,resource_type,resource_id,metadata,ip_address,user_agent)
        VALUES($1,$2,$3,'scheduling.appointment.assignment.update','scheduling_appointment',$4,$5,$6,$7)`,
       [actor.userId, tenantId, actor.actorScope, appointmentId, {
         previous_member_id: appointment.assigned_member_id,
-        assigned_member_id: memberId,
+        assigned_member_id: targetMemberId,
         automation_preserved: true
       }, actor.ipAddress ?? null, actor.userAgent ?? null]
     );
@@ -2036,13 +2126,27 @@ export async function createAppointment(
       throw httpError(403, "Somente gestores podem escolher o closer da reunião");
     }
     let selectedAttendant: AppointmentAttendantAssignment | null;
-    if (hasExplicitAssignee && input.assigned_member_id) {
+    let googleAvailabilityChecked = false;
+    // Rota da etapa do lead (specs/active/google-calendar-team-sync.md): conexão
+    // fixa → responsável é o dono da conexão (força mesmo com escolha explícita);
+    // equipe → pool restrito aos membros da equipe; sem rota → mantém o
+    // responsável selecionado (comportamento atual).
+    const calendarRoute = await loadPipelineCalendarRoute(client, tenantId, input.lead_id);
+    if (calendarRoute?.kind === "connection") {
+      selectedAttendant = await loadExplicitAppointmentAttendant(
+        client,
+        tenantId,
+        calendarRoute.ownerMemberId,
+        { start, end }
+      );
+    } else if (hasExplicitAssignee && input.assigned_member_id) {
       selectedAttendant = await loadExplicitAppointmentAttendant(
         client,
         tenantId,
         input.assigned_member_id,
         { start, end }
       );
+      await assertPipelineRouteTeam(client, tenantId, calendarRoute, selectedAttendant.memberId);
     } else if (options.expectedAssignedMemberId) {
       // A closer working in "mine" scope keeps ownership of the meeting they
       // create and cannot be rotated out of their own case after authorization.
@@ -2052,11 +2156,31 @@ export async function createAppointment(
         options.expectedAssignedMemberId,
         { start, end }
       );
+      await assertPipelineRouteTeam(client, tenantId, calendarRoute, selectedAttendant.memberId);
     } else {
-      selectedAttendant = await selectAppointmentAttendant(client, tenantId, { start, end });
-      if (hasExplicitAssignee && input.assigned_member_id === null && selectedAttendant) {
-        throw httpError(409, "Selecione um closer disponível para este horário");
-      }
+      // Auto-seleção (rota de equipe ou sem rota): conflito no Google (409) pula
+      // o candidato e roda para o próximo do pool; falha do Google (502/503)
+      // propaga. Escolha explícita de "sem responsável" (assigned null) continua
+      // exigindo decisão manual — sem sorteio.
+      const { attendant, googleChecked } = await selectGoogleFreeAppointmentAttendant(
+        client,
+        tenantId,
+        { start, end },
+        {
+          excludeMemberIds: calendarRoute?.kind === "team"
+            ? await routeTeamExclusionIds(client, tenantId, calendarRoute.teamId)
+            : undefined,
+          refuseAutomaticSelection: hasExplicitAssignee && input.assigned_member_id === null
+        }
+      );
+      selectedAttendant = attendant;
+      googleAvailabilityChecked = googleChecked;
+    }
+    // Disponibilidade do Google fail-closed ANTES do commit (spec): conexão do
+    // responsável com agenda selecionada → freeBusy; conflito externo → 409;
+    // falha do Google → 502/503, nunca confirmar o horário como livre.
+    if (!googleAvailabilityChecked) {
+      await assertGoogleCalendarAvailability(client, tenantId, selectedAttendant?.memberId ?? null, { start, end });
     }
     if (options.requireAvailableAttendant && !selectedAttendant) {
       throw httpError(409, "Não há closer ativo disponível para este horário");
@@ -2241,6 +2365,10 @@ export async function rescheduleAppointment(
     now?: Date;
     minimumLeadTimeMinutes?: number;
     actor?: JourneyActor;
+    // Guarda de concorrência da adoção Google→AtendON: snapshot lido antes
+    // da escrita, comparado sob o lock (FOR UPDATE) antes de qualquer UPDATE.
+    // Divergência → 409; ausente → comportamento legado.
+    expectedSnapshot?: ExpectedAppointmentSnapshot;
   } = {}
 ) {
   const appointment = await withTransaction(async (client) => {
@@ -2264,6 +2392,7 @@ export async function rescheduleAppointment(
     ) {
       throw httpError(404, "Agendamento não encontrado");
     }
+    assertExpectedAppointmentSnapshot(current.rows[0], options.expectedSnapshot);
     if (current.rows[0].status === "cancelado") throw httpError(409, "Agendamento cancelado não pode ser reagendado");
     const unit = await loadUnit(client, tenantId, input.unidade_id ?? current.rows[0].unit_id);
     const start = new Date(input.start);
@@ -2276,36 +2405,56 @@ export async function rescheduleAppointment(
         client,tenantId,current.rows[0].assigned_member_id,{ start,end },appointmentId
       );
     }
+    // Rota da etapa (google-calendar-team-sync): restringe a escolha automática
+    // à equipe configurada; o responsável existente é preservado no reagendamento.
+    const calendarRoute = await loadPipelineCalendarRoute(client, tenantId, current.rows[0].lead_id);
+    let effectiveMemberId: string | null = current.rows[0].assigned_member_id;
+    let googleAvailabilityChecked = false;
     if (options.requireAvailableAttendant) {
-      const selectedAttendant = current.rows[0].assigned_member_id
-        ? await loadExplicitAppointmentAttendant(
-            client,
-            tenantId,
-            current.rows[0].assigned_member_id,
-            { start, end },
-            appointmentId
-          )
-        : await selectAppointmentAttendant(client, tenantId, {
-            start,
-            end,
-            excludeAppointmentId: appointmentId
-          });
-      if (!selectedAttendant) {
-        throw httpError(409, "Não há closer ativo disponível para este horário");
-      }
-      if (!current.rows[0].assigned_member_id) {
+      if (current.rows[0].assigned_member_id) {
+        await loadExplicitAppointmentAttendant(
+          client,
+          tenantId,
+          current.rows[0].assigned_member_id,
+          { start, end },
+          appointmentId
+        );
+      } else {
+        // Sem responsável: seleção automática pula quem estiver ocupado no Google
+        // (409) e roda para o próximo do pool; falha do Google propaga.
+        const { attendant, googleChecked } = await selectGoogleFreeAppointmentAttendant(
+          client,
+          tenantId,
+          { start, end },
+          {
+            excludeAppointmentId: appointmentId,
+            excludeMemberIds: calendarRoute?.kind === "team"
+              ? await routeTeamExclusionIds(client, tenantId, calendarRoute.teamId)
+              : undefined
+          }
+        );
+        if (!attendant) {
+          throw httpError(409, "Não há closer ativo disponível para este horário");
+        }
+        googleAvailabilityChecked = googleChecked;
+        effectiveMemberId = attendant.memberId;
         await ensureCaseAssignment(client, {
           tenantId,
           selector: { leadId: current.rows[0].lead_id },
           reason: "reuniao_sem_responsavel",
           forceRotation: true,
-          preferredMemberId: selectedAttendant.memberId
+          preferredMemberId: attendant.memberId
         });
       }
     } else {
       await assertCapacity(client, tenantId, unit, start, end, appointmentId, {
         allowCapacityOverride: options.allowCapacityOverride
       });
+    }
+    // Disponibilidade do Google fail-closed antes do commit; sob o lock do
+    // agendamento, exclui apenas o intervalo exato do evento vinculado próprio.
+    if (!googleAvailabilityChecked) {
+      await assertGoogleCalendarAvailability(client, tenantId, effectiveMemberId, { start, end }, { excludeAppointmentId: appointmentId });
     }
     const result = await client.query(
       `UPDATE scheduling_appointments
@@ -2608,9 +2757,10 @@ export async function cancelAppointment(
     next_action_at: new Date(Date.now()+24*60*60*1000).toISOString()
   },
   actor: JourneyActor = { userId: null },
-  expectedAssignedMemberId?: string
+  expectedAssignedMemberId?: string,
+  options?: { expectedSnapshot?: ExpectedAppointmentSnapshot }
 ) {
-  return finishJourneyOperation(tenantId,appointmentId,cancelAppointmentJourney(tenantId,appointmentId,input,actor,expectedAssignedMemberId));
+  return finishJourneyOperation(tenantId,appointmentId,cancelAppointmentJourney(tenantId,appointmentId,input,actor,expectedAssignedMemberId,options));
 }
 
 export async function completeAppointment(
@@ -2683,11 +2833,36 @@ export async function transferLead(tenantId: string, leadId: string, reason: str
 
 export async function removeAppointment(tenantId: string, appointmentId: string) {
   await withTransaction(async (client) => {
-    const appointment = await client.query(
-      "SELECT id FROM scheduling_appointments WHERE id=$1 AND tenant_id=$2 FOR UPDATE",
+    const appointment = await client.query<{ status: string }>(
+      "SELECT id,status FROM scheduling_appointments WHERE id=$1 AND tenant_id=$2 FOR UPDATE",
       [appointmentId, tenantId]
     );
     if (!appointment.rows[0]) throw httpError(404, "Agendamento não encontrado");
+    // Exclusão definitiva é bloqueada por sync em voo (claim) ou vínculo vivo:
+    // o FK CASCADE apagaria o vínculo/outbox e o evento ficaria órfão no
+    // Google. Claim (claimed_at) bloqueia sempre, mesmo expirado — o worker
+    // seguinte recupera; soltar aqui perderia a mutação em voo. Vínculo órfão
+    // (connection_id NULL após desconexão, 0185 SET NULL) é terminal: o worker
+    // marca 'conflict' e nunca o remove, então bloquear prende o agendamento
+    // para sempre — cancelado pode ser excluído; ativo ainda não (cancele antes).
+    const outbox = await client.query<{ claimed_at: string | null }>(
+      "SELECT claimed_at FROM scheduling_calendar_sync_outbox WHERE appointment_id=$1 AND tenant_id=$2 FOR UPDATE",
+      [appointmentId, tenantId]
+    );
+    const link = await client.query<{ live: string | null; orphan: string | null }>(
+      `SELECT bool_or(connection_id IS NOT NULL) AS live,bool_or(connection_id IS NULL) AS orphan
+       FROM scheduling_appointment_calendar_events WHERE appointment_id=$1 AND tenant_id=$2`,
+      [appointmentId, tenantId]
+    );
+    // bool_or devolve false (não NULL) com linhas presentes; checar truthiness.
+    const { live = false, orphan = false } = link.rows[0] ?? {};
+    if (
+      outbox.rows.some((row) => row.claimed_at != null)
+      || live
+      || (orphan && appointment.rows[0].status !== "cancelado")
+    ) {
+      throw httpError(409, "Cancele o agendamento e aguarde a sincronização da agenda antes de excluir");
+    }
     await client.query(
       "DELETE FROM scheduling_appointments WHERE id=$1 AND tenant_id=$2",
       [appointmentId, tenantId]
@@ -3161,6 +3336,16 @@ export async function verificarHorarios(
       occupancy.rows.push(...blocks.rows);
       const recurring = await client.query<RecurringTimeBlockRow>(`SELECT * FROM scheduling_attendant_recurring_time_blocks WHERE tenant_id=$1 AND member_id=ANY($2::uuid[]) AND active=true`, [tenantId, blockMemberIds]);
       for (const row of recurring.rows) for (const occurrence of recurringOccurrences(row, opening, closing)) occupancy.rows.push({ assigned_member_id: row.member_id, start_at: new Date(String(occurrence.start)), end_at: new Date(String(occurrence.end)) });
+    }
+    // Responsável EXPLÍCITO: compromissos remotos do Google Calendar (expandidos
+    // pelo buffer da agenda) ocupam a grade como um intervalo atribuído a ele —
+    // inclusive no filtro de horário solicitado/próximos. Sem conexão → legado;
+    // Google fora do ar → 502 fail-closed, nunca grade "livre". Seleção arbitrária
+    // de equipe (sem assignedMemberId) continua sem consulta ao Google.
+    if (options?.assignedMemberId) {
+      const assignedMemberId = options.assignedMemberId;
+      const googleBusy = await listGoogleCalendarBusyIntervals(client, tenantId, assignedMemberId, { start: opening, end: closing });
+      occupancy.rows.push(...googleBusy.map((interval) => ({ assigned_member_id: assignedMemberId, start_at: interval.start_at, end_at: interval.end_at })));
     }
     const effectiveCapacity = capacityAttendantIds !== null
       ? capacityAttendantIds.length

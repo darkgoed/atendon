@@ -358,9 +358,9 @@ describe("phase 1 infrastructure", () => {
       faturamento: "Cerca de R$ 50 mil por mês"
     });
     expect(await pool.query(
-      "SELECT purpose FROM usage_logs WHERE conversation_id=$1 AND input_tokens=120",
+      "SELECT purpose,cost_reported FROM usage_logs WHERE conversation_id=$1 AND input_tokens=120",
       [first!.conversationId]
-    ).then(({ rows }) => rows)).toEqual([{ purpose: "attendance" }]);
+    ).then(({ rows }) => rows)).toEqual([{ purpose: "attendance", cost_reported: true }]);
   });
 
   it("applies scheduling and research prerequisites with every conversation already registered as a lead", async () => {

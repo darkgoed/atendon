@@ -218,6 +218,33 @@ describe("lixeira — purge definitivo e tenancy", () => {
     expect((await pool.query("SELECT 1 FROM scheduling_leads WHERE tenant_id=$1 AND id=$2", [tenantA, leadId])).rowCount).toBe(0);
   });
 
+  it("purge de lead com agendamento vinculado ao Google Calendar responde 409 e preserva tudo (0185)", async () => {
+    const leadId = await createLead(tenantA, "Purge com vínculo Google");
+    const appointmentId = (await pool.query<{ id: string }>(
+      "INSERT INTO scheduling_appointments(lead_id,tenant_id,unit_id,start_at,end_at) VALUES($1,$2,'calls',now(),now()+interval '1 hour') RETURNING id",
+      [leadId, tenantA]
+    )).rows[0].id;
+    // Vínculo confirmado (0185); connection_id é anulado no teste — a guarda
+    // do purge não depende de conexão, só da existência do vínculo.
+    await pool.query(
+      "INSERT INTO scheduling_appointment_calendar_events(appointment_id,tenant_id,calendar_id,event_id) VALUES($1,$2,'agenda-equipe','evt-vinculado')",
+      [appointmentId, tenantA]
+    );
+    // INSERT do agendamento dispara o gatilho 0189: outbox não reclamada existe.
+    expect((await pool.query("SELECT 1 FROM scheduling_calendar_sync_outbox WHERE appointment_id=$1 AND tenant_id=$2 AND claimed_at IS NULL", [appointmentId, tenantA])).rowCount).toBe(1);
+
+    expect((await app.inject({ method: "DELETE", url: `/scheduling/leads/${leadId}`, headers: { cookie: await loginAs(ownerA) } })).statusCode).toBe(200);
+
+    const purged = await app.inject({ method: "DELETE", url: `/trash/leads/${leadId}`, headers: { cookie: await loginAs(ownerA) } });
+    expect(purged.statusCode).toBe(409);
+
+    // Nada foi apagado: lead segue na lixeira, agendamento, vínculo e outbox intactos.
+    expect((await pool.query("SELECT 1 FROM scheduling_leads WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NOT NULL", [tenantA, leadId])).rowCount).toBe(1);
+    expect((await pool.query("SELECT 1 FROM scheduling_appointments WHERE tenant_id=$1 AND id=$2", [tenantA, appointmentId])).rowCount).toBe(1);
+    expect((await pool.query("SELECT 1 FROM scheduling_appointment_calendar_events WHERE tenant_id=$1 AND appointment_id=$2", [tenantA, appointmentId])).rowCount).toBe(1);
+    expect((await pool.query("SELECT 1 FROM scheduling_calendar_sync_outbox WHERE appointment_id=$1 AND tenant_id=$2", [appointmentId, tenantA])).rowCount).toBe(1);
+  });
+
   it("workspace B não vê nem restaura/apaga lixeira de A; auditoria de restore", async () => {
     const leadId = await createLead(tenantA, "Só do A");
     expect((await app.inject({ method: "DELETE", url: `/scheduling/leads/${leadId}`, headers: { cookie: await loginAs(ownerA) } })).statusCode).toBe(200);

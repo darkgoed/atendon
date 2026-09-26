@@ -2,7 +2,7 @@
 
 import { ArrowCounterClockwise, SlidersHorizontal } from "@/components/icons";
 import { PopoverMenu } from "@/components/popover-menu";
-import { IconButton } from "@/components/ui";
+import { HelpHint, IconButton } from "@/components/ui";
 import {
   DEFAULT_PIPELINE_PREFERENCES,
   type PipelineAuxiliaryBadge,
@@ -81,7 +81,7 @@ export function PipelineViewPreferences({
           </div>
         </fieldset>
         <fieldset>
-          <legend className="label mb-2">Alertas auxiliares</legend>
+          <legend className="label mb-2 flex items-center gap-1">Alertas auxiliares<HelpHint label="Ajuda: Alertas auxiliares">Avisos exibidos nos cards: reunião sem resultado registrado, no-show a recuperar e follow-up fora do prazo.</HelpHint></legend>
           <div className="grid gap-2">
             {(Object.entries(badgeLabels) as [PipelineAuxiliaryBadge, string][]).map(([badge, label]) => (
               <label key={badge} className="flex min-h-8 items-center gap-2 text-xs">

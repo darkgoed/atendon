@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { db } from "../db/client.js";
 import { getProvider } from "./providers/registry.js";
 import { getBillingSettings } from "./settings.js";
+import { grantPaidCreditPackage, revokeCreditPackageGrant } from "./credit-packs.js";
 import type { WebhookResult } from "./providers/types.js";
 
 /**
@@ -162,6 +163,28 @@ async function applyApproved(client: PoolClient, provider: ProviderRow, result: 
   }
   await client.query("UPDATE invoices SET status='paid',paid_at=now(),updated_at=now() WHERE id=$1 AND status NOT IN ('refunded','charged_back')", [row.id]);
 
+  // Pacote de créditos: a concessão nasce AQUI, na MESMA transação do
+  // billing_events, idempotente POR FATURA (grant idempotency_key
+  // `credit-pack:<invoiceId>`), não por evento — um 'approved' atrasado com
+  // event id novo cai no `settled` acima ou no ON CONFLICT DO NOTHING. A
+  // reversão anterior (refunded/charged_back) também impede re-concessão:
+  // grant só acontece com a fatura efetivamente marcada paga.
+  //
+  // Lock order: invoice → period → grant. O bloco de assinatura abaixo é
+  // PULADO de propósito: fatura de pacote não tem subscription_id, não reativa
+  // plano e não pode impor invoice → subscription FOR UPDATE contra o caminho
+  // da reserva de IA (subscription → period → grant).
+  if (row.kind === "credit_package") {
+    if (!["refunded", "charged_back"].includes(row.status)) {
+      const purchase = await client.query<{ credits: string; status: string }>(
+        "SELECT credits,status FROM ai_credit_purchases WHERE invoice_id=$1 FOR UPDATE", [row.id]);
+      if (purchase.rows[0]?.status === "PENDING_PAYMENT") {
+        await grantPaidCreditPackage(client, { tenantId: row.tenant_id, invoiceId: row.id, credits: Number(purchase.rows[0].credits) });
+      }
+    }
+    return;
+  }
+
   const subscription = await client.query<SubscriptionRow>(
     `SELECT s.id,s.status,s.current_period_end,s.plan_id,p.billing_period_months,p.grace_period_days
      FROM tenant_subscriptions s JOIN plans p ON p.id=s.plan_id
@@ -235,6 +258,12 @@ async function applyReversal(client: PoolClient, provider: ProviderRow, result: 
     await client.query(`INSERT INTO payments(tenant_id,invoice_id,provider_id,external_id,amount_cents,currency,status,method) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [row.tenant_id,row.id,provider.id,externalId,row.amount_cents,row.currency,status,"webhook"]);
   }
   await client.query("UPDATE invoices SET status=$2,paid_at=NULL,updated_at=now() WHERE id=$1", [row.id,status]);
+  // Pacote de créditos: revoga APENAS o saldo restante da grant da fatura
+  // (consumo parcial permanece histórico; nada é apagado). Idempotente por
+  // fatura. Ordem de lock período → grant (a reserva de IA trava período antes
+  // de grant; o inverso aqui seria deadlock). Chargeback NÃO debita o
+  // financial_ledger da dívida — carteira de créditos é distinta do saldo.
+  if (row.kind === "credit_package") await revokeCreditPackageGrant(client, row.tenant_id, row.id);
   if (row.subscription_id) await client.query(`INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_plan_id,to_plan_id,from_status,to_status,metadata) SELECT $1,$2,$3,s.plan_id,s.plan_id,s.status,s.status,$4 FROM tenant_subscriptions s WHERE s.id=$2`, [row.tenant_id,row.subscription_id,status === "refunded" ? "PAYMENT_REFUNDED" : "PAYMENT_CHARGED_BACK", { invoiceId: row.id, reversal: true }]);
 }
 
@@ -305,10 +334,19 @@ export async function processBillingWebhook(
   if (!result.signatureValid) {
     // NÃO persistir o payload do atacante (corpo de até 1MB, sem dedupe): grava
     // apenas um resumo limitado — a própria rejeição é a evidência.
+    // Rejeições repetidas (ex.: atacante reenviando payload) não podem crescer
+    // billing_events sem limite: a unique (provider_id, external_event_id) com
+    // Date.now() nunca deduplica. Agregamos por provider+janela horária UTC —
+    // no máximo UMA linha de rejeição por provider+hora, com contador de
+    // tentativas no payload (auditoria preservada; payload do atacante não é
+    // persistido, apenas o tamanho em bytes já registrado antes).
+    const rejectionWindow = new Date().toISOString().slice(0, 13).replace(/\D/g, "");
     await db.query(
       `INSERT INTO billing_events(provider_id,external_event_id,event_type,payload,signature_valid)
-       VALUES($1,$2,$3,$4,false) ON CONFLICT (provider_id,external_event_id) DO NOTHING`,
-      [provider.id, `invalid:${result.externalEventId}:${Date.now()}`, result.eventType, { rejected: true, payload_bytes: rawBody.length }]
+       VALUES($1,$2,$3,$4,false)
+       ON CONFLICT (provider_id,external_event_id) DO UPDATE
+       SET payload = billing_events.payload || jsonb_build_object('attempts', COALESCE(billing_events.payload->>'attempts','1')::int + 1)`,
+      [provider.id, `invalid:${rejectionWindow}`, result.eventType, { rejected: true, attempts: 1, payload_bytes: rawBody.length }]
     );
     throw httpError(401, "Assinatura de webhook inválida", "INVALID_WEBHOOK_SIGNATURE");
   }

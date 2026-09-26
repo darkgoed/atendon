@@ -22,6 +22,10 @@ import {
   pipelineChannelsSchema,
   pipelineCreateSchema,
   pipelineDuplicateSchema,
+  pipelineGroupCreateSchema,
+  pipelineGroupOrderSchema,
+  pipelineGroupParams,
+  pipelineGroupUpdateSchema,
   pipelineIdParams,
   pipelineListQuerySchema,
   pipelineOrderSchema,
@@ -50,8 +54,10 @@ import {
 import {
   applyBulkOperation,
   archivePipeline,
+  archivePipelineGroup,
   archivePipelineStage,
   createPipeline,
+  createPipelineGroup,
   createPipelineStage,
   createSavedView,
   createTag,
@@ -65,12 +71,14 @@ import {
   moveLeadStage,
   previewBulkOperation,
   reorderPipelines,
+  reorderPipelineGroups,
   reorderPipelineStages,
   replaceStageTransitions,
   setLeadTag,
   setPipelineChannels,
   undoBulkOperation,
   updatePipeline,
+  updatePipelineGroup,
   updatePipelineSettings,
   updatePipelineStage,
   updateSavedView,
@@ -304,6 +312,35 @@ export async function registerOrganizationRoutes(app: FastifyInstance) {
     if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
     const { pipeline_ids } = pipelineOrderSchema.parse(request.body);
     return reorderPipelines(session.tenantId,actor(request,session),pipeline_ids);
+  });
+
+  // 0185: grupos opcionais de pipelines (mesma flag e permissão dos pipelines).
+  app.post("/organization/pipeline-groups", async (request, reply) => {
+    const session = await requirePermission(request,"pipeline.manage");
+    if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
+    const created = await createPipelineGroup(session.tenantId,actor(request,session),pipelineGroupCreateSchema.parse(request.body));
+    return reply.status(201).send(created);
+  });
+
+  app.patch("/organization/pipeline-groups/:groupId", async (request) => {
+    const session = await requirePermission(request,"pipeline.manage");
+    if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
+    const { groupId } = pipelineGroupParams.parse(request.params);
+    return updatePipelineGroup(session.tenantId,groupId,actor(request,session),pipelineGroupUpdateSchema.parse(request.body));
+  });
+
+  app.post("/organization/pipeline-groups/:groupId/archive", async (request) => {
+    const session = await requirePermission(request,"pipeline.manage");
+    if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
+    const { groupId } = pipelineGroupParams.parse(request.params);
+    return archivePipelineGroup(session.tenantId,groupId,actor(request,session));
+  });
+
+  app.put("/organization/pipeline-groups/order", async (request) => {
+    const session = await requirePermission(request,"pipeline.manage");
+    if (!await isFeatureFlagEnabled(db,session.tenantId,"case_organization_v1")) throw httpError(409,"Organização de casos temporariamente desabilitada");
+    const { group_ids } = pipelineGroupOrderSchema.parse(request.body);
+    return reorderPipelineGroups(session.tenantId,actor(request,session),group_ids);
   });
 
   // Item 7

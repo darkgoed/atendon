@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { randomUUID } from "@/lib/compat";
 import { useCaseOrganizationEnabled } from "@/lib/organization";
 import { usePermission } from "@/lib/use-permission";
-import { Button, IconButton } from "@/components/ui";
+import { Button, IconButton, ModeBar } from "@/components/ui";
 import type { LeadTag } from "@/components/lead-tag-picker";
 
 type BulkAction = "assign" | "tags_add" | "tags_remove" | "move_stage";
@@ -109,7 +109,19 @@ export function BulkLeadActions({ selected, onClear, onChanged }: { selected: Bu
     finally { setPending(false); }
   }
 
-  if (!open && !applied) return <IconButton label={`Ações em lote (${selected.length})`} className="pipeline-bulk-trigger" aria-expanded={false} onClick={() => setOpen(true)}><CheckSquare size={18} aria-hidden="true" /></IconButton>;
+  // Indicador de modo: seleção em massa ativa. O rodapé diz o que fazer e
+  // como sair (Limpar · Esc, tratado pela página do pipeline).
+  if (!open && !applied) return (
+    <ModeBar
+      live
+      icon={<CheckSquare size={16} />}
+      title={`${selected.length} selecionado(s)`}
+      description="Escolha uma ação para aplicar a todos os leads selecionados."
+      actions={<IconButton label={`Ações em lote (${selected.length})`} aria-expanded={false} onClick={() => setOpen(true)}><CheckSquare size={18} aria-hidden="true" /></IconButton>}
+      onCancel={onClear}
+      cancelLabel="Limpar"
+    />
+  );
 
   if (applied) return <aside className="bulk-lead-actions bulk-lead-actions--applied" role="status"><CheckSquare size={20} className="text-[var(--success-text)]" aria-hidden="true" /><p className="bulk-lead-actions__copy"><strong>{applied.result.count} lead(s) atualizados</strong><span>Operação concluída de forma atômica.</span></p>{applied.result.undoable && undoSeconds > 0 ? <IconButton label={`Desfazer · ${undoSeconds}s`} onClick={() => void undo()} disabled={pending}><ArrowCounterClockwise size={15} aria-hidden="true" /></IconButton> : null}<button type="button" className="bulk-lead-actions__close" onClick={() => setApplied(null)} aria-label="Fechar confirmação"><X size={15} /></button>{error ? <p className="error" role="alert">{error}</p> : null}</aside>;
 

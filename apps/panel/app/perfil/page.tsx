@@ -6,6 +6,7 @@ import useSWR from "swr";
 import { Shell } from "@/components/shell";
 import { AppearancePreferences } from "@/components/appearance-preferences";
 import { api } from "@/lib/api";
+import { workspaceRoleLabel } from "@/lib/labels";
 import type { PanelSession } from "@/lib/session";
 import { Card, Field, Input, PageHeader, SaveButton, SaveToast, Section, useSaveFeedback } from "@/components/ui";
 import styles from "@/components/settings-panels.module.css";
@@ -90,7 +91,7 @@ export default function ProfilePage() {
             <Field label="Nome"><Input name="name" type="text" defaultValue={session?.user.name ?? ""} placeholder="Como você quer ser identificado nas mensagens" disabled={saving || !session} /></Field>
             <Field label="E-mail"><Input name="email" type="email" defaultValue={session?.user.email ?? ""} disabled={saving || !session} required /></Field>
             <Field label="Senha atual" hint="Necessária só para alterar e-mail ou senha"><Input name="currentPassword" type="password" autoComplete="current-password" disabled={saving || !session} /></Field>
-            <Field label="Nova senha" hint="Opcional"><Input name="newPassword" type="password" autoComplete="new-password" minLength={12} disabled={saving || !session} /></Field>
+            <Field label="Nova senha" hint="Opcional" help="Ao salvar, suas outras sessões abertas são encerradas."><Input name="newPassword" type="password" autoComplete="new-password" minLength={12} disabled={saving || !session} /></Field>
             <Field label="Confirmar nova senha" hint="Opcional"><Input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} disabled={saving || !session} /></Field>
             {error ? <p className="error" role="alert">{error}</p> : null}
             {message ? <p className="accent text-sm" role="status">{message}</p> : null}
@@ -109,7 +110,7 @@ export default function ProfilePage() {
             <div><dt>Usuário</dt><dd>{session?.user.email ?? (sessionError ? "Indisponível" : "Carregando…")}</dd></div>
             <div><dt>Tipo</dt><dd>{session?.user.isRoot ? "ROOT" : "Workspace"}</dd></div>
             <div><dt>Workspace</dt><dd>{session?.activeWorkspace?.name ?? "-"}</dd></div>
-            <div><dt>Função</dt><dd>{session?.activeWorkspace?.role ?? "-"}</dd></div>
+            <div><dt>Função</dt><dd>{workspaceRoleLabel(session?.activeWorkspace?.role)}</dd></div>
           </dl>
           </Section>
         </Card>

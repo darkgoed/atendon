@@ -128,4 +128,25 @@ describe("AI follow-up billing: usage_logs.request_id", () => {
     await reconcileAiInteraction(x.t, "follow_up", secondTurnId, { model: "test/cached-model", inputTokens: 100, outputTokens: 50, cachedTokens: 60 });
     expect(await scalar("SELECT provider_cost_usd_micros AS value FROM ai_usage_ledger WHERE tenant_id=$1 AND logical_turn_id=$2::uuid", [x.t, secondTurnId])).toBe("369");
   });
+
+  it("records provider cost provenance on follow-up usage: costReported=false persists, omitted defaults to reported", async () => {
+    const x = await setup(2);
+    const conversationId = await conversation(x.t);
+    const reportedFalse = `test-${randomUUID()}`;
+    const omitted = `test-${randomUUID()}`;
+    await followUps.recordAiUsage({
+      tenantId: x.t, conversationId, providerRequestId: reportedFalse,
+      model: "test/model", inputTokens: 10, outputTokens: 5, costUsd: 0, costReported: false
+    });
+    await followUps.recordAiUsage({
+      tenantId: x.t, conversationId, providerRequestId: omitted,
+      model: "test/model", inputTokens: 10, outputTokens: 5, costUsd: 0
+    });
+    const reported = async (id: string) => (await pool.query<{ cost_reported: boolean }>(
+      "SELECT cost_reported FROM usage_logs WHERE tenant_id=$1 AND provider_request_id=$2", [x.t, id]
+    )).rows[0];
+    // A provider-reported zero is a real zero; an omitted cost keeps the legacy reported=true default
+    expect(await reported(reportedFalse)).toEqual({ cost_reported: false });
+    expect(await reported(omitted)).toEqual({ cost_reported: true });
+  });
 });

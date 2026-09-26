@@ -26,7 +26,7 @@ async function resetRule() {
   invalidateActivePricingRuleCache();
 }
 beforeEach(async () => { await resetRule(); invalidateBillingSettingsCache(); await pool.query("UPDATE billing_settings SET usd_brl_rate_micros=5500000,min_overage_estimate_cents=7"); invalidateBillingSettingsCache(); });
-afterAll(async () => { if (tenants.length) await pool.query("DELETE FROM tenants WHERE id=ANY($1::uuid[])", [tenants]); await pool.end(); });
+afterAll(async () => { if (tenants.length) await pool.query("DELETE FROM tenants WHERE id=ANY($1::uuid[])", [tenants]); await pool.query("DELETE FROM ai_model_prices WHERE model IN ('zero-cost-priced','zero-cost-free','cheap-1t')"); await pool.end(); });
 
 describe("billing pricing integration", () => {
   it("prices COST_PLUS_MARKUP with exact closed arithmetic", async () => {
@@ -36,13 +36,33 @@ describe("billing pricing integration", () => {
     expect(p.billableAmountBrlCents).toBe(1650);
     expect(p.pricingSnapshot).toMatchObject({ version: 1, strategy: "COST_PLUS_MARKUP", markupBps: 20000, usdBrlRateMicros: 5500000 });
   });
-  it("fails open for unknown model and no active rule", async () => {
+  it("cost omitted/zero is not free: unknown model falls back to reference price; no active rule keeps cost path", async () => {
     const unknown = await priceInteraction({ model: "missing", inputTokens: 0, outputTokens: 0, cachedTokens: 0 });
-    expect(unknown.providerCostUsdMicros).toBe(0); expect(unknown.pricingSnapshot.fallback).toBe("unknown_model");
+    expect(unknown.providerCostUsdMicros).toBe(0); expect(unknown.pricingSnapshot.fallback).toBe("unknown_model_reference_price");
+    expect(unknown.pricingSnapshot.costSource).toBe("reference_fallback");
     await pool.query("UPDATE ai_pricing_rules SET active=false"); invalidateActivePricingRuleCache();
     const noRule = await priceInteraction({ model: "known-cost", inputTokens: 0, outputTokens: 0, cachedTokens: 0, providerCostUsd: 1 });
     expect(noRule.pricingSnapshot.fallback).toBe("no_active_rule");
     expect(noRule.pricingSnapshot.version).toBe(0);
+  });
+  it("provider cost zero falls back to the model price table (explicit 0/0 stays free)", async () => {
+    await pool.query("INSERT INTO ai_model_prices(model,input_price_per_million_micros,output_price_per_million_micros) VALUES('zero-cost-priced',1000000,2000000),('zero-cost-free',0,0)");
+    const priced = await priceInteraction({ model: "zero-cost-priced", inputTokens: 1000, outputTokens: 0, cachedTokens: 0, providerCostUsd: 0 });
+    expect(priced.providerCostUsdMicros).toBe(1000);
+    expect(priced.pricingSnapshot.costSource).toBe("model_price_table");
+    const free = await priceInteraction({ model: "zero-cost-free", inputTokens: 1000, outputTokens: 0, cachedTokens: 0, providerCostUsd: 0 });
+    expect(free.providerCostUsdMicros).toBe(0); expect(free.billableAmountBrlCents).toBe(0);
+  });
+  it("sub-micro table costs still yield credits; explicit 0/0 stays zero", async () => {
+    await pool.query("INSERT INTO ai_model_prices(model,input_price_per_million_micros,output_price_per_million_micros) VALUES('cheap-1t',100000,0)");
+    const cheap = await priceInteraction({ model: "cheap-1t", inputTokens: 1, outputTokens: 0, cachedTokens: 0, providerCostUsd: 0 });
+    expect(cheap.providerCostUsdMicros).toBe(0);
+    expect(cheap.normalizedCredits).toBe(1);
+    const reported = await priceInteraction({ model: "cheap-1t", inputTokens: 0, outputTokens: 0, cachedTokens: 0, providerCostUsd: 1e-7 });
+    expect(reported.providerCostUsdMicros).toBe(0);
+    expect(reported.normalizedCredits).toBe(1);
+    const free = await priceInteraction({ model: "zero-cost-free", inputTokens: 1, outputTokens: 0, cachedTokens: 0, providerCostUsd: 0 });
+    expect(free.providerCostUsdMicros).toBe(0); expect(free.normalizedCredits).toBe(0); expect(free.billableAmountBrlCents).toBe(0);
   });
   it("derives provider cost from model token prices", async () => {
     await pool.query("INSERT INTO ai_model_prices(model,input_price_per_million_micros,output_price_per_million_micros) VALUES('priced-test',1000000,2000000)");

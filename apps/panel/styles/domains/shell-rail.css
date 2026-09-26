@@ -211,7 +211,14 @@
   .nav-rail__workspace .workspace-switcher__trigger[aria-expanded="true"] { background: var(--surface-hover); }
   .nav-rail__workspace .workspace-switcher__identity,
   .nav-rail__workspace .workspace-switcher__chevron { display: none; }
-  .nav-rail__workspace .workspace-switcher__menu { left: 0; }
+  /* No rail o seletor fica no rodapé: o menu abre para o LADO, ancorado
+     embaixo — abrir para baixo (top:100%) jogava a lista para fora da tela. */
+  .nav-rail__workspace .workspace-switcher__menu {
+    top: auto;
+    bottom: 0;
+    left: calc(100% + var(--space-3));
+    width: 300px;
+  }
 
   /* =========================================================== SHELL 64 == */
 
@@ -438,6 +445,7 @@
 .settings-rail__link:hover > svg, .settings-rail__tab:hover > svg { color: var(--text); }
 .settings-rail__link > span { display: grid; min-width: 0; gap: 1px; }
 .settings-rail__link > span > small { color: var(--text-muted); font-size: var(--text-micro); line-height: var(--leading-tight); }
+.settings-rail__link[aria-current="page"],
 .settings-rail__tab[aria-pressed="true"] {
   background: var(--primary-subtle);
   background: color-mix(in srgb, var(--primary) 10%, transparent);
@@ -448,26 +456,36 @@
   color: color-mix(in srgb, var(--primary-text) 85%, var(--text));
   font-weight: var(--weight-semibold);
 }
+.settings-rail__link[aria-current="page"] > svg,
 .settings-rail__tab[aria-pressed="true"] > svg { color: var(--primary-text); color: color-mix(in srgb, var(--primary-text) 85%, var(--text)); }
 
+/* Layout persistente do hub (App Router): .settings-layout é o grid de duas
+   colunas com a sidebar (.settings-rail) como primeira coluna. Substitui o
+   float + margem de irmãos — agora existe um wrapper real no layout.tsx. */
+.settings-layout {
+  display: grid;
+  align-items: start;
+  gap: var(--space-4);
+}
+
 @media (min-width: 960px) {
-  /* Nav lateral: coluna fixa à esquerda, conteúdo ao lado. Float + sticky
-     (sem wrapper no JSX dos painéis; os irmãos seguintes recuam via seletores
-     de irmão). */
-  .settings-rail {
+  .settings-layout {
+    grid-template-columns: var(--settings-nav-width) minmax(0, 1fr);
+    gap: var(--space-5);
+  }
+  .settings-layout > .settings-rail {
+    /* Sidebar persistente: presa sob o topbar e com rolagem própria — a main
+       rola independente dela (mesma matemática de altura do .content flutuante). */
     position: sticky;
     top: var(--topbar-height);
     z-index: var(--z-sticky);
-    float: left;
-    width: var(--settings-nav-width);
-    margin-right: var(--space-5);
+    max-height: calc(100vh - var(--topbar-height) - var(--panel-gap));
+    max-height: calc(100dvh - var(--topbar-height) - var(--panel-gap));
+    overflow-y: auto;
+    padding-bottom: var(--space-2);
+    scrollbar-width: thin;
   }
-  .settings-rail ~ * { margin-left: calc(var(--settings-nav-width) + var(--space-5)); }
-}
-
-@media (max-width: 959px) {
-  .settings-rail { float: none; width: auto; }
-  .settings-rail ~ * { margin-left: 0; }
+  .settings-main { min-width: 0; }
 }
 
 /* ======================================= <1280px: UX atual, visual donor == */

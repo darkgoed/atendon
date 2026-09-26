@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Field, Input, SaveButton, SaveToast, Textarea, useSaveFeedback } from "@/components/ui";
+import { Field, HelpHint, Input, SaveButton, SaveToast, Textarea, useSaveFeedback } from "@/components/ui";
 
 import { formatFollowUpDelay, isValidFollowUpDelays, normalizeFollowUpDelivery, type AiFollowUpSettings, type FollowUpDelivery } from "@/lib/ai-follow-ups";
 
@@ -164,7 +164,7 @@ export function AiFollowUpSettingsPanel() {
         <div className="grid gap-3">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <div className="label">Tentativas cumulativas</div>
+              <div className="flex items-center gap-2"><div className="label">Tentativas cumulativas</div><HelpHint label="Ajuda: Tentativas cumulativas" title="Limites da cadência">Até 10 tentativas; a última não pode passar de 30 dias (43.200 minutos). Os atrasos precisam ser crescentes.</HelpHint></div>
               <p className="sub mt-1 text-xs">Cada valor é contado desde a resposta original da IA, não desde a tentativa anterior.</p>
             </div>
             <Button

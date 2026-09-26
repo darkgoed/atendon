@@ -13,7 +13,10 @@ describe("SlotCell", () => {
 
     const cell = screen.getByRole("button", { name: /2 livres/i });
     expect(cell).toBeVisible();
-    expect(screen.queryByRole("button", { name: /agendar/i })).not.toBeInTheDocument();
+    // A própria célula é o único botão: a prévia "Agendar às…" faz parte do
+    // nome dela (ajuda contextual), não um botão extra.
+    expect(screen.getAllByRole("button")).toEqual([cell]);
+    expect(cell).toHaveAccessibleName(/Agendar às 09:00/);
     fireEvent.click(cell);
     fireEvent.keyDown(cell, { key: "Enter" });
     fireEvent.keyDown(cell, { key: " " });

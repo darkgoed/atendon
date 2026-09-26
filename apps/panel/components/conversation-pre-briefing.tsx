@@ -1,5 +1,6 @@
 "use client";
 
+import { HelpHint } from "@/components/ui";
 import type { ReactElement } from "react";
 
 type Attribution = Record<string, unknown>;
@@ -33,7 +34,7 @@ export function ConversationPreBriefing({
 
   return (
     <aside className="card" aria-labelledby="conversation-pre-briefing-title">
-      <div id="conversation-pre-briefing-title" className="cardtitle">Pré-briefing</div>
+      <div id="conversation-pre-briefing-title" className="cardtitle flex items-center gap-1">Pré-briefing<HelpHint label="Ajuda: Pré-briefing">Dados de origem do lead: de onde veio, em qual campanha e qual interesse informou.</HelpHint></div>
       {!hasData ? <p className="mt-2 text-xs text-[var(--text-muted)]">Sem dados de briefing ainda</p> : (
         <dl className="mt-3 grid gap-2 text-xs">
           {rows.map(([label, value]) => <div key={label} className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-2"><dt className="text-[var(--text-muted)]">{label}</dt><dd className="min-w-0 break-words text-[var(--text-secondary)]">{value}</dd></div>)}

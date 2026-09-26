@@ -188,7 +188,7 @@ describe("command-palette: deep-links sem rota nova", () => {
   });
 });
 
-describe("manifest de Configurações: 12 chaves, deep-link ?resource= e gating idêntico às abas", () => {
+describe("manifest de Configurações: 13 chaves, deep-link ?resource= e gating idêntico às abas", () => {
   function configuracoesSource(): string {
     const candidates = [
       resolve(process.cwd(), "app/configuracoes/page.tsx"),
@@ -212,7 +212,7 @@ describe("manifest de Configurações: 12 chaves, deep-link ?resource= e gating 
     return map;
   }
 
-  it("12 chaves; gating por chave do deep-link ?resource= é idêntico ao da aba; chaves vivem no settingsNavGroups", () => {
+  it("13 chaves; gating por chave do deep-link ?resource= é idêntico ao da aba; chaves vivem no settingsNavGroups", () => {
     const source = configuracoesSource();
     const tabVisible = extractMap(
       source,
@@ -231,6 +231,7 @@ describe("manifest de Configurações: 12 chaves, deep-link ?resource= e gating 
       "attendants",
       "categorias",
       "conversation-queues",
+      "google-calendar",
       "google-meet",
       "panel-notifications",
       "parceiros",
@@ -238,9 +239,9 @@ describe("manifest de Configurações: 12 chaves, deep-link ?resource= e gating 
       "unidades",
       "workspace"
     ]);
-    expect(tabKeys).toHaveLength(12);
+    expect(tabKeys).toHaveLength(13);
 
-    // deep-link cobre exatamente as 12 chaves de aba (nenhum destino "/...")
+    // deep-link cobre exatamente as 13 chaves de aba (nenhum destino "/...")
     for (const key of tabKeys) {
       expect(key.startsWith("/")).toBe(false);
     }
@@ -251,7 +252,7 @@ describe("manifest de Configurações: 12 chaves, deep-link ?resource= e gating 
       expect(deepLinkAccess[key], `gating divergente para ${key}`).toBe(tabVisible[key]);
     }
 
-    // as 12 chaves estão na navegação única (settingsNavGroups), cada uma uma vez
+    // as 13 chaves estão na navegação única (settingsNavGroups), cada uma uma vez
     const groupKeys = settingsNavGroups.flatMap((group) => [...group.keys]);
     expect(settingsNavGroups).toHaveLength(9);
     for (const key of tabKeys) {

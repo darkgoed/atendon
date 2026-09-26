@@ -51,18 +51,20 @@ describe("AI consumption against real Postgres", () => {
   });
 
   it("enforces a fixed overage cap including reservations", async () => {
-    // A estimativa por interação é `min_overage_estimate_cents` (1 centavo, ver
-    // 0135) enquanto o tenant não tem histórico. Com cap 8 a segunda interação
-    // ainda cabe — por isso o cap aqui é 1: a primeira reserva o consome
-    // inteiro e a segunda tem de bater em CREDIT_CAP_REACHED por causa da
-    // RESERVA em voo, que é justamente o ponto do teste.
-    const t = await tenant("cap"), p = await plan(0); await subscribe(t, p); await period(t); await configureCredit(t, 1);
+    // A estimativa por interação SEM histórico é `min_overage_estimate_cents`
+    // (0135). O valor é GLOBAL (billing_settings; banco compartilhado — outro
+    // teste o deixa em 7), então cap 1 hardcoded nega a PRIMEIRA reserva.
+    // cap = valor REAL lido do banco: a primeira reserva o consome inteiro e a
+    // segunda bate em CREDIT_CAP_REACHED pela RESERVA em voo — o ponto do teste.
+    const t = await tenant("cap"), p = await plan(0); await subscribe(t, p); await period(t);
+    const cap = Number(await scalar("SELECT min_overage_estimate_cents AS value FROM billing_settings WHERE id=true"));
+    await configureCredit(t, cap);
     const first = await consumeAiInteraction(t, "inbound_reply", "one");
     expect(first).toMatchObject({ allowed: true, consumptionType: "OVERAGE" });
     const second = await consumeAiInteraction(t, "inbound_reply", "two");
     expect(second).toMatchObject({ allowed: false, reason: "CREDIT_CAP_REACHED" });
     const r = await pool.query("SELECT overage_amount_brl_cents,reserved_cents FROM usage_periods WHERE tenant_id=$1", [t]);
-    expect(Number(r.rows[0].overage_amount_brl_cents) + Number(r.rows[0].reserved_cents)).toBeLessThanOrEqual(1);
+    expect(Number(r.rows[0].overage_amount_brl_cents) + Number(r.rows[0].reserved_cents)).toBeLessThanOrEqual(cap);
   });
 
   it("is idempotent, rejects disabled AI, and fails open without subscription", async () => {
@@ -71,7 +73,36 @@ describe("AI consumption against real Postgres", () => {
   });
 
   it("releases the exact reservation and is safe to reconcile twice", async () => {
-    const t = await tenant("reconcile"), p = await plan(0); await subscribe(t, p); const u = await period(t); await configureCredit(t, 5000); const c = await consumeAiInteraction(t, "inbound_reply", "real"); expect(c).toMatchObject({ allowed: true, consumptionType: "OVERAGE" }); expect(c.estimatedCents).toBeGreaterThan(0); expect(Number(await scalar("SELECT reserved_cents AS value FROM usage_periods WHERE id=$1", [u.id]))).toBe(Number(c.estimatedCents)); const actual = { model: null, inputTokens: 0, outputTokens: 0, cachedTokens: 0, providerCostUsd: 10 }; await reconcileAiInteraction(t, "inbound_reply", "real", actual); const row = await pool.query("SELECT reserved_cents,overage_amount_brl_cents FROM usage_periods WHERE id=$1", [u.id]); const ledger = await pool.query("SELECT reconciled,billable_amount_brl_cents FROM ai_usage_ledger WHERE tenant_id=$1", [t]); expect(Number(row.rows[0].reserved_cents)).toBe(0); expect(Number(row.rows[0].overage_amount_brl_cents)).toBe(Number(ledger.rows[0].billable_amount_brl_cents)); expect(ledger.rows[0].reconciled).toBe(true); const amount = row.rows[0].overage_amount_brl_cents; await reconcileAiInteraction(t, "inbound_reply", "real", actual); expect(Number(await scalar("SELECT overage_amount_brl_cents AS value FROM usage_periods WHERE id=$1", [u.id]))).toBe(Number(amount));
+    // Teto FIXO 5000 e custo real providerCostUsd=10 (~16500c) ACIMA do teto: a
+    // asserção antiga (overage == billable do ledger) violava o hard cap §17.
+    // Correto: cobrado = min(real, teto); ledger mantém o custo real inteiro;
+    // saldo assinado do financial_ledger confere com o TOTAL COBRADO; repetir a
+    // reconciliação é idempotente (nenhum valor/lançamento novo).
+    const t = await tenant("reconcile"), p = await plan(0); await subscribe(t, p); const u = await period(t); const cap = 5000; await configureCredit(t, cap);
+    const c = await consumeAiInteraction(t, "inbound_reply", "real");
+    expect(c).toMatchObject({ allowed: true, consumptionType: "OVERAGE" }); expect(c.estimatedCents).toBeGreaterThan(0);
+    expect(Number(await scalar("SELECT reserved_cents AS value FROM usage_periods WHERE id=$1", [u.id]))).toBe(Number(c.estimatedCents));
+    expect(Number(await scalar("SELECT overage_amount_brl_cents AS value FROM usage_periods WHERE id=$1", [u.id]))).toBe(0);
+    const actual = { model: null, inputTokens: 0, outputTokens: 0, cachedTokens: 0, providerCostUsd: 10 };
+    await reconcileAiInteraction(t, "inbound_reply", "real", actual);
+    const row = await pool.query("SELECT reserved_cents,overage_amount_brl_cents FROM usage_periods WHERE id=$1", [u.id]);
+    const ledger = await pool.query("SELECT reconciled,billable_amount_brl_cents FROM ai_usage_ledger WHERE tenant_id=$1", [t]);
+    const real = Number(ledger.rows[0].billable_amount_brl_cents);
+    expect(ledger.rows[0].reconciled).toBe(true);
+    expect(real).toBeGreaterThan(cap);
+    expect(Number(row.rows[0].reserved_cents)).toBe(0);
+    expect(Number(row.rows[0].overage_amount_brl_cents)).toBe(Math.min(real, cap));
+    const financial = await pool.query<{ direction: string; amount_cents: string }>("SELECT direction,amount_cents FROM financial_ledger WHERE tenant_id=$1", [t]);
+    const signedBalance = financial.rows.reduce((s, r) => s + (r.direction === "CREDIT" ? Number(r.amount_cents) : -Number(r.amount_cents)), 0);
+    expect(signedBalance).toBe(Number(row.rows[0].overage_amount_brl_cents));
+    const ledgerCount = await scalar<number>("SELECT count(*)::int AS value FROM ai_usage_ledger WHERE tenant_id=$1", [t]);
+    const financialCount = financial.rows.length;
+    await reconcileAiInteraction(t, "inbound_reply", "real", actual);
+    const amount = row.rows[0].overage_amount_brl_cents;
+    expect(Number(await scalar("SELECT overage_amount_brl_cents AS value FROM usage_periods WHERE id=$1", [u.id]))).toBe(Number(amount));
+    expect(Number(await scalar("SELECT reserved_cents AS value FROM usage_periods WHERE id=$1", [u.id]))).toBe(0);
+    expect(await scalar<number>("SELECT count(*)::int AS value FROM ai_usage_ledger WHERE tenant_id=$1", [t])).toBe(ledgerCount);
+    expect((await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM financial_ledger WHERE tenant_id=$1", [t])).rows[0].n).toBe(financialCount);
   });
 
   it("libera a reserva EXATA quando o custo real e MENOR que a estimativa", async () => {

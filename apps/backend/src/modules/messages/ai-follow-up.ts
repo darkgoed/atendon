@@ -587,17 +587,17 @@ export class AiFollowUpRepository {
   async recordAiUsage(input: {
     tenantId: string; conversationId: string; providerRequestId?: string; model: string;
     inputTokens: number; outputTokens: number; cachedInputTokens?: number;
-    cacheWriteInputTokens?: number; costUsd: number; requestId?: string;
+    cacheWriteInputTokens?: number; costUsd: number; costReported?: boolean; requestId?: string;
   }): Promise<void> {
     await this.db.query(
       `INSERT INTO usage_logs
-         (tenant_id,conversation_id,ai_model,input_tokens,output_tokens,cached_input_tokens,cache_write_input_tokens,cost_usd,provider_request_id,request_id)
-       SELECT c.tenant_id,c.id,$3,$4,$5,$6,$7,$8,$9,$10::uuid FROM conversations c
+         (tenant_id,conversation_id,ai_model,input_tokens,output_tokens,cached_input_tokens,cache_write_input_tokens,cost_usd,provider_request_id,request_id,cost_reported)
+       SELECT c.tenant_id,c.id,$3,$4,$5,$6,$7,$8,$9,$10::uuid,$11 FROM conversations c
        WHERE c.id=$2 AND c.tenant_id=$1
        ON CONFLICT(provider_request_id) WHERE provider_request_id IS NOT NULL DO NOTHING`,
       [input.tenantId, input.conversationId, input.model, input.inputTokens, input.outputTokens,
         input.cachedInputTokens ?? 0, input.cacheWriteInputTokens ?? 0, input.costUsd,
-        input.providerRequestId ?? null, input.requestId ?? null]
+        input.providerRequestId ?? null, input.requestId ?? null, input.costReported ?? true]
     );
   }
 

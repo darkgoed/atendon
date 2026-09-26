@@ -494,6 +494,11 @@ export async function registerRootRoutes(app: FastifyInstance) {
     const client = await db.connect();
     try {
       await client.query("BEGIN");
+      // Lock da linha pai do tenant (FOR UPDATE): INSERTs concorrentes em
+      // scheduling_appointments/leads pegam FOR KEY SHARE nesta linha via FK
+      // tenant_id→tenants(id), então nenhum appointment/outbox novo nasce
+      // entre o lock do outbox abaixo e o bulk DELETE. Por tenant, não global.
+      await client.query("SELECT id FROM tenants WHERE id=$1 FOR UPDATE", [id]);
       const messages = await client.query<{ count: number }>(
         `SELECT count(*)::int count FROM messages m
          JOIN conversations c ON c.id=m.conversation_id
@@ -505,6 +510,24 @@ export async function registerRootRoutes(app: FastifyInstance) {
          WHERE tenant_id=$1 AND conversation_id IN (SELECT id FROM conversations WHERE tenant_id=$1)`,
         [id]
       );
+      // Lock de linha em TODAS as linhas do outbox do tenant: o worker não
+      // pode reivindicar (UPDATE claimed_at) nem aplicar sync entre a checagem
+      // e o bulk DELETE — o lock vale até o COMMIT, depois das exclusões.
+      // Claim ativo bloqueia sempre, mesmo expirado (o worker seguinte
+      // recupera); vínculo de evento remoto bloqueia porque o CASCADE apagaria
+      // o vínculo deixando evento órfão no Google. Sem claim e sem vínculo, o
+      // delete segue e drena o outbox não-claimed.
+      const outbox = await client.query<{ claimed_at: string | null }>(
+        "SELECT claimed_at FROM scheduling_calendar_sync_outbox WHERE tenant_id=$1 FOR UPDATE",
+        [id]
+      );
+      const link = await client.query(
+        "SELECT 1 FROM scheduling_appointment_calendar_events WHERE tenant_id=$1 LIMIT 1",
+        [id]
+      );
+      if (outbox.rows.some((row) => row.claimed_at != null) || link.rows[0])
+        throw httpError(409, "Cancele os agendamentos e aguarde a sincronização das agendas antes de excluir");
+
       const appointments = await client.query<{ id: string }>(
         "DELETE FROM scheduling_appointments WHERE tenant_id=$1 RETURNING id",
         [id]

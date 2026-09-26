@@ -18,7 +18,7 @@ import { Button, IconButton } from "@/components/ui";
 import { ApiError, api, type VersionInfo } from "@/lib/api";
 import { useCapabilities } from "@/lib/capabilities";
 import { useEntitlements } from "@/lib/entitlements";
-import { accessStatusLabel } from "@/lib/labels";
+import { accessStatusLabel, workspaceRoleLabel } from "@/lib/labels";
 import {
   canAccessManifestItem,
   canExposeManifestItem,
@@ -305,10 +305,10 @@ export function Shell({
   const workspaceName = session.activeWorkspace?.name ?? "Workspace";
   const workspaceSlug = session.activeWorkspace?.slug ?? "";
   const workspaceStatus = session.activeWorkspace?.status ?? "inactive";
-  const workspaceRole = session.activeWorkspace?.role ?? "-";
+  const workspaceRole = workspaceRoleLabel(session.activeWorkspace?.role);
   const userName = formatUserName(session.user.email);
   const userInitials = getInitials(userName);
-  const userRole = session.user.isRoot ? "ROOT" : workspaceRole;
+  const userRole = session.user.isRoot ? "Root" : workspaceRole;
   const showRootBanner = session.actorScope === "root" && !path.startsWith("/root");
   const workspaceSlot = session.activeWorkspace && session.workspaces.length > 1 ? (
     <WorkspaceSwitcher

@@ -12,7 +12,7 @@ import { Check, PencilSimple, Plus, Trash, X } from "@/components/icons";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
-import { Badge, Button, Dialog, EmptyState, Field, IconButton, Input, SaveButton, SaveToast, Segmented, Select, Textarea, useSaveFeedback } from "@/components/ui";
+import { Badge, Button, Dialog, EmptyState, Field, IconButton, Input, SaveButton, SaveToast, Segmented, Select, Textarea, useFlashToast, useSaveFeedback } from "@/components/ui";
 import { api } from "@/lib/api";
 import { canAccessWithSession, type PanelSession } from "@/lib/session";
 import { groupTasksByDay, type AgendaGroup } from "./tasks-agenda";
@@ -235,7 +235,7 @@ function TaskDialog({
               {(["baixa", "media", "alta"] as const).map((value) => <option key={value} value={value}>{PRIORITY_LABELS[value]}</option>)}
             </Select>
           </Field>
-          <Field label="Prazo">
+          <Field label="Prazo" help="Tarefas vencidas e não concluídas aparecem como Atrasadas.">
             <Input type="datetime-local" value={dueLocal} onChange={(event) => setDueLocal(event.target.value)} />
           </Field>
         </div>
@@ -373,6 +373,7 @@ function TaskCard({
 
 export default function TasksPage() {
   const save = useSaveFeedback();
+  const flash = useFlashToast();
   const { data: session } = useSWR<PanelSession>("/me", fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
   const currentUserId = session?.user.id ?? "";
   const canAssign = Boolean(session && canAccessWithSession(session, ["tasks.assign"]));
@@ -484,6 +485,7 @@ export default function TasksPage() {
     try {
       const response = await api<{ task: Task }>(`/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify({ status: nextStatus }) });
       applyTaskUpdate(response.task);
+      flash.show(task.status === "concluida" ? "Tarefa reaberta" : "Tarefa concluída");
     } catch {
       // api() já reporta o erro global; o estado local permanece coerente.
     }
@@ -521,7 +523,7 @@ export default function TasksPage() {
         </header>
 
         <div className={styles.toolbar} role="group" aria-label="Filtros de tarefas">
-          <Field label="Escopo">
+          <Field label="Escopo" help="Minhas mostra só as suas tarefas. Equipe exige permissão para atribuir tarefas.">
             <Select value={scope} onChange={(event) => setScope(event.target.value as "mine" | "team")} disabled={!canAssign} aria-label="Escopo das tarefas">
               <option value="mine">Minhas</option>
               <option value="team">Equipe</option>
@@ -594,6 +596,7 @@ export default function TasksPage() {
           }}
         />
         <SaveToast show={save.done}>Tarefa salva</SaveToast>
+        {flash.toast}
       </div>
     </Shell>
   );

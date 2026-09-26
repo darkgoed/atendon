@@ -7,7 +7,7 @@ import useSWR from "swr";
 import { ContactAvatar } from "@/components/contact-avatar";
 import { Empty, LoadingCards } from "@/components/page-state";
 import { Shell } from "@/components/shell";
-import { Button, Dot, PageHeader, Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui";
+import { Button, Dot, HelpHint, PageHeader, Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui";
 import { CommercialDashboard, type CommercialDashboardData } from "@/components/commercial-dashboard";
 import { DashboardWidgets } from "@/components/dashboard-widgets";
 import { api } from "@/lib/api";
@@ -141,7 +141,7 @@ export default function Overview() {
                 <dd className="type-meta mono">status: {data.connection.status}</dd>
               </div>
               <div className="overview-metrics__item on-enter" style={{ "--i": 1 } as CSSProperties}>
-                <dt className="type-overline">Aguardando humano</dt>
+                <dt className="type-overline">Aguardando humano <HelpHint label="Ajuda: Aguardando humano">Conversas transferidas para atendimento humano que ainda esperam alguém assumir. A fila abaixo mostra há quanto tempo cada uma espera.</HelpHint></dt>
                 <dd className="metric warning">{data.counts.handoff}</dd>
                 <dd className="type-meta">
                   {hasWorkspaceScope

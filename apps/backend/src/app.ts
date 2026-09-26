@@ -24,6 +24,7 @@ import { defaultStageId } from "./modules/commercial-journey/service.js";
 import { applySignature, resolveSignatureSettings, type SignatureFormat, type SignatureNameStyle } from "./modules/messages/signature.js";
 import { enqueueInboundRecovery } from "./queue/message-queue.js";
 import { handleEvolutionWebhook } from "./modules/whatsapp/webhook-handler.js";
+import { registerGoogleCalendarRoutes } from "./modules/scheduling/calendar-connections.js";
 import { registerSchedulingRoutes } from "./modules/scheduling/routes.js";
 import { registerInternalRoutes } from "./modules/internal/routes.js";
 import { registerInternalPreferenceRoutes } from "./modules/internal/prefs-routes.js";
@@ -43,6 +44,7 @@ import { registerRootRoutes } from "./modules/root/routes.js";
 import { registerReleaseRoutes } from "./modules/release/routes.js";
 import { registerSaasRoutes } from "./modules/saas/routes.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
+import { registerAiUsageRoutes } from "./modules/billing/ai-usage-routes.js";
 import { getVersionInfo } from "./modules/root/version.js";
 import { registerQualificationRoutes } from "./modules/qualification/routes.js";
 import { QualificationService } from "./modules/qualification/service.js";
@@ -2858,6 +2860,7 @@ export function buildApp(options: {
   void app.register(registerReleaseRoutes);
   void app.register(registerSaasRoutes);
   void app.register(registerBillingRoutes, options.billingOAuth ?? {});
+  void app.register(registerAiUsageRoutes);
   void app.register(registerOperationsRoutes);
   void app.register(registerInstagramRoutes, {
     service: instagram.service,
@@ -2894,6 +2897,7 @@ export function buildApp(options: {
   void app.register(registerReportsRoutes);
   void app.register(registerPostSalesRoutes);
   void app.register(registerSchedulingRoutes);
+  void app.register(registerGoogleCalendarRoutes);
   void app.register(registerInternalRoutes);
   void app.register(registerInternalPreferenceRoutes);
   void app.register(registerTaskRoutes);

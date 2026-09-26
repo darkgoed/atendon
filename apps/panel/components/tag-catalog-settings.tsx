@@ -6,7 +6,7 @@ import useSWR from "swr";
 import { api } from "@/lib/api";
 import { useCaseOrganizationEnabled } from "@/lib/organization";
 import { usePermission } from "@/lib/use-permission";
-import { Field, IconButton, Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
+import { Field, HelpHint, IconButton, Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { SETTINGS_COLOR_DEFAULTS } from "@/components/settings-colors";
 import styles from "@/components/settings-panels.module.css";
 
@@ -42,7 +42,7 @@ export function TagCatalogSettings() {
     <IconButton label="Catálogo" onClick={() => setOpen(true)}><Tag size={15} aria-hidden="true" /></IconButton>
     {open ? <div className="fixed inset-0 z-30 grid place-items-end bg-[color-mix(in_srgb,var(--bg)_68%,transparent)] sm:place-items-center" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setOpen(false); }}>
       <section className="max-h-[88dvh] tag-dialog-width w-full overflow-y-auto rounded-t-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 sm:rounded-xl sm:p-5" role="dialog" aria-modal="true" aria-labelledby="tag-catalog-title">
-        <header className="mb-5 flex items-start justify-between gap-4"><div><h2 id="tag-catalog-title" className="text-lg font-semibold">Catálogo de etiquetas</h2><p className="mt-1 text-xs text-[var(--text-secondary)]">O mesmo catálogo é usado em Conversas, Leads e Pipeline.</p></div><button type="button" className="grid size-9 place-items-center rounded border border-[var(--border)] active:scale-[.94]" onClick={() => setOpen(false)} aria-label="Fechar catálogo"><X size={16} /></button></header>
+        <header className="mb-5 flex items-start justify-between gap-4"><div><h2 id="tag-catalog-title" className="text-lg font-semibold">Catálogo de etiquetas <HelpHint label="Ajuda: Catálogo de etiquetas" title="Catálogo de etiquetas">Arquivar esconde a etiqueta das opções de aplicação; ela continua nesta lista, sem edição.</HelpHint></h2><p className="mt-1 text-xs text-[var(--text-secondary)]">O mesmo catálogo é usado em Conversas, Leads e Pipeline.</p></div><button type="button" className="grid size-9 place-items-center rounded border border-[var(--border)] active:scale-[.94]" onClick={() => setOpen(false)} aria-label="Fechar catálogo"><X size={16} /></button></header>
         {isLoading ? <div className="grid gap-2" role="status" aria-label="Carregando catálogo">{[1, 2, 3].map((item) => <span key={item} className="skeleton h-12" />)}</div> : null}
         {error ? <p className="error" role="alert">{error.message}</p> : null}
         <div className="grid gap-2">{data?.tags.map((tag) => <TagEditor key={tag.id} tag={tag} onChanged={mutate} />)}</div>

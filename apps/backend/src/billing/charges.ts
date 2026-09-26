@@ -66,11 +66,18 @@ async function createChargeForInvoiceUncoalesced(invoiceId: string, method: stri
     // Fallback determinístico: sem ORDER BY, "LIMIT 1" escolhe uma linha
     // arbitrária entre vários gateways conectados e uma cobrança real pode ir
     // parar no provedor errado. A ordem fixa torna a escolha reproduzível.
-    const p = (await c.query<ProviderConfigRow>(`SELECT id,code,enabled,environment,status,homologated,accepted_methods,commercial_config,credentials_encrypted,webhook_secret_encrypted FROM billing_providers WHERE id=COALESCE($1,(SELECT id FROM billing_providers WHERE homologated=true AND environment='production' AND status='CONNECTED' AND enabled=true AND credentials_encrypted IS NOT NULL ORDER BY connected_at NULLS LAST,code,id LIMIT 1)) FOR UPDATE`, [inv.provider_id])).rows[0];
+    // O PIX avulso só circula no Mercado Pago: a Efí é homologada exclusivamente
+    // para Pix Automato (mandato mensal, 0193) e não pode ser sorteada aqui.
+    const p = (await c.query<ProviderConfigRow>(`SELECT id,code,enabled,environment,status,homologated,accepted_methods,commercial_config,credentials_encrypted,webhook_secret_encrypted FROM billing_providers WHERE id=COALESCE($1,(SELECT id FROM billing_providers WHERE code='mercadopago' AND homologated=true AND environment='production' AND status='CONNECTED' AND enabled=true AND credentials_encrypted IS NOT NULL ORDER BY connected_at NULLS LAST,code,id LIMIT 1)) FOR UPDATE`, [inv.provider_id])).rows[0];
     if (!p || p.environment !== "production" || !p.enabled || p.status !== "CONNECTED") throw new Error("Provedor de pagamento não está conectado");
     // A homologação é dado da própria linha travada: um gateway não homologado
     // nunca cobra, mesmo que alguém o tenha vinculado à fatura manualmente.
     if (p.homologated !== true) throw providerNotHomologated(p.code);
+    // Efí, mesmo ativada pelo ROOT, nunca cobra PIX avulso: sem este portão a
+    // linha dela (homologada+conectada) entregaria as credenciais da Efí ao
+    // client do Mercado Pago em providerFrom. Falha fechado para o código, não
+    // para o método — accepted_methods já barra 'pix' numa linha efipay.
+    if (p.code === "efipay") throw Object.assign(new Error("Efí não suporta cobrança PIX avulsa; use o mandato Pix Automato"), { code: "PROVIDER_NOT_SUPPORTED", statusCode: 400 });
     assertAutomaticProvider(p.code);
     const accepted = Array.isArray(p.accepted_methods) ? p.accepted_methods : [];
     if (accepted.length && !accepted.includes(method)) throw new Error("Método de pagamento não aceito");

@@ -27,7 +27,7 @@ const themeFilter = process.env.THEME_FILTER;
 const inventoryPath = process.env.ROUTE_INVENTORY;
 const viewports = [{ name: "360x800", width: 360, height: 800 }, { name: "768x1024", width: 768, height: 1024 }, { name: "1440x900", width: 1440, height: 900 }].filter((v) => !viewportFilter || new RegExp(viewportFilter, "i").test(v.name));
 const themes = ["dark", "light"].filter((v) => !themeFilter || new RegExp(themeFilter, "i").test(v));
-const routeReplacements = { "/invitations/[token]": "/invitations/qa-token", "/convite": "/convite?token=qa-token", "/contatos/[id]": `/contatos/${IDS.lead}`, "/meet/[roomId]": "/meet/qa-room", "/reuniao/[code]": "/reuniao/qa-code", "/fluxos/[id]": "/fluxos/qa-flow-0001" };
+const routeReplacements = { "/invitations/[token]": "/invitations/qa-token", "/convite": "/convite?token=qa-token", "/contatos/[id]": `/contatos/${IDS.lead}`, "/meet/[roomId]": "/meet/qa-room", "/reuniao/[code]": "/reuniao/qa-code", "/fluxos/[id]": "/fluxos/qa-flow-0001", "/configuracoes/[resource]": "/configuracoes/categorias" };
 // R1(a): sondas para ESTADOS DE ROTA descobertos no inventário (error/not-found/
 // loading). /__not-found navega para uma URL inexistente (boundary 404 real).
 // Estados sem gatilho determinístico fixture-only entram como UNAUDITABLE com
@@ -38,7 +38,11 @@ const ROUTE_STATE_PROBES = {
 };
 const routePath = (url) => new URL(url).pathname.replace(/^\/(?:api|backend)/, "");
 const json = (intercept, body, status = 200) => intercept.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
-const ROOT_WORKSPACE_ROUTES = new Set(["/alertas", "/follow-ups", "/agente/figurinhas"]);
+// Aliases aninhados /configuracoes/* com SettingsDestinationAccess
+// requireRootWorkspace (agente, alertas, follow-ups, funcoes, humanizacao, uso)
+// só montam conteúdo com sessão root-with-workspace — /me precisa do
+// rootWorkspaceSession quando o auditRoute é o alias de configuração.
+const ROOT_WORKSPACE_ROUTES = new Set(["/alertas", "/follow-ups", "/agente/figurinhas", "/configuracoes/agente", "/configuracoes/alertas", "/configuracoes/follow-ups", "/configuracoes/funcoes", "/configuracoes/humanizacao", "/configuracoes/uso"]);
 const EXPECTED_PROVIDER_FAILURES = new Set(["/meet/rooms/qa-room/token", "/meet/join/qa-code"]);
 const publicRelease = { buildNumber: 3501, version: "2.1.0", publicTitle: "Central de mensagens refinada", publicSummary: "Ajustes de densidade, ações agrupadas e correções visuais.", publicChanges: [{ text: "Ações secundárias agrupadas em menus de três pontos", tenant_slugs: [] }], publishedAt: "2026-09-01T12:00:00.000Z", createdAt: "2026-09-01T12:00:00.000Z" };
 const rootRelease = { id: "qa-release-0001", buildNumber: 3501, version: "2.1.0", classification: "RELEASE", classificationReason: "release QA", bumpSource: "qa", commitSha: "deadbeef", branch: "main", additions: 120, deletions: 40, filesChanged: [{ path: "apps/panel/app/leads/page.tsx", status: "modified", additions: 28, deletions: 16 }], modulesAffected: ["panel"], scope: "GLOBAL", tenantSlugsDetected: [], commitMessages: ["qa fixture"], diffExcerpt: "", technicalChangelog: "", publicTitle: publicRelease.publicTitle, publicSummary: publicRelease.publicSummary, publicChanges: publicRelease.publicChanges, aiStatus: "generated", aiError: null, aiModelUsed: "openai/gpt-4o-mini", published: true, publishedAt: "2026-09-01T12:00:00.000Z", manualOverride: false, isLegacyImport: false, createdAt: "2026-09-01T12:00:00.000Z" };

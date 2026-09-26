@@ -299,6 +299,20 @@ export function auditResourceLabel(value?: string | null): string {
   return (value ? auditResources[value] : undefined) ?? readableFallback(value);
 }
 
+const workspaceRoles: Record<string, string> = {
+  ROOT: "Root",
+  OWNER: "Proprietário",
+  ADMIN: "Administrador",
+  SUPERVISOR: "Supervisor",
+  OPERADOR: "Operador"
+};
+
+/** Funções de sistema traduzidas; funções criadas pela empresa mantêm o nome dado. */
+export function workspaceRoleLabel(value?: string | null): string {
+  const role = (value ?? "").trim();
+  return workspaceRoles[role.toUpperCase()] ?? (role || "Sem função");
+}
+
 export function actorScopeLabel(value?: string | null): string {
   if (value === "root") return "ROOT";
   if (value === "workspace") return "Workspace";

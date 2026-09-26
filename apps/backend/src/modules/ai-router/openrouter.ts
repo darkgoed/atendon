@@ -117,6 +117,12 @@ export interface AiUsageRecord {
   cachedInputTokens?: number;
   cacheWriteInputTokens?: number;
   costUsd: number;
+  /**
+   * Procedência do custo: `true` quando o provedor REPORTOU o custo no payload
+   * (0 incluído = zero real); `false`/ausente quando o custo veio ausente e
+   * costUsd é o fallback 0 (nunca tratar esse zero como custo reportado).
+   */
+  costReported?: boolean;
   requestId?: string;
   processingAttempt?: number;
   providerRequestIndex?: number;
@@ -410,6 +416,7 @@ export class OpenRouterClient implements AiRouter {
       cachedInputTokens: 0,
       cacheWriteInputTokens: 0,
       costUsd: payload.usage?.cost ?? 0,
+      costReported: payload.usage?.cost !== undefined,
       requestId: input.trace?.requestId,
       processingAttempt: input.trace?.processingAttempt,
       providerRequestIndex: 1,
@@ -532,6 +539,7 @@ export class OpenRouterClient implements AiRouter {
       cachedInputTokens: payload.usage?.prompt_tokens_details?.cached_tokens ?? 0,
       cacheWriteInputTokens: payload.usage?.prompt_tokens_details?.cache_write_tokens ?? 0,
       costUsd: payload.usage?.cost ?? 0,
+      costReported: payload.usage?.cost !== undefined,
       requestId: input.trace?.requestId,
       processingAttempt: input.trace?.processingAttempt,
       providerRequestIndex: 1,
@@ -805,6 +813,7 @@ export class OpenRouterClient implements AiRouter {
         cachedInputTokens: payload.usage?.prompt_tokens_details?.cached_tokens ?? 0,
         cacheWriteInputTokens: payload.usage?.prompt_tokens_details?.cache_write_tokens ?? 0,
         costUsd: payload.usage?.cost ?? 0,
+        costReported: payload.usage?.cost !== undefined,
         requestId: input.trace?.requestId,
         processingAttempt: input.trace?.processingAttempt,
         providerRequestIndex,

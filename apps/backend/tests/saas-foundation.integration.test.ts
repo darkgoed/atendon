@@ -751,6 +751,20 @@ describe("SaaS foundation auth and RBAC", () => {
        VALUES($1,$2,'reset-unit','2030-01-07T09:00:00Z','2030-01-07T10:00:00Z') RETURNING id`,
       [lead.rows[0].id, tenantA]
     );
+    await pool.query(
+      `INSERT INTO scheduling_appointment_calendar_events(appointment_id,tenant_id,calendar_id,event_id)
+       VALUES($1,$2,'cal-test','event-test')`,
+      [appointment.rows[0].id, tenantA]
+    );
+    const blocked = await app.inject({ method: "DELETE", url: `/root/workspaces/${tenantA}/contacts-and-messages`, headers: { cookie: rootCookie } });
+    expect(blocked.statusCode).toBe(409);
+    expect((await pool.query("SELECT id FROM scheduling_appointments WHERE id=$1", [appointment.rows[0].id])).rowCount).toBe(1);
+    expect((await pool.query("SELECT id FROM scheduling_leads WHERE id=$1", [lead.rows[0].id])).rowCount).toBe(1);
+    expect(
+      (await pool.query("SELECT 1 FROM scheduling_appointment_calendar_events WHERE appointment_id=$1 AND tenant_id=$2", [appointment.rows[0].id, tenantA])).rowCount
+    ).toBe(1);
+    expect((await pool.query("SELECT 1 FROM audit_logs WHERE workspace_id=$1 AND action='root.dev.contacts_and_messages.delete'", [tenantA])).rowCount).toBe(0);
+    await pool.query("DELETE FROM scheduling_appointment_calendar_events WHERE appointment_id=$1 AND tenant_id=$2", [appointment.rows[0].id, tenantA]);
 
     const response = await app.inject({ method: "DELETE", url: `/root/workspaces/${tenantA}/contacts-and-messages`, headers: { cookie: rootCookie } });
     expect(response.statusCode).toBe(200);

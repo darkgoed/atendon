@@ -1,3 +1,4 @@
+import { HelpHint } from "./help-hint";
 import { Children, cloneElement, forwardRef, isValidElement, useId, type ComponentPropsWithRef, type HTMLAttributes, type LabelHTMLAttributes, type ReactElement, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 
 export type FieldProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> & {
@@ -5,10 +6,12 @@ export type FieldProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> & {
   hint?: ReactNode;
   error?: ReactNode;
   htmlFor?: string;
+  /** Ajuda contextual: "?" ao lado do rótulo (fora do <label>, preserva o nome acessível). */
+  help?: ReactNode;
   children: ReactNode;
 };
 
-export function Field({ label, hint, error, htmlFor, children, className = "", ...props }: FieldProps) {
+export function Field({ label, hint, error, htmlFor, help, children, className = "", ...props }: FieldProps) {
   const generatedId = `field-${useId().replace(/:/g, "")}`;
   const hintId = `${htmlFor ?? generatedId}-hint`;
   const errorId = `${htmlFor ?? generatedId}-error`;
@@ -49,7 +52,9 @@ export function Field({ label, hint, error, htmlFor, children, className = "", .
   };
   const controlId = htmlFor ?? findControlId(control);
   return <div {...props} className={`field${error ? " field--error" : ""}${className ? ` ${className}` : ""}`}>
-    {label && <label htmlFor={controlId}>{label}</label>}
+    {label && help ? (
+      <span className="field__label-row"><label htmlFor={controlId}>{label}</label><HelpHint label={`Ajuda: ${typeof label === "string" ? label : "campo"}`}>{help}</HelpHint></span>
+    ) : label ? <label htmlFor={controlId}>{label}</label> : null}
     {control}
     {error ? <small id={errorId} className="field__error" role="alert">{error}</small> : hint ? <small id={hintId} className="sub">{hint}</small> : null}
   </div>;

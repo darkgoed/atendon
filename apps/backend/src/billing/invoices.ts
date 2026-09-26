@@ -92,19 +92,21 @@ export async function createInvoiceForUsagePeriod(client: Client, tenantId: stri
   return createWithin(client as PoolClient, tenantId, usagePeriodId, options);
 }
 
-export async function getBillingHistory(tenantId: string, limit: number): Promise<Array<Omit<Invoice, "metadata"> & { monthly: boolean; line_items: unknown[]; charge?: undefined }>> {
-  const result = await db.query<Invoice & { monthly: boolean; line_items: unknown[] }>(
+export async function getBillingHistory(tenantId: string, limit: number): Promise<Array<Omit<Invoice, "metadata"> & { monthly: boolean; line_items: unknown[]; provider_code: string | null; charge?: undefined }>> {
+  const result = await db.query<Invoice & { monthly: boolean; line_items: unknown[]; provider_code: string | null }>(
     `SELECT i.id,i.tenant_id,i.subscription_id,i.amount_cents,i.currency,i.status,i.kind,i.period_start,i.period_end,i.metadata,
        COALESCE((i.metadata->>'billing_cycle')='MONTHLY', false) monthly,
        COALESCE((SELECT json_agg(l ORDER BY l.created_at) FROM invoice_line_items l WHERE l.invoice_id=i.id),'[]'::json) line_items,
-       (SELECT json_build_object('id',p.external_id,'status',p.status,'qr_code',p.metadata->'point_of_interaction'->'transaction_data'->>'qr_code','ticket_url',p.metadata->'point_of_interaction'->'transaction_data'->>'ticket_url') FROM payments p WHERE p.invoice_id=i.id AND p.method='pix' ORDER BY p.created_at DESC LIMIT 1) charge
-       FROM invoices i WHERE i.tenant_id=$1 ORDER BY i.created_at DESC LIMIT $2`, [tenantId, Math.max(0, Math.min(100, Math.trunc(limit)))]);
+       (SELECT json_build_object('id',p.external_id,'status',p.status,'qr_code',p.metadata->'point_of_interaction'->'transaction_data'->>'qr_code','ticket_url',p.metadata->'point_of_interaction'->'transaction_data'->>'ticket_url') FROM payments p WHERE p.invoice_id=i.id AND p.method='pix' ORDER BY p.created_at DESC LIMIT 1) charge,
+       bp.code provider_code
+       FROM invoices i LEFT JOIN billing_providers bp ON bp.id=i.provider_id
+       WHERE i.tenant_id=$1 ORDER BY i.created_at DESC LIMIT $2`, [tenantId, Math.max(0, Math.min(100, Math.trunc(limit)))]);
   // metadata sai do retorno público: contém dados internos da fatura e o
   // painel só consome os campos abaixo. O destructuring descarta a coluna sem
   // criar um binding ocioso (a regra no-unused-vars não ignora rest siblings).
   return result.rows.map(row => {
-    const invoice = { ...row } as Partial<Invoice> & { monthly: boolean; line_items: unknown[] };
+    const invoice = { ...row } as Partial<Invoice> & { monthly: boolean; line_items: unknown[]; provider_code: string | null };
     delete invoice.metadata;
-    return { ...(invoice as Omit<Invoice, "metadata"> & { monthly: boolean; line_items: unknown[] }), charge: undefined };
+    return { ...(invoice as Omit<Invoice, "metadata"> & { monthly: boolean; line_items: unknown[]; provider_code: string | null }), charge: undefined };
   });
 }

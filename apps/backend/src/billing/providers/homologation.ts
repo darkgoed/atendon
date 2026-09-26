@@ -1,5 +1,16 @@
 import { NotImplementedError } from "./types.js";
-export const HOMOLOGATED_PROVIDER_CODES = ["mercadopago"] as const;
+/**
+ * A homologação é DADO (coluna `billing_providers.homologated`) e esta lista
+ * controla QUEM o ROOT pode configurar (credenciais, webhook secret) e ativar
+ * (store.ts) e quem a rota pública de webhook aceita na borda.
+ *
+ * `efipay` é homologado APENAS para Pix Automato (mandato mensal de créditos,
+ * migration 0193): não existe provider Efí no registry, e a cobrança PIX
+ * avulsa permanece isolada da Efí em charges.ts — o fallback filtra
+ * code='mercadopago' e uma fatura apontada para a Efí falha fechado.
+ */
+export const HOMOLOGATED_PROVIDER_CODES = ["mercadopago", "efipay"] as const;
+/** Códigos que existem no registry, mas ainda não passaram por homologação. */
 export const REGISTERED_BUT_BLOCKED_PROVIDER_CODES = ["stripe", "pagbank"] as const;
 export type HomologatedProviderCode = typeof HOMOLOGATED_PROVIDER_CODES[number];
 export function isHomologatedProvider(code: string): code is HomologatedProviderCode { return (HOMOLOGATED_PROVIDER_CODES as readonly string[]).includes(code); }

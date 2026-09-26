@@ -169,9 +169,9 @@ export function PipelineSettings({
             <p className="mt-1 text-xs text-[var(--text-secondary)]">Use uma etapa manual apenas quando ela representar uma fase comercial real.</p>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Field className="lg:col-span-2" label="Nome"><Input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} /></Field>
-              <Field className="lg:col-span-2" label="Status técnico"><Select value={technicalStatus} onChange={(event) => setTechnicalStatus(event.target.value)}>{technicalStatuses.map((status) => <option key={status} value={status}>{pipelineStatusLabel(status)}</option>)}</Select></Field>
+              <Field className="lg:col-span-2" label="Status técnico" help="Define o comportamento da etapa: Ganho pede os dados da venda, Perdido o motivo da perda, Negociação/Proposta/Follow-up pedem próxima ação com data."><Select value={technicalStatus} onChange={(event) => setTechnicalStatus(event.target.value)}>{technicalStatuses.map((status) => <option key={status} value={status}>{pipelineStatusLabel(status)}</option>)}</Select></Field>
               <Field label="Cor"><Input className="h-10 p-1" type="color" value={color} onChange={(event) => setColor(event.target.value.toUpperCase())} /></Field>
-              <Field className="lg:col-span-2" label="Meta de capacidade"><Input type="number" min="1" value={capacity} onChange={(event) => setCapacity(event.target.value)} placeholder="Sem meta" /></Field>
+              <Field className="lg:col-span-2" label="Meta de capacidade" help="Meta visual: o rodapé da coluna mostra o preenchimento em relação a esse número. Não bloqueia a entrada de novos leads."><Input type="number" min="1" value={capacity} onChange={(event) => setCapacity(event.target.value)} placeholder="Sem meta" /></Field>
               <SaveButton state={pending ? "busy" : save.state} busyLabel="Criando…" doneLabel="Criado" className="self-end" icon={<Plus size={15} aria-hidden="true" />} onClick={() => void createStage()} disabled={!name.trim() || pending}>Adicionar</SaveButton>
             </div>
             {error ? <p className="error mt-2" role="alert">{error}</p> : null}

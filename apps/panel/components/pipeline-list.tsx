@@ -2,7 +2,7 @@
 
 import { ContactChatLink } from "@/components/contact-chat-link";
 import { Empty } from "@/components/page-state";
-import { Button, TableScroll } from "@/components/ui";
+import { Button, HelpHint, TableScroll } from "@/components/ui";
 import { pipelineStageAutomationLabel } from "@/components/pipeline-board";
 import { currentPipelineStageId, formatPipelineAge, pipelineStatusLabel, type PipelineLead, type PipelineMember, type PipelineStage } from "@/lib/pipeline";
 
@@ -20,11 +20,11 @@ export function PipelineList({ leads, stages, members, legacy, loading, canMove,
   onMoveRequest: (lead: PipelineLead) => void;
 }) {
   if (loading) return <div className="pipeline-list__loading" aria-label="Carregando leads">Carregando leads…</div>;
-  if (leads.length === 0) return <Empty>Nenhum lead corresponde aos filtros.</Empty>;
+  if (leads.length === 0) return <Empty>Nenhum lead corresponde aos filtros. Ajuste ou limpe os filtros para ver mais leads.</Empty>;
   const memberName = (lead: PipelineLead) => lead.responsavel_email ?? lead.sdr_email ?? lead.closer_email ?? lead.recovery_email ?? members.find((m) => m.id === lead.responsavel_member_id)?.email ?? "—";
   return <TableScroll className="admin-table-wrap responsive-table-wrap pipeline-list">
     <table className="admin-table responsive-table">
-      <thead><tr>{canSelect ? <th scope="col"><span className="sr-only">Selecionar</span></th> : null}<th scope="col">Lead</th><th scope="col">Estágio atual</th><th scope="col">Responsável</th><th scope="col">Idade no estágio</th><th scope="col">Próximo follow-up</th>{canMove ? <th scope="col">Ações</th> : null}</tr></thead>
+      <thead><tr>{canSelect ? <th scope="col"><span className="sr-only">Selecionar</span></th> : null}<th scope="col">Lead</th><th scope="col"><span className="inline-flex items-center">Estágio atual<HelpHint label="Ajuda: Estágio atual">O selo indica o tipo de etapa: IA (follow-up automático da IA), Ligação (etapa de ligação) ou Manual. As automáticas são controladas pela configuração da IA.</HelpHint></span></th><th scope="col">Responsável</th><th scope="col"><span className="inline-flex items-center">Idade no estágio<HelpHint label="Ajuda: Idade no estágio">Tempo desde a última atualização do lead.</HelpHint></span></th><th scope="col">Próximo follow-up</th>{canMove ? <th scope="col">Ações</th> : null}</tr></thead>
       <tbody>{leads.map((lead) => {
         const stage = stages.find((item) => item.id === currentPipelineStageId(lead, stages, legacy));
         return <tr key={lead.id}>

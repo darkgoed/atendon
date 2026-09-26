@@ -12,7 +12,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { Sparkline } from "@/components/commercial-dashboard-charts";
 import { Empty } from "@/components/page-state";
-import { BarComparisonChart, Card, DonutChart, IconButton, Input, KpiCard, KpiGrid, LineAreaChart, TableScroll } from "@/components/ui";
+import { BarComparisonChart, Card, DonutChart, HelpHint, IconButton, Input, KpiCard, KpiGrid, LineAreaChart, TableScroll } from "@/components/ui";
 import { trendDelta, type CommercialDashboardSeries } from "@/lib/commercial-dashboard";
 import styles from "./metrics-dashboard.module.css";
 
@@ -273,23 +273,26 @@ export function CommercialDashboard({
         <Card className="on-enter" style={{ "--i": 2 } as CSSProperties}>
           <div className="cardtitle"><span>Comercial / Closer</span><Target size={19} aria-hidden="true" /></div>
           <dl className={styles.closerGrid}>
+            {/* Ajuda com a fórmula real lida do backend (apps/backend/src/modules/dashboard/service.ts):
+                comparecimento = realizadas ÷ vencidas; fechamento = vendas ÷ realizadas;
+                ticket médio = valor vendido ÷ vendas; pendente = encerrada sem desfecho registrado. */}
             {[
               ["Agendadas", data.commercial_metrics.scheduled],
               ["Realizadas", data.commercial_metrics.completed],
               ["Comparecimentos", data.commercial_metrics.attended],
               ["No-shows", data.commercial_metrics.no_show],
               ["Canceladas", data.commercial_metrics.cancelled],
-              ["Resultado pendente", data.commercial_metrics.result_pending],
+              ["Resultado pendente", data.commercial_metrics.result_pending, <>Reuniões encerradas (confirmadas ou reagendadas) que continuam sem resultado registrado: compareceu, não compareceu ou desfecho comercial.</>],
               ["Propostas", data.commercial_metrics.proposals],
               ["Negociações", data.commercial_metrics.negotiations],
               ["Vendas", data.commercial_metrics.sales],
-              ["Taxa comparecimento", formatPercent(data.commercial_metrics.attendance_rate)],
-              ["Taxa fechamento", formatPercent(data.commercial_metrics.closing_rate)],
+              ["Taxa comparecimento", formatPercent(data.commercial_metrics.attendance_rate), <>Comparecimentos ÷ reuniões já realizadas no período; futuras e canceladas não entram.</>],
+              ["Taxa fechamento", formatPercent(data.commercial_metrics.closing_rate), <>Vendas ÷ calls realizadas (em que o lead compareceu) no período.</>],
               ["Valor vendido", formatMoney(data.commercial_metrics.sold_value)],
-              ["Ticket médio", formatMoney(data.commercial_metrics.average_ticket)],
+              ["Ticket médio", formatMoney(data.commercial_metrics.average_ticket), <>Valor vendido ÷ vendas registradas no período.</>],
               ["Reagendadas", data.commercial_metrics.rescheduled],
               ["Follow-ups atrasados", data.commercial_metrics.overdue_follow_ups]
-            ].map(([label, value]) => <div key={String(label)}><dt>{label}</dt><dd>{value}</dd></div>)}
+            ].map(([label, value, help]) => <div key={String(label)}><dt>{label}{help ? <HelpHint label={`Ajuda: ${label}`}>{help}</HelpHint> : null}</dt><dd>{value}</dd></div>)}
           </dl>
         </Card>
 

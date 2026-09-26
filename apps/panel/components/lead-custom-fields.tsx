@@ -12,7 +12,7 @@ import useSWR from "swr";
 import { PencilSimple, X } from "@/components/icons";
 import { api } from "@/lib/api";
 import { canAccessWithSession, type PanelSession } from "@/lib/session";
-import { Field, IconButton, Input, SaveButton, SaveToast, Select, useSaveFeedback } from "@/components/ui";
+import { Field, HelpHint, IconButton, Input, SaveButton, SaveToast, Select, useSaveFeedback } from "@/components/ui";
 
 export type LeadCustomFieldType = "text" | "number" | "currency" | "date" | "select" | "multiselect" | "boolean";
 
@@ -179,7 +179,7 @@ export function LeadCustomFields({ leadId }: { leadId: string }) {
 
   return (
     <section className="card" aria-labelledby="lead-custom-fields-title">
-      <div id="lead-custom-fields-title" className="cardtitle">Campos personalizados</div>
+      <div id="lead-custom-fields-title" className="cardtitle">Campos personalizados <HelpHint label="Ajuda: Campos personalizados do contato" title="Campos personalizados">Campos extras definidos pela empresa. Quem gerencia o catálogo edita os valores direto aqui, no contato.</HelpHint></div>
       {error ? <p className="error" role="alert">{error.message}</p> : null}
       {items.length === 0 ? (
         <p className="sub" role="status">Nenhum campo personalizado configurado para a empresa.</p>

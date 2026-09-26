@@ -1,11 +1,10 @@
 "use client";
 
-import { BellRinging, BellSimple, Buildings, CalendarCheck, ChartBar, CheckCircle, ChatCircleDots, ClockCountdown, Cpu, FloppyDisk, GlobeHemisphereWest, GoogleLogo, Handshake, HardDrives, Link as LinkIcon, LinkBreak, PencilSimple, Plus, Queue, ShieldCheck, SlidersHorizontal, SpeakerHigh, Sticker, TagSimple, Trash, UserList, UsersThree, VideoCamera, WarningCircle, Watch, X, type Icon } from "@/components/icons";
-import Link from "next/link";
+import { BellRinging, BellSimple, Buildings, CalendarCheck, CalendarDots, CheckCircle, ChatCircleDots, FloppyDisk, GlobeHemisphereWest, GoogleLogo, Handshake, HardDrives, LinkBreak, PencilSimple, Plus, Queue, SlidersHorizontal, SpeakerHigh, TagSimple, Trash, UserList, UsersThree, VideoCamera, WarningCircle, X, type Icon } from "@/components/icons";
+import { usePathname } from "next/navigation";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { Empty } from "@/components/page-state";
-import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { fetchWorkspaceTimezone, unmuteConversation } from "@/lib/settings-api";
 import { useCapabilities } from "@/lib/capabilities";
@@ -19,8 +18,6 @@ import {
   type AttendantRedistributionCounts
 } from "@/lib/attendants";
 import {
-  canAccessWithSession,
-  canAccessRootWorkspace,
   hasWorkspaceWideCaseScope,
   type PanelSession
 } from "@/lib/session";
@@ -36,13 +33,13 @@ import { WebPushSettings } from "@/components/web-push-settings";
 import { ConversationQueueManager } from "@/components/conversation-queue-manager";
 import { WorkspaceLogoSection } from "@/components/workspace-logo";
 import { StorageSettingsPanel } from "@/components/storage-settings";
+import { GoogleCalendarSettings } from "@/components/google-calendar-settings";
 import { SETTINGS_COLOR_DEFAULTS } from "@/components/settings-colors";
-import { Button, Field as UiField, IconButton, Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
-import { settingsNavGroups } from "@/lib/panel-manifest";
+import { Button, Field as UiField, HelpHint, IconButton, Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import styles from "@/components/settings-panels.module.css";
 
 type CatalogResource = "categorias" | "parceiros" | "unidades";
-type Resource = CatalogResource | "workspace" | "attendants" | "conversation-queues" | "atendon-meet" | "google-meet" | "signature" | "panel-notifications" | "agenda-notifications" | "armazenamento";
+type Resource = CatalogResource | "workspace" | "attendants" | "conversation-queues" | "atendon-meet" | "google-meet" | "google-calendar" | "signature" | "panel-notifications" | "agenda-notifications" | "armazenamento";
 type CatalogItem = {
   id?: string;
   nome?: string;
@@ -71,6 +68,7 @@ const resourceLabels: Record<Resource, string> = {
   "conversation-queues": "Filas de atendimento",
   "atendon-meet": "AtendON Meet",
   "google-meet": "Google Meet",
+  "google-calendar": "Google Agenda",
   signature: "Assinatura do atendente",
   "panel-notifications": "Notificações do painel",
   "agenda-notifications": "Notificações de agendamento",
@@ -90,28 +88,6 @@ const COMMON_TIMEZONES = [
   "Europe/Lisbon"
 ];
 
-type SettingsDestination = {
-  href: string;
-  label: string;
-  Icon: typeof LinkIcon;
-  permission?: string;
-  rootWorkspaceOnly?: boolean;
-};
-
-// R2 (SPEC settings-search): destinos sem `description` — a navegação mostra
-// só ícone + label. Gating por chave preservado (o mesmo de antes).
-const settingsDestinations: readonly SettingsDestination[] = [
-  { href: "/alertas", label: "Alertas", Icon: BellRinging, rootWorkspaceOnly: true },
-  { href: "/conexao", label: "Conexão", Icon: LinkIcon, permission: "connection.read" },
-  { href: "/workspace/members", label: "Membros", Icon: UsersThree, permission: "members.read" },
-  { href: "/workspace/audit", label: "Auditoria", Icon: Watch, permission: "audit.read" },
-  { href: "/workspace/roles", label: "Funções", Icon: ShieldCheck, rootWorkspaceOnly: true },
-  { href: "/agente", label: "Agente", Icon: Cpu, rootWorkspaceOnly: true },
-  { href: "/follow-ups", label: "Follow-ups da IA", Icon: Sticker, rootWorkspaceOnly: true },
-  { href: "/humanizacao", label: "Humanização", Icon: ClockCountdown, rootWorkspaceOnly: true },
-  { href: "/uso", label: "Uso", Icon: ChartBar, rootWorkspaceOnly: true }
-];
-
 const resourceIcons: Record<Resource, Icon> = {
   workspace: SlidersHorizontal,
   categorias: TagSimple,
@@ -121,14 +97,12 @@ const resourceIcons: Record<Resource, Icon> = {
   "conversation-queues": Queue,
   "atendon-meet": VideoCamera,
   "google-meet": GoogleLogo,
+  "google-calendar": CalendarDots,
   signature: ChatCircleDots,
   "panel-notifications": BellSimple,
   "agenda-notifications": CalendarCheck,
   armazenamento: HardDrives
 };
-
-const settingsGroupSlug = (label: string) =>
-  label.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 // R3 (SPEC settings-search): chassi ÚNICO de configuração — mesmo card, mesmo
 // cabeçalho (ícone da biblioteca do handoff num círculo + h2 + sub opcional), mesmo
@@ -164,10 +138,9 @@ function PanelChassi({ headId, Icon, title, sub, busy, busyLabel, children }: {
 }
 
 export default function ConfigPage() {
-  const { isEnabled } = useCapabilities();
+  const { isEnabled, isLoading } = useCapabilities();
   const leadsEnabled = isEnabled("leads_v1");
   const appointmentsEnabled = isEnabled("appointments_v1");
-  const [resource, setResource] = useState<Resource>("categorias");
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [editing, setEditing] = useState<CatalogItem>();
   const [error, setError] = useState("");
@@ -198,80 +171,25 @@ export default function ConfigPage() {
   const canManageAttendants = attendantAccess.canManage;
   const canReadAttendants = attendantAccess.canRead;
   const canManageQueues = usePermission("conversations.queues.manage");
-  const visibleSettingsGroups = useMemo(() => {
-    const destinationByHref = new Map(settingsDestinations.map((destination) => [destination.href, destination]));
-    const destinationVisible = (href: string) => {
-      if (!session) return false;
-      const destination = destinationByHref.get(href);
-      if (!destination) return false;
-      return destination.rootWorkspaceOnly
-        ? canAccessRootWorkspace(session)
-        : Boolean(destination.permission && canAccessWithSession(session, [destination.permission]));
-    };
-    // Mesmo gating de antes, agora tab por chave (deep-links ?resource= cobrem
-    // todas as 12 chaves com as MESMAS condições).
-    const tabVisible: Partial<Record<Resource, boolean>> = {
-      workspace: canUpdateWorkspace,
-      categorias: leadsEnabled && canReadCategories,
-      parceiros: leadsEnabled && canReadPartners,
-      unidades: leadsEnabled && canReadUnits,
-      attendants: canReadAttendants,
-      "conversation-queues": canManageQueues,
-      "atendon-meet": appointmentsEnabled && canReadUnits,
-      "google-meet": appointmentsEnabled && canReadUnits,
-      signature: canReadSignature,
-      "panel-notifications": Boolean(session?.activeWorkspace),
-      "agenda-notifications": canReadAgendaNotifications,
-      armazenamento: canManageStorage
-    };
-    type NavEntry =
-      | { kind: "tab"; key: Resource; label: string; Icon: Icon; onClick: () => void; active: boolean }
-      | { kind: "destination"; key: string; href: string; label: string; Icon: Icon };
-    return settingsNavGroups
-      .map((group) => ({
-        label: group.label,
-        entries: group.keys.flatMap((key): NavEntry[] => {
-          if (key.startsWith("/")) {
-            const destination = destinationByHref.get(key);
-            if (!destination || !destinationVisible(key)) return [];
-            return [{ kind: "destination", key, href: destination.href, label: destination.label, Icon: destination.Icon }];
-          }
-          if (!tabVisible[key as Resource]) return [];
-          return [{
-            kind: "tab",
-            key: key as Resource,
-            label: resourceLabels[key as Resource],
-            Icon: resourceIcons[key as Resource],
-            onClick: () => setResource(key as Resource),
-            active: resource === key
-          }];
-        })
-      }))
-      .filter((group) => group.entries.length > 0);
-  }, [
-    appointmentsEnabled,
-    canManageQueues,
-    canManageStorage,
-    canReadAgendaNotifications,
-    canReadAttendants,
-    canReadCategories,
-    canReadPartners,
-    canReadSignature,
-    canReadUnits,
-    canUpdateWorkspace,
-    leadsEnabled,
-    resource,
-    session
-  ]);
-  const canManage = resource === "workspace" ? canUpdateWorkspace
-       : resource === "attendants" ? canManageAttendants
-    : resource === "conversation-queues" ? canManageQueues
-    : resource === "atendon-meet" || resource === "google-meet" ? canManageUnits
-    : resource === "signature" ? canManageSignature
-    : resource === "panel-notifications" ? true
-    : resource === "agenda-notifications" ? canManageAgendaNotifications
-    : resource === "categorias" ? canManageCategories
-      : resource === "parceiros" ? canManagePartners : canManageUnits;
+  // Mesmo gating de antes, agora tab por chave (deep-links por segmento
+  // /configuracoes/<recurso> ou legado ?resource= cobrem as chaves com as
+  // MESMAS condições). O teste tests/settings-search-20260921.test.tsx extrai
+  // este mapa do source — mantenha o marcador e as expressões.
+  const tabVisible: Partial<Record<Resource, boolean>> = {
+    workspace: canUpdateWorkspace,
+    categorias: leadsEnabled && canReadCategories,
+    parceiros: leadsEnabled && canReadPartners,
+    unidades: leadsEnabled && canReadUnits,
+    attendants: canReadAttendants,
+    "conversation-queues": canManageQueues,
+    "atendon-meet": appointmentsEnabled && canReadUnits,
+    "google-meet": appointmentsEnabled && canReadUnits,
+    "google-calendar": appointmentsEnabled && canReadUnits,
+    signature: canReadSignature,
+    "panel-notifications": Boolean(session?.activeWorkspace),
+    "agenda-notifications": canReadAgendaNotifications,
+    armazenamento: canManageStorage
+  };
   const visibleTabs = useMemo<Resource[]>(() => [
     ...(canUpdateWorkspace ? ["workspace" as const] : []),
     ...(leadsEnabled && canReadCategories ? ["categorias" as const] : []),
@@ -279,7 +197,7 @@ export default function ConfigPage() {
     ...(leadsEnabled && canReadUnits ? ["unidades" as const] : []),
     ...(canReadAttendants ? ["attendants" as const] : []),
     ...(canManageQueues ? ["conversation-queues" as const] : []),
-    ...(appointmentsEnabled && canReadUnits ? ["atendon-meet" as const, "google-meet" as const] : []),
+    ...(appointmentsEnabled && canReadUnits ? ["atendon-meet" as const, "google-meet" as const, "google-calendar" as const] : []),
     ...(canReadSignature ? ["signature" as const] : []),
     ...(session?.activeWorkspace ? ["panel-notifications" as const] : []),
     ...(canReadAgendaNotifications ? ["agenda-notifications" as const] : []),
@@ -299,64 +217,79 @@ export default function ConfigPage() {
     session?.activeWorkspace
   ]);
 
-  useEffect(() => {
-    if (visibleTabs.length > 0 && !visibleTabs.includes(resource)) setResource(visibleTabs[0]);
-  }, [resource, visibleTabs]);
+  // Deep-link — paridade com as abas (SPEC settings-search): o mapa `access`
+  // espelha `tabVisible` expressão por expressão; o teste
+  // tests/settings-search-20260921.test.tsx extrai os DOIS mapas do source e
+  // exige valores idênticos. Sem acesso ao recurso pedido na URL, o painel
+  // protegido dá lugar a "Sem acesso a esta configuração."; a primeira aba
+  // visível só entra quando a URL não pede recurso algum.
+  const access: Partial<Record<Resource, boolean>> = {
+    workspace: canUpdateWorkspace,
+    categorias: leadsEnabled && canReadCategories,
+    parceiros: leadsEnabled && canReadPartners,
+    unidades: leadsEnabled && canReadUnits,
+    attendants: canReadAttendants,
+    "conversation-queues": canManageQueues,
+    "atendon-meet": appointmentsEnabled && canReadUnits,
+    "google-meet": appointmentsEnabled && canReadUnits,
+    "google-calendar": appointmentsEnabled && canReadUnits,
+    signature: canReadSignature,
+    "panel-notifications": Boolean(session?.activeWorkspace),
+    "agenda-notifications": canReadAgendaNotifications,
+    armazenamento: canManageStorage
+  };
 
-  // Deep-link ?resource= — paridade das 12 chaves (SPEC settings-search):
-  // cada chave entra apenas se o usuário tem o MESMO acesso que a aba exigiria;
-  // sem permissão, mantém o comportamento atual de cair no primeiro tab visível.
-  useEffect(() => {
-    const requested = new URL(window.location.href).searchParams.get("resource");
-    if (!requested) return;
-    const access: Partial<Record<Resource, boolean>> = {
-      workspace: canUpdateWorkspace,
-      categorias: leadsEnabled && canReadCategories,
-      parceiros: leadsEnabled && canReadPartners,
-      unidades: leadsEnabled && canReadUnits,
-      attendants: canReadAttendants,
-      "conversation-queues": canManageQueues,
-      "atendon-meet": appointmentsEnabled && canReadUnits,
-      "google-meet": appointmentsEnabled && canReadUnits,
-      signature: canReadSignature,
-      "panel-notifications": Boolean(session?.activeWorkspace),
-      "agenda-notifications": canReadAgendaNotifications,
-      armazenamento: canManageStorage
-    };
-    if (requested in access && access[requested as Resource]) setResource(requested as Resource);
-  }, [
-    appointmentsEnabled,
-    canManageQueues,
-    canManageStorage,
-    canReadAgendaNotifications,
-    canReadAttendants,
-    canReadCategories,
-    canReadPartners,
-    canReadSignature,
-    canReadUnits,
-    canUpdateWorkspace,
-    leadsEnabled,
-    session?.activeWorkspace
-  ]);
+  // Recurso derivado da URL (sem estado): segmento /configuracoes/<recurso>
+  // vence o legado ?resource=; sem os dois, primeira aba visível assim que as
+  // permissões carregarem. usePathname é null no jsdom → fallback window.location.
+  // ponytail: ?resource= é lido de window.location.search dentro do memo keyed
+  // no pathname — troca que muda só a query não rederiva (rotas novas usam segmento).
+  const pathname = usePathname() ?? (typeof window === "undefined" ? "" : window.location.pathname);
+  const requested = useMemo<Resource | null>(() => {
+    const fromSegment = /\/configuracoes\/([^/?#]+)/.exec(pathname)?.[1];
+    const raw = fromSegment !== undefined
+      ? decodeURIComponent(fromSegment)
+      : typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("resource");
+    return raw !== null && (Object.keys(resourceLabels) as string[]).includes(raw) ? (raw as Resource) : null;
+  }, [pathname]);
+  // tabVisible/access são gêmeos exigidos pelo teste de source; ambos participam
+  // do gate para continuarem vivos. isLoading (capabilities em voo) suprime a
+  // negação: isEnabled falha-fechado durante o carregamento e daria falso
+  // "Sem acesso" em deep-links; com erro/dado definitivo, isLoading=false e a
+  // negação volta a valer.
+  const requestedVisible = requested !== null && Boolean(tabVisible[requested]) && Boolean(access[requested]);
+  const accessDenied = requested !== null && visibleTabs.length > 0 && !requestedVisible && !isLoading;
+  const resolvedResource: Resource | null = requested ?? (visibleTabs.length > 0 ? visibleTabs[0] : null);
+  const activeResource: Resource | null = resolvedResource !== null && visibleTabs.includes(resolvedResource) ? resolvedResource : null;
+
+  const canManage = activeResource === "workspace" ? canUpdateWorkspace
+       : activeResource === "attendants" ? canManageAttendants
+    : activeResource === "conversation-queues" ? canManageQueues
+    : activeResource === "atendon-meet" || activeResource === "google-meet" || activeResource === "google-calendar" ? canManageUnits
+    : activeResource === "signature" ? canManageSignature
+    : activeResource === "panel-notifications" ? true
+    : activeResource === "agenda-notifications" ? canManageAgendaNotifications
+    : activeResource === "categorias" ? canManageCategories
+      : activeResource === "parceiros" ? canManagePartners : canManageUnits;
 
   const load = useCallback(() => {
     setError("");
-    if (!visibleTabs.includes(resource)) {
+    if (activeResource === null || !visibleTabs.includes(activeResource)) {
       setLoading(false);
       return Promise.resolve();
     }
-    if (resource === "workspace" || resource === "attendants" || resource === "conversation-queues" || resource === "atendon-meet" || resource === "google-meet" || resource === "signature" || resource === "panel-notifications" || resource === "agenda-notifications" || resource === "armazenamento") {
+    if (activeResource === "workspace" || activeResource === "attendants" || activeResource === "conversation-queues" || activeResource === "atendon-meet" || activeResource === "google-meet" || activeResource === "google-calendar" || activeResource === "signature" || activeResource === "panel-notifications" || activeResource === "agenda-notifications" || activeResource === "armazenamento") {
       setLoading(false);
       return Promise.resolve();
     }
-    return api<Record<CatalogResource, CatalogItem[]>>(`/scheduling/config/${resource}`)
-      .then((response) => setItems(response[resource]))
+    return api<Record<CatalogResource, CatalogItem[]>>(`/scheduling/config/${activeResource}`)
+      .then((response) => setItems(response[activeResource]))
       .catch((loadError: unknown) => {
         setItems([]);
         setError(loadError instanceof Error ? loadError.message : "Falha ao carregar o catálogo");
       })
       .finally(() => setLoading(false));
-  }, [resource, visibleTabs]);
+  }, [activeResource, visibleTabs]);
 
   useEffect(() => {
     setEditing(undefined);
@@ -369,7 +302,7 @@ export default function ConfigPage() {
     if (!canManage || !window.confirm("Excluir este cadastro?")) return;
     setError("");
     try {
-      await api(`/scheduling/config/${resource}/${id}`, { method: "DELETE" });
+      await api(`/scheduling/config/${activeResource}/${id}`, { method: "DELETE" });
       await load();
     } catch (removeError) {
       setError(removeError instanceof Error ? removeError.message : "Falha ao excluir");
@@ -377,12 +310,12 @@ export default function ConfigPage() {
   }
 
   return (
-    <Shell>
+    <>
       <header className="pagehead">
         <div>
           <h1>Configurações</h1>
         </div>
-        {catalogTabs.includes(resource as CatalogResource) && canManage ? (
+        {catalogTabs.includes(activeResource as CatalogResource) && canManage ? (
           <Button type="button" tone="primary" onClick={() => setEditing({})}>
             <Plus aria-hidden="true" />
             Novo cadastro
@@ -390,68 +323,33 @@ export default function ConfigPage() {
         ) : null}
       </header>
 
-      {visibleSettingsGroups.length > 0 ? (
-        /* R1/R4 (SPEC settings-search): navegação ÚNICA de configurações —
-           "Geral" primeiro + categorias semânticas, as 21 chaves (12 abas +
-           9 destinos) cada uma exatamente uma vez (settingsNavGroups é a
-           fonte única da ordem/grupo). Gating por chave intacto; sem
-           descrições (R2). O idioma é o mesmo do rail (settings-rail). */
-        <nav className="settings-rail" aria-label="Configurações">
-          {visibleSettingsGroups.map((group) => {
-            const headId = `settings-group-${settingsGroupSlug(group.label)}`;
-            return (
-              <section key={group.label} className="settings-rail__group" aria-labelledby={headId}>
-                <div className="settings-rail__grouphead">
-                  <h2 id={headId}>{group.label}</h2>
-                </div>
-                <div className="settings-rail__nav">
-                  {group.entries.map((entry) => entry.kind === "tab" ? (
-                    <button
-                      key={entry.key}
-                      type="button"
-                      aria-pressed={entry.active}
-                      onClick={entry.onClick}
-                      className="settings-rail__tab"
-                    >
-                      <entry.Icon size={18} aria-hidden="true" />
-                      {entry.label}
-                    </button>
-                  ) : (
-                    <Link key={entry.key} href={entry.href} className="settings-rail__link">
-                      <entry.Icon size={18} aria-hidden="true" />
-                      <span><strong>{entry.label}</strong></span>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-            );
-          })}
-        </nav>
-      ) : null}
-
-      {resource === "workspace" ? (
+      {accessDenied ? (
+        <p className="sub" role="status">Sem acesso a esta configuração.</p>
+      ) : activeResource === null ? null : activeResource === "workspace" ? (
         <WorkspaceSettingsPanel canManageLogo={canUpdateWorkspace} />
-      ) : resource === "attendants" ? (
+      ) : activeResource === "attendants" ? (
         <AttendantSettingsPanel canManage={canManageAttendants} />
-      ) : resource === "conversation-queues" ? (
+      ) : activeResource === "conversation-queues" ? (
         <ConversationQueueManager />
-      ) : resource === "atendon-meet" ? (
+      ) : activeResource === "atendon-meet" ? (
         <AtendonMeetSettingsPanel canManage={canManageUnits} />
-      ) : resource === "google-meet" ? (
+      ) : activeResource === "google-meet" ? (
         <GoogleMeetSettingsPanel canManage={canManageUnits} />
-      ) : resource === "signature" ? (
+      ) : activeResource === "google-calendar" ? (
+        <GoogleCalendarSettings canManage={canManageUnits} />
+      ) : activeResource === "signature" ? (
         <SignatureSettingsPanel canManage={canManageSignature} />
-      ) : resource === "panel-notifications" ? (
+      ) : activeResource === "panel-notifications" ? (
         <PanelNotificationSettingsPanel />
-      ) : resource === "agenda-notifications" ? (
+      ) : activeResource === "agenda-notifications" ? (
         <AgendaNotificationSettingsPanel canManage={canManageAgendaNotifications} />
-      ) : resource === "armazenamento" ? (
+      ) : activeResource === "armazenamento" ? (
         <StorageSettingsPanel canManage={canManageStorage} />
       ) : (
         <PanelChassi
           headId="settings-catalog"
-          Icon={resourceIcons[resource]}
-          title={resourceLabels[resource]}
+          Icon={resourceIcons[activeResource]}
+          title={resourceLabels[activeResource]}
           busy={loading}
           busyLabel="Carregando catálogo"
         >
@@ -459,7 +357,7 @@ export default function ConfigPage() {
           {!canManage && !loading ? <p className="sub" role="status">Esta seção está disponível somente para consulta.</p> : null}
 
           <div className={`${styles.catalogLayout} ${canManage ? styles.catalogLayoutManaged : ""}`}>
-          <section className="responsive-table-wrap" aria-label={resourceLabels[resource]}>
+          <section className="responsive-table-wrap" aria-label={resourceLabels[activeResource]}>
           {items.length === 0 ? (
             <Empty>Nenhum cadastro nesta seção.</Empty>
           ) : (
@@ -477,7 +375,7 @@ export default function ConfigPage() {
                   <tr key={item.id} className="border-b border-[var(--border)] last:border-0">
                     <td data-label="ID" className="mono px-4 py-3 text-xs">{item.id}</td>
                     <td data-label="Nome" className="px-4 py-3"><strong>{item.nome}</strong></td>
-                    <td data-label="Configuração" className="px-4 py-3 text-xs text-[var(--text-secondary)]"><Summary resource={resource as CatalogResource} item={item} /></td>
+                    <td data-label="Configuração" className="px-4 py-3 text-xs text-[var(--text-secondary)]"><Summary resource={activeResource} item={item} /></td>
                     {canManage ? (
                       <td data-label="Ações" className="px-4 py-3">
                         <div className="flex justify-end gap-2">
@@ -499,7 +397,7 @@ export default function ConfigPage() {
 
         {canManage ? editing ? (
           <Editor
-            resource={resource as CatalogResource}
+            resource={activeResource}
             item={editing}
             onCancel={() => setEditing(undefined)}
             onSaved={async () => {
@@ -516,7 +414,7 @@ export default function ConfigPage() {
         </div>
         </PanelChassi>
       )}
-    </Shell>
+    </>
   );
 }
 
@@ -602,7 +500,7 @@ function WorkspaceSettingsPanel({ canManageLogo }: { canManageLogo: boolean }) {
             <small className="sub">Exemplo: America/Sao_Paulo.</small>
           </label>
           <div>
-            <h2 className="m-0 text-base font-semibold text-[var(--text)]">Horário de atendimento</h2>
+            <h2 className="m-0 flex items-center gap-2 text-base font-semibold text-[var(--text)]">Horário de atendimento <HelpHint label="Ajuda: Horário de atendimento" title="Horário de atendimento">Um único intervalo para todos os dias da semana; não há horário diferente por dia.</HelpHint></h2>
             <p className="sub mt-1">
               Fora desse intervalo a IA não visualiza, não responde e a conexão fica offline no WhatsApp.
               O atendimento retoma automaticamente no início do horário, sem responder tudo de uma vez.
@@ -1214,7 +1112,7 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
                 <th className="pb-3 font-medium">Atendente</th>
                 <th className="pb-3 font-medium">Cor na agenda</th>
                 <th className="pb-3 font-medium">Disponibilidade</th>
-                <th className="pb-3 text-right font-medium">Carga ativa</th>
+                <th className="pb-3 text-right font-medium"><span className="inline-flex items-center gap-1">Carga ativa <HelpHint label="Ajuda: Carga ativa" align="end">Quantos agendamentos ativos o atendente tem neste momento.</HelpHint></span></th>
                 <th className="pb-3 text-right font-medium">Controle</th>
               </tr>
             </thead>
@@ -1648,11 +1546,11 @@ function Editor({ resource, item, onCancel, onSaved, onError }: { resource: Cata
     <form className={`card ${styles.form}`} onSubmit={submit}>
       <div className="cardtitle">{existing ? "Editar" : "Novo"} {resource.slice(0, -1)}</div>
       <div className={styles.fieldGrid}>
-        <UiField label="ID (slug)"><Input name="id" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" defaultValue={item.id ?? ""} readOnly={existing} /></UiField>
+        <UiField label="ID (slug)" help="O ID é fixo: depois de criado, não pode ser alterado."><Input name="id" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" defaultValue={item.id ?? ""} readOnly={existing} /></UiField>
         <UiField label="Nome"><Input name="nome" required defaultValue={item.nome ?? ""} /></UiField>
         {resource === "categorias" ? <Toggle name="ativa" label="Categoria ativa" checked={item.ativa ?? true} /> : null}
         {resource === "parceiros" ? <><UiField label="Ordem de prioridade"><Input name="ordem_prioridade" type="number" min="1" required defaultValue={item.ordem_prioridade ?? 1} /></UiField><UiField label="Link da proposta"><Input name="link_proposta" type="url" required defaultValue={item.link_proposta ?? ""} /></UiField><Toggle name="ativo" label="Parceiro ativo" checked={item.ativo ?? true} /></> : null}
-        {resource === "unidades" ? <><div className={styles.fieldGrid}><UiField label="Abertura"><Input name="horario_abertura" type="time" required defaultValue={item.horario_abertura ?? "09:00"} /></UiField><UiField label="Fechamento"><Input name="horario_fechamento" type="time" required defaultValue={item.horario_fechamento ?? "18:00"} /></UiField></div><UiField label="Dias de funcionamento"><div className={styles.choiceGrid}>{["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((label, index) => <label key={label} className={styles.choice}><input type="checkbox" name="dias_funcionamento" value={index} defaultChecked={(item.dias_funcionamento ?? [1, 2, 3, 4, 5]).includes(index)} />{label}</label>)}</div></UiField><div className={styles.fieldGrid}><UiField label="Duração (min)"><Input name="duracao_slot_min" type="number" min="1" required defaultValue={item.duracao_slot_min ?? 60} /></UiField><UiField label="Capacidade"><Input name="capacidade_simultanea" type="number" min="1" required defaultValue={item.capacidade_simultanea ?? 1} /></UiField></div></> : null}
+        {resource === "unidades" ? <><div className={styles.fieldGrid}><UiField label="Abertura"><Input name="horario_abertura" type="time" required defaultValue={item.horario_abertura ?? "09:00"} /></UiField><UiField label="Fechamento"><Input name="horario_fechamento" type="time" required defaultValue={item.horario_fechamento ?? "18:00"} /></UiField></div><UiField label="Dias de funcionamento"><div className={styles.choiceGrid}>{["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((label, index) => <label key={label} className={styles.choice}><input type="checkbox" name="dias_funcionamento" value={index} defaultChecked={(item.dias_funcionamento ?? [1, 2, 3, 4, 5]).includes(index)} />{label}</label>)}</div></UiField><div className={styles.fieldGrid}><UiField label="Duração (min)" help="Duração de cada vaga oferecida na agenda da unidade."><Input name="duracao_slot_min" type="number" min="1" required defaultValue={item.duracao_slot_min ?? 60} /></UiField><UiField label="Capacidade" help="Quantos atendimentos simultâneos cabem em cada vaga."><Input name="capacidade_simultanea" type="number" min="1" required defaultValue={item.capacidade_simultanea ?? 1} /></UiField></div></> : null}
       </div>
       <div className={styles.saveActions}>
         <Button type="button" onClick={onCancel}>Cancelar</Button>

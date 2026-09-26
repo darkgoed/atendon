@@ -19,7 +19,7 @@ import { useRef, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { ModalDialog } from "@/components/modal-dialog";
 import { Shell } from "@/components/shell";
-import { IconButton, Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
+import { HelpHint, IconButton, Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { api } from "@/lib/api";
 import { isPostSaleVersionConflict, type PostSaleTemplateItem } from "@/lib/post-sales";
 
@@ -173,7 +173,7 @@ export default function PostSalesChecklistSettingsPage() {
 
           <section className="post-sales-template-section" aria-labelledby="active-template-title">
             <div className="post-sales-section-title">
-              <div><span className="label">Modelo ativo</span><h2 id="active-template-title">Sequência do atendimento</h2></div>
+              <div><span className="label">Modelo ativo</span><h2 id="active-template-title">Sequência do atendimento <HelpHint label="Ajuda: Sequência do atendimento">A ordem definida aqui é a sequência que cada cliente segue no checklist dele.</HelpHint></h2></div>
               <span className="mono">{active.length} item(ns)</span>
             </div>
             {isLoading && !data ? <div className="post-sales-template-skeleton" role="status" aria-label="Carregando itens">{[1, 2, 3].map((item) => <div className="skeleton" key={item} aria-hidden="true" />)}</div>

@@ -10,7 +10,7 @@ import { useRef, useState } from "react";
 import useSWR from "swr";
 import { ArrowsClockwise, CopySimple, PencilSimple, Plus, Plugs } from "@/components/icons";
 import { Shell } from "@/components/shell";
-import { Button, IconButton } from "@/components/ui";
+import { Button, HelpHint, IconButton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { formatPanelDateTime } from "@/lib/format";
 import { usePermission } from "@/lib/use-permission";
@@ -117,7 +117,12 @@ export default function FluxosPage() {
     <Shell>
       <header className="pagehead">
         <div>
-          <h1>Fluxos</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <h1>Fluxos</h1>
+            <HelpHint label="Ajuda: Fluxos" side="bottom" align="start">
+              O fluxo é o robô do atendimento: quando uma conversa dispara o gatilho, ele responde com etapas fixas antes da IA. Se nenhum fluxo for acionado, a IA assume.
+            </HelpHint>
+          </div>
           <p className="sub">Atendimento automático por robô: mensagens, perguntas, esperas e ações no CRM.</p>
           {canManage ? null : (
             <p id="fluxos-manage-hint" className="sub">Você não tem permissão para criar ou alterar fluxos. Peça acesso a um administrador.</p>
@@ -143,7 +148,7 @@ export default function FluxosPage() {
         <section className="card mt-4 grid place-items-center gap-3 p-10 text-center">
           <Plugs size={28} aria-hidden="true" style={{ color: "var(--text-disabled)" }} />
           <p className="label">Nenhum fluxo</p>
-          <p className="sub">Crie um fluxo para automatizar o atendimento por WhatsApp.</p>
+          <p className="sub">Crie um fluxo para automatizar o atendimento por WhatsApp. Depois de criar, ligue o gatilho à primeira etapa, salve o fluxo no editor e ative-o aqui na lista.</p>
           {canManage ? (
             <Button type="button" tone="primary" disabled={!canManage || busyId !== null} onClick={novoFluxo}>
               <Plus size={16} aria-hidden="true" /> Novo fluxo

@@ -10,6 +10,7 @@ import {
   type AppearanceDensity
 } from "@/lib/appearance";
 import { applyThemeWithTransition, currentTheme, elementOrigin, type PanelTheme } from "@/lib/theme-transition";
+import { HelpHint } from "@/components/ui";
 import styles from "@/components/appearance-preferences.module.css";
 
 /**
@@ -64,7 +65,7 @@ export function AppearancePreferences() {
   return (
     <section className={styles.group} aria-label="Preferências de aparência">
       <div className={styles.optionGroup}>
-        <span className={styles.optionLabel} id="appearance-theme-label">Tema</span>
+        <span className={styles.optionLabel} id="appearance-theme-label">Tema <HelpHint label="Ajuda: Tema" side="bottom" align="start">A troca usa a mesma animação de onda do botão de tema no topo do painel.</HelpHint></span>
         <div className={styles.options} role="group" aria-labelledby="appearance-theme-label">
           {([["light", "Claro"], ["dark", "Escuro"]] as const).map(([value, label]) => (
             <button
@@ -81,7 +82,7 @@ export function AppearancePreferences() {
       </div>
 
       <div className={styles.optionGroup}>
-        <span className={styles.optionLabel} id="appearance-density-label">Densidade</span>
+        <span className={styles.optionLabel} id="appearance-density-label">Densidade <HelpHint label="Ajuda: Densidade" side="bottom" align="start">Muda o espaçamento do painel inteiro e fica salvo neste navegador.</HelpHint></span>
         <div className={styles.options} role="group" aria-labelledby="appearance-density-label">
           {DENSITY_PRESETS.map((preset) => (
             <button

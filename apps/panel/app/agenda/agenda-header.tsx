@@ -2,9 +2,11 @@ import { CalendarX, Plus } from "@/components/icons";
 import { Button, PageHeader } from "@/components/ui";
 import type { AppointmentView } from "./agenda-types";
 
-export function AgendaHeader({ canCreate, canBlock, unit, mode, view, pendingCount, onCreate, onBlock, onMode, onView }: {
+export function AgendaHeader({ canCreate, canBlock, blocking = false, unit, mode, view, pendingCount, onCreate, onBlock, onMode, onView }: {
   canCreate: boolean;
   canBlock: boolean;
+  /** Modo bloqueio ativo: o botão vira "Cancelar bloqueio". */
+  blocking?: boolean;
   unit: string;
   mode: "day" | "week" | "month";
   view: AppointmentView;
@@ -20,8 +22,14 @@ export function AgendaHeader({ canCreate, canBlock, unit, mode, view, pendingCou
       title="Agenda"
       actions={<div className="agenda-head__actions">
         {canBlock ? (
-          <Button className="agenda-head__action" onClick={onBlock} icon={<CalendarX size={15} aria-hidden="true" />}>
-            Bloquear horário
+          <Button
+            className={`agenda-head__action${blocking ? " is-blocking" : ""}`}
+            onClick={onBlock}
+            aria-pressed={mode === "month" ? undefined : blocking}
+            title={blocking ? "Sair do modo bloqueio (Esc)" : mode === "month" ? "Bloquear um período" : "Clique depois em um horário livre da grade"}
+            icon={<CalendarX size={15} aria-hidden="true" />}
+          >
+            {blocking ? "Cancelar bloqueio" : "Bloquear horário"}
           </Button>
         ) : null}
         {canCreate ? (

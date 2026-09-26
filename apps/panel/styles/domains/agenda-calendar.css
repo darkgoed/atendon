@@ -1357,3 +1357,50 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ============================================== AJUDA CONTEXTUAL (agenda) ==
+   Pré-visualização ao passar o mouse: o horário livre mostra o que o clique
+   vai fazer ("+ Agendar às 14:00" / "Bloquear 14:00 – 15:00"). */
+
+.agenda-cell__preview {
+  position: absolute;
+  z-index: 1;
+  inset: var(--space-1);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: 0 var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 0 0 1px var(--primary-border);
+  background: var(--primary-subtle);
+  color: var(--primary-text);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+.agenda-cell__preview svg { flex: none; }
+
+@media (hover: hover) {
+  .agenda-cell--clickable:hover .agenda-cell__preview { opacity: 1; }
+}
+.agenda-cell--clickable:focus-visible { outline: none; box-shadow: var(--focus-ring-inset); }
+.agenda-cell--clickable:focus-visible .agenda-cell__preview { opacity: 1; }
+
+/* Modo bloqueio: hachura nos horários livres e prévia neutra. */
+.agenda-grid--blocking .agenda-cell--clickable .agenda-cell__preview {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  background: repeating-linear-gradient(135deg, var(--surface-hover) 0 6px, transparent 6px 12px), var(--surface);
+  color: var(--text);
+}
+.agenda-grid--blocking .agenda-cell:not(.agenda-cell--clickable) { cursor: not-allowed; }
+.agenda-head__action.is-blocking {
+  border-color: var(--primary-border);
+  background: var(--primary-subtle);
+  color: var(--primary-text);
+}

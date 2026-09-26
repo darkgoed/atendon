@@ -4,7 +4,7 @@ import { Check, FloppyDisk, Sticker, Trash, UploadSimple, WhatsappLogo } from "@
 import { FormEvent, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
-import { SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
+import { HelpHint, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { IconButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/status";
@@ -153,6 +153,7 @@ export function AiStickerLibrary() {
       <div className="mono border-l border-[var(--border)] pl-5 text-right type-caption uppercase tracking-[.12em] text-[var(--text-muted)]">
         <strong className="block text-2xl font-semibold text-[var(--text)]">{stickers.length}</strong>
         {pendingCount} aguardando revisão
+        <HelpHint label="Ajuda: Aguardando revisão" className="ml-2">Figurinhas importadas do WhatsApp chegam desativadas até você descrever o uso e salvar.</HelpHint>
       </div>
     </header>
 
@@ -183,6 +184,7 @@ export function AiStickerLibrary() {
                   <div className="sm:col-span-2 flex flex-wrap items-center gap-3 type-caption text-[var(--text-muted)]">
                     <span className="mono uppercase tracking-[.1em]">{sticker.source === "whatsapp_sent" ? "Importada do WhatsApp" : "Enviada pelo painel"}</span><span>{formatSize(sticker.size_bytes)}</span>
                     <label className="ml-auto flex items-center gap-2 text-xs text-[var(--text-secondary)]"><input type="checkbox" checked={draft.enabled} onChange={(event) => changeDraft(sticker, { enabled: event.target.checked })}/>Disponível para a IA</label>
+                    <HelpHint label="Ajuda: Disponível para a IA">Desmarcada, a figurinha fica guardada na biblioteca, mas a IA não envia.</HelpHint>
                   </div>
                 </div>
                 <div className="flex items-start gap-2 md:flex-col">

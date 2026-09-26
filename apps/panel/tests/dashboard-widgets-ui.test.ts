@@ -4,13 +4,18 @@ import { beforeAll, describe, expect, it } from "vitest";
 let component = "";
 let home = "";
 let agent = "";
+let agentContent = "";
 
 beforeAll(async () => {
-  [component, home, agent] = await Promise.all([
+  [component, home, agent, agentContent] = await Promise.all([
     readFile(new URL("../components/dashboard-widgets.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/agente/page.tsx", import.meta.url), "utf8")
+    readFile(new URL("../app/agente/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/agente/settings-content.tsx", import.meta.url), "utf8")
   ]);
+  // O corpo do agente vive em settings-content.tsx (aninhamento /configuracoes/agente);
+  // a página legada envolve o conteúdo com o Shell. Os asserts cobrem os dois juntos.
+  agent = `${agent}\n${agentContent}`;
 });
 
 describe("personalizable dashboard UI", () => {

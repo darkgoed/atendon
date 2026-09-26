@@ -15,6 +15,7 @@ type Period = {
   id: string; included_limit: string | null; included_usage: string;
   rollover_granted: string; rollover_usage: string; bonus_granted: string; bonus_usage: string;
   overage_amount_brl_cents: string; reserved_cents: string; start_at: Date; end_at: Date;
+  usage_unit?: string;
 };
 
 const integer = (v: unknown) => Number(v ?? 0);
@@ -57,10 +58,14 @@ export async function evaluateAlerts(client: PoolClient, tenantId: string): Prom
   if (quotaLimit != null && quotaLimit > 0) {
     const used = integer(period.included_usage) + integer(period.rollover_usage) + integer(period.bonus_usage);
     const usedPercentBps = bps(used, quotaLimit);
+    // Unidade do período define a redação: interações legadas x créditos
+    // normalizados (tokens equivalentes por custo).
+    const unitMessage = period.usage_unit === "CREDIT"
+      ? (used: number, limit: number) => `Voce utilizou ${ptInteger(used)} dos ${ptInteger(limit)} creditos normalizados de IA (tokens equivalentes por custo) neste mes.`
+      : (used: number, limit: number) => `Voce utilizou ${ptInteger(used)} das ${ptInteger(limit)} interacoes de IA incluidas neste mes.`;
     for (const thresholdBps of settings.quota_alert_thresholds_bps) {
       if (usedPercentBps >= thresholdBps) {
-        const item = await insertAlert(client, tenantId, period.id, "QUOTA", thresholdBps, usedPercentBps,
-          `Voce utilizou ${ptInteger(used)} das ${ptInteger(quotaLimit)} interacoes de IA incluidas neste mes.`);
+        const item = await insertAlert(client, tenantId, period.id, "QUOTA", thresholdBps, usedPercentBps, unitMessage(used, quotaLimit));
         if (item) alerts.push(item);
       }
     }
@@ -98,7 +103,7 @@ export async function getUsageDashboard(client: PoolClient, tenantId: string) {
   const result = await client.query(`
     SELECT p.name AS plan_name, u.included_limit, u.included_usage, u.rollover_granted,
       u.rollover_usage, u.bonus_granted, u.bonus_usage, u.overage_amount_brl_cents,
-      u.reserved_cents, u.start_at, u.end_at
+      u.reserved_cents, u.usage_unit, u.start_at, u.end_at
     FROM usage_periods u LEFT JOIN tenant_subscriptions ts ON ts.tenant_id=u.tenant_id
       LEFT JOIN plans p ON p.id=ts.plan_id
     WHERE u.tenant_id=$1 AND u.status='OPEN' LIMIT 1`, [tenantId]);
@@ -112,10 +117,13 @@ export async function getUsageDashboard(client: PoolClient, tenantId: string) {
   const credit = (await client.query(`SELECT enabled, monthly_spending_limit_cents FROM tenant_usage_credit_settings WHERE tenant_id=$1`, [tenantId])).rows[0];
   const periodEnd = new Date(row.end_at);
   const daysUntilRenewal = Math.max(0, Math.ceil((periodEnd.getTime() - Date.now()) / 86400000));
+  const creditUnit = row.usage_unit === "CREDIT";
   return { planName: row.plan_name, includedLimit, includedUsage, rolloverGranted, rolloverUsage, bonusGranted, bonusUsage,
     totalAvailable, totalUsed, usedPercentBps: totalAvailable == null ? 0 : bps(totalUsed, totalAvailable),
+    usageUnit: creditUnit ? "CREDIT" : "INTERACTION",
     periodStart: row.start_at, periodEnd, daysUntilRenewal, creditEnabled: Boolean(credit?.enabled),
     creditLimitCents: credit ? integer(credit.monthly_spending_limit_cents) : null,
     creditUsedCents: integer(row.overage_amount_brl_cents) + integer(row.reserved_cents),
-    balanceLabel: "Creditos de IA", usageLabel: "Interacoes acumuladas" };
+    balanceLabel: creditUnit ? "Creditos de IA (tokens normalizados)" : "Creditos de IA",
+    usageLabel: creditUnit ? "Tokens normalizados consumidos" : "Interacoes acumuladas" };
 }

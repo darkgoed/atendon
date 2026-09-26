@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, IconButton, Input, SaveButton, SaveToast, Select, useSaveFeedback } from "@/components/ui";
+import { Button, HelpHint, IconButton, Input, SaveButton, SaveToast, Select, useSaveFeedback } from "@/components/ui";
 import {
   ArrowClockwise,
   ArrowLeft,
@@ -345,7 +345,7 @@ export function ConversationScheduler({
     >
       <header className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <span className="label">Agenda da conversa</span>
+          <span className="flex items-center gap-1"><span className="label">Agenda da conversa</span><HelpHint label="Ajuda: Agendar contato">Cria uma reunião na agenda da unidade escolhida para este contato. Depois de confirmar, o horário fica reservado e aparece na Agenda.</HelpHint></span>
           <h2 id="conversation-scheduler-title" className="mt-1 truncate">Agendar contato</h2>
           <p id="conversation-scheduler-description" className="mt-1 text-sm text-[var(--text-secondary)]">
             {contactName ?? contactPhone} <span className="mono text-xs text-[var(--text-muted)]">· {contactPhone}</span>
@@ -484,7 +484,7 @@ export function ConversationScheduler({
           <section aria-labelledby="conversation-scheduler-slots">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <span className="label">Horários livres</span>
+                <span className="flex items-center gap-1"><span className="label">Horários livres</span><HelpHint label="Ajuda: Horários livres">Horários futuros do dia e da unidade escolhidos. Ao definir o closer, a lista passa a mostrar só os horários livres dele.</HelpHint></span>
                 <strong id="conversation-scheduler-slots" className="mt-1 block text-sm capitalize">
                   {new Date(`${date}T12:00:00.000Z`).toLocaleDateString("pt-BR", {
                     timeZone: "UTC",

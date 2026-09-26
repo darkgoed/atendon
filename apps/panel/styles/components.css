@@ -979,3 +979,126 @@ th[aria-sort="descending"]::after { content: " ↓"; color: var(--primary-text);
 @media (min-width: 701px) { .save-toast-layer { left: var(--sidebar-width); } }
 .save-toast-layer .on-toast { bottom: 0; color: var(--text); font-size: var(--text-body); white-space: nowrap; }
 .save-button .on-check { flex: none; }
+
+/* ======================================================== MODE BAR ==
+   Indicador de modo (components/ui/mode-bar.tsx): barra flutuante no rodapé
+   que avisa qual modo temporário está ativo e como sair dele. */
+.mode-bar {
+  position: fixed;
+  z-index: var(--z-toast);
+  bottom: var(--space-6);
+  left: 50%;
+  display: flex;
+  max-width: calc(100vw - var(--space-8));
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-popover), inset 0 0 0 1px var(--primary-border);
+  color: var(--text);
+  font-size: var(--text-control);
+  transform: translateX(-50%);
+  animation: on-toast .35s var(--ease-out) both;
+}
+@media (min-width: 701px) { .mode-bar { left: calc(50% + var(--sidebar-width) / 2); } }
+/* Durante um arrasto com o ponteiro a barra não pode capturar o soltar. */
+.mode-bar--passive { pointer-events: none; }
+/* Dois modos ao mesmo tempo (seleção em massa + arrasto de card): a barra
+   do arrasto (--priority) vence enquanto durar; sem :has() elas só se
+   sobrepõem, sem perder função. */
+body:has(.mode-bar--priority) .mode-bar:not(.mode-bar--priority) { visibility: hidden; }
+.mode-bar__icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--primary-subtle);
+  color: var(--primary-text);
+}
+.mode-bar__copy { display: grid; min-width: 0; gap: 1px; line-height: var(--leading-tight); }
+.mode-bar__copy strong { font-weight: var(--weight-semibold); }
+.mode-bar__copy span { color: var(--text-secondary); font-size: var(--text-meta); }
+.mode-bar__cancel,
+.mode-bar__link {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height-sm);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  transition: var(--transition-control);
+}
+.mode-bar__link { background: transparent; color: var(--primary-text); }
+.mode-bar__cancel:hover, .mode-bar__link:hover { background: var(--surface-hover); color: var(--text); }
+.mode-bar__cancel:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
+.mode-bar__cancel:focus-visible, .mode-bar__link:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.mode-bar__cancel kbd { color: var(--text-muted); font-family: var(--font-mono); font-size: var(--text-micro); }
+@media (max-width: 700px) {
+  /* left:50% limitaria a largura disponível à metade da tela: no mobile a
+     barra ocupa a largura toda, com respiro lateral. */
+  .mode-bar { right: var(--space-3); bottom: var(--space-4); left: var(--space-3); max-width: none; transform: none; animation-name: on-fade; }
+  .mode-bar__copy { flex: 1; }
+  .mode-bar__copy span, .mode-bar__cancel kbd, .mode-bar__link { display: none; }
+}
+
+/* ======================================================== HELP HINT ==
+   Ajuda contextual inline (components/ui/help-hint.tsx): "?" discreto ao
+   lado do rótulo; o balão explica o campo onde a dúvida surge. */
+.help-hint {
+  display: inline-grid;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  place-items: center;
+  margin-inline-start: var(--space-1);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+  vertical-align: middle;
+  cursor: help;
+  transition: var(--transition-control);
+}
+.help-hint:hover, .help-hint[data-state="open"] { border-color: var(--primary-border); color: var(--primary-text); }
+.help-hint:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* Alvo de toque confortável sem mudar o tamanho visual. */
+.help-hint { position: relative; }
+.help-hint::after { content: ""; position: absolute; inset: -8px; }
+.help-hint__panel {
+  z-index: var(--z-popover);
+  display: grid;
+  max-width: min(300px, calc(100vw - var(--space-6)));
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-popover);
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-regular);
+  line-height: 1.45;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+  animation: on-fade var(--duration-fast) var(--ease-out) both;
+}
+.help-hint__title { color: var(--text); font-size: var(--text-control); font-weight: var(--weight-semibold); }
+.help-hint__body p { margin: 0; }
+.help-hint__body p + p { margin-top: var(--space-1); }
+.help-hint__body kbd { font-family: var(--font-mono); font-size: var(--text-micro); color: var(--text); }
+.help-hint__arrow { fill: var(--surface-elevated); }
+.field__label-row { display: inline-flex; min-width: 0; align-items: center; gap: var(--space-1); }
+.field__label-row .help-hint { margin-inline-start: 0; }

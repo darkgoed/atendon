@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
 import { BrandMark } from "@/components/brand-mark";
 import { api } from "@/lib/api";
+import { workspaceRoleLabel } from "@/lib/labels";
 import { finalInvitationState, newPasswordsMatch, type InvitationStatus } from "./invitation-state";
 
 type Invitation = {
@@ -108,7 +109,7 @@ export default function InvitationAcceptPage({ token }: { token: string }) {
           <>
             <div className="invitation-summary">
               <div><span className="label">Workspace</span><strong>{invitation.workspace_name}</strong></div>
-              <div><span className="label">Função</span><strong>{invitation.role_name}</strong></div>
+              <div><span className="label">Função</span><strong>{workspaceRoleLabel(invitation.role_name)}</strong></div>
               <div><span className="label">E-mail</span><strong>{invitation.email}</strong></div>
               <div><span className="label">Expiração</span><strong>{dateTime.format(new Date(invitation.expires_at))}</strong></div>
             </div>

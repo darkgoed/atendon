@@ -13,7 +13,7 @@ import { ConversationScheduler } from "@/components/conversation-scheduler";
 import { ConversationStatusPicker } from "@/components/conversation-status-picker";
 import { Empty } from "@/components/page-state";
 import { LeadTagChips, type LeadTag } from "@/components/lead-tag-picker";
-import { IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
+import { Field, HelpHint, IconButton, SaveButton, SaveToast, useFlashToast, useSaveFeedback } from "@/components/ui";
 import { ListFiltersBar, type ListFilterDef } from "@/components/ui/filters";
 import { MessageActionsMenu } from "@/components/message-actions-menu";
 import { ModalDialog } from "@/components/modal-dialog";
@@ -502,6 +502,7 @@ export default function Conversations() {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const resolveSave = useSaveFeedback();
   const resetResolveSave = resolveSave.reset;
+  const flash = useFlashToast();
   const [threadConversation, setThreadConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [aiTurn, setAiTurn] = useState<AiTurnProgress | null>(null);
@@ -1088,6 +1089,7 @@ export default function Conversations() {
     try {
       await reactivateConversationApi(selected);
       await Promise.all([mutateList(), mutateThread()]);
+      flash.show("IA reativada neste contato.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao reativar a IA");
     } finally {
@@ -1134,6 +1136,7 @@ export default function Conversations() {
     try {
       await pauseConversationApi(selectedRef.current);
       await Promise.all([mutateList(), mutateThread()]);
+      flash.show("IA pausada neste contato.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao pausar a IA para este contato");
     } finally {
@@ -1148,6 +1151,7 @@ export default function Conversations() {
     try {
       await claimConversationApi(selected);
       await Promise.all([mutateList(), mutateThread()]);
+      flash.show("Você assumiu esta conversa.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao assumir a conversa");
     } finally {
@@ -1220,6 +1224,7 @@ export default function Conversations() {
       await reopenConversationApi(selected);
       setFilter("human");
       await Promise.all([mutateList(), mutateThread()]);
+      flash.show("Conversa reaberta.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao reabrir a conversa");
     } finally {
@@ -1282,6 +1287,7 @@ export default function Conversations() {
         return;
       }
       await Promise.all([mutateList(), mutateThread()]);
+      flash.show("Responsável atualizado.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao transferir a conversa");
     } finally {
@@ -1300,6 +1306,7 @@ export default function Conversations() {
     try {
       await api(`/conversations/${selected}/queue`, { method: "PATCH", body: JSON.stringify({ queue_id: queueId }) });
       await Promise.all([mutateList(), mutateThread(), mutateQueues()]);
+      flash.show(queue ? `Conversa movida para a fila ${queue.name}.` : "Conversa movida de fila.");
     } catch (caught) {
       await mutateList(previousList, { revalidate: false });
       await mutateThread(previousThread, { revalidate: false });
@@ -1313,6 +1320,7 @@ export default function Conversations() {
     try {
       await setConversationSignature(selected, value === "" ? null : value === "true");
       await mutateThread();
+      flash.show("Assinatura atualizada nesta conversa.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao atualizar a assinatura desta conversa");
     }
@@ -1325,6 +1333,7 @@ export default function Conversations() {
     try {
       await setConversationNotificationMute(selected, !muted);
       await mutateNotificationPreferences();
+      flash.show(muted ? "Avisos desta conversa reativados." : "Avisos desta conversa silenciados.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Falha ao alterar os avisos desta conversa");
     }
@@ -1468,6 +1477,11 @@ export default function Conversations() {
           <header className="conversation-list__header shrink-0">
             <div className="conversation-list__title">
               <h1>{hasWorkspaceScope ? "Conversas" : "Minhas conversas"}</h1>
+              {hasWorkspaceScope ? (
+                <HelpHint label="Ajuda: abas da lista de conversas" title="O que cada aba mostra" side="bottom">
+                  Abertas: aguardando atendimento humano (IA desligada). IA: a IA responde sozinha. Agendadas: com horário confirmado na agenda. Resolvidas: encerradas.
+                </HelpHint>
+              ) : null}
               <span className="mono">{allItems.length} na fila</span>
             </div>
             <div className="conversation-list__search-row" data-testid="conversation-list-filters">
@@ -1536,7 +1550,7 @@ export default function Conversations() {
                 ))}
               </div>
             ) : items.length === 0 ? (
-              <Empty>Nenhuma conversa neste filtro.</Empty>
+              <Empty>Nenhuma conversa neste filtro. Troque de aba ou limpe os filtros para ver outras conversas.</Empty>
             ) : (
               <div className="space-y-1.5">
                 {items.map((item: Conversation) => (
@@ -1562,7 +1576,7 @@ export default function Conversations() {
         <section className="conversation-thread flex min-h-0 min-w-0 flex-col">
           {!selected ? (
             <div className="flex h-full items-center justify-center">
-              <Empty>Selecione uma conversa.</Empty>
+              <Empty>Selecione uma conversa na lista para ver o histórico e responder.</Empty>
             </div>
           ) : threadError ? (
             <div className="flex h-full items-center justify-center p-6">
@@ -1648,7 +1662,7 @@ export default function Conversations() {
                     ) : null
                   ) : null}
                   {canReply && thread.conversation.status === "closed" && resolveSave.state === "idle" ? <span className="text-xs text-[var(--text-secondary)]" aria-label="Fila atual">Fila: {thread.conversation.queue_name ?? "Sem fila"}</span> : null}
-                  {canReply && thread.conversation.status === "open" ? <label className="field"><span className="sr-only">Fila do atendimento</span><select className="input" aria-label="Fila do atendimento" value={thread.conversation.queue_id ?? ""} onChange={(event) => { if (event.target.value) void moveConversationToQueue(event.target.value); }}><option value="">Sem fila</option>{(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></label> : null}
+                  {canReply && thread.conversation.status === "open" ? <><HelpHint label="Ajuda: fila do atendimento" side="bottom">Move a conversa para outra fila do time. Não envia mensagem ao contato.</HelpHint><label className="field"><span className="sr-only">Fila do atendimento</span><select className="input" aria-label="Fila do atendimento" value={thread.conversation.queue_id ?? ""} onChange={(event) => { if (event.target.value) void moveConversationToQueue(event.target.value); }}><option value="">Sem fila</option>{(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></label></> : null}
                   {/* DS v2 §2: Resolver segue o padrão de salvar (idle → busy →
                       done "Resolvida" + toast). Permanece montado durante o
                       feedback para o operador ver o check mesmo com o status
@@ -1683,8 +1697,7 @@ export default function Conversations() {
                         const conversation = thread.conversation;
                         if (!conversation) return null;
                         return (
-                          <label className="field">
-                            <span className="label">Novo responsável</span>
+                          <Field label="Novo responsável" help={<>Escolhe quem responde esta conversa. Para deixar sem ninguém, escolha Sem responsável.</>}>
                             <select
                               className="input"
                               value={conversation.assigned_user_id ?? ""}
@@ -1695,7 +1708,7 @@ export default function Conversations() {
                               {hasWorkspaceScope ? <option value="">Sem responsável</option> : null}
                               {assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.email}</option>)}
                             </select>
-                          </label>
+                          </Field>
                         );
                       }}
                     </PopoverMenu>
@@ -1730,8 +1743,7 @@ export default function Conversations() {
                               </button>
                             ) : null}
                             {canReply && activeConversation.channel !== "instagram" ? (
-                              <label className="field px-3 py-2">
-                                <span className="label">Assinatura do atendente</span>
+                              <Field className="px-3 py-2" label="Assinatura do atendente" help={<>Inclui o nome do atendente nas mensagens enviadas aqui. Usar padrão segue a configuração geral da empresa.</>}>
                                 <select
                                   className="input"
                                   value={activeConversation.signature_enabled === null || activeConversation.signature_enabled === undefined
@@ -1744,7 +1756,7 @@ export default function Conversations() {
                                   <option value="true">Ativada</option>
                                   <option value="false">Desativada</option>
                                 </select>
-                              </label>
+                              </Field>
                             ) : null}
                             {canReply && activeConversation.status === "closed" ? <button className="conversation-action-menu__item" onClick={reopenConversation} disabled={changingOwner}>
                               <CheckCircle size={15} aria-hidden="true" />
@@ -1786,6 +1798,9 @@ export default function Conversations() {
                       ? "IA pausada manualmente para este contato — responda pelo painel ou celular."
                       : "Transferida para atendimento humano — responda pelo painel ou celular."}
                   </p>
+                  <HelpHint label="Ajuda: por que a IA está desligada" title="Transferência para humano" side="bottom">
+                    A IA desliga neste contato quando o cliente pede um atendente, a própria IA transfere, há falha técnica ou alguém pausa manualmente. Para voltar à IA, use Reativar IA em Mais ações.
+                  </HelpHint>
                 </div>
               ) : null}
 
@@ -1816,7 +1831,7 @@ export default function Conversations() {
                     <div className="flex flex-col gap-2">
                       {messages.length === 0 && !aiTurn ? (
                         <div className="py-12">
-                          <Empty>Sem mensagens nesta conversa.</Empty>
+                          <Empty>Sem mensagens nesta conversa. As novas mensagens aparecem aqui.</Empty>
                         </div>
                       ) : (
                         messages.map((message: Message, index) => {
@@ -1944,6 +1959,7 @@ export default function Conversations() {
       ) : null}
 
       <SaveToast show={resolveSave.done}>Conversa resolvida</SaveToast>
+      {flash.toast}
     </Shell>
   );
 }

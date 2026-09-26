@@ -23,6 +23,7 @@ import { Shell } from "@/components/shell";
 import {
   Button,
   Funnel,
+  HelpHint,
   IconButton,
   Input,
   KpiCard,
@@ -31,6 +32,7 @@ import {
   SaveButton,
   SaveToast,
   Segmented,
+  useFlashToast,
   useSaveFeedback,
   type FunnelStage
 } from "@/components/ui";
@@ -438,6 +440,7 @@ export function DashboardWidgets() {
   const [draft, setDraft] = useState<LayoutItem[]>([]);
   const [saving, setSaving] = useState(false);
   const layoutSave = useSaveFeedback();
+  const flash = useFlashToast();
   const { mutate: mutateCache } = useSWRConfig();
   const { data: catalog, error: catalogError } = useSWR<CatalogResponse>("/dashboard/widgets/catalog", fetcher);
   const { data: layout, error: layoutError, mutate: mutateLayout } = useSWR<LayoutResponse>("/dashboard/widgets/layout", fetcher);
@@ -510,6 +513,7 @@ export function DashboardWidgets() {
     try {
       const response = await api<LayoutResponse>("/dashboard/widgets/layout", { method: "DELETE" });
       await mutateLayout(response, { revalidate: false });
+      flash.show("Layout restaurado ao padrão");
     } finally { setSaving(false); }
   }
   async function applyPreset(key: "essencial" | "comercial" | "gestao_completa") {
@@ -519,6 +523,7 @@ export function DashboardWidgets() {
       const nextLayout: LayoutResponse = { layout: { items: response.items, source: "saved" } };
       await mutateLayout(nextLayout, { revalidate: true });
       setDraft(response.items);
+      flash.show("Preset aplicado ao dashboard");
     } finally { setSaving(false); }
   }
 
@@ -554,7 +559,7 @@ export function DashboardWidgets() {
         {editing && catalog ? <section className={styles.widgetLibrary} aria-label="Configurar dashboard">
           <div className={styles.libraryHead}>
             <div>
-              <h2 className="type-section-title">Biblioteca de widgets</h2>
+              <h2 className="type-section-title">Biblioteca de widgets <HelpHint label="Ajuda: Biblioteca de widgets">As caixas marcadas entram no painel quando você clica em Salvar. Restaurar padrão e os presets (Essencial, Comercial, Gestão completa) aplicam na hora.</HelpHint></h2>
               <p className="sub">A ordem e o tamanho se adaptam automaticamente em telas menores — um widget &ldquo;Amplo&rdquo; também vira coluna única no celular.</p>
             </div>
             <div className="cluster">
@@ -571,6 +576,7 @@ export function DashboardWidgets() {
 
         {catalogError || layoutError ? <div className="card" role="alert"><p className="error">Não foi possível carregar a configuração do dashboard.</p></div> : !catalog || !layout ? <div className={`${styles.widgets} grid grid-cols-12 gap-4`}>{[0, 1, 2, 3].map((index) => <div key={index} className={`${sizeClasses.small} ${styles.widgetCard}`} style={{ "--dash-index": index } as CSSProperties}><WidgetSkeleton /></div>)}</div> : !visible.length ? <div className="card"><EmptyWidget message="Nenhum widget está visível. Abra Personalizar para escolher o que acompanhar." /></div> : <section className={`${styles.widgets} grid grid-cols-12 gap-4`} aria-label="Widgets do dashboard">{boardItems.map(({ item, definition }, index) => definition ? <WidgetCard key={item.key} item={item} definition={definition} periodQuery={periodQuery} index={index} /> : null)}</section>}
         <SaveToast show={layoutSave.done}>Layout salvo</SaveToast>
+        {flash.toast}
       </div>
     </Shell>
   );

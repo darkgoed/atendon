@@ -153,12 +153,14 @@ export const stageTransitionsSchema = z.object({
 
 export const pipelineCreateSchema = z.object({
   name: z.string().trim().min(1).max(80),
-  color: color.optional()
+  color: color.optional(),
+  group_id: organizationUuid.nullable().optional()
 }).strict();
 
 export const pipelineUpdateSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   color: color.optional(),
+  group_id: organizationUuid.nullable().optional(),
   is_default: z.literal(true).optional(),
   enforce_transitions: z.boolean().optional()
 }).strict().refine((value) => Object.keys(value).length > 0, "Informe ao menos um campo");
@@ -184,6 +186,21 @@ export const pipelineDuplicateSchema = z.object({
 }).strict();
 
 export const pipelineIdParams = z.object({ pipelineId: organizationUuid }).strict();
+
+export const pipelineGroupParams = z.object({ groupId: organizationUuid }).strict();
+export const pipelineGroupCreateSchema = z.object({
+  name: z.string().trim().min(1).max(80)
+}).strict();
+export const pipelineGroupUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(80)
+}).strict();
+export const pipelineGroupOrderSchema = z.object({
+  group_ids: z.array(organizationUuid).min(1)
+}).strict().superRefine((value, context) => {
+  if (new Set(value.group_ids).size !== value.group_ids.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Grupos duplicados" });
+  }
+});
 
 export const pipelineListQuerySchema = z.object({
   pipeline_id: organizationUuid.optional(),

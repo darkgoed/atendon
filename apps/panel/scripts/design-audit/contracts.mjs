@@ -9,6 +9,13 @@ const entitySelectors = {
   "/agenda": "main [aria-label*='agenda' i], main [data-testid*='agenda' i]"
 };
 const populated = (heading, marker, route) => ({ expectedPath: null, heading, marker, headingRole: "heading", entitySelector: entitySelectors[route] ?? "main > section", state: "populated" });
+// Rotas aninhadas do hub /configuracoes (layout com SettingsSidebar +
+// SettingsDestinationAccess). São aliases das páginas originais — MESMOS
+// componentes de conteúdo — então os valores espelham os contratos EFETIVOS
+// das rotas de origem (contracts-root/optionalcontracts-settings sobrescrevem
+// a base nelas; estas chaves novas só existem aqui). Seletores profundos
+// permanecem válidos dentro do wrapper section.settings-main; markers intactos.
+const nested = (heading, marker, entitySelector) => ({ expectedPath: null, heading, marker, headingRole: "heading", entitySelector, state: "populated" });
 export const ROUTE_CONTRACTS = {
   "/": populated("Visão geral|Minha operação", "Dashboard de reuniões|Mariana Oliveira", "/"),
   "/agenda": populated("Agenda", "Reunião Cliente QA|qa-appt|Cliente QA", "/agenda"),
@@ -16,6 +23,21 @@ export const ROUTE_CONTRACTS = {
   "/alertas": populated("Alertas operacionais", "Conexão verificada|qa-alert", "/alertas"),
   "/conexao": populated("Conexão", "qa-connection|connected|WhatsApp", "/conexao"),
   "/configuracoes": populated("Configurações", "AtendON QA|qa-cat|whatsapp", "/configuracoes"),
+  // [resource] dinâmico: routeReplacements → /configuracoes/categorias; contrato
+  // equivalente ao EFETIVO de /configuracoes (o deep-link renderiza a aba Categorias).
+  // Sufixos nos headings: HelpHint renderizado DENTRO do h1 — textContent inclui
+  // " ?" e o nome acessível inclui o aria-label do botão ("Ajuda: <título>").
+  // O sufixo permitido é sempre o do próprio h1 — nada genérico.
+  "/configuracoes/[resource]": nested("Configurações", "qa-category-0001|Consultoria empresarial premium", "section[aria-label='Categorias'] tbody tr"),
+  "/configuracoes/agente": nested("Agente principal", "Atenda com clareza|openai/gpt-4o-mini", "textarea#agent-system-prompt, select"),
+  "/configuracoes/alertas": nested("Alertas operacionais(?: ?\\?)?(?:\\s*Ajuda: Alertas operacionais)?", "Conexão verificada", "section[aria-label='Histórico de alertas']"),
+  "/configuracoes/auditoria": nested("Auditoria do workspace(?: ?\\?)?(?:\\s*Ajuda: Auditoria do workspace)?", "workspace.viewed|AtendON QA", "table tbody tr"),
+  "/configuracoes/conexao": nested("Conexão", "Operação comercial São Paulo|connected", ".connection-card, article"),
+  "/configuracoes/follow-ups": nested("Follow-ups(?: ?\\?)?(?:\\s*Ajuda: Follow-ups)?", "Atraso|mídias|120", ".channels-ai-page, input"),
+  "/configuracoes/funcoes": nested("Funções e permissões", "Administrador|Operador", ".admin-list-item"),
+  "/configuracoes/humanizacao": nested("Humanização", "900|2600", "form .line-section, form"),
+  "/configuracoes/membros": nested("Membros", "Ana QA|Bruno QA", "table tbody tr"),
+  "/configuracoes/uso": nested("Uso", "Total usado|Histórico mensal", "section.card"),
   "/conversas": populated("Conversas|Minhas conversas", "Marina QA|Preciso confirmar|qa-conversation", "/conversas"),
   "/follow-ups": populated("Follow-ups", "Retornar contato|qa-followup", "/follow-ups"),
   "/humanizacao": populated("Humanização", "professional|Timing", "/humanizacao"),

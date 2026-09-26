@@ -50,6 +50,38 @@ function httpError(statusCode: number, message: string) {
   return Object.assign(new Error(message),{ statusCode });
 }
 
+export type AppointmentTechnicalStatus = "confirmado" | "reagendado" | "cancelado" | "concluido" | "no_show";
+
+/**
+ * Snapshot esperado de um agendamento, lido pelo chamador ANTES da operação
+ * (adoção Google→AtendON). Campos ausentes não são comparados; a guarda é
+ * opcional e chamadas legadas não a informam.
+ */
+export type ExpectedAppointmentSnapshot = {
+  status?: AppointmentTechnicalStatus;
+  start_at?: string | Date;
+  end_at?: string | Date;
+};
+
+/**
+ * Guarda de concorrência: compara o snapshot esperado com a linha JÁ TRAVADA
+ * (FOR UPDATE) antes de qualquer UPDATE. Divergência → 409 (não 404): o
+ * agendamento existe, mas foi editado por outra operação (painel/IA) entre a
+ * leitura e a escrita — o chamador Google deve reler e reaplicar, nunca
+ * sobrescrever a edição concorrente. Nenhum UPDATE roda quando falha.
+ */
+export function assertExpectedAppointmentSnapshot(
+  appointment: { status: string; start_at: Date | string; end_at: Date | string },
+  expected?: ExpectedAppointmentSnapshot
+): void {
+  if (!expected) return;
+  const changed: string[] = [];
+  if (expected.status !== undefined && appointment.status !== expected.status) changed.push("status");
+  if (expected.start_at !== undefined && new Date(appointment.start_at).getTime() !== new Date(expected.start_at).getTime()) changed.push("start_at");
+  if (expected.end_at !== undefined && new Date(appointment.end_at).getTime() !== new Date(expected.end_at).getTime()) changed.push("end_at");
+  if (changed.length) throw httpError(409,`O agendamento foi alterado por outra operação (${changed.join(", ")}); releia e sincronize novamente`);
+}
+
 async function transaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await db.connect();
   try {
@@ -463,10 +495,12 @@ export async function cancelAppointmentJourney(
   appointmentId: string,
   input: CancellationInput,
   actor: JourneyActor,
-  expectedAssignedMemberId?: string
+  expectedAssignedMemberId?: string,
+  options?: { expectedSnapshot?: ExpectedAppointmentSnapshot }
 ): Promise<JourneyResult> {
   return transaction(async (client) => {
     const { appointment,lead } = await lockAppointmentAndLead(client,tenantId,appointmentId,expectedAssignedMemberId);
+    assertExpectedAppointmentSnapshot(appointment,options?.expectedSnapshot);
     if (!['confirmado','reagendado'].includes(appointment.status)) throw httpError(409,`Transição de agendamento não permitida: ${appointment.status} -> cancelado`);
     const recovering = input.disposition === "recover";
     const targetStatus: LeadTechnicalStatus = recovering ? "follow_up" : "perdido";

@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Copy, DotsThree, Lightning, PencilSimple, Trash,
 import { ModalDialog } from "@/components/modal-dialog";
 import { PopoverMenu } from "@/components/popover-menu";
 import type { LeadTag } from "@/components/lead-tag-picker";
-import { Field, Input, SaveButton, Select, useSaveFeedback } from "@/components/ui";
+import { Field, HelpHint, Input, SaveButton, Select, useSaveFeedback } from "@/components/ui";
 import { api } from "@/lib/api";
 import { PIPELINE_COLOR_SWATCHES, STAGE_BEHAVIOR_OPTIONS, type PipelineStage, type PipelineTransition } from "@/lib/pipeline";
 import { useEffect, useState } from "react";
@@ -218,12 +218,12 @@ function StageEditDialog({ stage, onClose, onChanged }: { stage: PipelineStage; 
           </div>
           <input className="input mt-2 h-10 p-1" type="color" value={color.toLowerCase()} onChange={(event) => setColor(event.target.value.toUpperCase())} aria-label="Cor personalizada" />
         </div>
-        <Field label="Comportamento">
+        <Field label="Comportamento" help="Define o que o sistema pede ao mover um lead para cá: dados da venda no Ganho, motivo da perda no Perdido e próxima ação com data em Negociação, Proposta e Follow-up.">
           <Select value={behavior} onChange={(event) => setBehavior(event.target.value)}>
             {STAGE_BEHAVIOR_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </Select>
         </Field>
-        <Field label="Meta de capacidade">
+        <Field label="Meta de capacidade" help="Meta visual: o rodapé da coluna mostra o preenchimento em relação a esse número. Não bloqueia a entrada de novos leads.">
           <Input type="number" min="1" value={capacity} onChange={(event) => setCapacity(event.target.value)} placeholder="Sem meta" />
         </Field>
         {error ? <p className="error" role="alert">{error}</p> : null}
@@ -304,7 +304,7 @@ function StageAutomationsDialog({
     >
       <form className="mt-4 grid gap-4" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         <fieldset>
-          <legend className="label mb-2">Etiquetas ao entrar</legend>
+          <legend className="label mb-2 flex items-center gap-1">Etiquetas ao entrar<HelpHint label="Ajuda: Etiquetas ao entrar">Etiquetas aplicadas automaticamente a todo lead que entrar nesta etapa.</HelpHint></legend>
           {tags === null ? <p className="pipeline-note">Carregando etiquetas…</p> : tags.length === 0 ? <p className="pipeline-note">Nenhuma etiqueta ativa.</p> : (
             <div className="grid max-h-40 gap-1.5 overflow-y-auto">
               {tags.map((tag) => (
@@ -326,7 +326,7 @@ function StageAutomationsDialog({
             </div>
           )}
         </fieldset>
-        <Field label="Responsável ao entrar">
+        <Field label="Responsável ao entrar" help="Escolhe quem fica com os leads que entrarem nesta etapa. Sem escolha, o responsável atual é mantido.">
           <Select value={assignee} onChange={(event) => setAssignee(event.target.value)}>
             <option value="">Manter o responsável atual</option>
             {(members ?? []).map((member) => <option key={member.id} value={member.id}>{member.name ?? member.email}</option>)}

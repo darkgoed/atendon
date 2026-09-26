@@ -141,6 +141,32 @@ describe("OpenRouterClient", () => {
     }));
   });
 
+  it("reports cost provenance from the payload: explicit zero is reported, absent cost is not", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(Response.json({
+        choices: [{ message: { content: "Zero" } }],
+        usage: { prompt_tokens: 5, completion_tokens: 2, cost: 0 }
+      }))
+      .mockResolvedValueOnce(Response.json({
+        choices: [{ message: { content: "Ausente" } }],
+        usage: { prompt_tokens: 5, completion_tokens: 2 }
+      }));
+    const onUsage = vi.fn().mockResolvedValue(undefined);
+    const client = new OpenRouterClient({
+      OPENROUTER_BASE_URL: "https://openrouter.test/api/v1",
+      OPENROUTER_APP_URL: "https://atendon.test", OPENROUTER_APP_NAME: "AtendON", OPENROUTER_TIMEOUT_MS: 60_000
+    } as never, fetcher);
+    const call = () => client.complete({
+      model: "provider/model", systemPrompt: "Ajude", temperature: 0, maxTokens: 512,
+      apiKey: "test-key", history: [{ role: "user", content: "Oi" }], onUsage
+    });
+    await call();
+    await call();
+    // cost 0 in the payload is a real reported zero; absent cost falls back to 0 but is unreported
+    expect(onUsage).toHaveBeenNthCalledWith(1, expect.objectContaining({ costUsd: 0, costReported: true }));
+    expect(onUsage).toHaveBeenNthCalledWith(2, expect.objectContaining({ costUsd: 0, costReported: false }));
+  });
+
   it("forwards an optional strict JSON schema response format", async () => {
     const fetcher = vi.fn().mockResolvedValue(Response.json({
       choices: [{ message: { content: "{\"ok\":true}" } }]

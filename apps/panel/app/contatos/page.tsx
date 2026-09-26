@@ -22,7 +22,7 @@ import { applyLeadSavedViewFilters, leadFiltersForSavedView, useCaseOrganization
 import { useRealtimeSignals } from "@/lib/realtime";
 import { hasWorkspaceWideCaseScope, type PanelSession } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
-import { Button, IconButton, SaveToast } from "@/components/ui";
+import { Button, HelpHint, IconButton, SaveToast } from "@/components/ui";
 import { ListFiltersBar, type ListFilterDef } from "@/components/ui/filters";
 
 type Option = { id: string; nome: string };
@@ -67,6 +67,22 @@ export default function LeadsPage() {
   const [accessNotice, setAccessNotice] = useState("");
   const [qualifyingLeadId, setQualifyingLeadId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  // Modo de seleção em massa: o rodapé (BulkLeadActions) avisa quantos contatos
+  // estão marcados; Esc encerra o modo.
+  const hasSelection = selectedIds.size > 0;
+  useEffect(() => {
+    if (!hasSelection) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      // Esc que fecha diálogo/menu/popover ou sai de um campo não limpa a seleção.
+      if (event.defaultPrevented || document.querySelector('[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"]')) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      setSelectedIds(new Set());
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [hasSelection]);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [createToast, setCreateToast] = useState(false);
@@ -235,7 +251,14 @@ export default function LeadsPage() {
       {loading ? <div className="grid gap-2 p-4" role="status" aria-label="Carregando contatos">{[1, 2, 3, 4].map((item) => <div key={item} className="skeleton h-12" aria-hidden="true" />)}</div>
         : leads.length === 0 ? <Empty>Nenhum contato corresponde aos filtros.</Empty>
           : <table className={`responsive-table leads-table crm-lead-table whitespace-nowrap ${canReadFollowUp ? "crm-lead-table--follow-up" : "crm-lead-table--basic"}`}>
-            <thead><tr>{["Contato", "Etapa", "Contexto", ...(canReadFollowUp ? ["Acompanhamento"] : []), "Atualizado", "Ações"].map((label) => <th key={label}>{label}</th>)}</tr></thead>
+            <thead><tr>
+              <th>Contato</th>
+              <th>Etapa <HelpHint label="Ajuda: Etapa" title="Etapa e qualificação">Situação comercial do contato. O número (ex.: 4/5) é a nota da qualificação da IA; “Decisão humana” marca contatos que aguardam decisão de uma pessoa.</HelpHint></th>
+              <th>Contexto <HelpHint label="Ajuda: Contexto" title="Contexto">Resumo gerado pela IA na qualificação, com a origem do contato e a agenda associada.</HelpHint></th>
+              {canReadFollowUp ? <th>Acompanhamento</th> : null}
+              <th>Atualizado</th>
+              <th>Ações</th>
+            </tr></thead>
             <tbody>{leads.map((lead) => <tr key={lead.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--surface-active)]">
               <td data-label="Contato">
                 <div className="leads-table__identity">

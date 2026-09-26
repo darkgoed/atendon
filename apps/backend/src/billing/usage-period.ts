@@ -17,6 +17,8 @@ export type UsagePeriodRow = {
   overage_usage: string;
   overage_amount_brl_cents: string;
   reserved_cents: string;
+  usage_unit: "INTERACTION" | "CREDIT";
+  reserved_credits: string;
   provider_cost_usd_micros: string;
   status: "OPEN" | "CLOSED" | "INVOICED";
   closed_at: Date | null;
@@ -34,20 +36,21 @@ type PeriodState = {
 };
 
 export const AI_INTERACTION_LIMIT_KEY = "MAX_AI_INTERACTIONS";
+export const AI_CREDIT_LIMIT_KEY = "MAX_AI_CREDITS";
 
 const periodColumns = `id, tenant_id, subscription_id, sequence, start_at, end_at,
   included_limit, included_usage, rollover_granted, rollover_usage, bonus_granted,
-  bonus_usage, overage_usage, overage_amount_brl_cents, reserved_cents,
-  provider_cost_usd_micros, status, closed_at, invoiced_at, created_at, updated_at`;
+  bonus_usage, overage_usage, overage_amount_brl_cents, reserved_cents, usage_unit,
+  reserved_credits, provider_cost_usd_micros, status, closed_at, invoiced_at, created_at, updated_at`;
 
-export async function effectiveLimit(client: PoolClient, tenantId: string, planId: string): Promise<number | null> {
+export async function effectiveLimit(client: PoolClient, tenantId: string, planId: string, limitKey: string = AI_INTERACTION_LIMIT_KEY): Promise<number | null> {
   const result = await client.query<{ limit_value: string | null }>(
     `SELECT CASE WHEN o.tenant_id IS NOT NULL THEN o.int_value::text ELSE pl.limit_value::text END AS limit_value
        FROM plans p
        LEFT JOIN plan_limits pl ON pl.plan_id = p.id AND pl.limit_key = $3
        LEFT JOIN tenant_entitlement_overrides o ON o.tenant_id = $1 AND o.kind = 'limit'
         AND o.entitlement_key = $3 AND (o.expires_at IS NULL OR o.expires_at > now())
-      WHERE p.id = $2 LIMIT 1`, [tenantId, planId, AI_INTERACTION_LIMIT_KEY]
+      WHERE p.id = $2 LIMIT 1`, [tenantId, planId, limitKey]
   );
   return result.rows[0]?.limit_value == null ? null : Number(result.rows[0].limit_value);
 }
@@ -71,6 +74,39 @@ async function readOpen(client: PoolClient, tenantId: string): Promise<UsagePeri
   return result.rows[0] ?? null;
 }
 
+/**
+ * Snapshot do período novo = saldo REAL das fontes ativas na MESMA unidade:
+ * rollover_ledger não expirado + usage_grants (BONUS/CREDIT_PACKAGE) restantes.
+ * Espelha exatamente a elegibilidade do consumo (consumeAiInteraction):
+ * rollover exige expires_at > now() (NULL nunca é consumível) e grants aceitam
+ * NULL. SET (nunca +=): o rollover gerado no fechamento já está no ledger —
+ * somar no contador duplicaria; grants concedidos no próprio período seguem
+ * sendo incrementados por quem concede (ledger.ts/credit-packs.ts). Assim,
+ * pacotes concedidos em ciclos anteriores — inclusive retidos em períodos
+ * legados INTERACTION — e sobras de rollover de ciclos anteriores entram na
+ * visão do ciclo novo; consumos antigos ficam nos períodos antigos
+ * (bonus_usage/rollover_usage nascem 0). Roda uma única vez, na criação.
+ */
+async function syncCarryoverSnapshot(client: PoolClient, periodId: string): Promise<void> {
+  await client.query(
+    `UPDATE usage_periods p SET
+       rollover_granted = COALESCE((SELECT SUM(l.generated_amount - l.consumed_amount - l.expired_amount)
+          FROM rollover_ledger l
+         WHERE l.tenant_id = p.tenant_id AND l.usage_unit = p.usage_unit
+           AND l.expires_at > now()
+           AND l.generated_amount - l.consumed_amount - l.expired_amount > 0), 0),
+       bonus_granted = COALESCE((SELECT SUM(g.amount - g.consumed_amount)
+          FROM usage_grants g
+         WHERE g.tenant_id = p.tenant_id AND g.usage_unit = p.usage_unit
+           AND g.kind IN ('BONUS','CREDIT_PACKAGE')
+           AND (g.expires_at IS NULL OR g.expires_at > now())
+           AND g.amount - g.consumed_amount > 0), 0),
+       updated_at = now()
+     WHERE p.id = $1`,
+    [periodId]
+  );
+}
+
 export async function ensureOpenPeriod(client: PoolClient, tenantId: string): Promise<UsagePeriodRow | null> {
   const subscription = await client.query<SubscriptionRow>(
     `SELECT id, plan_id, current_period_start, current_period_end FROM tenant_subscriptions WHERE tenant_id=$1`, [tenantId]
@@ -81,6 +117,10 @@ export async function ensureOpenPeriod(client: PoolClient, tenantId: string): Pr
   let state = await readPeriodState(client, tenantId);
   let open = state.open;
   let iterations = 0;
+  // Períodos novos nascem em créditos normalizados quando o plano define
+  // MAX_AI_CREDITS; sem o limite o plano segue no modo legado de interações.
+  const creditLimit = await effectiveLimit(client, tenantId, sub.plan_id, AI_CREDIT_LIMIT_KEY);
+  const useCredits = creditLimit !== null;
   while (true) {
     if (open && state.open_is_current === true) return open;
     const source = open;
@@ -88,19 +128,20 @@ export async function ensureOpenPeriod(client: PoolClient, tenantId: string): Pr
       await client.query(`UPDATE usage_periods SET status='CLOSED', closed_at=now(), updated_at=now() WHERE id=$1 AND status='OPEN'`, [source.id]);
     }
     const prior = state.latest;
-    const limit = await effectiveLimit(client, tenantId, sub.plan_id);
+    const limit = useCredits ? creditLimit : await effectiveLimit(client, tenantId, sub.plan_id);
     if (iterations++ >= 60) throw new Error(`usage period advancement exceeded 60 periods for tenant ${tenantId}`);
 
     await client.query("SAVEPOINT sp_open_period");
     try {
       const inserted = await client.query<UsagePeriodRow>(
-        `INSERT INTO usage_periods (tenant_id, subscription_id, sequence, start_at, end_at, included_limit, status)
-         VALUES ($1,$2,$3,$4::timestamptz,$4::timestamptz + interval '1 month',$5,'OPEN') RETURNING ${periodColumns}`,
-        [tenantId, sub.id, prior ? prior.sequence + 1 : 1, prior?.end_at ?? sub.current_period_start, limit]
+        `INSERT INTO usage_periods (tenant_id, subscription_id, sequence, start_at, end_at, included_limit, usage_unit, status)
+         VALUES ($1,$2,$3,$4::timestamptz,$4::timestamptz + interval '1 month',$5,$6,'OPEN') RETURNING ${periodColumns}`,
+        [tenantId, sub.id, prior ? prior.sequence + 1 : 1, prior?.end_at ?? sub.current_period_start, limit, useCredits ? "CREDIT" : "INTERACTION"]
       );
       await client.query("RELEASE SAVEPOINT sp_open_period");
       open = inserted.rows[0];
       if (source) await closePeriodAndGrantRollover(client, tenantId, source.id, open.id);
+      await syncCarryoverSnapshot(client, open.id);
     } catch (error) {
       await client.query("ROLLBACK TO SAVEPOINT sp_open_period");
       if ((error as { code?: string }).code !== "23505") throw error;
@@ -117,5 +158,8 @@ export async function getOpenPeriod(client: PoolClient, tenantId: string): Promi
 }
 
 export async function updatePeriodLimitSnapshot(client: PoolClient, tenantId: string, newLimit: number | null): Promise<void> {
-  await client.query(`UPDATE usage_periods SET included_limit=$2, updated_at=now() WHERE tenant_id=$1 AND status='OPEN'`, [tenantId, newLimit]);
+  // Só períodos legados de interação recebem o snapshot de MAX_AI_INTERACTIONS;
+  // períodos de crédito têm limite próprio (MAX_AI_CREDITS) e não podem ser
+  // corrompidos com um valor em outra unidade.
+  await client.query(`UPDATE usage_periods SET included_limit=$2, updated_at=now() WHERE tenant_id=$1 AND status='OPEN' AND usage_unit='INTERACTION'`, [tenantId, newLimit]);
 }

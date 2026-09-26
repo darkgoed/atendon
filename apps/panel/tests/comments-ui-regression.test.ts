@@ -18,6 +18,7 @@ let pipelineBoardSource = "";
 let pipelineCardSource = "";
 let shellSource = "";
 let manifestSource = "";
+let settingsSidebarSource = "";
 
 function between(source: string, start: string, end: string) {
   const startIndex = source.indexOf(start);
@@ -28,7 +29,7 @@ function between(source: string, start: string, end: string) {
 }
 
 beforeAll(async () => {
-  [agendaActionsSource, agendaCalendarSource, agendaCreateSource, agendaDetailSource, agendaHeaderSource, configurationsSource, conversationsSource, leadDetailSource, leadsSource, pipelineSource, pipelineBoardSource, pipelineCardSource, shellSource, manifestSource] = await Promise.all([
+  [agendaActionsSource, agendaCalendarSource, agendaCreateSource, agendaDetailSource, agendaHeaderSource, configurationsSource, conversationsSource, leadDetailSource, leadsSource, pipelineSource, pipelineBoardSource, pipelineCardSource, shellSource, manifestSource, settingsSidebarSource] = await Promise.all([
     readFile(new URL("../app/agenda/use-agenda-actions.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/agenda/agenda-calendar.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/agenda/agenda-create-dialog.tsx", import.meta.url), "utf8"),
@@ -42,7 +43,8 @@ beforeAll(async () => {
     readFile(new URL("../components/pipeline-board.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/pipeline-card.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/shell.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../lib/panel-manifest.ts", import.meta.url), "utf8")
+    readFile(new URL("../lib/panel-manifest.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/configuracoes/settings-sidebar.tsx", import.meta.url), "utf8")
   ]);
 });
 
@@ -72,25 +74,24 @@ describe("comments.md UI regressions", () => {
   });
 
   it("exposes configuration only through the gear entry and centralizes destinations in its hub", () => {
-    const destinations = between(
-      configurationsSource,
-      "const settingsDestinations:",
-      "export default function ConfigPage"
+    const destinationHrefs = between(
+      settingsSidebarSource,
+      "const destinationHrefs:",
+      "};"
     );
 
     expect(manifestSource).toContain('{ href: "/configuracoes", label: "Configurações"');
-    for (const path of [
-      "/conexao",
-      "/workspace/members",
-      "/workspace/roles",
-
-      "/workspace/audit",
-      "/agente",
-      "/humanizacao",
-      "/uso"
-    ]) {
+    for (const [path, href] of Object.entries({
+      "/conexao": "/configuracoes/conexao",
+      "/workspace/members": "/configuracoes/membros",
+      "/workspace/roles": "/configuracoes/funcoes",
+      "/workspace/audit": "/configuracoes/auditoria",
+      "/agente": "/configuracoes/agente",
+      "/humanizacao": "/configuracoes/humanizacao",
+      "/uso": "/configuracoes/uso"
+    })) {
       expect(manifestSource).toContain(`"${path}"`);
-      expect(destinations).toContain(`href: "${path}"`);
+      expect(destinationHrefs).toContain(`"${path}": "${href}"`);
     }
     expect(shellSource).toContain("findPanelManifestItem(path)");
   });

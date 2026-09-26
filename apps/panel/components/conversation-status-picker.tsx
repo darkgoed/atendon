@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowsLeftRight } from "@/components/icons";
+import { HelpHint, useFlashToast } from "@/components/ui";
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { PipelineTransitionDialog } from "@/components/pipeline-transition-dialog";
@@ -47,6 +48,8 @@ export function ConversationStatusPicker({
   onChanged: () => void | Promise<void>;
 }) {
   const canMove = usePermission("leads.update_status");
+  const flash = useFlashToast();
+  const showFlash = flash.show;
   const organizationEnabled = useCaseOrganizationEnabled();
   // Escopo no pipeline da etapa do contato (contrato 9): ausente = padrão.
   const pipelineScope = pipelineStage.pipeline_id ? `?pipeline_id=${pipelineStage.pipeline_id}` : "";
@@ -95,6 +98,7 @@ export function ConversationStatusPicker({
       });
       setOpen(false);
       await onChanged();
+      showFlash(`Lead movido para ${stage.name}`);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Falha ao atualizar o status do lead");
     } finally {
@@ -117,6 +121,7 @@ export function ConversationStatusPicker({
         <ArrowsLeftRight size={14} aria-hidden="true" />
         Etapa comercial
       </button>
+      <HelpHint label="Ajuda: Etapa comercial">Move este lead para outra etapa do pipeline comercial. Aparecem apenas as etapas liberadas a partir da atual, conforme a configuração do pipeline.</HelpHint>
       {open ? (
         <PipelineTransitionDialog
           lead={lead}
@@ -129,6 +134,7 @@ export function ConversationStatusPicker({
           onSubmit={submit}
         />
       ) : null}
+      {flash.toast}
     </>
   );
 }

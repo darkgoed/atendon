@@ -3,7 +3,7 @@
 import { ArrowBendUpLeft, Check, File, MagicWand, Microphone, Paperclip, PaperPlaneRight, X } from "@/components/icons";
 import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { VoiceInput, VoiceMessagePlayer } from "@/components/ui/voice-input";
-import { Button, Input, Textarea } from "@/components/ui";
+import { Button, HelpHint, Input, Textarea, Tooltip } from "@/components/ui";
 import { api } from "@/lib/api";
 import { audioDisplayName } from "@/lib/audio-waveform";
 import { confirmedFailedSend, definitiveProviderRejection } from "@/lib/conversation-send";
@@ -499,10 +499,15 @@ export function ConversationComposer({
         <Button type="button" className="conversation-composer__tool active:scale-95" onClick={startRecording} aria-label="Gravar áudio" disabled={sending || recording || !supports("audio")}>
           <Microphone size={16} aria-hidden="true" />
         </Button>
-        <Button type="button" className="conversation-composer__tool active:scale-95" onClick={generateSuggestion} aria-label={generating ? "Gerando sugestão da IA" : suggestion ? "Gerar outra sugestão da IA" : "Gerar sugestão da IA"} disabled={generating}>
-          {generating ? <span className="on-spinner" aria-hidden="true" /> : <MagicWand size={16} aria-hidden="true" />}
-        </Button>
+        <Tooltip content="Gera uma resposta sugerida pela IA com base na conversa. A sugestão entra no rascunho só quando você confirma.">
+          <Button type="button" className="conversation-composer__tool active:scale-95" onClick={generateSuggestion} aria-label={generating ? "Gerando sugestão da IA" : suggestion ? "Gerar outra sugestão da IA" : "Gerar sugestão da IA"} disabled={generating}>
+            {generating ? <span className="on-spinner" aria-hidden="true" /> : <MagicWand size={16} aria-hidden="true" />}
+          </Button>
+        </Tooltip>
           <div className="conversation-composer__quick-replies" role="group" aria-label="Respostas rápidas" tabIndex={0}>
+            <HelpHint label="Ajuda: Respostas rápidas" title="Respostas rápidas">
+              Digite <kbd>/</kbd> no começo da mensagem para abrir a lista de respostas rápidas. A escolhida substitui o atalho e variáveis como {"{{nome}}"} e {"{{data}}"} são preenchidas na inserção.
+            </HelpHint>
             <span className="chip-action">Enviar proposta</span>
             <span className="chip-action">Confirmar horário</span>
             <span className="chip-action">Pedir CNPJ</span>

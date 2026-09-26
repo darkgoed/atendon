@@ -1,6 +1,7 @@
 import { ArrowClockwise, CalendarDots, Check, DownloadSimple, FileVideo, Trash, UserMinus, VideoCamera, WhatsappLogo, X } from "@/components/icons";
 import useSWR from "swr";
 import { ModalDialog } from "@/components/modal-dialog";
+import { HelpHint } from "@/components/ui";
 import { api } from "@/lib/api";
 import { apiContentUrl, formatRecordingDate, formatRecordingSize, recordingCanPlay, type MeetRecordingsResponse } from "@/lib/meet";
 import { isAppointmentResultPending } from "./agenda-appointment-state";
@@ -40,7 +41,7 @@ export function AgendaDetailDialog({ actions, timezone, now }: { actions: Agenda
       <div className="agenda-detail-summary">
         <div><span className="label">Status</span><strong>{isAppointmentResultPending(selectedAppointment, now) ? "Resultado pendente" : APPOINTMENT_STATUS_LABELS[selectedAppointment.status]}</strong>{isAppointmentResultPending(selectedAppointment, now) ? <small className="mt-1 block text-[var(--warning-text)]">O horário terminou sem um desfecho registrado.</small> : null}</div>
         <div>
-          <span className="label">Closer / responsável</span>
+          <span className="label">Closer / responsável <HelpHint label="Ajuda: Closer responsável">Mostra quem fará a reunião. Com permissão, selecione outro closer e salve; quem está indisponível ou em conflito no horário fica bloqueado.</HelpHint></span>
           {detailAssigneesData?.can_select_assignee && isActiveAppointment(selectedAppointment.status) ? (
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
               <select className="input min-w-0 flex-1" value={detailAssignedMemberId} disabled={savingAssignee || detailAssigneesLoading} onChange={(event) => setDetailAssignedMemberId(event.target.value)} aria-label="Responsável do lead">
@@ -59,6 +60,7 @@ export function AgendaDetailDialog({ actions, timezone, now }: { actions: Agenda
           <div className="agenda-team-capacity__heading">
             <span id="agenda-team-capacity-title" className="label">Capacidade da equipe</span>
             <span className="mono">carga futura</span>
+            <HelpHint label="Ajuda: Carga futura da equipe">Reuniões futuras de cada closer: 3 ou mais deixam a barra âmbar e 5 ou mais, vermelha.</HelpHint>
           </div>
           <div className="agenda-team-capacity__list">
             {detailAssigneesData.assignees.map((assignee) => {

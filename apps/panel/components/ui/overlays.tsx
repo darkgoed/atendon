@@ -59,7 +59,10 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
 }
 
 export function Tooltip({ content, children, side = "top" }: { content: ReactNode; children: ReactNode; side?: "top" | "right" | "bottom" | "left" }) {
+  // Provider próprio: o Tooltip funciona em qualquer tela sem exigir um
+  // TooltipProvider ancestral (providers aninhados são suportados pelo Radix).
   return (
+    <RadixTooltip.Provider delayDuration={400} skipDelayDuration={200}>
     <RadixTooltip.Root>
       <RadixTooltip.Trigger asChild>{children}</RadixTooltip.Trigger>
       <RadixTooltip.Portal>
@@ -68,6 +71,7 @@ export function Tooltip({ content, children, side = "top" }: { content: ReactNod
         </RadixTooltip.Content>
       </RadixTooltip.Portal>
     </RadixTooltip.Root>
+    </RadixTooltip.Provider>
   );
 }
 

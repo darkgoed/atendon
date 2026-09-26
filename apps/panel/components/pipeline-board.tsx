@@ -23,6 +23,7 @@ import {
   type RefObject
 } from "react";
 import { PipelineCard } from "@/components/pipeline-card";
+import { ModeBar } from "@/components/ui";
 import {
   PIPELINE_COLOR_SWATCHES,
   pipelineBoardStageId,
@@ -789,6 +790,20 @@ export function PipelineBoard({
           </motion.div>
         ) : null}
       </AnimatePresence>
+
+      {drag && (!drag.pointer || movedRef.current) ? (
+        // Indicador de modo: o card está "na mão" — diz onde soltar e como
+        // desistir. A live region acima já anuncia; a barra é só visual.
+        <ModeBar
+          className={drag.pointer ? "mode-bar--priority mode-bar--passive" : "mode-bar--priority"}
+          icon={<GripVertical size={16} />}
+          title={`Movendo ${drag.lead.nome ?? "lead"}`}
+          description={drag.pointer
+            ? "Solte em uma etapa destacada · Esc cancela"
+            : "← → escolhem a etapa · Enter solta · Esc cancela"}
+          onCancel={drag.pointer ? undefined : () => endDrag(false)}
+        />
+      ) : null}
 
       {!loading && leads.length === 0 && stages.length > 0 ? (
         <p className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2 rounded border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-2 text-xs text-[var(--text-secondary)]" role="status">

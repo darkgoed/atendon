@@ -10,7 +10,7 @@ import { ArrowClockwise, Trash } from "@/components/icons";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
-import { Badge, Button, EmptyState, IconButton } from "@/components/ui";
+import { Badge, Button, EmptyState, HelpHint, IconButton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { usePermission } from "@/lib/use-permission";
 import styles from "./lixeira.module.css";
@@ -151,7 +151,7 @@ export default function TrashPage() {
         <header className="pagehead">
           <div>
             <div className="mono mb-3 flex items-center gap-2 type-caption uppercase tracking-[.16em] text-[var(--primary-text)]">Contatos</div>
-            <h1>Lixeira</h1>
+            <h1>Lixeira <HelpHint label="Ajuda: Lixeira" title="Lixeira">Os contatos ficam aqui até serem restaurados ou excluídos definitivamente. Restaurar devolve o contato à lista; a exclusão definitiva apaga também as conversas e os agendamentos dele e não pode ser desfeita.</HelpHint></h1>
           </div>
         </header>
 

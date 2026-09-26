@@ -93,6 +93,8 @@ export type PipelineSummary = {
   stage_count: number;
   lead_count: number;
   channel_ids: string[];
+  /** Grupo do seletor (ausente/null = "Sem grupo"). */
+  group_id?: string | null;
 };
 
 /** Canal (WhatsApp/Instagram) e o pipeline de entrada vinculado (NULL = padrão). */
@@ -105,7 +107,10 @@ export type PipelineChannelLink = {
   pipeline_id: string | null;
 };
 
-export type PipelinesResponse = { pipelines: PipelineSummary[]; channels?: PipelineChannelLink[] };
+/** Grupo nomeado do seletor (CRUD em /organization/pipeline-groups). */
+export type PipelineGroup = { id: string; name: string; position: number };
+
+export type PipelinesResponse = { pipelines: PipelineSummary[]; channels?: PipelineChannelLink[]; groups?: PipelineGroup[] };
 
 /**
  * Comportamento da etapa (technical_status) em linguagem de produto. É o que

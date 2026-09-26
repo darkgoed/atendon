@@ -46,8 +46,11 @@ export async function getOverLimitReport(tenantId: string) {
   const [users, whatsapp, ai] = await Promise.all([
     db.query<CountRow>("SELECT count(*)::bigint AS used FROM workspace_members WHERE workspace_id=$1 AND status='active'", [tenantId]),
     db.query<CountRow>("SELECT count(*)::bigint AS used FROM whatsapp_sessions WHERE tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL", [tenantId]),
-    e.periodStart ? db.query("SELECT COALESCE(used,0)::bigint AS used FROM usage_counters WHERE tenant_id=$1 AND metric_key='MAX_AI_INTERACTIONS' AND period_start=$2", [tenantId, e.periodStart]) : Promise.resolve({ rows: [] as CountRow[] })
+    // O consumo de IA vem do período OPEN (mesma fonte da cobrança), na unidade
+    // do período: créditos normalizados nunca são convertidos de interações antigas.
+    e.periodStart ? db.query<{ usage_unit: string; used: string }>("SELECT usage_unit,COALESCE(included_usage,0)+COALESCE(rollover_usage,0)+COALESCE(bonus_usage,0)+COALESCE(overage_usage,0) AS used FROM usage_periods WHERE tenant_id=$1 AND status='OPEN'", [tenantId]) : Promise.resolve({ rows: [] as { usage_unit: string; used: string }[] })
   ]);
-  const usage = { MAX_USERS: Number(users.rows[0]?.used ?? 0), MAX_WHATSAPP_CONNECTIONS: Number(whatsapp.rows[0]?.used ?? 0), MAX_AI_INTERACTIONS: Number(ai.rows[0]?.used ?? 0) };
+  const aiRow = ai.rows[0];
+  const usage = { MAX_USERS: Number(users.rows[0]?.used ?? 0), MAX_WHATSAPP_CONNECTIONS: Number(whatsapp.rows[0]?.used ?? 0), MAX_AI_INTERACTIONS: aiRow && aiRow.usage_unit === "INTERACTION" ? Number(aiRow.used) : 0, MAX_AI_CREDITS: aiRow && aiRow.usage_unit === "CREDIT" ? Number(aiRow.used) : 0 };
   return Object.keys(usage).filter((key) => e.limits[key] !== null && usage[key as keyof typeof usage] > Number(e.limits[key]));
 }

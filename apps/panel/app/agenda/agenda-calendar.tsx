@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { Plus, Prohibit } from "@/components/icons";
 import { isAppointmentResultPending } from "./agenda-appointment-state";
 import type { Appointment, Slot } from "./agenda-types";
 import { APPOINTMENT_STATUS_LABELS, dayKey, isActiveAppointment } from "./agenda-utils";
@@ -9,7 +10,7 @@ export type AgendaTimeGrid = {
   labels: string[];
 };
 
-export function AgendaCalendar({ days, today, timezone, failedDays, timeGrid, now, dragging, reschedulingId, pendingActionId, canReschedule, canCreate, onDrag, onDrop, onOpen, onSelectSlot }: {
+export function AgendaCalendar({ days, today, timezone, failedDays, timeGrid, now, dragging, reschedulingId, pendingActionId, canReschedule, canCreate, blockMode = false, onDrag, onDrop, onOpen, onSelectSlot }: {
   days: Date[];
   today: string;
   timezone: string;
@@ -21,6 +22,8 @@ export function AgendaCalendar({ days, today, timezone, failedDays, timeGrid, no
   pendingActionId: string;
   canReschedule: boolean;
   canCreate: boolean;
+  /** Modo bloqueio: o clique num horário livre bloqueia em vez de agendar. */
+  blockMode?: boolean;
   onDrag: (id: string) => void;
   onDrop: (start: string) => void;
   onCreate: (slot: Slot) => void;
@@ -28,7 +31,7 @@ export function AgendaCalendar({ days, today, timezone, failedDays, timeGrid, no
   onSelectSlot?: (slot: Slot) => void;
 }) {
   return (
-    <section className="agenda-grid" style={{ "--agenda-cols": days.length } as React.CSSProperties} aria-label="Disponibilidade da agenda">
+    <section className={`agenda-grid${blockMode ? " agenda-grid--blocking" : ""}`} style={{ "--agenda-cols": days.length } as React.CSSProperties} aria-label="Disponibilidade da agenda">
       <div className="agenda-corner" aria-hidden="true" />
       {days.map((day) => {
         const key = dayKey(day);
@@ -72,7 +75,8 @@ export function AgendaCalendar({ days, today, timezone, failedDays, timeGrid, no
                 pendingActionId={pendingActionId}
                 now={now}
                 canReschedule={canReschedule}
-                canCreate={canCreate && Boolean(configuredSlot)}
+                canCreate={(blockMode || canCreate) && Boolean(configuredSlot)}
+                blockMode={blockMode}
                 onDrag={onDrag}
                 onDrop={onDrop}
                 onOpen={onOpen}
@@ -86,7 +90,7 @@ export function AgendaCalendar({ days, today, timezone, failedDays, timeGrid, no
   );
 }
 
-function SlotCell({ slot, timezone, isToday, availabilityFailed, items, dragging, reschedulingId, pendingActionId, now, canReschedule, canCreate, onDrag, onDrop, onOpen, onSelectSlot }: {
+function SlotCell({ slot, timezone, isToday, availabilityFailed, items, dragging, reschedulingId, pendingActionId, now, canReschedule, canCreate, blockMode, onDrag, onDrop, onOpen, onSelectSlot }: {
   slot: Slot;
   timezone: string;
   isToday: boolean;
@@ -98,6 +102,7 @@ function SlotCell({ slot, timezone, isToday, availabilityFailed, items, dragging
   now: number;
   canReschedule: boolean;
   canCreate: boolean;
+  blockMode: boolean;
   onDrag: (id: string) => void;
   onDrop: (start: string) => void;
   onOpen: (appointment: Appointment) => void;
@@ -106,6 +111,10 @@ function SlotCell({ slot, timezone, isToday, availabilityFailed, items, dragging
   const acceptsDrop = !availabilityFailed && canReschedule && Boolean(dragging);
   const canSchedule = !availabilityFailed && canCreate;
   const availabilityLabel = slot.vagas > 0 ? `${slot.vagas} livre${slot.vagas === 1 ? "" : "s"}` : (slot.ocupados_no_inicio ?? 0) > 0 ? "Compartilhado" : "Conflito";
+  const clock = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { timeZone: timezone, hour: "2-digit", minute: "2-digit" });
+  // Pré-visualização: o horário mostra o que o clique vai fazer.
+  const preview = blockMode ? `Bloquear ${clock(slot.start)} – ${clock(slot.end)}` : `Agendar às ${clock(slot.start)}`;
+  const selectable = items.length === 0 && canSchedule;
   const slotStart = new Date(slot.start).getTime();
   const slotEnd = new Date(slot.end).getTime();
   const nowPosition = isToday && slotEnd > slotStart && now >= slotStart && now < slotEnd
@@ -115,14 +124,16 @@ function SlotCell({ slot, timezone, isToday, availabilityFailed, items, dragging
     <div
       onDragOver={(event) => { if (acceptsDrop) event.preventDefault(); }}
       onDrop={() => { if (acceptsDrop) void onDrop(slot.start); }}
-      {...(items.length === 0 && canSchedule ? {
+      {...(selectable ? {
         role: "button" as const,
         tabIndex: 0,
+        "aria-label": `${preview} · ${availabilityLabel}`,
         onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectSlot?.(slot); } },
         onClick: () => onSelectSlot?.(slot)
       } : {})}
       className={`agenda-cell agenda-cell--open ${slot.vagas > 0 ? "" : "agenda-cell--full"} ${canSchedule ? "agenda-cell--clickable" : ""} ${acceptsDrop ? "agenda-cell--drop" : ""} ${isToday ? "is-today" : ""}`}
     >
+      {selectable ? <span className="agenda-cell__preview" aria-hidden="true">{blockMode ? <Prohibit size={13} aria-hidden="true" /> : <Plus size={13} aria-hidden="true" />}{preview}</span> : null}
       {nowPosition !== null ? <span className="agenda-now-indicator" style={{ "--agenda-now": `${nowPosition}%` } as React.CSSProperties} aria-hidden="true" /> : null}
       <div className="agenda-cell__meta">
         <span className="sr-only mono agenda-cell__vagas" aria-label={`Disponibilidade: ${availabilityLabel}`}>{availabilityLabel}</span>

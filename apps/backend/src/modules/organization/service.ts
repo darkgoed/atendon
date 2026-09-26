@@ -58,6 +58,7 @@ type PipelineRow = {
   is_default: boolean;
   enforce_transitions: boolean;
   archived_at: string | null;
+  group_id: string | null;
 };
 
 export type PipelineSummary = {
@@ -68,6 +69,7 @@ export type PipelineSummary = {
   is_default: boolean;
   enforce_transitions: boolean;
   archived_at: string | null;
+  group_id: string | null;
   stage_count: number;
   lead_count: number;
   channel_ids: string[];
@@ -130,6 +132,18 @@ async function stageById(client: PoolClient, tenantId: string, stageId: string, 
   );
   if (!result.rows[0] || result.rows[0].archived_at) throw httpError(404,"Etapa não encontrada");
   return result.rows[0];
+}
+
+// Grupo de pipeline válido (0185): do próprio tenant e ativo — outro tenant,
+// arquivado ou inexistente é 404. Chamar sob lock do tenant (mesma ordem de
+// locks do arquivo de grupo) para não aceitar grupo arquivado em corrida.
+async function activePipelineGroup(client: PoolClient, tenantId: string, groupId: string): Promise<string> {
+  const group = await client.query<{ id: string }>(
+    "SELECT id FROM pipeline_groups WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL",
+    [tenantId,groupId]
+  );
+  if (!group.rows[0]) throw httpError(404,"Grupo não encontrado");
+  return group.rows[0].id;
 }
 
 async function memberUserId(client: PoolClient, tenantId: string, memberId: string | null | undefined) {
@@ -542,10 +556,19 @@ function pipelineSummary(pipeline: PipelineRow, stageCount: number, leadCount: n
     is_default: pipeline.is_default,
     enforce_transitions: pipeline.enforce_transitions,
     archived_at: pipeline.archived_at,
+    group_id: pipeline.group_id ?? null,
     stage_count: stageCount,
     lead_count: leadCount,
     channel_ids: channelIds
   };
+}
+
+// Grupos opcionais de pipelines (0185): ativos ordenados por position/id.
+async function listPipelineGroups(tenantId: string) {
+  return (await db.query<{ id: string; name: string; position: number }>(
+    "SELECT id,name,position FROM pipeline_groups WHERE tenant_id=$1 AND archived_at IS NULL ORDER BY position,id",
+    [tenantId]
+  )).rows;
 }
 
 // Item 1: lista de pipelines ativos + contagens + canais (só com pipeline.manage).
@@ -574,7 +597,8 @@ export async function listPipelines(tenantId: string, includeChannels: boolean) 
     byPipeline.set(row.pipeline_id,list);
   }
   const summaries = pipelines.map((pipeline) => pipelineSummary(pipeline,pipeline.stage_count,pipeline.lead_count,byPipeline.get(pipeline.id) ?? []));
-  if (!includeChannels) return { pipelines: summaries };
+  const groups = await listPipelineGroups(tenantId);
+  if (!includeChannels) return { pipelines: summaries, groups };
   const channels = (await db.query<{ id: string; label: string | null; channel: string; phone_number: string | null; instagram_username: string | null; pipeline_id: string | null }>(
     `SELECT session.id,session.label,session.channel,session.phone_number,session.provider_username instagram_username,session.pipeline_id
      FROM whatsapp_sessions session
@@ -584,6 +608,7 @@ export async function listPipelines(tenantId: string, includeChannels: boolean) 
   )).rows;
   return {
     pipelines: summaries,
+    groups,
     channels: channels.map((channel) => ({
       id: channel.id,
       label: channel.label ?? channel.phone_number ?? channel.instagram_username ?? channel.channel,
@@ -596,18 +621,19 @@ export async function listPipelines(tenantId: string, includeChannels: boolean) 
 }
 
 // Item 2: cria o pipeline com 1 etapa "Primeiro contato"; nome ativo duplicado → 409.
-export async function createPipeline(tenantId: string, actor: OrganizationActor, input: { name: string; color?: string }) {
+export async function createPipeline(tenantId: string, actor: OrganizationActor, input: { name: string; color?: string; group_id?: string | null }) {
   try {
     return await withTransaction(async (client) => {
       await client.query("SELECT id FROM tenants WHERE id=$1 FOR UPDATE",[tenantId]);
+      const groupId = input.group_id ? await activePipelineGroup(client,tenantId,input.group_id) : null;
       const position = (await client.query<{ max: number }>(
         "SELECT COALESCE(max(position),-1)+1 max FROM pipelines WHERE tenant_id=$1 AND archived_at IS NULL",
         [tenantId]
       )).rows[0].max;
       const pipeline = (await client.query<PipelineRow>(
-        `INSERT INTO pipelines(tenant_id,name,color,position,is_default,enforce_transitions,created_by_user_id)
-         VALUES($1,$2,$3,$4,false,false,$5) RETURNING *`,
-        [tenantId,input.name,input.color ?? "#22D3EE",position,actor.userId]
+        `INSERT INTO pipelines(tenant_id,name,color,position,is_default,enforce_transitions,group_id,created_by_user_id)
+         VALUES($1,$2,$3,$4,false,false,$5,$6) RETURNING *`,
+        [tenantId,input.name,input.color ?? "#22D3EE",position,groupId,actor.userId]
       )).rows[0];
       const stage = (await client.query<StageRow>(
         `INSERT INTO pipeline_stages(tenant_id,pipeline_id,name,color,position,technical_status,is_default,created_by_user_id)
@@ -622,32 +648,40 @@ export async function createPipeline(tenantId: string, actor: OrganizationActor,
   }
 }
 
-// Item 3: renomeia/recolor/set_default/enforce_transitions. Espelha o modo no
-// tenant quando o pipeline é o padrão.
+// Item 3: renomeia/recolor/set_default/enforce_transitions/mover de grupo.
+// Espelha o modo no tenant quando o pipeline é o padrão.
 export async function updatePipeline(
   tenantId: string,
   pipelineId: string,
   actor: OrganizationActor,
-  input: { name?: string; color?: string; is_default?: true; enforce_transitions?: boolean }
+  input: { name?: string; color?: string; group_id?: string | null; is_default?: true; enforce_transitions?: boolean }
 ) {
   try {
     return await withTransaction(async (client) => {
+      // group_id presente: lock do tenant ANTES do lock do pipeline (mesma
+      // ordem do arquivo de grupo) para validar grupo ativo sem deadlock.
+      if (input.group_id != null) {
+        await client.query("SELECT id FROM tenants WHERE id=$1 FOR UPDATE",[tenantId]);
+      }
       const pipeline = await loadPipelineRow(client,tenantId,pipelineId,true);
       const name = input.name ?? pipeline.name;
       const color = input.color ?? pipeline.color;
+      const groupId = input.group_id === undefined
+        ? pipeline.group_id ?? null
+        : input.group_id === null ? null : await activePipelineGroup(client,tenantId,input.group_id);
       if (input.is_default) {
         await client.query("UPDATE pipelines SET is_default=false,updated_at=now() WHERE tenant_id=$1 AND is_default AND archived_at IS NULL",[tenantId]);
       }
       const enforce = input.enforce_transitions ?? pipeline.enforce_transitions;
       const updated = (await client.query<PipelineRow>(
-        `UPDATE pipelines SET name=$3,color=$4,is_default=$5,enforce_transitions=$6,updated_at=now()
+        `UPDATE pipelines SET name=$3,color=$4,is_default=$5,enforce_transitions=$6,group_id=$7,updated_at=now()
          WHERE tenant_id=$1 AND id=$2 RETURNING *`,
-        [tenantId,pipelineId,name,color,input.is_default === true || pipeline.is_default,enforce]
+        [tenantId,pipelineId,name,color,input.is_default === true || pipeline.is_default,enforce,groupId]
       )).rows[0];
       if ((input.enforce_transitions !== undefined && enforce !== pipeline.enforce_transitions) && updated.is_default) {
         await client.query("UPDATE tenants SET pipeline_enforce_transitions=$2 WHERE id=$1",[tenantId,enforce]);
       }
-      await insertAudit(client,tenantId,actor,"pipeline.updated","pipeline",pipelineId,{ before: { name: pipeline.name,color: pipeline.color,is_default: pipeline.is_default,enforce_transitions: pipeline.enforce_transitions }, after: { name,color,is_default: updated.is_default,enforce_transitions: enforce } });
+      await insertAudit(client,tenantId,actor,"pipeline.updated","pipeline",pipelineId,{ before: { name: pipeline.name,color: pipeline.color,is_default: pipeline.is_default,enforce_transitions: pipeline.enforce_transitions,group_id: pipeline.group_id ?? null }, after: { name,color,is_default: updated.is_default,enforce_transitions: enforce,group_id: groupId } });
       const stageCount = (await client.query<{ count: number }>(
         "SELECT count(*)::int count FROM pipeline_stages WHERE tenant_id=$1 AND pipeline_id=$2 AND archived_at IS NULL",
         [tenantId,pipelineId]
@@ -686,10 +720,19 @@ export async function duplicatePipeline(tenantId: string, pipelineId: string, ac
         "SELECT COALESCE(max(position),-1)+1 max FROM pipelines WHERE tenant_id=$1 AND archived_at IS NULL",
         [tenantId]
       )).rows[0].max;
+      // Duplicar herda o grupo da origem; grupo arquivado na corrida → cópia sem grupo.
+      let groupId: string | null = null;
+      if (source.group_id) {
+        const group = await client.query<{ archived_at: string | null }>(
+          "SELECT archived_at FROM pipeline_groups WHERE tenant_id=$1 AND id=$2",
+          [tenantId,source.group_id]
+        );
+        groupId = group.rows[0] && !group.rows[0].archived_at ? source.group_id : null;
+      }
       const pipeline = (await client.query<PipelineRow>(
-        `INSERT INTO pipelines(tenant_id,name,color,position,is_default,enforce_transitions,created_by_user_id)
-         VALUES($1,$2,$3,$4,false,$5,$6) RETURNING *`,
-        [tenantId,name,source.color,position,source.enforce_transitions,actor.userId]
+        `INSERT INTO pipelines(tenant_id,name,color,position,is_default,enforce_transitions,group_id,created_by_user_id)
+         VALUES($1,$2,$3,$4,false,$5,$6,$7) RETURNING *`,
+        [tenantId,name,source.color,position,source.enforce_transitions,groupId,actor.userId]
       )).rows[0];
       const stages = (await client.query<StageRow>(
         `SELECT * FROM pipeline_stages WHERE tenant_id=$1 AND pipeline_id=$2 AND archived_at IS NULL ORDER BY position,created_at,id`,
@@ -803,8 +846,10 @@ export async function archivePipeline(
 }
 
 // Item 6: reordena os pipelines ativos; conjunto deve ser exatamente os ativos.
+// A lista retornada é lida DEPOIS do commit: dentro da transação o pool veria
+// o snapshot anterior (positions velhas).
 export async function reorderPipelines(tenantId: string, actor: OrganizationActor, pipelineIds: string[]) {
-  return withTransaction(async (client) => {
+  await withTransaction(async (client) => {
     const active = (await client.query<{ id: string }>(
       "SELECT id FROM pipelines WHERE tenant_id=$1 AND archived_at IS NULL ORDER BY position,created_at,id",
       [tenantId]
@@ -816,8 +861,87 @@ export async function reorderPipelines(tenantId: string, actor: OrganizationActo
       await client.query("UPDATE pipelines SET position=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2",[tenantId,pipelineId,index]);
     }
     await insertAudit(client,tenantId,actor,"pipeline.reordered","pipeline",pipelineIds[0],{ pipeline_ids: pipelineIds });
-    return listPipelines(tenantId,false);
   });
+  return listPipelines(tenantId,false);
+}
+
+// 0185 — Grupos opcionais de pipelines. Mutações sob lock do tenant (mesma
+// ordem de locks das validações de group_id em pipelines).
+export async function createPipelineGroup(tenantId: string, actor: OrganizationActor, input: { name: string }) {
+  try {
+    return await withTransaction(async (client) => {
+      await client.query("SELECT id FROM tenants WHERE id=$1 FOR UPDATE",[tenantId]);
+      const position = (await client.query<{ max: number }>(
+        "SELECT COALESCE(max(position),-1)+1 max FROM pipeline_groups WHERE tenant_id=$1 AND archived_at IS NULL",
+        [tenantId]
+      )).rows[0].max;
+      const group = (await client.query<{ id: string; name: string; position: number; created_at: string; updated_at: string }>(
+        "INSERT INTO pipeline_groups(tenant_id,name,position) VALUES($1,$2,$3) RETURNING id,name,position,created_at,updated_at",
+        [tenantId,input.name,position]
+      )).rows[0];
+      await insertAudit(client,tenantId,actor,"pipeline_group.created","pipeline_group",group.id,{ name: group.name });
+      return { group };
+    });
+  } catch (error) {
+    databaseError(error,"Já existe um grupo com esse nome");
+  }
+}
+
+export async function updatePipelineGroup(tenantId: string, groupId: string, actor: OrganizationActor, input: { name: string }) {
+  try {
+    return await withTransaction(async (client) => {
+      await client.query("SELECT id FROM tenants WHERE id=$1 FOR UPDATE",[tenantId]);
+      const current = (await client.query<{ id: string; name: string }>(
+        "SELECT id,name FROM pipeline_groups WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL FOR UPDATE",
+        [tenantId,groupId]
+      )).rows[0];
+      if (!current) throw httpError(404,"Grupo não encontrado");
+      const group = (await client.query<{ id: string; name: string; position: number; created_at: string; updated_at: string }>(
+        "UPDATE pipeline_groups SET name=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2 RETURNING id,name,position,created_at,updated_at",
+        [tenantId,groupId,input.name]
+      )).rows[0];
+      await insertAudit(client,tenantId,actor,"pipeline_group.updated","pipeline_group",groupId,{ before: { name: current.name }, after: { name: group.name } });
+      return { group };
+    });
+  } catch (error) {
+    databaseError(error,"Já existe um grupo com esse nome");
+  }
+}
+
+// Arquiva o grupo e desagrupa todos os pipelines na MESMA transação.
+export async function archivePipelineGroup(tenantId: string, groupId: string, actor: OrganizationActor) {
+  return withTransaction(async (client) => {
+    await client.query("SELECT id FROM tenants WHERE id=$1 FOR UPDATE",[tenantId]);
+    const group = (await client.query<{ id: string }>(
+      "SELECT id FROM pipeline_groups WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL FOR UPDATE",
+      [tenantId,groupId]
+    )).rows[0];
+    if (!group) throw httpError(404,"Grupo não encontrado");
+    await client.query("UPDATE pipeline_groups SET archived_at=now(),updated_at=now() WHERE tenant_id=$1 AND id=$2",[tenantId,groupId]);
+    await client.query("UPDATE pipelines SET group_id=NULL,updated_at=now() WHERE tenant_id=$1 AND group_id=$2",[tenantId,groupId]);
+    await insertAudit(client,tenantId,actor,"pipeline_group.archived","pipeline_group",groupId,{});
+    return { id: groupId, archived: true };
+  });
+}
+
+// Ordem exige permutação EXATA dos grupos ativos (duplicações já falham no Zod).
+export async function reorderPipelineGroups(tenantId: string, actor: OrganizationActor, groupIds: string[]) {
+  await withTransaction(async (client) => {
+    await client.query("SELECT id FROM tenants WHERE id=$1 FOR UPDATE",[tenantId]);
+    const active = (await client.query<{ id: string }>(
+      "SELECT id FROM pipeline_groups WHERE tenant_id=$1 AND archived_at IS NULL ORDER BY position,id",
+      [tenantId]
+    )).rows.map((row) => row.id);
+    if (active.length !== groupIds.length || [...active].sort().join() !== [...groupIds].sort().join()) {
+      throw httpError(400,"Lista de grupos não corresponde aos grupos ativos");
+    }
+    for (const [index,groupId] of groupIds.entries()) {
+      await client.query("UPDATE pipeline_groups SET position=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2",[tenantId,groupId,index]);
+    }
+    await insertAudit(client,tenantId,actor,"pipeline_group.reordered","pipeline_group",groupIds[0],{ group_ids: groupIds });
+  });
+  // Leitura após o commit: dentro da transação viriam as positions antigas.
+  return { groups: await listPipelineGroups(tenantId) };
 }
 
 // Item 7: define o conjunto de canais do pipeline; sessões devem ser do tenant

@@ -56,7 +56,7 @@ export async function getEffectiveEntitlements(tenantId: string, client?: Q): Pr
 export async function can(tenantId: string, featureKey: string) { return (await getEffectiveEntitlements(tenantId)).features[featureKey] === true; }
 export async function getLimit(tenantId: string, limitKey: string) { return (await getEffectiveEntitlements(tenantId)).limits[limitKey] ?? null; }
 export async function getUsage(tenantId: string, metricKey: string) {
-  if (metricKey === "MAX_AI_INTERACTIONS") {
+  if (metricKey === "MAX_AI_INTERACTIONS" || metricKey === "MAX_AI_CREDITS") {
     const r = await db.query<{ used: string }>(`SELECT COALESCE(included_usage,0)+COALESCE(rollover_usage,0)+COALESCE(bonus_usage,0)+COALESCE(overage_usage,0) AS used
       FROM usage_periods WHERE tenant_id=$1 AND status='OPEN'`, [tenantId]);
     return Number(r.rows[0]?.used ?? 0);

@@ -5,7 +5,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { Progress } from "@/components/ui/status";
-import { SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
+import { HelpHint, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import styles from "@/components/storage-settings.module.css";
 
 export type StorageOrigem = { origem: string; bytes: number; itens: number };
@@ -106,7 +106,7 @@ export function StorageSettingsPanel({ canManage, onSaved }: StorageSettingsProp
         </span>
         <div className="grid gap-5">
           <div>
-            <h2 className="m-0 text-base font-semibold text-[var(--text)]">Armazenamento</h2>
+            <h2 className="m-0 flex items-center gap-2 text-base font-semibold text-[var(--text)]">Armazenamento <HelpHint label="Ajuda: Armazenamento" title="Armazenamento">As barras abaixo mostram a fatia de cada origem dentro da quota. A retenção apaga mídias uma vez por dia, para sempre — não há como recuperar.</HelpHint></h2>
             <p className="sub mt-1">
               Uso por origem, quota total da empresa e retenção automática de mídias. Quota vazia = ilimitada; retenção vazia = sem exclusão automática.
             </p>

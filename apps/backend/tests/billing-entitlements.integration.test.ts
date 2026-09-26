@@ -41,7 +41,7 @@ afterAll(async () => {
 describe("billing entitlements integration", () => {
   it("applies BASIC feature matrix", async () => {
     const id = await createTenant("basic");
-    try { await subscribe(id, "BASIC"); const e = await getEffectiveEntitlements(id); expect(e.features).toMatchObject({ CALENDAR: false, AI: false, CONVERSATIONS: true }); }
+    try { await subscribe(id, "BASIC"); const e = await getEffectiveEntitlements(id); expect(e.features).toMatchObject({ CALENDAR: false, AI: true, CONVERSATIONS: true }); }
     finally { await cleanup(id); }
   });
 
@@ -77,7 +77,7 @@ describe("billing entitlements integration", () => {
 
   it("assertFeature returns the documented upgrade error", async () => {
     const id = await createTenant("feature-error");
-    try { await subscribe(id, "BASIC"); const error = await assertFeature(id, "AI").catch(x => x); expect(error).toMatchObject({ statusCode: 403, code: "FEATURE_NOT_AVAILABLE" }); expect(error.details.requiredPlans.length).toBeGreaterThan(0); }
+    try { await subscribe(id, "BASIC"); const error = await assertFeature(id, "CALENDAR").catch(x => x); expect(error).toMatchObject({ statusCode: 403, code: "FEATURE_NOT_AVAILABLE" }); expect(error.details.requiredPlans.length).toBeGreaterThan(0); }
     finally { await cleanup(id); }
   });
 

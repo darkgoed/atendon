@@ -12,7 +12,7 @@ import { PencilSimple, Plus, Trash } from "@/components/icons";
 import { type FormEvent, useEffect, useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
-import { Badge, Button, Dialog, EmptyState, Field, IconButton, Input, SaveButton, SaveToast, Select, Textarea, useSaveFeedback } from "@/components/ui";
+import { Badge, Button, Dialog, EmptyState, Field, HelpHint, IconButton, Input, SaveButton, SaveToast, Select, Textarea, useSaveFeedback } from "@/components/ui";
 import { api } from "@/lib/api";
 import { usePermission } from "@/lib/use-permission";
 import styles from "./campos.module.css";
@@ -124,7 +124,7 @@ function FieldDialog({
         <Field label="Rótulo">
           <Input value={label} onChange={(event) => setLabel(event.target.value)} maxLength={200} required placeholder="Ex.: Orçamento aprovado" />
         </Field>
-        <Field label="Tipo" hint={field ? "Tipo fixado na criação." : "Define como o valor é preenchido e validado nos contatos."}>
+        <Field label="Tipo" hint={field ? "Tipo fixado na criação." : "Define como o valor é preenchido e validado nos contatos."} help={<>Texto, número, moeda, data, escolha entre opções fixas ou sim/não. O tipo fica fixo depois de criado.</>}>
           <Select value={type} onChange={(event) => setType(event.target.value as FieldType)} disabled={Boolean(field)}>
             {FIELD_TYPES.map((value) => <option key={value} value={value}>{TYPE_LABELS[value]}</option>)}
           </Select>
@@ -179,7 +179,7 @@ export default function CustomFieldsPage() {
         <header className="pagehead">
           <div>
             <div className="mono mb-3 flex items-center gap-2 type-caption uppercase tracking-[.16em] text-[var(--primary-text)]">Contatos</div>
-            <h1>Campos personalizados</h1>
+            <h1>Campos personalizados <HelpHint label="Ajuda: Campos personalizados" title="Campos personalizados">Campos extras que aparecem no perfil de cada contato da empresa: escolha o tipo, as opções (quando houver) e se é obrigatório.</HelpHint></h1>
           </div>
           <div className={styles.toolbar}>
             <span className={styles.toolbarSpacer} />

@@ -135,6 +135,32 @@ export async function purgeTrashedLead(
       [session.tenantId, leadId]
     );
     if (!lead.rows[0]) throw httpError(404, "Lead não encontrado na lixeira");
+    // Eventos do Google Calendar (0185): o FK CASCADE apagaria o vínculo e a
+    // outbox com o evento remoto ainda vivo — órfão no Google. Mesma proteção
+    // da exclusão individual de agendamento (deleteAppointment): o lock da
+    // outbox trava o claim do worker e o lock do agendamento trava o INSERT
+    // do vínculo; vínculo confirmado ou claim em voo bloqueiam o purge.
+    const linked = await client.query(
+      `SELECT a.id
+       FROM scheduling_appointments a
+       JOIN scheduling_appointment_calendar_events e
+         ON e.tenant_id=a.tenant_id AND e.appointment_id=a.id
+       WHERE a.tenant_id=$1 AND a.lead_id=$2
+       FOR UPDATE OF a`,
+      [session.tenantId, leadId]
+    );
+    const syncOutbox = await client.query<{ claimed_at: Date | null }>(
+      `SELECT o.claimed_at
+       FROM scheduling_calendar_sync_outbox o
+       JOIN scheduling_appointments a
+         ON a.tenant_id=o.tenant_id AND a.id=o.appointment_id
+       WHERE a.tenant_id=$1 AND a.lead_id=$2
+       FOR UPDATE OF o`,
+      [session.tenantId, leadId]
+    );
+    if (linked.rows[0] || syncOutbox.rows.some((row) => row.claimed_at != null)) {
+      throw httpError(409, "Exclua os agendamentos do Google Calendar do lead (ou aguarde a sincronização) antes de excluir definitivamente");
+    }
     // Mesma sequência do hard delete que existia antes da lixeira:
     // usage_logs perde a referência; appointments e conversations (RESTRICT)
     // são removidos antes do lead. Tarefas e valores personalizados seguem

@@ -135,7 +135,7 @@ export type SettingsNavKey =
   | "workspace" | "signature" | "armazenamento" | "/uso"
   | "/workspace/members" | "attendants" | "/workspace/roles" | "/workspace/audit"
   | "categorias" | "parceiros" | "unidades" | "conversation-queues"
-  | "atendon-meet" | "google-meet" | "/conexao"
+  | "atendon-meet" | "google-meet" | "google-calendar" | "/conexao"
   | "/agente" | "/humanizacao" | "/follow-ups"
   | "panel-notifications" | "agenda-notifications" | "/alertas";
 
@@ -154,7 +154,7 @@ export const settingsNavGroups: readonly SettingsNavGroup[] = [
   { label: "Equipe e acesso", keys: ["/workspace/members", "attendants", "/workspace/roles", "/workspace/audit"] },
   { label: "CRM/catálogos", keys: ["categorias", "parceiros", "unidades"] },
   { label: "Atendimento", keys: ["conversation-queues"] },
-  { label: "Agenda e integrações", keys: ["atendon-meet", "google-meet"] },
+  { label: "Agenda e integrações", keys: ["atendon-meet", "google-meet", "google-calendar"] },
   { label: "Canais", keys: ["/conexao"] },
   { label: "IA", keys: ["/agente", "/humanizacao", "/follow-ups"] },
   { label: "Notificações", keys: ["panel-notifications", "agenda-notifications"] },
