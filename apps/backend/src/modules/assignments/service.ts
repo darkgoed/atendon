@@ -57,7 +57,7 @@ export async function lockAttendantRotation(client: PoolClient, tenantId: string
   );
 }
 
-async function eligibleAttendants(
+export async function eligibleAttendants(
   client: PoolClient,
   tenantId: string,
   options: { teamId?: string } = {}
