@@ -29,8 +29,11 @@ export function isWithinBusinessHours(now: Date, config: BusinessHoursConfig): b
 }
 
 export function nextBusinessHoursStart(now: Date, config: BusinessHoursConfig): Date {
-  const today = localDateTimeToUtc(localDateKey(now, config.timezone), config.start, config.timezone);
+  const todayKey = localDateKey(now, config.timezone);
+  const today = localDateTimeToUtc(todayKey, config.start, config.timezone);
   if (today.getTime() > now.getTime()) return today;
-  const tomorrowKey = localDateKey(new Date(now.getTime() + 86_400_000), config.timezone);
+  // Aritmética na data local (não no instante): dia de 23h no DST não pula D+1.
+  const [year, month, day] = todayKey.split("-").map(Number);
+  const tomorrowKey = new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
   return localDateTimeToUtc(tomorrowKey, config.start, config.timezone);
 }
