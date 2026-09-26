@@ -11,6 +11,8 @@ const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const app = buildChangelogApp();
 let userACookie = "";
 let userBCookie = "";
+let userAId = "";
+let userBId = "";
 let rootCookie = "";
 
 type Method = "GET" | "POST";
@@ -19,6 +21,16 @@ async function inject(method: Method, url: string, options: { cookie?: string; p
   if (options.cookie) injectOptions.headers = { cookie: options.cookie };
   if (options.payload !== undefined) injectOptions.payload = options.payload as InjectOptions["payload"];
   return app.inject(injectOptions);
+}
+
+// Leituras de UM usuário nos posts deste teste — independe do contador global,
+// que outros arquivos da suíte alteram em paralelo publicando posts.
+async function readsOf(userId: string, postIds: string[]): Promise<string[]> {
+  const result = await pool.query<{ post_id: string }>(
+    "SELECT post_id FROM changelog_reads WHERE user_id = $1 AND post_id = ANY($2::uuid[]) ORDER BY post_id",
+    [userId, postIds]
+  );
+  return result.rows.map((row) => row.post_id);
 }
 
 async function publishPost(publishedAt: string): Promise<{ id: string; slug: string }> {
@@ -36,6 +48,8 @@ beforeAll(async () => {
   const userA = await createWorkspaceUser(pool, tenant);
   const userB = await createWorkspaceUser(pool, tenant);
   const root = await insertUser(pool, true);
+  userAId = userA.id;
+  userBId = userB.id;
   userACookie = await sessionCookieFor(userA.id, userA.email, false, tenant);
   userBCookie = await sessionCookieFor(userB.id, userB.email, false, tenant);
   rootCookie = await sessionCookieFor(root.id, root.email, true);
@@ -60,23 +74,22 @@ describe("changelog painel — unread/read", () => {
     // Category é o DEFAULT 'outro' — INSERT direto via SQL não define category.
     expect(unreadA.json().latestPost).toMatchObject({ slug: postNew.slug, category: "outro" });
 
-    // Delta cross-time: captura ANTES da leitura (imune a posts de outros arquivos em paralelo).
-    const unreadBBefore = ((await inject("GET", "/panel/changelog/unread", { cookie: userBCookie })).json()).count as number;
-    // B lê só o post NOVO: o post ANTIGO continua no unread de B (estado per-post).
+    // B lê só o post NOVO: o post ANTIGO continua não lido para B (estado per-post).
+    // Verificado por post, não pelo contador global (outros arquivos publicam em paralelo).
     expect((await inject("POST", "/panel/changelog/read", { cookie: userBCookie, payload: { postId: postNew.id } })).statusCode).toBe(204);
-    const unreadB = (await inject("GET", "/panel/changelog/unread", { cookie: userBCookie })).json();
-    expect(unreadB.count).toBe(unreadBBefore - 1);
+    expect(await readsOf(userBId, [postNew.id, postOld.id])).toEqual([postNew.id]);
 
-    // A lê o antigo 2× → idempotente (204, count inalterado).
+    // A lê o antigo 2× → idempotente (204 nas duas, uma única leitura registrada).
     expect((await inject("POST", "/panel/changelog/read", { cookie: userACookie, payload: { postId: postOld.id } })).statusCode).toBe(204);
-    const countAfterFirstRead = ((await inject("GET", "/panel/changelog/unread", { cookie: userACookie })).json()).count as number;
     expect((await inject("POST", "/panel/changelog/read", { cookie: userACookie, payload: { postId: postOld.id } })).statusCode).toBe(204);
-    expect(((await inject("GET", "/panel/changelog/unread", { cookie: userACookie })).json()).count).toBe(countAfterFirstRead);
+    expect(await readsOf(userAId, [postNew.id, postOld.id])).toEqual([postOld.id]);
 
     // Feed com flag read POR SLUG (nunca por posição — o feed é global entre arquivos).
-    const feedA = (await inject("GET", "/panel/changelog/feed?limit=10", { cookie: userACookie })).json() as { posts: Array<{ slug: string; read: boolean }> };
+    const feedA = (await inject("GET", "/panel/changelog/feed?limit=10", { cookie: userACookie })).json() as { posts: Array<{ id: string; slug: string; read: boolean }> };
     const feedB = (await inject("GET", "/panel/changelog/feed?limit=10", { cookie: userBCookie })).json() as { posts: Array<{ slug: string; read: boolean }> };
     expect(feedA.posts.find((post) => post.slug === postOld.slug)?.read).toBe(true);
+    // O feed autenticado expõe o id que o painel usa para marcar leitura.
+    expect(feedA.posts.find((post) => post.slug === postNew.slug)?.id).toBe(postNew.id);
     expect(feedA.posts.find((post) => post.slug === postNew.slug)?.read).toBe(false);
     expect(feedB.posts.find((post) => post.slug === postNew.slug)?.read).toBe(true);
     expect(feedB.posts.find((post) => post.slug === postOld.slug)?.read).toBe(false);
