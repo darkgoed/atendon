@@ -107,7 +107,7 @@ describe("AI follow-ups", () => {
     const { processor, ai } = setup();
     await expect(processor.process(claim.conversationId)).resolves.toBe("sent");
     const turnId = consumeAiInteractionMock.mock.calls[0]![2];
-    expect(turnId).toBe(deriveBillingTurnId(claim.tenantId, "follow_up", `${claim.conversationId}:${claim.sequenceVersion}`));
+    expect(turnId).toBe(deriveBillingTurnId(claim.tenantId, "follow_up", `${claim.conversationId}:${claim.sequenceVersion}:${claim.followUpCount}`));
     expect(ai.complete.mock.calls[0]![0].trace.requestId).toBe(turnId);
     expect(reconcileAiTurnFromUsageLogsMock).toHaveBeenCalledWith(claim.tenantId, "follow_up", turnId);
   });
@@ -118,9 +118,29 @@ describe("AI follow-ups", () => {
     const second = setup();
     await second.processor.process(claim.conversationId);
     expect(consumeAiInteractionMock.mock.calls.map((call) => call[2])).toEqual([
-      deriveBillingTurnId(claim.tenantId, "follow_up", "conversation-1:3"),
-      deriveBillingTurnId(claim.tenantId, "follow_up", "conversation-1:3")
+      deriveBillingTurnId(claim.tenantId, "follow_up", "conversation-1:3:0"),
+      deriveBillingTurnId(claim.tenantId, "follow_up", "conversation-1:3:0")
     ]);
+  });
+
+  it("reserves each step of the same sequence under its own billing key", async () => {
+    const first = setup();
+    await first.processor.process(claim.conversationId);
+    const second = setup();
+    second.repository.claimDue.mockResolvedValue({ ...claim, followUpCount: 1 });
+    await second.processor.process(claim.conversationId);
+    const [stepOne, stepTwo] = consumeAiInteractionMock.mock.calls.map((call) => call[2]);
+    expect(stepTwo).not.toBe(stepOne);
+    expect(second.ai.complete.mock.calls[0]![0].trace.requestId).toBe(stepTwo);
+  });
+
+  it("requeues the step instead of cancelling the sequence when billing is unavailable", async () => {
+    const { processor, repository, ai } = setup();
+    consumeAiInteractionMock.mockResolvedValueOnce({ allowed: false, reason: "BILLING_UNAVAILABLE" });
+    await expect(processor.process(claim.conversationId)).resolves.toBe("busy");
+    expect(repository.cancelClaim).not.toHaveBeenCalled();
+    expect(repository.releaseClaim).toHaveBeenCalledWith(claim, 60);
+    expect(ai.complete).not.toHaveBeenCalled();
   });
 
   it("cancels quota-refused claims without provider or reconciliation", async () => {

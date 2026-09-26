@@ -1,12 +1,19 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { config } from "../src/config.js";
-import { AiFollowUpRepository } from "../src/modules/messages/ai-follow-up.js";
+import { AiFollowUpProcessor, AiFollowUpRepository } from "../src/modules/messages/ai-follow-up.js";
 import { consumeAiInteraction, reconcileAiInteraction, reconcileAiTurnFromUsageLogs } from "../src/billing/ai-consumption.js";
 import { runBillingReconciliationBatch } from "../src/billing/reconciler.js";
 import { deriveBillingTurnId } from "../src/billing/turn-id.js";
 import { ensureOpenPeriod } from "../src/billing/usage-period.js";
+
+// O lock de conversa usa Redis; aqui o alvo é a cobrança real (Postgres).
+vi.mock("../src/modules/messages/conversation-lock.js", () => ({
+  acquireConversationLock: vi.fn().mockResolvedValue({ redisKey: "follow-up-lock", token: "token" }),
+  releaseConversationLock: vi.fn().mockResolvedValue(undefined),
+  extendConversationLock: vi.fn().mockResolvedValue(true)
+}));
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const tenants: string[] = [], plans: string[] = [];
@@ -161,5 +168,61 @@ describe("AI follow-up billing: usage_logs.request_id", () => {
       "SELECT provider FROM usage_logs WHERE tenant_id=$1 AND provider_request_id=$2", [x.t, id])).rows[0];
     expect(await provider(withProvider)).toEqual({ provider: "deepinfra" });
     expect(await provider(withoutProvider)).toEqual({ provider: null });
+  });
+
+  // Processa a etapa `followUpCount` de UMA sequência (mesmo sequence_version)
+  // com cobrança real; provedor/gateway falsos. Reconcilia tudo ao final.
+  async function runStep(t: string, conversationId: string, followUpCount: number) {
+    const claim = {
+      conversationId, tenantId: t, sessionId: randomUUID(), contactPhone: "5511999999999",
+      sequenceVersion: 1, followUpCount, maxCount: 3, delaysMinutes: [60, 1440, 4320],
+      delivery: { type: "text" as const }, model: "test/model", systemPrompt: "Atenda.",
+      temperature: 0.4, maxTokens: 256,
+      history: [{ role: "user" as const, content: "Oi" }, { role: "assistant" as const, content: "Você prefere hoje ou amanhã?" }]
+    };
+    const repository = {
+      claimDue: vi.fn().mockResolvedValue(claim),
+      releaseClaim: vi.fn().mockResolvedValue(undefined),
+      isClaimCurrent: vi.fn().mockResolvedValue(true),
+      recordAiUsage: (input: Parameters<AiFollowUpRepository["recordAiUsage"]>[0]) => followUps.recordAiUsage(input),
+      completeSent: vi.fn().mockResolvedValue(undefined),
+      cancelClaim: vi.fn().mockResolvedValue(undefined),
+      recordFailure: vi.fn().mockResolvedValue(false),
+      createFailureAlert: vi.fn().mockResolvedValue(undefined)
+    };
+    const ai = { complete: vi.fn().mockImplementation(async (input) => {
+      await input.onUsage?.({ providerRequestId: `gen-${randomUUID()}`, model: "test/model", inputTokens: 100, outputTokens: 50, costUsd: 0.01 });
+      return { text: `Conseguiu ver a etapa ${followUpCount + 1}? Fica melhor hoje ou amanhã?`, inputTokens: 100, outputTokens: 50, costUsd: 0.01 };
+    }) };
+    const gateway = {
+      setPresence: vi.fn().mockResolvedValue(undefined), sendPresence: vi.fn().mockResolvedValue(undefined),
+      sendText: vi.fn().mockResolvedValue({ externalId: `sent-${randomUUID()}` }), markMessageAsRead: vi.fn().mockResolvedValue(undefined)
+    };
+    const result = await new AiFollowUpProcessor(repository as never, gateway as never, ai as never).process(conversationId);
+    for (const row of (await pool.query<{ id: string }>("SELECT logical_turn_id::text AS id FROM ai_usage_ledger WHERE tenant_id=$1", [t])).rows) {
+      await reconcileAiTurnFromUsageLogs(t, "follow_up", row.id);
+    }
+    return { result, repository, ai };
+  }
+
+  it("etapa 2 da MESMA sequência passa pela cota: sem franquia é recusada, sem provedor", async () => {
+    const x = await setup(1);
+    const conversationId = await conversation(x.t);
+    expect((await runStep(x.t, conversationId, 0)).result).toBe("sent");
+    const step2 = await runStep(x.t, conversationId, 1);
+    expect(step2.result).toBe("cancelled");
+    expect(step2.repository.cancelClaim).toHaveBeenCalledWith(expect.anything(), "ai_quota_reached");
+    expect(step2.ai.complete).not.toHaveBeenCalled();
+    expect(await scalar("SELECT included_usage AS value FROM usage_periods WHERE id=$1", [x.period.id])).toBe("1");
+  });
+
+  it("cada etapa da sequência é reservada e cobrada uma vez", async () => {
+    const x = await setup(2);
+    const conversationId = await conversation(x.t);
+    expect((await runStep(x.t, conversationId, 0)).result).toBe("sent");
+    expect((await runStep(x.t, conversationId, 1)).result).toBe("sent");
+    expect(await scalar<number>("SELECT count(*)::int AS value FROM ai_usage_ledger WHERE tenant_id=$1 AND reconciled", [x.t])).toBe(2);
+    expect(await scalar("SELECT included_usage AS value FROM usage_periods WHERE id=$1", [x.period.id])).toBe("2");
+    expect(await scalar("SELECT sum(provider_cost_usd_micros)::text AS value FROM ai_usage_ledger WHERE tenant_id=$1", [x.t])).toBe("20000");
   });
 });
