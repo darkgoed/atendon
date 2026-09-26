@@ -17,8 +17,6 @@ let foreignOwnerId = "";
 let sessionOne = "";
 let sessionTwo = "";
 let foreignSession = "";
-let initialQueue = "";
-let scheduledQueue = "";
 let ownerCookie = "";
 let operatorCookie = "";
 let foreignCookie = "";
@@ -34,7 +32,6 @@ async function createLeadAndConversation(options: {
   name: string;
   assignedUserId: string | null;
   sessionId: string;
-  queueId: string;
   nextActionAt: string | null;
   unread: boolean;
 }) {
@@ -52,8 +49,8 @@ async function createLeadAndConversation(options: {
   if (!lead) throw new Error("integration fixture lead was not created");
   const conversation = await first<{ id: string }>(
     `INSERT INTO conversations(
-       tenant_id,session_id,contact_phone,contact_name,lead_id,assigned_user_id,queue_id,status,ai_active,last_read_at
-     ) VALUES($1,$2,$3,$4,$5,$6,$7,'open',false,$8)
+       tenant_id,session_id,contact_phone,contact_name,lead_id,assigned_user_id,status,ai_active,last_read_at
+     ) VALUES($1,$2,$3,$4,$5,$6,'open',false,$7)
      RETURNING id`,
     [
       tenantId,
@@ -62,7 +59,6 @@ async function createLeadAndConversation(options: {
       options.name,
       lead.id,
       options.assignedUserId,
-      options.queueId,
       options.unread ? null : new Date().toISOString()
     ]
   );
@@ -132,15 +128,13 @@ beforeAll(async () => {
   } finally {
     client.release();
   }
-  initialQueue = (await first<{ id: string }>("SELECT id FROM conversation_queues WHERE tenant_id=$1 AND is_initial", [tenantId]))!.id;
-  scheduledQueue = (await first<{ id: string }>("SELECT id FROM conversation_queues WHERE tenant_id=$1 AND name='Agendado'", [tenantId]))!.id;
   ownerCookie = await cookie(ownerId, tenantId, `filters-owner-${suffix}@test.local`, "OWNER");
   operatorCookie = await cookie(operatorId, tenantId, `filters-operator-${suffix}@test.local`, "OPERADOR");
   foreignCookie = await cookie(foreignOwnerId, foreignTenantId, `filters-foreign-${suffix}@test.local`, "OWNER");
-  await createLeadAndConversation({ name: `Alpha ${suffix}`, assignedUserId: operatorId, sessionId: sessionOne, queueId: initialQueue, nextActionAt: new Date(Date.now() - 60_000).toISOString(), unread: true });
-  await createLeadAndConversation({ name: `Beta ${suffix}`, assignedUserId: operatorId, sessionId: sessionTwo, queueId: scheduledQueue, nextActionAt: new Date(Date.now() + 60 * 60_000).toISOString(), unread: false });
-  await createLeadAndConversation({ name: `Gamma ${suffix}`, assignedUserId: ownerId, sessionId: sessionOne, queueId: scheduledQueue, nextActionAt: null, unread: true });
-  await createLeadAndConversation({ name: `Delta ${suffix}`, assignedUserId: null, sessionId: sessionTwo, queueId: initialQueue, nextActionAt: null, unread: false });
+  await createLeadAndConversation({ name: `Alpha ${suffix}`, assignedUserId: operatorId, sessionId: sessionOne, nextActionAt: new Date(Date.now() - 60_000).toISOString(), unread: true });
+  await createLeadAndConversation({ name: `Beta ${suffix}`, assignedUserId: operatorId, sessionId: sessionTwo, nextActionAt: new Date(Date.now() + 60 * 60_000).toISOString(), unread: false });
+  await createLeadAndConversation({ name: `Gamma ${suffix}`, assignedUserId: ownerId, sessionId: sessionOne, nextActionAt: null, unread: true });
+  await createLeadAndConversation({ name: `Delta ${suffix}`, assignedUserId: null, sessionId: sessionTwo, nextActionAt: null, unread: false });
   await pool.query(
     `INSERT INTO scheduling_categories(tenant_id,id,name) VALUES($1,'test-category','Test category') ON CONFLICT DO NOTHING`,
     [foreignTenantId]
@@ -165,12 +159,12 @@ beforeAll(async () => {
      FROM pipeline_stages WHERE tenant_id=$1 AND technical_status='novo' AND is_default RETURNING id`, [foreignTenantId]
   );
   await pool.query(
-    `INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name,lead_id,queue_id)
-     SELECT $1,$2,'559900000001','Foreign ${suffix}',$3,id FROM conversation_queues WHERE tenant_id=$1 AND is_initial`,
+    `INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name,lead_id)
+     VALUES($1,$2,'559900000001','Foreign ${suffix}',$3)`,
     [foreignTenantId, foreignSession, foreignLead!.id]
   );
   for (let index = 0; index < 56; index += 1) {
-    await createLeadAndConversation({ name: `Bulk ${index} ${suffix}`, assignedUserId: ownerId, sessionId: sessionOne, queueId: initialQueue, nextActionAt: null, unread: false });
+    await createLeadAndConversation({ name: `Bulk ${index} ${suffix}`, assignedUserId: ownerId, sessionId: sessionOne, nextActionAt: null, unread: false });
   }
 });
 
@@ -192,12 +186,12 @@ describe("GET /conversations filters against PostgreSQL", () => {
     return response.json().conversations.map((conversation: { id: string }) => conversation.id) as string[];
   };
 
-  it("applies queue, session, unread and pending-action true/false together with mine and q", async () => {
+  it("applies session, unread and pending-action true/false together with mine and q", async () => {
     const alpha = conversationIds[0];
-    expect(await ids(`/conversations?filter=mine&queue_id=${initialQueue}&session_id=${sessionOne}&unread=true&pending_action=true&q=Alpha`, { cookie: operatorCookie })).toEqual([alpha]);
-    expect(await ids(`/conversations?filter=mine&queue_id=${scheduledQueue}&session_id=${sessionTwo}&unread=false&pending_action=false&q=Beta`, { cookie: operatorCookie })).toEqual([conversationIds[1]]);
-    expect(await ids(`/conversations?queue_id=${scheduledQueue}&unread=true&pending_action=false&q=Gamma`)).toEqual([conversationIds[2]]);
-    expect(await ids(`/conversations?queue_id=${initialQueue}&session_id=${sessionTwo}&unread=false&pending_action=false&q=Delta`)).toEqual([conversationIds[3]]);
+    expect(await ids(`/conversations?filter=mine&session_id=${sessionOne}&unread=true&pending_action=true&q=Alpha`, { cookie: operatorCookie })).toEqual([alpha]);
+    expect(await ids(`/conversations?filter=mine&session_id=${sessionTwo}&unread=false&pending_action=false&q=Beta`, { cookie: operatorCookie })).toEqual([conversationIds[1]]);
+    expect(await ids(`/conversations?session_id=${sessionOne}&unread=true&pending_action=false&q=Gamma`)).toEqual([conversationIds[2]]);
+    expect(await ids(`/conversations?session_id=${sessionTwo}&unread=false&pending_action=false&q=Delta`)).toEqual([conversationIds[3]]);
     expect(await ids(`/conversations?filter=mine&q=Gamma`, { cookie: operatorCookie })).toEqual([]);
   });
 

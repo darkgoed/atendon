@@ -7,7 +7,6 @@ export function conversationFixture(path) {
   if (path === "/conversations/unread-counts") return { human: 2, ai: 0, scheduled: 0, resolved: 0 };
   if (path === "/conversations/unread") return { conversations: [conversation] };
   if (path === `/conversations/${IDS.conversation}/read`) return {};
-  if (path === "/conversation-queues" || path.startsWith("/conversation-queues?")) return { queues: [{ id: "qa-queue", name: "Atendimento QA", color: "#168aad", is_resolved: false, conversation_count: 1, archived_at: null }] };
   if (path === "/conversations/assignees") return { assignees: [member] };
   if (path.includes("/assets")) return { messages: [{ id: "qa-asset", content: "https://example.test/arquivo", media_type: "image", media_file_name: "arquivo.png" }], has_more: false, next_cursor: null };
   if (path.includes("/contact")) return { contact_name: conversation.contact_name };

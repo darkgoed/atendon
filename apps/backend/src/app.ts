@@ -108,7 +108,6 @@ import { enforceRequestCapability } from "./capabilities/gate.js";
 import { enforceRequestEntitlement } from "./billing/entitlement-gate.js";
 import { processBillingWebhook } from "./billing/webhook-service.js";
 import { assertHomologatedProvider } from "./billing/providers/homologation.js";
-import { registerConversationQueueRoutes } from "./modules/conversations/queues.js";
 import { createInstagramRuntime, registerInstagramRoutes } from "./modules/instagram/index.js";
 import { instagramDeauthorizationPlugin } from "./modules/instagram/deauthorization.js";
 import type { InstagramProvider } from "./modules/instagram/types.js";
@@ -205,7 +204,6 @@ const messageCursorSchema = z.string().trim().min(1).max(512).transform((value, 
 const conversationsQuerySchema = z.object({
   filter: z.enum(["all", "human", "ai", "mine", "unassigned", "scheduled", "resolved"]).catch("all"),
   q: z.string().trim().max(120).optional().transform((value) => value || undefined),
-  queue_id: z.string().uuid().optional(),
   session_id: z.string().uuid().optional(),
   team_id: z.string().uuid().optional(),
   unread: z.enum(["true", "false"]).optional(),
@@ -1571,7 +1569,7 @@ export function buildApp(options: {
   app.get("/conversations", async (request) => {
     const session = await requirePermission(request, "conversations.read");
     const scope = await resolveCaseScope(db, session);
-    const { filter, q, queue_id, session_id, team_id, unread, pending_action, limit, before } = conversationsQuerySchema.parse(request.query);
+    const { filter, q, session_id, team_id, unread, pending_action, limit, before } = conversationsQuerySchema.parse(request.query);
     const condition = filter === "human" ? "AND c.status='open' AND c.ai_active=false"
       : filter === "ai" ? "AND c.status='open' AND c.ai_active=true"
         : filter === "mine" ? "AND c.status='open' AND c.assigned_user_id=$3"
@@ -1588,9 +1586,8 @@ export function buildApp(options: {
               )`
               : filter === "resolved" ? "AND c.status='closed'" : "AND c.status='open'";
     const filterConditions = [
-      "AND ($4::uuid IS NULL OR c.queue_id=$4)",
-      "AND ($5::uuid IS NULL OR c.session_id=$5)",
-      "AND ($6::uuid IS NULL OR c.assigned_team_id=$6)",
+      "AND ($4::uuid IS NULL OR c.session_id=$4)",
+      "AND ($5::uuid IS NULL OR c.assigned_team_id=$5)",
       unread === "true" ? "AND EXISTS (SELECT 1 FROM messages unread_message WHERE unread_message.conversation_id=c.id AND unread_message.sender='contact' AND unread_message.created_at > COALESCE(c.last_read_at,'-infinity'))" : unread === "false" ? "AND NOT EXISTS (SELECT 1 FROM messages read_message WHERE read_message.conversation_id=c.id AND read_message.sender='contact' AND read_message.created_at > COALESCE(c.last_read_at,'-infinity'))" : "",
       pending_action === "true" ? "AND lead.next_action_at IS NOT NULL AND lead.next_action_at <= now()+interval '15 minutes'" : pending_action === "false" ? "AND (lead.next_action_at IS NULL OR lead.next_action_at > now()+interval '15 minutes')" : ""
     ].join(" ");
@@ -1599,7 +1596,7 @@ export function buildApp(options: {
       OR strpos(COALESCE(c.contact_phone,''),$2) > 0
       OR strpos(lower(COALESCE(c.instagram_username,'')),lower(replace($2,'@',''))) > 0
       OR strpos(COALESCE(c.instagram_contact_id,''),$2) > 0)`;
-    const values: unknown[] = [session.tenantId, q ?? "", session.userId, queue_id ?? null, session_id ?? null, team_id ?? null];
+    const values: unknown[] = [session.tenantId, q ?? "", session.userId, session_id ?? null, team_id ?? null];
     // Keyset page: (last_message_at, id) < before-cursor, matching ORDER BY.
     if (before) {
       values.push(before.createdAt, before.id);
@@ -1620,8 +1617,6 @@ export function buildApp(options: {
       c.status, c.last_message_at, c.contact_jid, c.assigned_user_id, c.claimed_at, c.resolved_at,
       c.assigned_team_id,
       c.contact_presence, c.contact_presence_updated_at, c.contact_last_seen_at, c.signature_enabled,
-      c.queue_id, qqueue.name queue_name, qqueue.color queue_color, qqueue.position queue_position,
-      qqueue.is_initial queue_is_initial, qqueue.is_resolved queue_is_resolved, qqueue.archived_at queue_archived_at,
       ws.channel,
       u.email assigned_user_email,lead.status lead_status,lead.updated_at lead_updated_at,
       lead.next_action,lead.next_action_at,
@@ -1648,7 +1643,6 @@ export function buildApp(options: {
       COALESCE(unread.count,0)::int unread_count
       FROM conversations c
       LEFT JOIN users u ON u.id=c.assigned_user_id
-      LEFT JOIN conversation_queues qqueue ON qqueue.id=c.queue_id AND qqueue.tenant_id=c.tenant_id
       LEFT JOIN whatsapp_sessions ws ON ws.id=c.session_id AND ws.tenant_id=c.tenant_id
       LEFT JOIN LATERAL (
         SELECT content, media_type, media_is_sticker, media_file_name, sender, status
@@ -1698,7 +1692,7 @@ export function buildApp(options: {
     const result = await db.query(`
       WITH pending AS (
         SELECT c.id,c.session_id,c.lead_id,c.contact_phone,c.contact_name,c.contact_avatar_url avatar_url,
-          c.ai_active,c.handoff_reason,c.status,c.last_message_at,c.assigned_user_id,c.queue_id,
+          c.ai_active,c.handoff_reason,c.status,c.last_message_at,c.assigned_user_id,
           ws.channel,u.email assigned_user_email,lead.next_action,lead.next_action_at,
           (lead.next_action_at <= now()) next_action_due,
           (lead.next_action_at <= now()) overdue,
@@ -2925,7 +2919,6 @@ export function buildApp(options: {
     renderPreview: async ({ scope, proposal }: TripzDocumentRenderContext) => tripzDocuments.renderPreview(scope, proposal),
     renderPdf: async ({ scope, proposal }: TripzDocumentRenderContext) => tripzDocuments.renderPdf(scope, proposal)
   });
-  void app.register(registerConversationQueueRoutes);
   void app.register(registerMessagingRoutes, { gateway: messageGateway });
   // R3: copiloto sob demanda — exposto uma única vez pelo buildApp do orquestrador.
   void app.register(registerCopilotSuggestionRoutes);

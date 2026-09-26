@@ -417,11 +417,7 @@ export class MessageRepository {
            contact_name=COALESCE($5,c.contact_name),
            facebook_attribution=CASE WHEN $6::jsonb<>'{}'::jsonb THEN $6::jsonb ELSE c.facebook_attribution END,
            contact_presence='available',contact_presence_updated_at=now(),contact_last_seen_at=now(),
-           status='open',resolved_at=NULL,last_message_at=now(),
-           queue_id=CASE WHEN c.status='closed' THEN
-             (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)
-             ELSE COALESCE(c.queue_id,
-               (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)) END
+           status='open',resolved_at=NULL,last_message_at=now()
          WHERE c.tenant_id=$1 AND c.session_id=$2 AND c.instagram_contact_id=$3
            AND c.contact_phone IS NULL
          RETURNING c.id,c.ai_active,c.contact_name,c.facebook_attribution,c.lead_id,c.status`,
@@ -684,10 +680,9 @@ export class MessageRepository {
       WITH conv AS (
         INSERT INTO conversations
           (tenant_id, session_id, contact_phone, contact_name, contact_jid, facebook_attribution,
-           contact_presence, contact_presence_updated_at, contact_last_seen_at, queue_id,
+           contact_presence, contact_presence_updated_at, contact_last_seen_at,
            ai_active, handoff_reason)
         SELECT $1, s.id, $3, $4, $5, $13::jsonb, 'available', now(), now(),
-               (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1),
                COALESCE(agent_birth.is_active, false),
                CASE WHEN COALESCE(agent_birth.is_active, false) THEN NULL ELSE 'agent_disabled' END
         FROM whatsapp_sessions s
@@ -718,11 +713,7 @@ export class MessageRepository {
             contact_presence = 'available',
             contact_presence_updated_at = now(),
             contact_last_seen_at = now(),
-            status = 'open', resolved_at = NULL, last_message_at = now(),
-            queue_id = CASE WHEN conversations.status='closed' THEN
-              (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)
-              ELSE COALESCE(conversations.queue_id,
-                (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)) END
+            status = 'open', resolved_at = NULL, last_message_at = now()
         RETURNING id, ai_active, ai_commercial_override_at, facebook_attribution, contact_name
       ),
       automatic_lead AS (
@@ -2317,17 +2308,15 @@ export class MessageRepository {
       const conversation = await client.query<{ id: string }>(
         `INSERT INTO conversations(
            tenant_id,session_id,contact_phone,instagram_contact_id,instagram_username,lead_id,
-           ai_active,handoff_reason,status,last_message_at,queue_id
+           ai_active,handoff_reason,status,last_message_at
          ) VALUES(
-           $1,$2,NULL,$3,$4,$5,false,'manually_paused','open',now(),
-           (SELECT id FROM conversation_queues WHERE tenant_id=$1 AND is_initial AND archived_at IS NULL LIMIT 1)
+           $1,$2,NULL,$3,$4,$5,false,'manually_paused','open',now()
          )
          ON CONFLICT(tenant_id,session_id,instagram_contact_id) WHERE instagram_contact_id IS NOT NULL
          DO UPDATE SET
            ai_active=false,handoff_reason='manually_paused',handoff_error_code=NULL,
            instagram_username=COALESCE(EXCLUDED.instagram_username,conversations.instagram_username),
-           last_message_at=now(),status='open',resolved_at=NULL,
-           queue_id=COALESCE(conversations.queue_id,EXCLUDED.queue_id)
+           last_message_at=now(),status='open',resolved_at=NULL
          RETURNING id`,
         [message.tenantId, message.sessionId, message.instagramContactId, message.instagramUsername ?? null, lead.rows[0].id]
       );
@@ -2368,18 +2357,13 @@ export class MessageRepository {
     const conversation = await withTenantTransaction(this.db, message.tenantId, async (client) => {
       const recorded = await client.query<{ id: string }>(
         `WITH conv AS (
-         INSERT INTO conversations (tenant_id, session_id, contact_phone, contact_jid, queue_id)
-         SELECT $1, s.id, $3, $4,
-                (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)
+         INSERT INTO conversations (tenant_id, session_id, contact_phone, contact_jid)
+         SELECT $1, s.id, $3, $4
          FROM whatsapp_sessions s WHERE s.id = $2 AND s.tenant_id = $1
          ON CONFLICT (tenant_id, session_id, contact_phone) DO UPDATE
          SET contact_jid = COALESCE(EXCLUDED.contact_jid, conversations.contact_jid),
              ai_active=false,handoff_reason='manually_paused',handoff_error_code=NULL,last_message_at = now(),
-             status='open',resolved_at=NULL,
-             queue_id=CASE WHEN conversations.status='closed' THEN
-               (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)
-               ELSE COALESCE(conversations.queue_id,
-                 (SELECT q.id FROM conversation_queues q WHERE q.tenant_id=$1 AND q.is_initial AND q.archived_at IS NULL LIMIT 1)) END
+             status='open',resolved_at=NULL
          RETURNING id
        ),
        automatic_lead AS (

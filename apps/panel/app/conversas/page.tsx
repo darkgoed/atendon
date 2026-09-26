@@ -113,10 +113,6 @@ type Conversation = {
   lead_status?: string;
   lead_updated_at?: string;
   unread_count?: number;
-  queue_id?: string | null;
-  queue_name?: string | null;
-  queue_color?: string | null;
-  queue_is_resolved?: boolean;
   next_action?: string | null;
   next_action_at?: string | null;
   next_action_due?: boolean;
@@ -487,7 +483,6 @@ export default function Conversations() {
   const canSchedule = appointmentsEnabled && canCreateAppointment && canReadAvailability && canReadUnits;
   const [filter, setFilter] = useState("human");
   const [connectionFilter, setConnectionFilter] = useState("");
-  const [queueFilter, setQueueFilter] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [pendingOnly, setPendingOnly] = useState(false);
   const [selected, setSelected] = useState("");
@@ -585,14 +580,13 @@ export default function Conversations() {
   // Filtros no padrão único (ListFiltersBar, igual a /contatos): o objeto é a
   // projeção do estado existente — mesma query server-side de antes.
   const conversationFilters = {
-    fila: queueFilter,
     escopo: hasWorkspaceScope && (filter === "mine" || filter === "unassigned") ? filter : "",
     nao_lidas: unreadOnly ? "true" : "",
     pendencias: pendingOnly ? "true" : "",
     numero: connectionFilter
   };
   const listKey = session
-    ? `/conversations?filter=${effectiveFilter}${queueFilter ? `&queue_id=${queueFilter}` : ""}${connectionFilter ? `&session_id=${connectionFilter}` : ""}${unreadOnly ? "&unread=true" : ""}${pendingOnly ? "&pending_action=true" : ""}`
+    ? `/conversations?filter=${effectiveFilter}${connectionFilter ? `&session_id=${connectionFilter}` : ""}${unreadOnly ? "&unread=true" : ""}${pendingOnly ? "&pending_action=true" : ""}`
     : null;
   const { data: listData, error: listError, isLoading: listLoading, mutate: mutateList } = useSWR<ConversationsResponse>(listKey, fetcher, {
     refreshInterval: 10_000,
@@ -659,33 +653,20 @@ export default function Conversations() {
   );
 
   const connections = useMemo(() => connectionsData?.connections ?? [], [connectionsData?.connections]);
-  const { data: queueData, mutate: mutateQueues } = useSWR<{ queues: Array<{ id: string; name: string; color: string; is_resolved: boolean; conversation_count: number; archived_at: string | null }> }>(session ? "/conversation-queues" : null, fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
   const showConnectionFilter = shouldShowConversationConnectionFilter(connections);
   const setConversationFilter = (key: keyof typeof conversationFilters & string, value: string) => {
-    if (key === "fila") setQueueFilter(value);
-    else if (key === "escopo") setFilter(value || (hasWorkspaceScope ? "human" : "mine"));
+    if (key === "escopo") setFilter(value || (hasWorkspaceScope ? "human" : "mine"));
     else if (key === "nao_lidas") setUnreadOnly(value === "true");
     else if (key === "pendencias") setPendingOnly(value === "true");
     else if (key === "numero") setConnectionFilter(value);
   };
   const clearConversationFilters = () => {
     setConnectionFilter("");
-    setQueueFilter("");
     setFilter(hasWorkspaceScope ? "human" : "mine");
     setUnreadOnly(false);
     setPendingOnly(false);
   };
-  const activeQueues = (queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved);
-  const activeQueue = activeQueues.find((queue) => queue.id === queueFilter);
   const conversationFilterDefs: Array<ListFilterDef<typeof conversationFilters>> = [
-    {
-      key: "fila",
-      label: "Fila",
-      kind: "option",
-      // dot de cor da fila ativa no chip (paridade com os botões antigos)
-      icon: activeQueue ? <span className="inline-block size-2 shrink-0 rounded-full" style={{ backgroundColor: activeQueue.color }} aria-hidden="true" /> : undefined,
-      options: activeQueues.map((queue) => ({ id: queue.id, nome: queue.name }))
-    },
     { key: "nao_lidas", label: "Não lidas", kind: "option", options: [{ id: "true", nome: "Não lidas" }] },
     { key: "pendencias", label: "Pendências", kind: "option", options: [{ id: "true", nome: "Pendências" }] }
   ];
@@ -742,14 +723,6 @@ export default function Conversations() {
   useEffect(() => {
     if (!showConnectionFilter && connectionFilter) setConnectionFilter("");
   }, [connectionFilter, showConnectionFilter]);
-
-  // Fila filtrada que deixou de existir (arquivada/resolvida/apagada) não pode
-  // ficar presa como chip com id cru — limpa quando o catálogo atual a desconhece.
-  useEffect(() => {
-    if (!queueFilter || !queueData) return;
-    const known = (queueData.queues ?? []).some((queue) => queue.id === queueFilter && !queue.archived_at && !queue.is_resolved);
-    if (!known) setQueueFilter("");
-  }, [queueData, queueFilter]);
 
   useEffect(() => {
     selectedRef.current = selected;
@@ -1214,7 +1187,7 @@ export default function Conversations() {
     if (previousThread?.conversation.id === selectedRef.current) await mutateThread({ ...previousThread, conversation: optimistic(previousThread.conversation) }, { revalidate: false });
     try {
       await resolveConversationApi(selectedRef.current);
-      await Promise.all([mutateList(), mutateThread(), mutateQueues()]);
+      await Promise.all([mutateList(), mutateThread()]);
       return true;
     } catch (e) {
       await mutateList(previousList, { revalidate: false });
@@ -1302,25 +1275,6 @@ export default function Conversations() {
       setError(e instanceof Error ? e.message : "Falha ao transferir a conversa");
     } finally {
       setChangingOwner(false);
-    }
-  }
-
-  async function moveConversationToQueue(queueId: string) {
-    if (!selected || !canReply) return;
-    const previousList = listData;
-    const previousThread = threadData;
-    const queue = (queueData?.queues ?? []).find((item) => item.id === queueId);
-    const optimistic = (conversation: Conversation): Conversation => ({ ...conversation, queue_id: queueId, queue_name: queue?.name ?? conversation.queue_name, queue_color: queue?.color ?? conversation.queue_color, status: queue?.is_resolved ? "closed" : "open" });
-    await mutateList((current) => current ? { conversations: current.conversations.map((item) => item.id === selected ? optimistic(item) : item) } : current, { revalidate: false });
-    if (previousThread?.conversation.id === selected) await mutateThread({ ...previousThread, conversation: optimistic(previousThread.conversation) }, { revalidate: false });
-    try {
-      await api(`/conversations/${selected}/queue`, { method: "PATCH", body: JSON.stringify({ queue_id: queueId }) });
-      await Promise.all([mutateList(), mutateThread(), mutateQueues()]);
-      flash.show(queue ? `Conversa movida para a fila ${queue.name}.` : "Conversa movida de fila.");
-    } catch (caught) {
-      await mutateList(previousList, { revalidate: false });
-      await mutateThread(previousThread, { revalidate: false });
-      setError(caught instanceof Error ? caught.message : "Falha ao mover a conversa de fila");
     }
   }
 
@@ -1674,8 +1628,6 @@ export default function Conversations() {
                       />
                     ) : null
                   ) : null}
-                  {canReply && thread.conversation.status === "closed" && resolveSave.state === "idle" ? <span className="text-xs text-[var(--text-secondary)]" aria-label="Fila atual">Fila: {thread.conversation.queue_name ?? "Sem fila"}</span> : null}
-                  {canReply && thread.conversation.status === "open" ? <><HelpHint label="Ajuda: fila do atendimento" side="bottom">Move a conversa para outra fila do time. Não envia mensagem ao contato.</HelpHint><label className="field"><span className="sr-only">Fila do atendimento</span><select className="input" aria-label="Fila do atendimento" value={thread.conversation.queue_id ?? ""} onChange={(event) => { if (event.target.value) void moveConversationToQueue(event.target.value); }}><option value="">Sem fila</option>{(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></label></> : null}
                   {/* DS v2 §2: Resolver segue o padrão de salvar (idle → busy →
                       done "Resolvida" + toast). Permanece montado durante o
                       feedback para o operador ver o check mesmo com o status

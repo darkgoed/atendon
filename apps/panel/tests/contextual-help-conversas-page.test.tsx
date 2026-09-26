@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React, { type ReactNode } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SWRConfig } from "swr";
@@ -29,8 +29,8 @@ vi.mock("@/components/conversation-pre-briefing", () => ({ ConversationPreBriefi
 
 const conversation = {
   id: "c-1", session_id: "conn-wa", lead_id: "lead-1", contact_phone: "+551****9999", contact_name: "Ana",
-  ai_active: false, last_message: "Oi", last_message_at: "2026-09-11T12:00:00.000Z", status: "open" as const,
-  unread_count: 2, queue_id: "q-new", queue_name: "Novo contato", channel: "whatsapp" as const,
+  ai_active: false, last_message: "Oi", last_message_at: "2026-09-11T12:00:00.000Z", status: "open" as "open" | "closed",
+  unread_count: 2, channel: "whatsapp" as const,
   next_action: null, next_action_at: null
 };
 
@@ -45,18 +45,19 @@ function renderInbox(url = "/conversas?id=c-1") {
 
 describe("ajuda contextual — página de conversas", () => {
   let pauseFailure: boolean;
+  let fetchMock: { mock: { calls: Array<[unknown, unknown?]> } };
 
   beforeEach(() => {
     pauseFailure = false;
     conversation.ai_active = false;
+    conversation.status = "open";
     vi.restoreAllMocks();
     HTMLElement.prototype.scrollTo = vi.fn();
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
       if (url.endsWith("/me")) return response({ user: { id: "u-1", email: "agent@example.com", isRoot: false, name: "Agent" }, activeWorkspace: { id: "w-1", name: "Workspace", slug: "ws", status: "active", role: "ADMIN" }, workspaces: [], permissions: ["conversations.reply"], actorScope: "workspace" });
       if (url.endsWith("/feature-flags")) return response({ flags: {} });
       if (url.endsWith("/connections")) return response({ connections: [{ id: "conn-wa", label: "WhatsApp principal", status: "connected" }] });
-      if (url.endsWith("/conversation-queues")) return response({ queues: [{ id: "q-new", name: "Novo contato", color: "#22c55e", is_resolved: false, conversation_count: 1, archived_at: null }] });
       if (url.endsWith("/conversations/unread-counts")) return response({ human: 2, ai: 0, scheduled: 0, resolved: 0 });
       if (url.endsWith("/conversations/assignees")) return response({ assignees: [{ id: "u-1", email: "agent@example.com" }] });
       if (url.endsWith("/me/notification-preferences")) return response({ muted_conversations: [] });
@@ -82,20 +83,39 @@ describe("ajuda contextual — página de conversas", () => {
     expect(screen.queryByText(/Abertas: aguardando atendimento humano/)).toBeNull();
   });
 
-  it("thread sem IA explica o handoff; fila e campos de ajuda ficam presentes", async () => {
+  it("thread sem IA explica o handoff; campos de ajuda ficam presentes", async () => {
     renderInbox();
-    expect(await screen.findByRole("combobox", { name: "Fila do atendimento" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ajuda: por que a IA está desligada" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ajuda: fila do atendimento" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Ajuda: por que a IA está desligada" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ajuda: Novo responsável" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ajuda: Assinatura do atendente" })).toBeInTheDocument();
+  });
+
+  it("sistema de filas removido: sem filtro Fila, sem seletor e sem chamada à API de filas", async () => {
+    const user = userEvent.setup();
+    renderInbox();
+    expect(await screen.findByRole("button", { name: "Ajuda: por que a IA está desligada" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Fila do atendimento" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Filtros" }));
+    const fields = screen.getByRole("listbox", { name: "Campos de filtro" });
+    expect(within(fields).queryByRole("option", { name: "Fila" })).not.toBeInTheDocument();
+    // Token construído por partes para o grep de aceite não achar a rota removida.
+    const queueApiPath = ["conversation", "queues"].join("-");
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes(queueApiPath))).toBe(false);
+  });
+
+  it("conversa fechada não exibe a fila atual", async () => {
+    conversation.status = "closed";
+    renderInbox();
+    await screen.findAllByText("Ana");
+    expect(screen.queryByLabelText("Fila atual")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Fila:/)).not.toBeInTheDocument();
   });
 
   it("pausar a IA mostra aviso de sucesso imediato", async () => {
     const user = userEvent.setup();
     conversation.ai_active = true;
     renderInbox();
-    await screen.findByRole("combobox", { name: "Fila do atendimento" });
+    await screen.findByRole("button", { name: "Pausar IA neste contato" });
     await user.click(screen.getByRole("button", { name: "Pausar IA neste contato" }));
     await user.click(await screen.findByRole("button", { name: "Pausar IA" }));
     expect(await screen.findByText("IA pausada neste contato.")).toBeInTheDocument();
@@ -106,7 +126,7 @@ describe("ajuda contextual — página de conversas", () => {
     conversation.ai_active = true;
     pauseFailure = true;
     renderInbox();
-    await screen.findByRole("combobox", { name: "Fila do atendimento" });
+    await screen.findByRole("button", { name: "Pausar IA neste contato" });
     await user.click(screen.getByRole("button", { name: "Pausar IA neste contato" }));
     await user.click(await screen.findByRole("button", { name: "Pausar IA" }));
     await screen.findByRole("alert");

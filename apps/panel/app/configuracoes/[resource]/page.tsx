@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import ConfigPage from "../page";
 
-// 13 chaves de configuração (SPEC settings-search) — inclui google-calendar.
+// 12 chaves de configuração (SPEC settings-search) — inclui google-calendar.
 // Deve espelhar as chaves de resourceLabels em ../page.
 const CONFIG_RESOURCES: readonly string[] = [
   "workspace",
@@ -9,7 +9,6 @@ const CONFIG_RESOURCES: readonly string[] = [
   "parceiros",
   "unidades",
   "attendants",
-  "conversation-queues",
   "atendon-meet",
   "google-meet",
   "google-calendar",

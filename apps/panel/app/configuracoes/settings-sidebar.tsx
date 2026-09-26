@@ -17,7 +17,6 @@ import {
   Handshake,
   HardDrives,
   Link as LinkIcon,
-  Queue,
   ShieldCheck,
   SlidersHorizontal,
   Sticker,
@@ -51,7 +50,6 @@ const tabLabels: Record<TabKey, string> = {
   parceiros: "Parceiros",
   unidades: "Unidades",
   attendants: "Equipe de atendimento",
-  "conversation-queues": "Filas de atendimento",
   "atendon-meet": "AtendON Meet",
   "google-meet": "Google Meet",
   "google-calendar": "Google Agenda",
@@ -68,7 +66,6 @@ const tabIcons: Record<TabKey, Icon> = {
   parceiros: Handshake,
   unidades: Buildings,
   attendants: UserList,
-  "conversation-queues": Queue,
   "atendon-meet": VideoCamera,
   "google-meet": GoogleLogo,
   "google-calendar": CalendarDots,
@@ -134,7 +131,6 @@ export function SettingsSidebar() {
   const canReadSignature = usePermission("signature.read");
   const canManageStorage = usePermission("storage.manage");
   const hasAgendaNotificationsReadPermission = usePermission("scheduling_notifications.read");
-  const canManageQueues = usePermission("conversations.queues.manage");
   const { data: session } = useSWR<PanelSession>("/me", (url: string) => api<PanelSession>(url), {
     revalidateOnFocus: false,
     dedupingInterval: 10_000
@@ -152,7 +148,6 @@ export function SettingsSidebar() {
     parceiros: leadsEnabled && canReadPartners,
     unidades: leadsEnabled && canReadUnits,
     attendants: attendantAccess.canRead,
-    "conversation-queues": canManageQueues,
     "atendon-meet": appointmentsEnabled && canReadUnits,
     "google-meet": appointmentsEnabled && canReadUnits,
     "google-calendar": appointmentsEnabled && canReadUnits,
