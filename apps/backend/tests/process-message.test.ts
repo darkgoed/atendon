@@ -4,6 +4,7 @@ import { audioTranscriptionPrompt, canonicalMeetingSlotDuration, generationTurnI
 import type { ConversationContext } from "../src/modules/messages/repository.js";
 import { needsObjectionRecovery, objectionRecoveryCorrection } from "../src/modules/messages/objection-recovery.js";
 import { QualificationService } from "../src/modules/qualification/service.js";
+import { ChannelOperationUnsupportedError } from "../src/modules/messages/channel-gateway.js";
 import { meetingInvitationContextCorrection, schedulingPeriodQuestionCorrection } from "../src/modules/messages/prefilled-context.js";
 import { TRIPZ_DEFAULT_OFFERS_GROUP_LINK, TRIPZ_ZULU_OWNER_NAME, TRIPZ_ZULU_OWNER_REFERRAL_REPLY, TRIPZ_ZULU_SYSTEM_PROMPT } from "../src/modules/tripz-ai/zulu.js";
 
@@ -2100,6 +2101,56 @@ describe("MessageProcessor", () => {
     expect(gateway.sendReaction).toHaveBeenCalled();
     expect(gateway.sendText).not.toHaveBeenCalled();
     expect(ai.complete).not.toHaveBeenCalled();
+  });
+
+  describe("Instagram has no reactions (channel capability)", () => {
+    const instagramMessage = {
+      ...message,
+      channel: "instagram" as const,
+      instagramContactId: "igsid-1",
+      contactPhone: "ig:igsid-1",
+      text: "ok"
+    };
+    const routerLikeInstagramGateway = (gateway: ReturnType<typeof setup>["gateway"]) => {
+      gateway.sendReaction.mockRejectedValue(new ChannelOperationUnsupportedError("reagir"));
+      return Object.assign(gateway, {
+        sessionMessagingCapabilities: vi.fn().mockResolvedValue({ reactions: false, forward_media: false, interactive: false })
+      });
+    };
+
+    it("answers a contextual 'ok' without trying the humanizer reaction", async () => {
+      const { processor, repository, gateway } = setup({
+        humanizer: { ...tinyBubbleHumanizer, messageSplit: { maxWordsPerBubble: 30, pauseBetweenBubblesMs: { min: 0, max: 0 } }, reaction: { probability: 1, emojis: ["👍"] } }
+      });
+      routerLikeInstagramGateway(gateway);
+
+      await expect(processor.process(instagramMessage)).resolves.toBe("answered");
+
+      expect(gateway.sendReaction).not.toHaveBeenCalled();
+      expect(gateway.sendText).toHaveBeenCalledWith("session-1", "ig:igsid-1", "Oi!");
+      expect(repository.recordAgentReply).toHaveBeenCalledWith(expect.objectContaining({ text: "Oi!" }));
+      // Stickers are not supported on Instagram either: never offer them to the model.
+      expect(repository.listAiStickerCatalog).not.toHaveBeenCalled();
+    });
+
+    it("acknowledges an 'ok' after an appointment confirmation without an unsupported reaction", async () => {
+      const { processor, repository, gateway, ai } = setup({
+        leadStatus: "agendado",
+        activeAppointment: { id: "appointment-1", start: "2026-07-20T17:00:00.000Z", status: "confirmado", unitId: "reunioes" },
+        history: [
+          { role: "assistant", content: "Perfeito, confirmado para hoje às 14h, qualquer imprevisto me avisa." },
+          { role: "user", content: "ok" }
+        ]
+      });
+      routerLikeInstagramGateway(gateway);
+
+      await expect(processor.process(instagramMessage)).resolves.toBe("answered");
+
+      expect(gateway.sendReaction).not.toHaveBeenCalled();
+      expect(gateway.sendText).not.toHaveBeenCalled();
+      expect(ai.complete).not.toHaveBeenCalled();
+      expect(repository.markInboundProcessed).toHaveBeenCalledWith(expect.objectContaining({ text: "ok" }), ["wamid-1"]);
+    });
   });
 
   it("hides availability tools when an appointment stands and the contact asked for no change", async () => {

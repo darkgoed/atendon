@@ -1317,6 +1317,10 @@ export class MessageProcessor {
     const receiptIds = [...processingExternalIds, ...unreadIds.filter(id => !processingExternalIds.includes(id))];
     await markContactMessagesRead(receiptIds);
     const receipts = allReceipts;
+    // The channel router always exposes sendReaction but throws for channels
+    // without reactions (Instagram); ask the session's capabilities first.
+    const reactionsSupported = async (): Promise<boolean> =>
+      (await this.gateway.sessionMessagingCapabilities?.(message.sessionId))?.reactions ?? true;
     const capabilityEnabled = async (key: CapabilityKey): Promise<boolean> => {
       try {
         // Lightweight unit doubles created before the capability catalog do not
@@ -1388,7 +1392,11 @@ export class MessageProcessor {
       const acknowledgementExternalId = processingExternalIds.at(-1) ?? message.externalId;
       const acknowledgementReceipt = receipts.find((receipt) => receipt.id === acknowledgementExternalId) ?? receipts.at(-1);
       if (acknowledgementReceipt) {
-        await this.gateway.sendReaction(message.sessionId, destination, acknowledgementReceipt, "👍");
+        // Without reactions (Instagram) the acknowledgement stays silent: a
+        // text reply to "ok" is exactly what this branch exists to prevent.
+        if (await reactionsSupported()) {
+          await this.gateway.sendReaction(message.sessionId, destination, acknowledgementReceipt, "👍");
+        }
         await this.repository.markInboundProcessed(message, processingExternalIds);
         logger.info({
           externalId: message.externalId,
@@ -1669,7 +1677,10 @@ export class MessageProcessor {
     // intenção/confirmação de agendamento só produziria instruções de prompt
     // apontando para ferramentas inexistentes (caso do Zulu/Tripz).
     const schedulingToolsConfigured = configuredToolNames.some((name) => PROACTIVE_SCHEDULING_TOOL_NAMES.has(name));
-    const stickerCatalog = await this.repository.listAiStickerCatalog?.(message.tenantId, context.conversationId) ?? [];
+    // channelCapabilities(): Instagram has no stickers, so never offer them.
+    const stickerCatalog = message.channel === "instagram"
+      ? []
+      : await this.repository.listAiStickerCatalog?.(message.tenantId, context.conversationId) ?? [];
     const allowedStickerIds = new Set(stickerCatalog.map((sticker) => sticker.id.toLocaleLowerCase("en-US")));
     let selectedStickerId: string | undefined;
     const leadReadyForScheduling = leadsCapabilityEnabled && (context.leadQualificationStars !== undefined
@@ -2491,7 +2502,7 @@ export class MessageProcessor {
           const replyInboundExternalIds = [...processingExternalIds];
           if (config && this.gateway.sendReaction && config.reaction.probability > 0) {
             const emoji = selectContextualReaction(effectiveMessage.text, config.reaction.emojis);
-            if (emoji) await this.gateway.sendReaction(message.sessionId, destination, receipts[0], emoji);
+            if (emoji && await reactionsSupported()) await this.gateway.sendReaction(message.sessionId, destination, receipts[0], emoji);
           }
           // Each WhatsApp bubble keeps its own provider ID so delivery receipts and
           // the panel history mirror what the contact actually received.
