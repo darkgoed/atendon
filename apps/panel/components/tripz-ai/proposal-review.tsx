@@ -11,6 +11,7 @@ import {
   type TripzProposal
 } from "../../lib/tripz-ai";
 import styles from "./tripz-ai.module.css";
+import { Tooltip } from "@/components/ui";
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -177,9 +178,9 @@ export function TripzProposalReview({
                 Gerar PDF
               </button>
               {pdfHref ? (
-                <a className="btn" href={pdfHref} download={pdf?.filename || "proposta-tripz.pdf"}>
-                  <DownloadSimple size={14} aria-hidden="true" />Baixar PDF
-                </a>
+                <Tooltip content="Baixar PDF"><a className="btn icon-button" href={pdfHref} download={pdf?.filename || "proposta-tripz.pdf"}>
+                  <DownloadSimple size={14} aria-hidden="true" /><span className="sr-only">Baixar PDF</span>
+                </a></Tooltip>
               ) : null}
             </div>
           </div>
@@ -209,9 +210,7 @@ export function TripzProposalReview({
         <p className={`m-0 text-[10px] ${actionError ? "text-[var(--warning-text)]" : "text-[var(--text-muted)]"}`} role={actionError ? "alert" : undefined}>
           {actionError || "Correções continuam sendo feitas por mensagem, mantendo o histórico da revisão."}
         </p>
-        <button type="button" className="btn" onClick={onRequestCorrection}>
-          <PencilSimple size={14} aria-hidden="true" />Corrigir na conversa
-        </button>
+        <Tooltip content="Corrigir na conversa"><button type="button" className="btn icon-button" onClick={onRequestCorrection}><PencilSimple size={14} aria-hidden="true" /><span className="sr-only">Corrigir na conversa</span></button></Tooltip>
       </footer>
     </ModalDialog>
   );

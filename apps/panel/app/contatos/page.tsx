@@ -22,7 +22,7 @@ import { applyLeadSavedViewFilters, leadFiltersForSavedView, useCaseOrganization
 import { useRealtimeSignals } from "@/lib/realtime";
 import { hasWorkspaceWideCaseScope, type PanelSession } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
-import { Button, HelpHint, IconButton, SaveToast } from "@/components/ui";
+import { Button, HelpHint, IconButton, SaveToast, Tooltip } from "@/components/ui";
 import { ListFiltersBar, type ListFilterDef } from "@/components/ui/filters";
 
 type Option = { id: string; nome: string };
@@ -222,7 +222,7 @@ export default function LeadsPage() {
       <div><h1>{hasWorkspaceScope ? "Contatos" : "Meus contatos"}</h1></div>
       <div className="leads-page__actions flex min-h-8 flex-wrap items-center gap-2">
         {canCreateLeads ? <Button className="crm-compact-button" tone="primary" onClick={() => setCreateOpen(true)}><Plus size={14} aria-hidden="true" />Novo contato</Button> : null}
-        <Link className="btn crm-compact-button" href="/contatos/importar"><UploadSimple size={14} aria-hidden="true" />Importar</Link>
+        <Tooltip content="Importar contatos"><Link className="btn icon-button crm-compact-button" href="/contatos/importar"><UploadSimple size={14} aria-hidden="true" /><span className="sr-only">Importar</span></Link></Tooltip>
         {canReadFollowUp ? (
           <IconButton
             label="Exportar CSV"

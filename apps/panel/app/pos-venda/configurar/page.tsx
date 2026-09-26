@@ -19,7 +19,7 @@ import { useRef, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { ModalDialog } from "@/components/modal-dialog";
 import { Shell } from "@/components/shell";
-import { HelpHint, IconButton, Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
+import { HelpHint, IconButton, Input, SaveButton, SaveToast, useSaveFeedback, Tooltip } from "@/components/ui";
 import { api } from "@/lib/api";
 import { isPostSaleVersionConflict, type PostSaleTemplateItem } from "@/lib/post-sales";
 
@@ -149,7 +149,7 @@ export default function PostSalesChecklistSettingsPage() {
         <div>
           <h1>Configurar checklist</h1>
         </div>
-        <Link className="btn" href="/pos-venda"><ArrowLeft size={16} aria-hidden="true" /> Voltar à carteira</Link>
+        <Tooltip content="Voltar à carteira"><Link className="btn icon-button" href="/pos-venda"><ArrowLeft size={16} aria-hidden="true" /><span className="sr-only">Voltar à carteira</span></Link></Tooltip>
       </header>
 
       {message ? <p className="post-sales-feedback accent" role="status">{message}</p> : null}

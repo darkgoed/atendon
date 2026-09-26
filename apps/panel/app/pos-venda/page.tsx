@@ -3,7 +3,7 @@
 import {
   Archive,
   ArrowLeft,
-  ArrowSquareOut,
+  ChatsCircle,
   CaretRight,
   ClipboardText,
   Funnel,
@@ -20,7 +20,7 @@ import { ModalDialog } from "@/components/modal-dialog";
 import { PostSalesChecklist } from "@/components/post-sales-checklist";
 import { PostSalesSummaryStrip } from "@/components/post-sales-summary";
 import { Shell } from "@/components/shell";
-import { HelpHint, IconButton, Input, PageHeader, SaveButton, SaveToast, Select, Textarea, useSaveFeedback, type SaveState } from "@/components/ui";
+import { HelpHint, IconButton, Input, PageHeader, SaveButton, SaveToast, Select, Textarea, useSaveFeedback, type SaveState, Tooltip } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import {
   buildPostSaleQuery,
@@ -199,7 +199,7 @@ export default function PostSalesPage() {
           actions={
             <div className="post-sales-head__actions">
               <Link className="btn" href="/pos-venda/cobranca">Cobranças de crediário</Link>
-              {canManage ? <Link className="btn" href="/pos-venda/configurar"><ClipboardText size={16} aria-hidden="true" /> Configurar checklist</Link> : null}
+              {canManage ? <Tooltip content="Configurar checklist"><Link className="btn icon-button" href="/pos-venda/configurar"><ClipboardText size={16} aria-hidden="true" /><span className="sr-only">Configurar checklist</span></Link></Tooltip> : null}
               <button className="btn primary" type="button" onClick={() => setCreateOpen(true)}><Plus size={16} aria-hidden="true" /> Novo cliente</button>
             </div>
           }
@@ -302,8 +302,8 @@ export default function PostSalesPage() {
                       <p className="mono">{formatPostSalePhone(detail.client.phone_e164)}{detail.client.email ? ` · ${detail.client.email}` : ""}</p>
                     </div>
                     <div className="post-sales-detail__links">
-                      {detail.client.lead_id ? <Link className="btn" href={`/contatos/${detail.client.lead_id}`}>Ver contato <ArrowSquareOut size={14} aria-hidden="true" /></Link> : null}
-                      {detail.client.conversation_id ? <Link className="btn" href={`/conversas?id=${detail.client.conversation_id}`}>Abrir conversa <ArrowSquareOut size={14} aria-hidden="true" /></Link> : null}
+                      {detail.client.lead_id ? <Tooltip content="Ver contato"><Link className="btn icon-button" href={`/contatos/${detail.client.lead_id}`}><UserCircle size={15} aria-hidden="true" /><span className="sr-only">Ver contato</span></Link></Tooltip> : null}
+                      {detail.client.conversation_id ? <Tooltip content="Abrir conversa"><Link className="btn icon-button" href={`/conversas?id=${detail.client.conversation_id}`}><ChatsCircle size={15} aria-hidden="true" /><span className="sr-only">Abrir conversa</span></Link></Tooltip> : null}
                     </div>
                   </header>
 

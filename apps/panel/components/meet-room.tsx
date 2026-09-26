@@ -7,6 +7,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { api } from "@/lib/api";
 import { apiContentUrl, normalizeMeetOrigin, type MeetAccessResponse } from "@/lib/meet";
 import { clearElement } from "@/lib/compat";
+import { Tooltip } from "@/components/ui";
 
 type JitsiExternalApi = {
   addListener(event: string, listener: (payload?: unknown) => void): void;
@@ -184,7 +185,7 @@ export function MeetRoom({ endpoint, publicAccess = false }: { endpoint: string;
             <span className="meet-room__status"><ShieldCheck size={12} aria-hidden="true" /> Sala protegida</span>
           </div>
         </div>
-        {!publicAccess ? <Link href="/agenda" className="btn meet-room__back"><ArrowLeft size={15} aria-hidden="true" />Voltar à agenda</Link> : null}
+        {!publicAccess ? <Tooltip content="Voltar à agenda"><Link href="/agenda" className="btn icon-button meet-room__back"><ArrowLeft size={15} aria-hidden="true" /><span className="sr-only">Voltar à agenda</span></Link></Tooltip> : null}
       </header>
 
       <section className="meet-room__stage" aria-label="Sala de videochamada">

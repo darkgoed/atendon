@@ -4,7 +4,7 @@ import { BellRinging, DeviceMobile, Prohibit } from "@/components/icons";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
-import { Button, HelpHint } from "@/components/ui";
+import { Button, HelpHint, Tooltip } from "@/components/ui";
 import styles from "@/components/settings-panels.module.css";
 
 type PushPreferences = {
@@ -154,7 +154,7 @@ export function WebPushSettings() {
           <p className="sub mt-1 max-w-2xl text-xs">Funciona com o painel fechado. A tela bloqueada mostra somente o tipo e a urgência; nome, telefone e conteúdo da mensagem nunca fazem parte do payload.</p>
         </div>
         {subscription ? (
-          <Button disabled={busy} onClick={() => void disable()}><Prohibit aria-hidden="true" /> Desativar neste dispositivo</Button>
+          <Tooltip content="Desativar neste dispositivo"><Button disabled={busy} onClick={() => void disable()} className="icon-button"><Prohibit aria-hidden="true" /><span className="sr-only">Desativar neste dispositivo</span></Button></Tooltip>
         ) : (
           <Button tone="primary" disabled={busy || !supported || !data?.enabled} onClick={() => void enable()}><DeviceMobile aria-hidden="true" /> Ativar neste dispositivo</Button>
         )}

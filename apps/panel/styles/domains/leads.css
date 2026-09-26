@@ -498,6 +498,7 @@
   padding: 0 var(--space-3);
   font-size: var(--text-control);
 }
+.crm-compact-button.icon-button { width: var(--control-height); min-width: var(--control-height); padding: 0; }
 
 .crm-detail-form {
   --crm-detail-secondary-min: 11rem;

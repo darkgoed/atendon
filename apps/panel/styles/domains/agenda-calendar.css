@@ -1094,6 +1094,12 @@
   white-space: normal;
   overflow-wrap: break-word;
 }
+/* Ações secundárias só-ícone (tooltip): tamanho fixo, sem esticar na grade. */
+.agenda-detail-actions .btn.icon-button {
+  width: var(--control-height-md);
+  flex: none;
+  padding: 0;
+}
 
 .agenda-final-action-actions {
   display: flex;
@@ -1338,6 +1344,10 @@
   .agenda-detail-actions .btn {
     min-height: var(--control-height-touch);
     flex: 1 1 100%;
+  }
+  .agenda-detail-actions .btn.icon-button {
+    width: var(--control-height-touch);
+    flex: none;
   }
 
   .agenda-final-action-form input,
