@@ -17,6 +17,7 @@ import {
   ArrowLeftRight,
   ArrowRight as LArrowRight,
   Bell as LBell,
+  CalendarClock as LCalendarClock,
   CalendarDays,
   ChartLine,
   CircleDollarSign,
@@ -26,6 +27,7 @@ import {
   ClipboardList,
   Ellipsis,
   Hand,
+  Inbox as LInbox,
   EllipsisVertical,
   SquareKanban,
   LayoutGrid,
@@ -296,6 +298,7 @@ export const FlowArrow = wrap(Workflow, "FlowArrow");
 export const CalendarDots = HANDOFF_AGENDA;
 export const CalendarBlank = wrap(Calendar, "CalendarBlank");
 export const CalendarCheck = wrap(LCalendarCheck, "CalendarCheck");
+export const CalendarClock = wrap(LCalendarClock, "CalendarClock");
 export const CalendarX = wrap(LCalendarX, "CalendarX");
 export const DotsThree = HANDOFF_OPCOES;
 export const DotsThreeVertical = HANDOFF_OPCOES_VERTICAL;
@@ -394,6 +397,7 @@ export const HardDrives = wrap(HardDrive, "HardDrives");
 export const Hourglass = wrap(LHourglass, "Hourglass");
 export const Image = wrap(LImage, "Image");
 export const ImageSquare = wrap(LImage, "ImageSquare");
+export const Inbox = wrap(LInbox, "Inbox");
 export const Info = wrap(LInfo, "Info");
 export const Question = wrap(CircleHelp, "Question");
 export const Key = wrap(LKey, "Key");
