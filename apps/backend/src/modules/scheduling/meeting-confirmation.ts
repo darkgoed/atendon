@@ -538,8 +538,14 @@ export class MeetingConfirmationRepository {
       `SELECT a.id
        FROM scheduling_appointments a
        WHERE a.status IN ('confirmado','reagendado')
-         AND a.start_at > now()
+         -- Espelha o enqueue (lead ativo; ainda cabe o lembrete de 15 min):
+         -- candidato que nunca gera linha ocupava o LIMIT global para sempre.
+         AND a.start_at >= now() + interval '15 minutes'
          AND a.start_at < now() + interval '7 days'
+         AND EXISTS (
+           SELECT 1 FROM scheduling_leads lead
+           WHERE lead.id = a.lead_id AND lead.tenant_id = a.tenant_id AND lead.deleted_at IS NULL
+         )
          AND EXISTS (
            SELECT 1 FROM conversations c
            WHERE c.lead_id = a.lead_id AND c.tenant_id = a.tenant_id
