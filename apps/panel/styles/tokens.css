@@ -122,26 +122,15 @@
   --z-popover: 60;
   --z-dialog: 80;
   --z-toast: 100;
-  --z-theme-fx: 120;
 
   --bp-xs: 480px;
   --bp-sm: 700px;
   --bp-md: 960px;
   --bp-lg: 1200px;
 
-  --theme-fx-sweep: 620ms;
-  --theme-fx-settle: 380ms;
-  --theme-fx-ease: cubic-bezier(0.38, 0.22, 0.2, 1);
-  --theme-fx-dark-bg: #0E0F11;
-  --theme-fx-dark-accent: #22D3EE;
-  --theme-fx-dark-glow: rgb(34 211 238 / 0.22);
-  --theme-fx-dark-edge: #67E8F9;
-  --theme-fx-dark-spark: rgb(103 232 249 / 0.5);
-  --theme-fx-light-bg: #F5F5F5;
-  --theme-fx-light-accent: #0891B2;
-  --theme-fx-light-glow: rgb(8 145 178 / 0.16);
-  --theme-fx-light-edge: #22D3EE;
-  --theme-fx-light-spark: rgb(34 211 238 / 0.45);
+  /* Wipe de troca de tema (theme-fx.css); a duração espelha THEME_WIPE_MS. */
+  --theme-wipe-duration: 800ms;
+  --theme-wipe-ease: cubic-bezier(0.65, 0, 0.35, 1);
 
   /* ==================================================== 2. SEMANTIC — LIGHT
      Branco Gelo como fundo, preto profundo como texto. Ciano puro não passa

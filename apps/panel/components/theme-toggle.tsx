@@ -4,9 +4,7 @@ import { Moon, Sun } from "@/components/icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   currentTheme,
-  elementOrigin,
-  finishThemeTransition,
-  THEME_SWEEP_MS,
+  THEME_WIPE_MS,
   toggleThemeWithTransition,
   type PanelTheme
 } from "@/lib/theme-transition";
@@ -20,7 +18,8 @@ import {
  * hidratação pelo boot script do layout. O ícone é derivado dele por
  * MutationObserver (mesmo padrão de lib/use-chart-tokens.ts) e não pelo clique:
  * as duas instâncias coexistem no DOM, então clicar em uma precisa virar o
- * ícone da outra também — e o commit acontece no meio da onda, não no clique.
+ * ícone da outra também — e o commit acontece dentro da view transition, não
+ * no clique.
  */
 export function ThemeToggle({
   className = "",
@@ -33,11 +32,7 @@ export function ThemeToggle({
 }) {
   const [theme, setTheme] = useState<PanelTheme>("dark");
   const [swapping, setSwapping] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
   const timerRef = useRef<number | null>(null);
-  // Dois toggles coexistem: só quem começou a onda pode encerrá-la no unmount,
-  // senão um desmonte aborta a animação disparada pelo outro no meio.
-  const ownsTransition = useRef(false);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -48,29 +43,23 @@ export function ThemeToggle({
     return () => observer.disconnect();
   }, []);
 
-  // Desmontar no meio da onda (troca de rota) não pode deixar o overlay preso
-  // na tela nem perder o tema já escolhido.
+  // O wipe é do documento (view transition), não deste botão: desmontar no
+  // meio dele (troca de rota) só limpa o timer do giro do ícone.
   useEffect(() => () => {
     if (timerRef.current !== null) clearTimeout(timerRef.current);
-    if (ownsTransition.current) finishThemeTransition();
   }, []);
 
   const toggle = useCallback(() => {
-    ownsTransition.current = true;
-    toggleThemeWithTransition(elementOrigin(buttonRef.current));
+    toggleThemeWithTransition();
     setSwapping(true);
     if (timerRef.current !== null) clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => {
-      ownsTransition.current = false;
-      setSwapping(false);
-    }, THEME_SWEEP_MS);
+    timerRef.current = window.setTimeout(() => setSwapping(false), THEME_WIPE_MS);
   }, []);
 
   const label = theme === "dark" ? "Tema claro" : "Tema escuro";
   return (
     <button
       type="button"
-      ref={buttonRef}
       onClick={toggle}
       className={`theme-toggle${className ? ` ${className}` : ""}`}
       data-swapping={swapping ? "true" : "false"}
