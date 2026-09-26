@@ -18,10 +18,12 @@ const releaseConversationLockMock = vi.hoisted(() => vi.fn());
 const extendConversationLockMock = vi.hoisted(() => vi.fn().mockResolvedValue(true));
 const consumeAiInteractionMock = vi.hoisted(() => vi.fn().mockResolvedValue({ allowed: true }));
 const reconcileAiTurnFromUsageLogsMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const releaseAiInteractionWithoutUsageMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock("../src/billing/ai-consumption.js", () => ({
   consumeAiInteraction: consumeAiInteractionMock,
-  reconcileAiTurnFromUsageLogs: reconcileAiTurnFromUsageLogsMock
+  reconcileAiTurnFromUsageLogs: reconcileAiTurnFromUsageLogsMock,
+  releaseAiInteractionWithoutUsage: releaseAiInteractionWithoutUsageMock
 }));
 
 vi.mock("../src/modules/messages/conversation-lock.js", () => ({
@@ -94,6 +96,8 @@ describe("AI follow-ups", () => {
     consumeAiInteractionMock.mockResolvedValue({ allowed: true });
     reconcileAiTurnFromUsageLogsMock.mockReset();
     reconcileAiTurnFromUsageLogsMock.mockResolvedValue(undefined);
+    releaseAiInteractionWithoutUsageMock.mockReset();
+    releaseAiInteractionWithoutUsageMock.mockResolvedValue(undefined);
   });
 
   it("derives stable RFC UUID v5 identifiers and separates logical keys", () => {
@@ -157,6 +161,19 @@ describe("AI follow-ups", () => {
     ai.complete.mockRejectedValueOnce(new Error("provider down"));
     await expect(processor.process(claim.conversationId)).rejects.toThrow("provider down");
     expect(reconcileAiTurnFromUsageLogsMock).not.toHaveBeenCalled();
+  });
+
+  it("releases the step reservation right away when the step fails (no TTL hold)", async () => {
+    const { processor, ai } = setup();
+    ai.complete.mockRejectedValueOnce(new Error("provider down"));
+    await expect(processor.process(claim.conversationId)).rejects.toThrow("provider down");
+    expect(releaseAiInteractionWithoutUsageMock).toHaveBeenCalledWith(claim.tenantId, "follow_up", consumeAiInteractionMock.mock.calls[0]![2]);
+  });
+
+  it("keeps the reservation of a sent step for reconciliation", async () => {
+    const { processor } = setup();
+    await expect(processor.process(claim.conversationId)).resolves.toBe("sent");
+    expect(releaseAiInteractionWithoutUsageMock).not.toHaveBeenCalled();
   });
 
   it("prioritizes the latest exchange and records a contextual follow-up", async () => {
