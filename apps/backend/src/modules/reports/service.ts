@@ -253,6 +253,11 @@ export async function loadPipelineBottlenecks(tenantId: string, scope: CaseScope
          AND COALESCE(e.details->>'new_stage_id', e.details->>'pipeline_stage_id')
                ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
          AND e.created_at >= $2::timestamptz
+         AND EXISTS (
+           SELECT 1 FROM scheduling_leads scoped
+           WHERE scoped.tenant_id=$1 AND scoped.id=e.lead_id
+             AND (${leadScopeCondition(scope, "scoped", "$3")})
+         )
      ),
      paired AS (
        SELECT lead_id, stage_key, entered_at,
@@ -363,6 +368,7 @@ export async function loadQualityReport(tenantId: string, scope: CaseScope, rang
        FROM workspace_members m
        JOIN users u ON u.id=m.user_id
        WHERE m.workspace_id=$1 AND m.status='active'
+         AND ($4::boolean OR m.user_id=$5)
          AND NOT EXISTS (
            SELECT 1 FROM messages msg
            WHERE msg.sent_by_user_id=m.user_id
@@ -371,7 +377,7 @@ export async function loadQualityReport(tenantId: string, scope: CaseScope, rang
          )
        ORDER BY name
        LIMIT 100`,
-      [tenantId, range.start.toISOString(), range.end.toISOString()]
+      [tenantId, range.start.toISOString(), range.end.toISOString(), scope.type === "workspace", scope.userId]
     ),
     loadQueueWaiting(tenantId, scope, { limit: 20 }),
     loadFirstResponseByOperator(tenantId, scope, range),
