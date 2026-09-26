@@ -105,6 +105,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await pool.query("DELETE FROM tenants WHERE id IN ($1,$2)", [tenantA, tenantB]);
+  await pool.query("DELETE FROM audit_logs WHERE actor_user_id=$1", [operatorA]);
   await pool.query("DELETE FROM users WHERE id=$1", [operatorA]);
   await app.close();
   await pool.end();
