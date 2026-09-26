@@ -80,7 +80,8 @@ describe("follow-up lock heartbeat", () => {
     });
     vi.doMock("../src/billing/ai-consumption.js", () => ({
       consumeAiInteraction: vi.fn(async () => ({ allowed: true })),
-      reconcileAiTurnFromUsageLogs: vi.fn(async () => undefined)
+      reconcileAiTurnFromUsageLogs: vi.fn(async () => undefined),
+      releaseAiInteractionWithoutUsage: vi.fn(async () => undefined)
     }));
     const { AiFollowUpProcessor, AiFollowUpRepository } = await import("../src/modules/messages/ai-follow-up.js");
     const repository = new AiFollowUpRepository({ query: vi.fn(async () => ({ rows: [] })) } as unknown as ConstructorParameters<typeof AiFollowUpRepository>[0], {} as unknown as ConstructorParameters<typeof AiFollowUpRepository>[1]);

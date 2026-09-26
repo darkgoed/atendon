@@ -94,7 +94,14 @@ export async function runBillingReconciliationBatch(limit = 100, chargeDeps: Cha
       }
     } catch (error) { result.errors.push(`period:${tenant_id}:${error instanceof Error ? error.message : "unknown"}`); }
   }
-  const ledgerRows = await db.query<{ tenant_id: string; logical_turn_id: string | null; purpose: "inbound_reply" | "follow_up"; id: string }>(`SELECT tenant_id, logical_turn_id, purpose, id FROM ai_usage_ledger WHERE reconciled=false ORDER BY created_at LIMIT $1`, [limit]);
+  // Só reservas vencidas (TTL): a reserva recente pertence ao reconcile do
+  // próprio turno. Fechar um turno em voo precificava só as chamadas já
+  // registradas e as seguintes (mesma chave, linha já reconciliada) nunca eram cobradas.
+  const { reservation_ttl_minutes: ttlMinutes } = await getBillingSettings();
+  const ledgerRows = await db.query<{ tenant_id: string; logical_turn_id: string | null; purpose: "inbound_reply" | "follow_up"; id: string }>(
+    `SELECT tenant_id, logical_turn_id, purpose, id FROM ai_usage_ledger
+      WHERE reconciled=false AND COALESCE((pricing_snapshot->>'reservedAt')::timestamptz, created_at) <= now() - make_interval(mins => $2)
+      ORDER BY created_at LIMIT $1`, [limit, ttlMinutes]);
   for (const row of ledgerRows.rows) {
     try {
       if (row.logical_turn_id) {

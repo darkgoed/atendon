@@ -32,7 +32,8 @@ vi.mock("../src/modules/messages/rate-limiter.js", () => ({
 const consumeAiInteractionMock = vi.hoisted(() => vi.fn().mockResolvedValue({ allowed: true }));
 vi.mock("../src/billing/ai-consumption.js", () => ({
   consumeAiInteraction: consumeAiInteractionMock,
-  reconcileAiTurnFromUsageLogs: vi.fn().mockResolvedValue(undefined)
+  reconcileAiTurnFromUsageLogs: vi.fn().mockResolvedValue(undefined),
+  releaseAiInteractionWithoutUsage: vi.fn().mockResolvedValue(undefined)
 }));
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
