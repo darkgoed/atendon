@@ -76,7 +76,8 @@ export async function listTrashedLeads(
     values.push(value);
     return `$${values.length}`;
   };
-  const where = [`lead.tenant_id=${bind(session.tenantId)}`, "lead.deleted_at IS NOT NULL"];
+  // Source de merge não é contato na lixeira: seus dados vivem no principal.
+  const where = [`lead.tenant_id=${bind(session.tenantId)}`, "lead.deleted_at IS NOT NULL", "lead.merged_into_id IS NULL"];
   if (query.cursor) {
     const cursor = decodeCursor(query.cursor);
     where.push(`(lead.deleted_at,lead.id)<(${bind(cursor.deletedAt)}::timestamptz,${bind(cursor.id)}::uuid)`);
@@ -114,7 +115,7 @@ export async function restoreTrashedLead(
     const restored = await client.query(
       `UPDATE scheduling_leads
        SET deleted_at=NULL,deleted_by=NULL,updated_at=now()
-       WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NOT NULL
+       WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NOT NULL AND merged_into_id IS NULL
        RETURNING id`,
       [session.tenantId, leadId]
     );
