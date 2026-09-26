@@ -5,6 +5,8 @@ import type { ConversationContext } from "../src/modules/messages/repository.js"
 import { needsObjectionRecovery, objectionRecoveryCorrection } from "../src/modules/messages/objection-recovery.js";
 import { QualificationService } from "../src/modules/qualification/service.js";
 import { ChannelOperationUnsupportedError } from "../src/modules/messages/channel-gateway.js";
+import { WhatsAppSendRejectedError } from "../src/modules/whatsapp/errors.js";
+import { UnrecoverableError } from "bullmq";
 import { meetingInvitationContextCorrection, schedulingPeriodQuestionCorrection } from "../src/modules/messages/prefilled-context.js";
 import { TRIPZ_DEFAULT_OFFERS_GROUP_LINK, TRIPZ_ZULU_OWNER_NAME, TRIPZ_ZULU_OWNER_REFERRAL_REPLY, TRIPZ_ZULU_SYSTEM_PROMPT } from "../src/modules/tripz-ai/zulu.js";
 
@@ -105,6 +107,16 @@ const tinyBubbleHumanizer = {
   timeOfDayMultiplier: { outsideActiveHours: 1 }, reaction: { probability: 0, emojis: [] },
   rateLimit: { maxMessagesPerContactPerMinute: 20 }
 };
+// Every delivered bubble is also persisted on its own (intermediate: true)
+// right after the provider accepts it; these are the turn-completing records.
+function finalAgentReplies(repository: { recordAgentReply: { mock: { calls: unknown[][] } } }) {
+  return repository.recordAgentReply.mock.calls
+    .map(([input]) => input as { intermediate?: boolean })
+    .filter((input) => !input.intermediate);
+}
+function contactSends(gateway: { sendText: { mock: { calls: unknown[][] } } }, destination = "5511999999999") {
+  return gateway.sendText.mock.calls.filter(([, to]) => to === destination);
+}
 function setup(contextOverrides = {}, aiTurnProgress?: ConstructorParameters<typeof MessageProcessor>[5]) {
   const repository = {
     recordInboundAndLoadContext: vi.fn().mockResolvedValue({
@@ -2676,9 +2688,8 @@ State: SP`;
       "5511999999999",
       expect.stringContaining("próximos horários")
     );
-    expect(repository.recordAgentReply).toHaveBeenCalledTimes(1);
-    expect(repository.recordAgentReply).toHaveBeenNthCalledWith(
-      1,
+    expect(finalAgentReplies(repository)).toHaveLength(1);
+    expect(repository.recordAgentReply).toHaveBeenLastCalledWith(
       expect.not.objectContaining({ intermediate: true })
     );
   });
@@ -2782,7 +2793,8 @@ Full name: Renan de Carvalho`;
     expect(gateway.sendText).toHaveBeenNthCalledWith(1, "session-1", "5511999999999", "Primeira parte da resposta.");
     expect(gateway.sendText).toHaveBeenNthCalledWith(2, "session-1", "5511999999999", "Segunda parte da resposta.");
     expect(gateway.sendText).toHaveBeenNthCalledWith(3, "session-1", "5511999999999", "Terceira parte da resposta.");
-    expect(repository.recordAgentReply).toHaveBeenCalledTimes(1);
+    expect(finalAgentReplies(repository)).toHaveLength(1);
+    expect(repository.recordAgentReply).toHaveBeenCalledTimes(4);
     expect(repository.recordAgentReply).toHaveBeenCalledWith(expect.objectContaining({
       text,
       externalId: "sent-1",
@@ -2792,6 +2804,100 @@ Full name: Renan de Carvalho`;
         expect.objectContaining({ text: "Terceira parte da resposta.", externalId: "sent-3" })
       ]
     }));
+  });
+
+  describe("delivery is never replayed once the contact may have received a bubble", () => {
+    const threeBubbles = "Primeira parte da resposta. Segunda parte da resposta. Terceira parte da resposta.";
+    const bubbleHumanizer = { ...tinyBubbleHumanizer, messageSplit: { maxWordsPerBubble: 4, pauseBetweenBubblesMs: { min: 0, max: 0 } } };
+
+    it("hands off instead of retrying when a later bubble fails, keeping the delivered bubble on record", async () => {
+      const { processor, repository, gateway, ai } = setup({ humanizer: bubbleHumanizer });
+      ai.complete.mockResolvedValueOnce({ text: threeBubbles, inputTokens: 8, outputTokens: 8, costUsd: 0.001 });
+      gateway.sendText
+        .mockResolvedValueOnce({ externalId: "sent-1" })
+        .mockRejectedValueOnce(new Error("Evolution API timeout"));
+
+      await expect(processor.process(message)).resolves.toBe("handoff");
+
+      expect(contactSends(gateway)).toHaveLength(2);
+      expect(repository.recordAgentReply).toHaveBeenCalledWith(expect.objectContaining({
+        externalId: "sent-1",
+        intermediate: true,
+        bubbles: [expect.objectContaining({ text: "Primeira parte da resposta.", externalId: "sent-1" })]
+      }));
+      expect(repository.pauseForHandoff).toHaveBeenCalledWith(expect.objectContaining({
+        reason: "technical_failure",
+        errorCode: "delivery_ambiguous"
+      }));
+      expect(repository.markInboundProcessed).toHaveBeenCalledWith(message, ["wamid-1"]);
+      expect(repository.releaseInboundProcessing).not.toHaveBeenCalled();
+    });
+
+    it("hands off when every bubble was sent but the final record failed", async () => {
+      const { processor, repository, gateway, ai } = setup({ humanizer: bubbleHumanizer });
+      ai.complete.mockResolvedValueOnce({ text: threeBubbles, inputTokens: 8, outputTokens: 8, costUsd: 0.001 });
+      repository.recordAgentReply.mockImplementation(async (input: { intermediate?: boolean }) => {
+        if (!input.intermediate) throw new Error("Transactional claim replay conflicts with immutable evidence");
+      });
+
+      await expect(processor.process(message)).resolves.toBe("handoff");
+
+      expect(contactSends(gateway)).toHaveLength(3);
+      expect(repository.pauseForHandoff).toHaveBeenCalledWith(expect.objectContaining({ errorCode: "delivery_ambiguous" }));
+      expect(repository.releaseInboundProcessing).not.toHaveBeenCalled();
+    });
+
+    it("never lets BullMQ retry when even the hand-off cannot be recorded", async () => {
+      const { processor, repository, gateway, ai } = setup({ humanizer: bubbleHumanizer });
+      ai.complete.mockResolvedValueOnce({ text: threeBubbles, inputTokens: 8, outputTokens: 8, costUsd: 0.001 });
+      gateway.sendText
+        .mockResolvedValueOnce({ externalId: "sent-1" })
+        .mockRejectedValueOnce(new Error("Evolution API timeout"));
+      repository.pauseForHandoff.mockRejectedValueOnce(new Error("database unavailable"));
+
+      await expect(processor.process(message)).rejects.toBeInstanceOf(UnrecoverableError);
+      expect(contactSends(gateway)).toHaveLength(2);
+    });
+
+    it("still retries when the provider definitively rejected the first bubble", async () => {
+      const { processor, repository, gateway } = setup();
+      const rejected = new WhatsAppSendRejectedError("Connection Closed");
+      gateway.sendText.mockRejectedValueOnce(rejected);
+
+      await expect(processor.process(message)).rejects.toBe(rejected);
+      expect(repository.pauseForHandoff).not.toHaveBeenCalled();
+      expect(repository.releaseInboundProcessing).toHaveBeenCalledWith(message);
+    });
+  });
+
+  describe("an operator pause during the AI turn stops the reply", () => {
+    it("sends nothing when the AI was paused while the reply was being generated", async () => {
+      const { processor, repository, gateway } = setup();
+      const withPauseCheck = Object.assign(repository, { isAiActive: vi.fn().mockResolvedValue(false) });
+
+      await expect(processor.process(message)).resolves.toBe("ignored");
+
+      expect(withPauseCheck.isAiActive).toHaveBeenCalledWith("tenant-1", "conversation-1");
+      expect(gateway.sendText).not.toHaveBeenCalled();
+      expect(gateway.sendReaction).not.toHaveBeenCalled();
+      expect(repository.markInboundProcessed).toHaveBeenCalledWith(message, ["wamid-1"]);
+    });
+
+    it("stops between bubbles once the operator paused the AI", async () => {
+      const { processor, repository, gateway, ai } = setup({
+        humanizer: { ...tinyBubbleHumanizer, messageSplit: { maxWordsPerBubble: 4, pauseBetweenBubblesMs: { min: 0, max: 0 } } }
+      });
+      ai.complete.mockResolvedValueOnce({ text: "Primeira parte da resposta. Segunda parte da resposta.", inputTokens: 8, outputTokens: 8, costUsd: 0.001 });
+      // One check before each bubble: the operator pauses after the first one.
+      Object.assign(repository, { isAiActive: vi.fn().mockResolvedValueOnce(true).mockResolvedValue(false) });
+
+      await expect(processor.process(message)).resolves.toBe("ignored");
+
+      expect(gateway.sendText).toHaveBeenCalledTimes(1);
+      expect(repository.recordAgentReply).toHaveBeenCalledTimes(1);
+      expect(repository.recordAgentReply).toHaveBeenCalledWith(expect.objectContaining({ externalId: "sent-1", intermediate: true }));
+      expect(repository.markInboundProcessed).toHaveBeenCalledWith(message, ["wamid-1"]);
+    });
   });
 
   it("marks coalesced unread contact messages as read only through the current inbound", async () => {
@@ -3039,7 +3145,7 @@ Full name: Renan de Carvalho`;
     expect(gateway.sendText).toHaveBeenCalledTimes(1);
     expect(gateway.sendText).toHaveBeenCalledWith("session-1", "5511999999999", "Sou o Andréos. Como posso ajudar?");
     expect(ai.complete).toHaveBeenCalledTimes(1);
-    expect(repository.recordAgentReply).toHaveBeenCalledTimes(1);
+    expect(finalAgentReplies(repository)).toHaveLength(1);
     expect(repository.recordAgentReply).toHaveBeenCalledWith(expect.objectContaining({
       text: "Sou o Andréos. Como posso ajudar?",
       externalId: "sent-1",

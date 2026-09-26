@@ -2,7 +2,7 @@ import { Worker } from "bullmq";
 import { logger } from "./logger.js";
 import { createWhatsAppRuntime } from "./runtime.js";
 import { redisConnection } from "./queue/connection.js";
-import { enqueueInbound, ensureInboundAiTurn, INBOUND_QUEUE, type InboundJobData } from "./queue/message-queue.js";
+import { enqueueInbound, ensureInboundAiTurn, INBOUND_QUEUE, inboundTerminalFailureAlert, type InboundJobData } from "./queue/message-queue.js";
 import { HUMAN_OUTBOUND_QUEUE, type HumanOutboundJob } from "./queue/human-message-queue.js";
 import { db } from "./db/client.js";
 import { publishScheduledChangelogPosts } from "./modules/changelog/repository.js";
@@ -313,19 +313,19 @@ const meetMaintenanceWorker = new Worker<MeetMaintenanceJob>(
 );
 worker.on("completed", (job) => logger.info({ jobId: job.id }, "Message processed"));
 worker.on("failed", (job, error) => {
-  const exhausted = (job?.attemptsMade ?? 0) >= (job?.opts.attempts ?? 1);
-  if (error instanceof ConversationBusyRetryError && (job?.attemptsMade ?? 0) < (job?.opts.attempts ?? 1)) {
+  const alert = inboundTerminalFailureAlert(job, error);
+  if (error instanceof ConversationBusyRetryError && !alert) {
     logger.info({ jobId: job?.id, externalId: error.externalId, attemptsMade: job?.attemptsMade, attempts: job?.opts.attempts }, "Message processing delayed because conversation is busy");
     return;
   }
-  if (!exhausted) {
+  if (!alert) {
     logger.warn({ jobId: job?.id, err: error, attemptsMade: job?.attemptsMade, attempts: job?.opts.attempts }, "Message processing attempt failed; retry scheduled");
     return;
   }
-  logger.error({ jobId: job?.id, err: error, exhausted }, "Message failed");
+  logger.error({ jobId: job?.id, err: error, exhausted: true }, "Message failed");
   if (job?.data.tenantId) void db.query(
     "INSERT INTO system_alerts(tenant_id,message) VALUES($1,$2)",
-    [job.data.tenantId, "A mensagem da IA não foi enviada. Verifique a conexão e tente novamente."]
+    [job.data.tenantId, alert]
   ).catch((alertError) => logger.error({ err: alertError, jobId: job.id }, "Failed to persist message alert"));
 });
 humanWorker.on("failed", (job, error) => {

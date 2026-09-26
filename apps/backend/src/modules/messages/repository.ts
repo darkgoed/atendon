@@ -1407,6 +1407,14 @@ export class MessageRepository {
     );
   }
 
+  async isAiActive(tenantId: string, conversationId: string): Promise<boolean> {
+    const result = await this.db.query<{ ai_active: boolean }>(
+      "SELECT ai_active FROM conversations WHERE id=$1 AND tenant_id=$2",
+      [conversationId, tenantId]
+    );
+    return result.rows[0]?.ai_active === true;
+  }
+
   async findPendingContactTextMessages(conversationId: string, fromExternalId: string): Promise<PendingContactTextMessage[]> {
     const result = await this.db.query<{ external_message_id: string; content: string }>(
       `WITH anchor AS (
