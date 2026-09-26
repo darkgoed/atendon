@@ -390,12 +390,15 @@ export function buildApp(options: {
   instagramProvider?: InstagramProvider;
   instagramRuntimeConfig?: import("./config.js").AppConfig;
 } = {}) {
-  // Production traffic reaches Fastify through the loopback Nginx proxy. Trust
-  // forwarded addresses only from that boundary so rate limits and audit logs
-  // identify the real client without accepting spoofed headers from the network.
+  // Production traffic reaches the API container through a proxy hop on a
+  // private address: host Nginx via the published 127.0.0.1 port arrives from
+  // the Docker bridge gateway (172.x), and Coolify's Traefik from its container
+  // IP. Trust forwarded addresses only from loopback/private hops so rate
+  // limits and audit logs see the real client; a public peer's X-Forwarded-For
+  // is still ignored.
   const app = Fastify({
     loggerInstance: logger,
-    trustProxy: ["127.0.0.1", "::1"],
+    trustProxy: ["loopback", "uniquelocal"],
     connectionTimeout: 15_000,
     requestTimeout: 75_000,
     keepAliveTimeout: 72_000,

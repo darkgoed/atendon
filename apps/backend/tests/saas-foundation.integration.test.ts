@@ -867,3 +867,33 @@ describe("session reissue keeps per-session revocation", () => {
     expect(member.rowCount).toBe(1);
   });
 });
+
+describe("login rate limit behind the Docker/Traefik proxy", () => {
+  const octet = () => 1 + Math.floor(Math.random() * 250);
+  async function badLogin(remoteAddress: string, forwardedFor: string) {
+    return app.inject({
+      method: "POST",
+      url: "/auth/login",
+      remoteAddress,
+      headers: { "x-forwarded-for": forwardedFor },
+      payload: { email: `nobody-${suffix}@test.local`, password: "wrong-password" }
+    });
+  }
+
+  it("keys the bucket on the forwarded client IP when the hop is a private proxy", async () => {
+    const proxy = `172.18.${octet()}.1`;
+    const attacker = `203.0.113.${octet()}`;
+    const victim = `198.51.100.${octet()}`;
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 11; attempt++) statuses.push((await badLogin(proxy, attacker)).statusCode);
+    expect(statuses.at(-1)).toBe(429);
+    expect((await badLogin(proxy, victim)).statusCode).toBe(401);
+  });
+
+  it("ignores X-Forwarded-For sent straight from a public address", async () => {
+    const remote = `192.0.2.${octet()}`;
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 11; attempt++) statuses.push((await badLogin(remote, `198.51.100.${attempt + 1}`)).statusCode);
+    expect(statuses.at(-1)).toBe(429);
+  });
+});
