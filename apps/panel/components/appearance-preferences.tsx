@@ -9,13 +9,13 @@ import {
   writeStoredAppearance,
   type AppearanceDensity
 } from "@/lib/appearance";
-import { applyThemeWithTransition, currentTheme, elementOrigin, type PanelTheme } from "@/lib/theme-transition";
+import { applyThemeWithTransition, currentTheme, type PanelTheme } from "@/lib/theme-transition";
 import { HelpHint } from "@/components/ui";
 import styles from "@/components/appearance-preferences.module.css";
 
 /**
  * R16 — Preferências individuais (tema/densidade/accent) na página Perfil.
- * - Tema: integra com o ThemeToggle — a troca usa a MESMA onda
+ * - Tema: integra com o ThemeToggle — a troca usa o MESMO wipe
  *   (lib/theme-transition) e o ícone da topbar/sidebar acompanha por
  *   MutationObserver (o estado segue data-theme, não o clique).
  * - Densidade/accent: data-density / data-accent no <html> + tokens.css.
@@ -23,8 +23,6 @@ import styles from "@/components/appearance-preferences.module.css";
  *   + PATCH /me/appearance-preferences em silêncio (a API pode 404 até o
  *   backend integrar; sem toast de erro).
  */
-
-type Origin = Parameters<typeof elementOrigin>[0];
 
 export function AppearancePreferences() {
   const [theme, setTheme] = useState<PanelTheme>("dark");
@@ -42,9 +40,9 @@ export function AppearancePreferences() {
     return () => observer.disconnect();
   }, []);
 
-  const changeTheme = (next: PanelTheme, origin: Origin) => {
-    // O tema em runtime é do ThemeToggle: mesma onda, mesmo localStorage.
-    if (currentTheme() !== next) applyThemeWithTransition(next, elementOrigin(origin));
+  const changeTheme = (next: PanelTheme) => {
+    // O tema em runtime é do ThemeToggle: mesmo wipe, mesmo localStorage.
+    if (currentTheme() !== next) applyThemeWithTransition(next);
     void persistAppearancePreferences({ theme: next });
   };
 
@@ -65,7 +63,7 @@ export function AppearancePreferences() {
   return (
     <section className={styles.group} aria-label="Preferências de aparência">
       <div className={styles.optionGroup}>
-        <span className={styles.optionLabel} id="appearance-theme-label">Tema <HelpHint label="Ajuda: Tema" side="bottom" align="start">A troca usa a mesma animação de onda do botão de tema no topo do painel.</HelpHint></span>
+        <span className={styles.optionLabel} id="appearance-theme-label">Tema <HelpHint label="Ajuda: Tema" side="bottom" align="start">A troca usa a mesma animação do botão de tema no topo do painel.</HelpHint></span>
         <div className={styles.options} role="group" aria-labelledby="appearance-theme-label">
           {([["light", "Claro"], ["dark", "Escuro"]] as const).map(([value, label]) => (
             <button
@@ -73,7 +71,7 @@ export function AppearancePreferences() {
               type="button"
               className={`${styles.option}${theme === value ? ` ${styles.optionActive}` : ""}`}
               aria-pressed={theme === value}
-              onClick={(event) => changeTheme(value, event.currentTarget)}
+              onClick={() => changeTheme(value)}
             >
               {label}
             </button>
