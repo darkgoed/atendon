@@ -98,7 +98,7 @@ describe("Tripz proposal review", () => {
         onRequestCorrection={() => undefined}
       />
     );
-    const pdfButton = html.match(/<button(?:(?!<button).)*?Gerar PDF<\/button>/s)?.[0] ?? "";
+    const pdfButton = html.match(/<button(?:(?!<button)[\s\S])*?Gerar PDF<\/button>/)?.[0] ?? "";
     expect(pdfButton).not.toBe("");
     expect(pdfButton.includes('disabled=""')).toBe(disabled);
   });
