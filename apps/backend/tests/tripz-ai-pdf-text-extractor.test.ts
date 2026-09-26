@@ -66,6 +66,35 @@ describe("Tripz local PDF text extraction", () => {
     expect(destroy).toHaveBeenCalledTimes(1);
   });
 
+  it("destroys a document that finishes loading after the timeout and never parses its text", async () => {
+    // PDFParse.destroy() só destrói this.doc, atribuído quando o load termina:
+    // um timeout durante o load torna o destroy imediato um no-op.
+    let loaded = false;
+    let destroyedLoadedDocument = false;
+    let finishLoad: () => void = () => undefined;
+    const getText = vi.fn().mockResolvedValue({ text: "conteúdo tardio" });
+    const result = await extractTripzPdfTextLocally(await realPdf("lento"), {
+      timeoutMs: 5,
+      createParser: () => ({
+        getInfo: () => new Promise((resolve) => {
+          finishLoad = () => {
+            loaded = true;
+            resolve({ total: 1 });
+          };
+        }),
+        getText,
+        destroy: vi.fn(async () => {
+          if (loaded) destroyedLoadedDocument = true;
+        })
+      })
+    });
+    expect(result).toBeUndefined();
+    finishLoad();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getText).not.toHaveBeenCalled();
+    expect(destroyedLoadedDocument).toBe(true);
+  });
+
   it("rejects an actual page count over 200 and caps extracted text at 200k characters", async () => {
     const input = await realPdf("limites");
     const overPagesDestroy = vi.fn().mockResolvedValue(undefined);

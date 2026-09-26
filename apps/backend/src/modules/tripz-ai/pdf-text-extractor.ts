@@ -68,30 +68,46 @@ export async function extractTripzPdfTextLocally(
     verbosity: 0
   }));
   let parser: TripzPdfTextParser | undefined;
+  let extraction: Promise<string | undefined> | undefined;
+  let pending = true;
+  let abandoned = false;
   try {
     // Copy the validated private buffer because PDF.js may transfer ownership
     // of typed arrays to its worker.
-    parser = createParser(new Uint8Array(input.data));
-    const extraction = (async () => {
-      const info = await parser.getInfo();
-      if (!Number.isInteger(info.total) || info.total < 1 || info.total > TRIPZ_MAX_PDF_PAGE_HINT) {
+    const created = parser = createParser(new Uint8Array(input.data));
+    extraction = (async () => {
+      const info = await created.getInfo();
+      if (abandoned || !Number.isInteger(info.total) || info.total < 1 || info.total > TRIPZ_MAX_PDF_PAGE_HINT) {
         return undefined;
       }
-      const result = await parser.getText({ first: info.total, pageJoiner: "" });
+      const result = await created.getText({ first: info.total, pageJoiner: "" });
       const text = result.text.trim();
       if (!text) return undefined;
       return text.slice(0, TRIPZ_MAX_EXTRACTED_PDF_TEXT_CHARACTERS).trim() || undefined;
-    })();
+    })().finally(() => {
+      pending = false;
+    });
     return await withinTimeout(extraction, options.timeoutMs ?? TRIPZ_LOCAL_PDF_PARSE_TIMEOUT_MS);
   } catch {
     return undefined;
   } finally {
+    abandoned = true;
     if (parser) {
-      try {
-        await parser.destroy();
-      } catch {
-        // Destruction is best-effort and must never replace the raw PDF fallback.
+      const created = parser;
+      await destroyQuietly(created);
+      // Timeout during load: PDFParse has no document yet, so destroy() was a
+      // no-op. Destroy the document pdf.js hands over once loading settles.
+      if (pending && extraction) {
+        void extraction.then(() => destroyQuietly(created), () => destroyQuietly(created));
       }
     }
+  }
+}
+
+async function destroyQuietly(parser: TripzPdfTextParser): Promise<void> {
+  try {
+    await parser.destroy();
+  } catch {
+    // Destruction is best-effort and must never replace the raw PDF fallback.
   }
 }
