@@ -47,4 +47,10 @@ describe("fraud and financial integration", () => {
   });
 });
 
-afterAll(async () => { await pool.end(); });
+afterAll(async () => {
+  // Mesmo padrão das suítes billing-*: tenants primeiro (cascata leva
+  // subscriptions/signals/settings), depois os planos FRAUD_ criados aqui.
+  if (tenants.length) await pool.query("DELETE FROM tenants WHERE id=ANY($1::uuid[])", [tenants]);
+  if (plans.length) await pool.query("DELETE FROM plans WHERE id=ANY($1::uuid[])", [plans]);
+  await pool.end();
+});
