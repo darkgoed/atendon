@@ -175,4 +175,24 @@ describe("humanizer", () => {
     await expect(result).resolves.toBe("ok"); expect(refresh).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });
+  it("never leaks a failed composing refresh as an unhandled rejection (would crash the worker on Node >= 22)", async () => {
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      // Plain function on purpose: vi.fn() attaches its own handlers to returned
+      // promises, which would hide the unhandled rejection under test.
+      let refreshes = 0;
+      const refresh = () => {
+        refreshes += 1;
+        return Promise.reject(new Error("CONNECTION_NOT_FOUND"));
+      };
+      await expect(withComposingRefresh(5, refresh, () => new Promise((resolve) => setTimeout(() => resolve("ok"), 30))))
+        .resolves.toBe("ok");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(refreshes).toBeGreaterThan(0);
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
 });

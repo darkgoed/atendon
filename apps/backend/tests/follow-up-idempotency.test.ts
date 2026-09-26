@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { runFollowUpOnce, type FollowUpDb } from "../src/modules/messages/follow-up-idempotency.js";
+import { enqueueFollowUpOnce, runFollowUpOnce, type FollowUpDb } from "../src/modules/messages/follow-up-idempotency.js";
 import { payloadFingerprint } from "../src/modules/messages/idempotency.js";
 
 // O fake precisa satisfazer a assinatura GENÉRICA de FollowUpDb; um mock com
@@ -46,5 +46,30 @@ describe("follow-up persistent idempotency", () => {
     })).rejects.toThrow("AI/send failed");
     expect(stageUpdate).not.toHaveBeenCalled();
     expect(db.queries.some((sql) => sql.includes("scheduling_leads"))).toBe(false);
+  });
+});
+
+describe("enqueueFollowUpOnce background failure", () => {
+  it("never leaks an unhandled rejection when recording the failure also fails", async () => {
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const db: FollowUpDb = {
+        query: async <T = unknown>(sql: string) => {
+          if (sql.includes("INSERT INTO outbound_message_requests")) return { rows: [{ id: "request-1" }] as T[] };
+          throw new Error("database unavailable");
+        }
+      };
+      const result = await enqueueFollowUpOnce(
+        db,
+        { tenantId: "t", conversationId: "c", idempotencyKey: "follow-up-bg-1" },
+        () => Promise.reject(new Error("send failed"))
+      );
+      expect(result.status).toBe("pending");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
   });
 });
