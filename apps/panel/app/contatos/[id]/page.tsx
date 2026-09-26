@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowsClockwise, MagicWand, PencilSimple, Star, UserSwitch, X } from "@/components/icons";
+import { ArrowLeft, ArrowsClockwise, CalendarBlank, MagicWand, PencilSimple, Star, UserSwitch, X } from "@/components/icons";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
@@ -16,7 +16,7 @@ import { ApiError, api } from "@/lib/api";
 import { useDraft } from "@/lib/drafts";
 import { fetchLead, fetchLeadFollowUp, updateLeadStatus, qualifyLeadContext, transferLead } from "@/lib/leads-api";
 import { formatLeadStatusLabel } from "@/lib/format";
-import { statusLabel } from "../lead-domain";
+import { leadStatusTone, statusLabel } from "../lead-domain";
 import { commercialPreparationAnswers } from "@/lib/labels";
 import { lossReasonLabel, useLossReasons } from "@/lib/loss-reasons";
 import { useRealtimeSignals } from "@/lib/realtime";
@@ -495,7 +495,7 @@ export default function LeadDetail() {
         <>
           <header className="lead-detail-page__header">
             <div className="flex min-w-0 flex-1 items-center gap-4">
-              <ContactAvatar name={data.lead.nome ?? data.lead.telefone} src={data.lead.avatar_url} className="h-10 w-10 text-sm" />
+              <ContactAvatar name={data.lead.nome ?? data.lead.telefone} src={data.lead.avatar_url} className="lead-detail-page__avatar h-12 w-12 text-sm" />
               {editingIdentity ? (
                 <form className="crm-detail-form" onSubmit={saveIdentity}>
                   <label className="field">
@@ -514,11 +514,17 @@ export default function LeadDetail() {
               ) : (
                 <div className="flex min-w-0 items-start gap-2">
                   <div className="min-w-0">
-                    <h1 className="truncate">{data.lead.nome ?? "Lead sem nome"}</h1>
-                    <p className="mono truncate">{data.lead.telefone} · {statusLabel(data.lead.status)}</p>
-                    {pendingResults ? <span className="crm-notice mt-2">{pendingResults} resultado(s) pendente(s)</span> : null}
+                    <div className="flex min-w-0 items-center gap-1">
+                      <h1 className="truncate">{data.lead.nome ?? "Lead sem nome"}</h1>
+                      {canUpdateStatus ? <button type="button" className="lead-detail-page__edit" onClick={beginIdentityEdit} aria-label="Editar nome e telefone"><PencilSimple size={14} aria-hidden="true" /></button> : null}
+                    </div>
+                    <div className="lead-detail-page__meta">
+                      <span className="mono">{data.lead.telefone}</span>
+                      <span className="lead-status" data-tone={leadStatusTone(data.lead.status)}>{statusLabel(data.lead.status)}</span>
+                      {data.qualificacao ? <span className="lead-score" aria-label={`${data.qualificacao.estrelas} de 5 na qualificação`}><Star size={11} weight="fill" aria-hidden="true" />{data.qualificacao.estrelas}/5</span> : null}
+                      {pendingResults ? <span className="crm-notice">{pendingResults} resultado(s) pendente(s)</span> : null}
+                    </div>
                   </div>
-                  {canUpdateStatus ? <button type="button" className="mt-0.5 shrink-0 text-[var(--text-secondary)] transition-colors hover:text-[var(--text)]" onClick={beginIdentityEdit} aria-label="Editar nome e telefone"><PencilSimple size={17} aria-hidden="true" /></button> : null}
                 </div>
               )}
             </div>
@@ -533,7 +539,7 @@ export default function LeadDetail() {
             <div className="lead-detail-main">
               {data.qualificacao ? (
                 <section className="card" aria-labelledby="qualification-title">
-                  <div className="flex flex-wrap items-center justify-between gap-3"><div id="qualification-title" className="cardtitle">Qualificação contextual <HelpHint label="Ajuda: Qualificação contextual" title="Qualificação contextual">Nota e resumo gerados pela IA a partir do histórico da conversa; “Requer decisão humana” sinaliza contatos que aguardam decisão de uma pessoa.</HelpHint></div><strong className="flex items-center gap-1.5 text-lg text-[var(--primary-text)]"><Star size={18} weight="fill" aria-hidden="true" />{data.qualificacao.estrelas} de 5</strong></div>
+                  <div className="flex flex-wrap items-center justify-between gap-3"><div id="qualification-title" className="cardtitle">Qualificação contextual <HelpHint label="Ajuda: Qualificação contextual" title="Qualificação contextual">Nota e resumo gerados pela IA a partir do histórico da conversa; “Requer decisão humana” sinaliza contatos que aguardam decisão de uma pessoa.</HelpHint></div><strong className="lead-stars">{[1, 2, 3, 4, 5].map((value) => <Star key={value} size={14} weight="fill" aria-hidden="true" data-on={value <= (data.qualificacao?.estrelas ?? 0) ? "true" : undefined} />)}<span>{data.qualificacao.estrelas} de 5</span></strong></div>
                   <dl className="mb-4 grid gap-3 text-sm md:grid-cols-2">
                     <Item label="Situação" value={data.qualificacao.requer_decisao_humana ? "Requer decisão humana" : "Oportunidade qualificada"} />
                     <Item label="Avaliado em" value={data.qualificacao.avaliado_em ? new Date(data.qualificacao.avaliado_em).toLocaleString("pt-BR", { timeZone: data.timezone }) : undefined} />
@@ -545,7 +551,7 @@ export default function LeadDetail() {
                       {commercialPreparationAnswers(data.qualificacao.respostas).map((item) => <Item key={item.key} label={item.label} value={item.value} />)}
                     </dl>
                   ) : null}
-                  <div className="rounded border border-[var(--border)] p-4"><strong className="mb-2 block text-xs">Resumo</strong><p className="whitespace-pre-wrap text-sm text-[var(--text-secondary)]">{data.qualificacao.resumo ?? "—"}</p></div>
+                  <div className="lead-detail-summary rounded border border-[var(--border)] p-4"><strong className="mb-2 block text-xs">Resumo</strong><p className="whitespace-pre-wrap text-sm text-[var(--text-secondary)]">{data.qualificacao.resumo ?? "—"}</p></div>
                 </section>
               ) : (
                 <section className="card" aria-labelledby="qualification-title">
@@ -562,7 +568,7 @@ export default function LeadDetail() {
             <aside className="lead-detail-aside">
               <section className="card">
                 <div className="cardtitle">Dados</div>
-                <dl className="grid gap-3 text-sm">
+                <dl className="lead-kv-list text-sm">
                   <Item label="Unidade" value={data.lead.unidade_nome} />
                   <Item label="Categoria" value={data.lead.categoria_nome} />
                   <Item label="Parceiro" value={data.lead.parceiro_nome} />
@@ -581,7 +587,7 @@ export default function LeadDetail() {
                   {followUpLoading && !followUpData ? <div className="skeleton h-28" aria-label="Carregando acompanhamento" /> : null}
                   {followUpData ? (
                     <>
-                      <dl className="mb-4 grid gap-3 text-sm">
+                      <dl className="lead-kv-list mb-3 text-sm">
                         <Item
                           label="Responsável"
                           value={followUpData.follow_up.responsavel
@@ -672,7 +678,7 @@ export default function LeadDetail() {
                   <div className="cardtitle">Agendamentos</div>
                   {data.agendamentos.map((item) => (
                     <div key={item.id} className="crm-appointment">
-                      <strong>{new Date(item.start).toLocaleString("pt-BR", { timeZone: data.timezone })}</strong>
+                      <strong><CalendarBlank size={14} aria-hidden="true" />{new Date(item.start).toLocaleString("pt-BR", { timeZone: data.timezone, dateStyle: "short", timeStyle: "short" })}</strong>
                       <span>{formatLeadStatusLabel(item.status)}</span>
                       {item.result_pending_at ? <span className="crm-appointment__pending">Resultado pendente</span> : null}
                       <span>
@@ -709,5 +715,5 @@ export default function LeadDetail() {
 }
 
 function Item({ label, value }: { label: string; value?: string }) {
-  return <div><dt className="label">{label}</dt><dd className="mt-1 text-[var(--text-secondary)]">{value ?? "—"}</dd></div>;
+  return <div className="lead-kv"><dt>{label}</dt><dd data-empty={value ? undefined : "true"}>{value ?? "—"}</dd></div>;
 }

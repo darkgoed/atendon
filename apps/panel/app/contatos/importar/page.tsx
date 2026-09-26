@@ -8,6 +8,7 @@
 // objeto); histórico segue pendente e é omitido sem o endpoint.
 
 import { ArrowClockwise, ArrowLeft, DownloadSimple, UploadSimple, Warning } from "@/components/icons";
+import Link from "next/link";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { Empty } from "@/components/page-state";
 import { FlowConnect } from "@/components/flow-connect";
@@ -210,14 +211,16 @@ export default function ImportContactsPage() {
 
   return (
     <Shell>
-      <div className="leads-page">
-        <header className="leads-page__header">
+      <div className={styles.page}>
+        <header className={`pagehead ${styles.header}`}>
           <div>
+            <Link href="/contatos" className={styles.back}><ArrowLeft size={14} aria-hidden="true" />Contatos</Link>
             <h1>Importar contatos <HelpHint label="Ajuda: Importar contatos">Planilhas CSV ou XLSX; possíveis duplicados são sinalizados antes de importar.</HelpHint></h1>
           </div>
+          <Button size="sm" onClick={handleTemplateDownload}><DownloadSimple size={14} aria-hidden="true" />Template CSV</Button>
         </header>
-        {error ? <p className="error mb-4" role="alert">{error}</p> : null}
-        {feedback ? <p className="accent mb-4" role="status" aria-live="polite">{feedback}</p> : null}
+        {error ? <p className="error" role="alert">{error}</p> : null}
+        {feedback ? <p className="accent" role="status" aria-live="polite">{feedback}</p> : null}
 
         <section className={`card ${styles.flowCard}`} aria-label="Passos da importação">
           <FlowConnect items={stepItems} />
@@ -230,21 +233,18 @@ export default function ImportContactsPage() {
               CSV ou XLSX com uma linha por contato. Baixe o template oficial — ele já traz as
               colunas canônicas e exemplos — e mapeie as suas colunas na próxima etapa.
             </p>
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="field m-0">
-                <span className="label">Arquivo CSV ou XLSX</span>
+              <label className={styles.dropzone}>
+                <span className={styles.dropzoneIcon} aria-hidden="true"><UploadSimple size={18} /></span>
+                <strong>Escolher arquivo</strong>
+                <span className={styles.dropzoneHint}>Arquivo CSV ou XLSX · uma linha por contato</span>
                 <input
-                  className="input"
+                  className={styles.fileInput}
                   type="file"
                   accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                   onChange={handleFile}
                   aria-label="Arquivo CSV ou XLSX para importação"
                 />
               </label>
-              <IconButton label="Baixar template CSV" onClick={handleTemplateDownload}>
-                <DownloadSimple size={16} aria-hidden="true" />
-              </IconButton>
-            </div>
           </section>
         ) : null}
 
@@ -363,12 +363,12 @@ export default function ImportContactsPage() {
               </div>
             ) : (
               <div className="grid gap-4">
-                <div className={styles.resultSummary}>
-                  <span className="badge badge--success">{result.imported} importado(s)</span>
-                  <span className="badge">{result.updated} atualizado(s)</span>
-                  <span className="badge">{result.skipped} ignorado(s)</span>
-                  <span className="badge badge--warning">{result.duplicates_flagged} possível(is) duplicado(s)</span>
-                </div>
+                <dl className={styles.resultSummary}>
+                  <div data-tone="success"><dt>Importados</dt><dd>{result.imported}</dd></div>
+                  <div><dt>Atualizados</dt><dd>{result.updated}</dd></div>
+                  <div><dt>Ignorados</dt><dd>{result.skipped}</dd></div>
+                  <div data-tone="warning"><dt>Possíveis duplicados</dt><dd>{result.duplicates_flagged}</dd></div>
+                </dl>
                 {resultLines.length ? (
                   <div className={styles.resultLines}>
                     <div className="flex items-center justify-between gap-2">
@@ -399,7 +399,7 @@ export default function ImportContactsPage() {
                 ) : (
                   <p className="sub" role="status">Nenhum erro por linha reportado.</p>
                 )}
-                <IconButton label="Nova importação" onClick={resetAll}><ArrowClockwise size={16} aria-hidden="true" /></IconButton>
+                <div><Button onClick={resetAll}><ArrowClockwise size={14} aria-hidden="true" />Nova importação</Button></div>
               </div>
             )}
           </section>

@@ -1,8 +1,91 @@
 /* Central de importação (R14) — módulo próprio, cascata sem @layer.
    Somente tokens; layout local do wizard enxuto. */
 
+.page {
+  display: grid;
+  width: 100%;
+  max-width: var(--content-max);
+  gap: var(--space-4);
+  margin-inline: auto;
+}
+
+.header {
+  align-items: flex-end;
+  margin-bottom: 0;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--primary-text);
+  text-decoration: none;
+}
+
 .flowCard {
-  margin-bottom: var(--space-4);
+  padding-block: var(--space-3);
+}
+
+.dropzone {
+  position: relative;
+  display: grid;
+  width: 100%;
+  justify-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  padding: var(--space-8) var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-size: var(--text-control);
+  text-align: center;
+  cursor: pointer;
+  transition: var(--transition-control);
+}
+
+.dropzone:hover {
+  border-color: var(--primary);
+  background: var(--primary-subtle);
+}
+
+.dropzone:focus-within {
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
+}
+
+.dropzoneIcon {
+  display: grid;
+  width: var(--control-height-lg);
+  height: var(--control-height-lg);
+  place-items: center;
+  margin-bottom: var(--space-1);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--primary-text);
+  box-shadow: 0 0 0 1px var(--border-subtle);
+}
+
+.dropzoneHint {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+}
+
+/* O input cobre a área toda: clique e arrastar-e-soltar nativos. */
+.fileInput {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .mapTable,
@@ -54,10 +137,37 @@
 }
 
 .resultSummary {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
   gap: var(--space-2);
+  margin: 0;
 }
+
+.resultSummary > div {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-sunken);
+}
+
+.resultSummary dt {
+  color: var(--text-muted);
+  font-size: var(--text-label);
+}
+
+.resultSummary dd {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-metric);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-flat);
+}
+
+.resultSummary > div[data-tone="success"] dd { color: var(--success-text); }
+.resultSummary > div[data-tone="warning"] dd { color: var(--warning-text); }
 
 .resultLines {
   display: grid;

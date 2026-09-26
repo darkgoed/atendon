@@ -17,13 +17,12 @@
 
 .leads-page {
   --leads-name-column: 14rem;
-  --leads-stage-column: 9rem;
+  --leads-stage-column: 11rem;
   --leads-context-column: 18rem;
   --leads-updated-column: 9rem;
   --leads-actions-column: 11.5rem; /* ação principal + menu de 3 pontos (antes: 3 botões = 17rem) */
   --leads-filter-height: 15rem;
   --leads-filter-viewport-height: 40dvh;
-  --leads-mobile-actions-width: 62vw;
   --leads-bulk-width: 48rem;
   --leads-bulk-success-width: 40rem;
   display: flex;
@@ -53,8 +52,39 @@
 .leads-page__header > div:first-child {
   display: flex;
   min-width: 0;
-  align-items: baseline;
-  gap: var(--space-3);
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.leads-page__count {
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.leads-page__search {
+  --leads-search-width: 15rem;
+  width: var(--leads-search-width);
+  max-width: 100%;
+}
+
+.leads-page__search .input {
+  width: 100%;
+}
+
+.leads-page__divider {
+  width: 1px;
+  height: var(--space-5);
+  flex: none;
+  background: var(--border);
 }
 
 .leads-page__header h1 {
@@ -230,15 +260,12 @@
   gap: var(--space-1);
 }
 
-.leads-table__stage > span {
-  width: fit-content;
-  padding: 0 var(--space-2);
-  border: 1px solid var(--primary-border);
-  border-radius: var(--radius-xs);
-  background: var(--primary-subtle);
-  color: var(--primary-text);
-  font-size: var(--text-micro);
-  font-weight: var(--weight-semibold);
+.leads-table__stage-meta {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
 }
 
 .leads-table__stage small,
@@ -249,10 +276,16 @@
 }
 
 .leads-table__stage em {
+  display: inline-flex;
   width: fit-content;
+  align-items: center;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-xs);
+  background: var(--danger-subtle);
   color: var(--danger-text);
   font-size: var(--text-micro);
   font-style: normal;
+  font-weight: var(--weight-medium);
 }
 
 .leads-table__context > *,
@@ -273,6 +306,25 @@
 .leads-table__context > span,
 .leads-table__follow-up > span {
   color: var(--text-secondary);
+}
+
+.leads-table__follow-up small[data-availability="available"] { color: var(--success-text); }
+.leads-table__follow-up small[data-availability="unavailable"] { color: var(--warning-text); }
+
+.leads-table__name {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+}
+
+.leads-table__name:hover strong {
+  color: var(--primary-text);
+}
+
+.leads-table tbody tr.is-selected,
+.leads-table tbody tr.is-selected:hover {
+  background: var(--surface-selected);
 }
 
 .leads-table__follow-up time,
@@ -370,6 +422,45 @@
   font-size: var(--text-meta);
 }
 
+.lead-detail-page__avatar {
+  flex: none;
+  box-shadow: 0 0 0 1px var(--border-subtle);
+}
+
+.lead-detail-page__meta {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+}
+
+.lead-detail-page__edit {
+  display: grid;
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  flex: none;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  transition: var(--transition-control);
+}
+
+.lead-detail-page__edit:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.lead-detail-page__edit:focus-visible {
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+
 .lead-detail-page__header .btn {
   min-height: var(--control-height);
   padding: 0 var(--space-3);
@@ -418,6 +509,87 @@
   overflow-wrap: anywhere;
 }
 
+/* Pares rótulo/valor: empilhados no conteúdo principal, em linha na lateral. */
+.lead-kv {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.lead-kv dt {
+  color: var(--text-muted);
+  font-size: var(--text-label);
+}
+
+.lead-kv dd {
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.lead-kv dd[data-empty="true"] {
+  color: var(--text-subtle);
+}
+
+.lead-kv-list {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+}
+
+.lead-kv-list > .lead-kv {
+  grid-template-columns: minmax(6.5rem, .75fr) minmax(0, 1.5fr);
+  align-items: baseline;
+  gap: var(--space-3);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.lead-kv-list > .lead-kv:first-child { padding-top: 0; }
+.lead-kv-list > .lead-kv:last-child { border-bottom: 0; padding-bottom: 0; }
+.lead-kv-list > .lead-kv dd { text-align: right; }
+
+.lead-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--border-strong);
+}
+
+.lead-stars svg {
+  fill: currentColor;
+}
+
+.lead-stars svg[data-on="true"] {
+  color: var(--warning);
+}
+
+.lead-stars span {
+  margin-left: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+}
+
+/* Editor de notas (NoteComposer compartilhado) traz textarea sem .input. */
+.lead-detail-page .card textarea:not(.input) {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-control);
+  transition: var(--transition-control);
+}
+
+.lead-detail-page .card textarea:not(.input):focus-visible {
+  border-color: var(--border-focus);
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+
 .lead-detail-page .card time,
 .lead-detail-page input[type="datetime-local"] {
   font-family: var(--font-mono);
@@ -428,6 +600,64 @@
 .lead-detail-page .card > div.rounded {
   border: 0;
   background: var(--surface-sunken);
+}
+
+/* ===================================================== ETAPA / SCORE == */
+
+/* Pílula de etapa com tom semântico (leadStatusTone em lead-domain.ts). */
+.lead-status {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--space-2);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lead-status::before {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  content: "";
+}
+
+.lead-status[data-tone="primary"] { border-color: var(--primary-border); background: var(--primary-subtle); color: var(--primary-text); }
+.lead-status[data-tone="warning"] { border-color: var(--warning-border); background: var(--warning-subtle); color: var(--warning-text); }
+.lead-status[data-tone="success"] { border-color: var(--success-border); background: var(--success-subtle); color: var(--success-text); }
+.lead-status[data-tone="danger"] { border-color: var(--danger-border); background: var(--danger-subtle); color: var(--danger-text); }
+
+.lead-score,
+.leads-table__stage .lead-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--warning-text);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.lead-score svg {
+  fill: currentColor;
+}
+
+.lead-score--empty,
+.leads-table__stage .lead-score--empty {
+  color: var(--text-subtle);
+  font-family: var(--font-sans);
 }
 
 /* ========================================================== CRM RECIPES == */
@@ -529,12 +759,32 @@
 }
 
 .crm-appointment {
+  display: grid;
+  gap: 2px;
   margin: 0;
   padding: var(--space-3) 0;
   border: 0;
   border-top: 1px solid var(--border-subtle);
   border-radius: 0;
   font-size: var(--text-control);
+}
+
+.cardtitle + .crm-appointment {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.crm-appointment strong {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.crm-appointment strong svg {
+  color: var(--text-muted);
 }
 
 .crm-appointment span {
@@ -680,6 +930,15 @@
   }
 }
 
+@media (min-width: 901px) {
+  /* Cabeçalho fixo: o surface é o scroller da lista (shell--fit). */
+  .leads-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+}
+
 @media (max-width: 1180px) {
   .leads-filters {
     grid-template-columns: repeat(4, minmax(calc(var(--space-16) * 2.25), 1fr));
@@ -816,23 +1075,32 @@
 
   .leads-page__header {
     min-height: var(--control-height-touch);
-    align-items: flex-start;
-    padding-block: var(--space-2);
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-block: var(--space-3);
   }
 
   .leads-page__header > div:first-child {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: var(--space-1);
+    align-items: center;
+    gap: var(--space-2);
   }
 
   .leads-page__actions {
-    max-width: var(--leads-mobile-actions-width);
+    justify-content: flex-start;
     flex-wrap: wrap;
   }
 
   .leads-page__actions > .btn {
     min-height: var(--control-height-touch);
+  }
+
+  .leads-page__search {
+    width: 100%;
+  }
+
+  .leads-page__divider {
+    display: none;
   }
 
   .lead-detail-page {

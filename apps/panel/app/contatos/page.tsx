@@ -1,13 +1,12 @@
 "use client";
 
-import { DotsThreeVertical, DownloadSimple, Eye, MagicWand, MagnifyingGlass, Plus, UploadSimple } from "@/components/icons";
+import { DotsThreeVertical, DownloadSimple, Eye, MagicWand, MagnifyingGlass, Plus, Star, UploadSimple, UsersThree } from "@/components/icons";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { BulkLeadActions } from "@/components/bulk-lead-actions";
 import { ContactChatLink } from "@/components/contact-chat-link";
 import { ContactAvatar } from "@/components/contact-avatar";
-import { Empty } from "@/components/page-state";
 import { NewLeadDialog } from "@/components/new-lead-dialog";
 import { LeadTagChips, LeadTagMenuItems, type LeadTag } from "@/components/lead-tag-picker";
 import { PopoverMenu } from "@/components/popover-menu";
@@ -22,7 +21,8 @@ import { applyLeadSavedViewFilters, leadFiltersForSavedView, useCaseOrganization
 import { useRealtimeSignals } from "@/lib/realtime";
 import { hasWorkspaceWideCaseScope, type PanelSession } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
-import { Button, HelpHint, IconButton, SaveToast } from "@/components/ui";
+import { Button, EmptyState, HelpHint, IconButton, SaveToast } from "@/components/ui";
+import { leadStatusTone } from "./lead-domain";
 import { ListFiltersBar, type ListFilterDef } from "@/components/ui/filters";
 
 type Option = { id: string; nome: string };
@@ -216,13 +216,23 @@ export default function LeadsPage() {
     { key: "parceiro_id", label: "Parceiro", kind: "option", options: options.parceiros }
   ];
   const setFilter = (key: keyof LeadFilters & string, value: string) => setFilters((current) => ({ ...current, [key]: value }));
+  const hasActiveFilters = Object.values(filters).some((value) => Boolean(value));
   return <Shell fitViewport>
     <div className="leads-page">
     <header className="leads-page__header">
-      <div><h1>{hasWorkspaceScope ? "Contatos" : "Meus contatos"}</h1></div>
+      <div>
+        <h1>{hasWorkspaceScope ? "Contatos" : "Meus contatos"}</h1>
+        <span className="leads-page__count" role="status" aria-live="polite">{loading ? "carregando…" : `${total} resultado(s)`}</span>
+      </div>
       <div className="leads-page__actions flex min-h-8 flex-wrap items-center gap-2">
-        {canCreateLeads ? <Button className="crm-compact-button" tone="primary" onClick={() => setCreateOpen(true)}><Plus size={14} aria-hidden="true" />Novo contato</Button> : null}
-        <Link className="btn crm-compact-button" href="/contatos/importar"><UploadSimple size={14} aria-hidden="true" />Importar</Link>
+        <label className="field leads-page__search m-0">
+          <span className="sr-only">Buscar contato</span>
+          <span className="search-field"><MagnifyingGlass size={14} aria-hidden="true" /><input className="input" type="search" value={filters.busca} onChange={(event) => setFilter("busca", event.target.value)} placeholder="Nome ou telefone" /></span>
+        </label>
+        <ListFiltersBar filters={filters} defs={filterDefs} onSet={setFilter} onClearAll={clearFilters} />
+        <SavedViewsControl resource="leads" filters={leadFiltersForSavedView(filters)} onApply={applySavedFilters} />
+        <TagCatalogSettings />
+        <span className="leads-page__divider" aria-hidden="true" />
         {canReadFollowUp ? (
           <IconButton
             label="Exportar CSV"
@@ -232,15 +242,9 @@ export default function LeadsPage() {
             <DownloadSimple size={14} aria-hidden="true" />
           </IconButton>
         ) : null}
-        <SavedViewsControl resource="leads" filters={leadFiltersForSavedView(filters)} onApply={applySavedFilters} />
-        <label className="field m-0">
-          <span className="sr-only">Buscar contato</span>
-          <span className="search-field"><MagnifyingGlass size={14} aria-hidden="true" /><input className="input" value={filters.busca} onChange={(event) => setFilter("busca", event.target.value)} placeholder="Nome ou telefone" /></span>
-        </label>
-        <ListFiltersBar filters={filters} defs={filterDefs} onSet={setFilter} onClearAll={clearFilters} />
-        <TagCatalogSettings />
+        <Link className="btn crm-compact-button" href="/contatos/importar"><UploadSimple size={14} aria-hidden="true" />Importar</Link>
+        {canCreateLeads ? <Button className="crm-compact-button" tone="primary" onClick={() => setCreateOpen(true)}><Plus size={14} aria-hidden="true" />Novo contato</Button> : null}
         <BulkLeadActions selected={selectedItems} onClear={() => setSelectedIds(new Set())} onChanged={mutate} />
-        <span className="crm-meta mono" role="status" aria-live="polite">{loading ? "carregando…" : `${total} resultado(s)`}</span>
       </div>
     </header>
     {error ? <p className="error mb-4" role="alert">{error}</p> : null}
@@ -248,8 +252,18 @@ export default function LeadsPage() {
     {accessNotice ? <p className="mb-4 rounded border border-[var(--primary-border)] p-3 text-sm text-[var(--primary-text)]" role="status">{accessNotice}</p> : null}
     {swrError ? <p className="error mb-4" role="alert">{swrError.message}</p> : null}
     <section className="leads-table-surface responsive-table-wrap overflow-y-auto">
-      {loading ? <div className="grid gap-2 p-4" role="status" aria-label="Carregando contatos">{[1, 2, 3, 4].map((item) => <div key={item} className="skeleton h-12" aria-hidden="true" />)}</div>
-        : leads.length === 0 ? <Empty>Nenhum contato corresponde aos filtros.</Empty>
+      {loading ? <div className="grid gap-2 p-4" role="status" aria-label="Carregando contatos">{[1, 2, 3, 4, 5, 6].map((item) => <div key={item} className="skeleton h-12" aria-hidden="true" />)}</div>
+        : leads.length === 0 ? (
+          <EmptyState
+            icon={<UsersThree size={18} aria-hidden="true" />}
+            title={hasActiveFilters ? "Nenhum contato encontrado" : "Nenhum contato ainda"}
+            action={hasActiveFilters
+              ? <Button size="sm" onClick={clearFilters}>Limpar filtros</Button>
+              : canCreateLeads ? <Button size="sm" tone="primary" onClick={() => setCreateOpen(true)}><Plus size={14} aria-hidden="true" />Novo contato</Button> : null}
+          >
+            {hasActiveFilters ? "Nenhum contato corresponde aos filtros." : "Crie um contato ou importe uma planilha para começar."}
+          </EmptyState>
+        )
           : <table className={`responsive-table leads-table crm-lead-table whitespace-nowrap ${canReadFollowUp ? "crm-lead-table--follow-up" : "crm-lead-table--basic"}`}>
             <thead><tr>
               <th>Contato</th>
@@ -259,18 +273,28 @@ export default function LeadsPage() {
               <th>Atualizado</th>
               <th>Ações</th>
             </tr></thead>
-            <tbody>{leads.map((lead) => <tr key={lead.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--surface-active)]">
+            <tbody>{leads.map((lead) => <tr key={lead.id} className={selectedIds.has(lead.id) ? "is-selected" : undefined}>
               <td data-label="Contato">
                 <div className="leads-table__identity">
                   {organizationEnabled === true ? <input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => setSelectedIds((current) => { const next = new Set(current); if (next.has(lead.id)) next.delete(lead.id); else if (next.size < 200) next.add(lead.id); return next; })} aria-label={`Selecionar ${lead.nome ?? lead.telefone}`} /> : null}
                   <ContactAvatar name={lead.nome ?? lead.telefone} src={lead.avatar_url} className="h-8 w-8 text-xs" />
-                  <div className="min-w-0"><strong>{lead.nome ?? "Sem nome"}</strong><span className="mono">{lead.instagram_username ? `@${lead.instagram_username}` : lead.telefone}</span><LeadTagChips tags={lead.tags} compact /></div>
+                  <div className="min-w-0"><Link className="leads-table__name" href={`/contatos/${lead.id}`} tabIndex={-1}><strong>{lead.nome ?? "Sem nome"}</strong></Link><span className="mono">{lead.instagram_username ? `@${lead.instagram_username}` : lead.telefone}</span><LeadTagChips tags={lead.tags} compact /></div>
                 </div>
               </td>
-              <td data-label="Etapa"><div className="leads-table__stage"><span>{leadStatusLabel(lead.status)}</span><small className="mono">{lead.qualificacao ? `${lead.qualificacao.estrelas}/5` : "sem score"}</small>{lead.qualificacao?.requer_decisao_humana ? <em>Decisão humana</em> : null}</div></td>
+              <td data-label="Etapa">
+                <div className="leads-table__stage">
+                  <span className="lead-status" data-tone={leadStatusTone(lead.status)}>{leadStatusLabel(lead.status)}</span>
+                  <div className="leads-table__stage-meta">
+                    {lead.qualificacao
+                      ? <small className="lead-score" aria-label={`${lead.qualificacao.estrelas} de 5 na qualificação`}><Star size={11} weight="fill" aria-hidden="true" />{lead.qualificacao.estrelas}/5</small>
+                      : <small className="lead-score lead-score--empty">sem score</small>}
+                    {lead.qualificacao?.requer_decisao_humana ? <em>Decisão humana</em> : null}
+                  </div>
+                </div>
+              </td>
               <td data-label="Resumo"><div className="leads-table__context"><strong className="block truncate" title={lead.qualificacao?.resumo ?? undefined}>{lead.qualificacao?.resumo ?? "Sem resumo de qualificação"}</strong><span>{lead.qualificacao?.origem_facebook?.headline ?? lead.origem_facebook?.headline ?? lead.origem ?? "Origem não informada"}</span><small>{lead.unidade_nome ?? lead.categoria_nome ?? "Sem agenda associada"}</small></div></td>
-              {canReadFollowUp ? <td data-label="Acompanhamento"><div className="leads-table__follow-up"><strong>{lead.proxima_acao ?? "Nenhuma ação"}</strong>{lead.proxima_acao_em ? <time className="mono">{new Date(lead.proxima_acao_em).toLocaleString("pt-BR", { timeZone: timezone })}</time> : null}<span>{lead.responsavel_email ?? "Não atribuído"}</span><small>{lead.responsavel_disponibilidade === "available" ? "Disponível" : lead.responsavel_disponibilidade === "unavailable" ? "Indisponível" : "Fora do pool"}</small></div></td> : null}
-              <td data-label="Atualizado" className="mono leads-table__updated">{new Date(lead.atualizado_em).toLocaleString("pt-BR")}</td>
+              {canReadFollowUp ? <td data-label="Acompanhamento"><div className="leads-table__follow-up"><strong>{lead.proxima_acao ?? "Nenhuma ação"}</strong>{lead.proxima_acao_em ? <time className="mono">{new Date(lead.proxima_acao_em).toLocaleString("pt-BR", { timeZone: timezone, dateStyle: "short", timeStyle: "short" })}</time> : null}<span>{lead.responsavel_email ?? "Não atribuído"}</span><small data-availability={lead.responsavel_disponibilidade ?? "none"}>{lead.responsavel_disponibilidade === "available" ? "Disponível" : lead.responsavel_disponibilidade === "unavailable" ? "Indisponível" : "Fora do pool"}</small></div></td> : null}
+              <td data-label="Atualizado" className="mono leads-table__updated"><time dateTime={lead.atualizado_em} title={new Date(lead.atualizado_em).toLocaleString("pt-BR")}>{new Date(lead.atualizado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</time></td>
               <td data-label="Ações">
                 <div className="leads-table__actions">
                   <ContactChatLink conversationId={lead.conversation_id} name={lead.nome} />
