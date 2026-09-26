@@ -146,7 +146,7 @@ function withNt(nodeType: string): CSSProperties {
 
 function NodeIcon({ nodeType }: { nodeType: string }) {
   const Icon = NODE_ICONS[nodeType] ?? WebhooksLogo;
-  return <Icon size={17} strokeWidth={1.9} aria-hidden="true" />;
+  return <Icon size={17} aria-hidden="true" />;
 }
 
 /* ─── nós do canvas ─── */
@@ -1089,7 +1089,7 @@ function FlowEditorInner(props: FlowEditorProps) {
                 <RailIcons.afastar size={14} aria-hidden="true" />
               </ControlButton>
               <ControlButton onClick={() => void reactFlow.fitView({ padding: 0.25, duration: 300 })} title="Ajustar à tela" aria-label="Ajustar à tela">
-                <RailIcons.ajustar size={13} strokeWidth={2} aria-hidden="true" />
+                <RailIcons.ajustar size={13} aria-hidden="true" />
               </ControlButton>
             </Controls>
             <MiniMap nodeColor={minimapColor} nodeStrokeWidth={3} nodeBorderRadius={6} zoomable pannable className={styles.minimap} />

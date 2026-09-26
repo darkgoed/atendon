@@ -94,7 +94,7 @@
 }
 .conversation-list__title > .mono { color: var(--text-muted); font-size: 11px; }
 .conversation-list__title { display: flex; align-items: baseline; gap: 10px; padding: 4px 2px 12px; }
-.conversation-list__title h1 { margin: 0; font-size: 19px; font-weight: var(--weight-semibold); letter-spacing: -0.01em; }
+.conversation-list__title h1 { margin: 0; font-size: var(--text-page-title); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-title); }
 .conversation-list__search-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .conversation-list__search-field {
   display: flex;
@@ -104,7 +104,7 @@
   gap: 8px;
   height: 36px;
   padding: 0 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--text) 5%, transparent);
   color: var(--text-muted);
   transition: box-shadow var(--duration-fast) var(--ease-out);
@@ -419,7 +419,7 @@
   justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -463,7 +463,7 @@
   height: 26px;
   padding: 0 10px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--text-secondary);
   font-size: 11.5px;
   white-space: nowrap;

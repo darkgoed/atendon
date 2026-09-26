@@ -172,7 +172,6 @@ export function PipelineTransitionDialog({
     >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <span className="eyebrow">MOVIMENTAÇÃO SEGURA</span>
           <h2 id="pipeline-transition-title" className="mt-2 text-lg font-semibold">Mover {lead.nome ?? "lead"}</h2>
           <p id="pipeline-transition-description" className="mt-1 text-xs leading-relaxed text-[var(--text-secondary)]">Escolha a etapa e registre os dados exigidos para manter o histórico comercial consistente.</p>
         </div>

@@ -49,7 +49,7 @@
   color: var(--text-muted);
   display: inline-flex;
   padding: 4px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 .headerTitle a:hover { background: var(--surface-hover); }
@@ -71,7 +71,7 @@
   gap: 7px;
   height: 26px;
   padding: 0 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 0;
   font-size: 12px;
   font-weight: var(--weight-medium);
@@ -84,7 +84,7 @@
   content: "";
   width: 6px;
   height: 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: currentColor;
 }
 
@@ -159,7 +159,7 @@
   text-align: left;
   padding: 7px 8px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
   color: var(--text);
@@ -173,7 +173,7 @@
   place-items: center;
   width: 30px;
   height: 30px;
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--nt) 12%, transparent);
   color: var(--nt-ink, var(--nt));
 }
@@ -200,7 +200,7 @@
 .canvasWrap :global(.react-flow__handle) {
   width: 8px;
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-hover);
   border: 1px solid var(--border-strong);
 }
@@ -226,7 +226,7 @@
   background: color-mix(in srgb, var(--surface-hover) 85%, transparent);
   backdrop-filter: blur(8px);
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 .canvasWrap :global(.react-flow__minimap svg) { width: 132px; height: 92px; background: transparent; }
@@ -236,7 +236,7 @@
   flex-direction: column;
   gap: 2px;
   padding: 4px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--surface-hover) 92%, transparent);
   backdrop-filter: blur(8px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
@@ -246,7 +246,7 @@
   height: 28px;
   padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-secondary);
 }
@@ -294,9 +294,9 @@
   position: relative;
   width: 320px;
   padding: 14px;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
-  background: var(--surface-raised-2, var(--surface));
+  background: var(--surface-elevated);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
   text-align: left;
   transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
@@ -319,7 +319,7 @@
   width: 36px;
   height: 36px;
   flex: none;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--nt) 12%, transparent);
   color: var(--nt-ink, var(--nt));
 }
@@ -357,7 +357,7 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   text-decoration: none;
   font-size: 15px;
@@ -372,7 +372,7 @@
 .nodeChip {
   max-width: 100%;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-sunken);
   border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
@@ -387,9 +387,9 @@
   align-items: center;
   gap: 12px;
   padding: 14px;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   border: 1px dashed var(--border-strong);
-  background: var(--surface-raised-2, var(--surface));
+  background: var(--surface-elevated);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
   text-align: left;
   transition: transform var(--duration-fast) var(--ease-out);
@@ -430,7 +430,7 @@
   align-items: center;
   gap: 6px;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 10px;
   font-weight: var(--weight-semibold);
   text-transform: uppercase;
@@ -452,7 +452,7 @@
   justify-content: center;
   width: 26px;
   height: 26px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -471,7 +471,7 @@
   margin-top: 6px;
   padding: 5px 10px;
   border: 1px dashed var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   font-size: var(--text-micro);
@@ -506,7 +506,7 @@
   gap: 6px;
   padding: 8px;
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 .buttonRemove {
   align-self: flex-end;
@@ -514,7 +514,7 @@
   height: 24px;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
   font-size: var(--text-body);
@@ -587,7 +587,7 @@
   margin: 0 14px 10px;
   padding: 10px 12px;
   border: 1px solid var(--danger-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--danger-subtle);
   color: var(--danger-text);
   font-size: var(--text-label);

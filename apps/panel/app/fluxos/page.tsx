@@ -123,7 +123,6 @@ export default function FluxosPage() {
               O fluxo é o robô do atendimento: quando uma conversa dispara o gatilho, ele responde com etapas fixas antes da IA. Se nenhum fluxo for acionado, a IA assume.
             </HelpHint>
           </div>
-          <p className="sub">Atendimento automático por robô: mensagens, perguntas, esperas e ações no CRM.</p>
           {canManage ? null : (
             <p id="fluxos-manage-hint" className="sub">Você não tem permissão para criar ou alterar fluxos. Peça acesso a um administrador.</p>
           )}
@@ -145,10 +144,10 @@ export default function FluxosPage() {
       {error ? <p className="error" role="alert">Não foi possível carregar os fluxos.</p> : null}
 
       {!isLoading && !error && flows.length === 0 ? (
-        <section className="card mt-4 grid place-items-center gap-3 p-10 text-center">
+        <section className="card mt-4 grid place-items-center gap-3 p-6 text-center">
           <Plugs size={28} aria-hidden="true" style={{ color: "var(--text-disabled)" }} />
           <p className="label">Nenhum fluxo</p>
-          <p className="sub">Crie um fluxo para automatizar o atendimento por WhatsApp. Depois de criar, ligue o gatilho à primeira etapa, salve o fluxo no editor e ative-o aqui na lista.</p>
+          <p className="sub">Automatize o primeiro atendimento no WhatsApp.</p>
           {canManage ? (
             <Button type="button" tone="primary" disabled={!canManage || busyId !== null} onClick={novoFluxo}>
               <Plus size={16} aria-hidden="true" /> Novo fluxo
@@ -208,6 +207,6 @@ export default function FluxosPage() {
 }
 
 function isActivePillClass(ativo: boolean): string {
-  const base = "mono rounded-full border px-3 py-1 type-caption font-semibold uppercase tracking-[.12em]";
+  const base = "rounded-full border px-2 py-0.5 type-caption font-medium";
   return `${base} ${ativo ? "border-[var(--success-border)] text-[var(--success-text)]" : "border-[var(--border)] text-[var(--text-muted)]"}`;
 }

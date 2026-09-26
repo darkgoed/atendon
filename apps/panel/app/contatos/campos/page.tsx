@@ -178,7 +178,6 @@ export default function CustomFieldsPage() {
       <div className={styles.page}>
         <header className="pagehead">
           <div>
-            <div className="mono mb-3 flex items-center gap-2 type-caption uppercase tracking-[.16em] text-[var(--primary-text)]">Contatos</div>
             <h1>Campos personalizados <HelpHint label="Ajuda: Campos personalizados" title="Campos personalizados">Campos extras que aparecem no perfil de cada contato da empresa: escolha o tipo, as opções (quando houver) e se é obrigatório.</HelpHint></h1>
           </div>
           <div className={styles.toolbar}>

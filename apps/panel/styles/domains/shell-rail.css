@@ -20,9 +20,8 @@
      hover:bg-destructive/10      → color-mix(--danger 10%) + --danger-text
 
    DADOS: lib/panel-manifest.ts permanece INTACTO como fonte de menu; nenhum
-   item, capability ou gating novo. Tipografia: Schibsted Grotesk (next/font,
-   variável --font-display-crm montada no layout raiz) aplicada APENAS neste
-   domínio — --font-sans global segue Geist (contrato font-sans-token).
+   item, capability ou gating novo. Tipografia: a mesma --font-sans (Geist) do
+   resto do produto — uma família só (contrato font-sans-token).
 
    Responsivo: ≥1280px = rail + painel de contexto (breakpoint do donor);
    <1280px mantém a UX atual do AtendON com o vocabulário visual do donor.
@@ -38,14 +37,6 @@
      /conversas reserva esta altura na coluna da lista para nada ficar sob o
      header fixo. */
   --context-panel-header-h: 0px;
-}
-
-/* Tipografia do port: aplicada SÓ ao domínio do novo shell. */
-.nav-rail,
-.context-panel,
-.rail-more-panel,
-.settings-rail {
-  font-family: var(--font-display-crm, var(--font-sans));
 }
 
 /* =============================================================== NAVRAIL == */

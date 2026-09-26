@@ -213,8 +213,7 @@ export default function ImportContactsPage() {
       <div className="leads-page">
         <header className="leads-page__header">
           <div>
-            <h1>Importar contatos</h1>
-            <p className="sub">Central de importação CSV/XLSX com sinalização de possíveis duplicados.</p>
+            <h1>Importar contatos <HelpHint label="Ajuda: Importar contatos">Planilhas CSV ou XLSX; possíveis duplicados são sinalizados antes de importar.</HelpHint></h1>
           </div>
         </header>
         {error ? <p className="error mb-4" role="alert">{error}</p> : null}

@@ -1579,7 +1579,7 @@ export default function Conversations() {
               <Empty>Selecione uma conversa na lista para ver o histórico e responder.</Empty>
             </div>
           ) : threadError ? (
-            <div className="flex h-full items-center justify-center p-6">
+            <div className="flex h-full items-center justify-center p-4">
               <div className="max-w-md rounded-lg border border-[var(--warning-border)] bg-transparent p-5 text-[var(--warning-text)]" role="alert">
                 <strong className="block text-sm">Falha ao carregar a conversa</strong>
                 <p className="mt-2 text-sm leading-relaxed">{threadError.message}</p>
@@ -1589,10 +1589,10 @@ export default function Conversations() {
           ) : !thread.conversation ? (
             <div className="m-6 flex-1 rounded-lg border border-[var(--border)] bg-transparent">
               <div className="h-16 border-b border-[var(--border)]" />
-              <div className="space-y-3 p-6">
+              <div className="space-y-3 p-4">
                 <div className="skeleton h-4 w-48 rounded-full" />
                 <div className="skeleton h-3 w-28 rounded-full" />
-                <div className="skeleton mt-6 h-20 rounded-lg" />
+                <div className="skeleton mt-4 h-20 rounded-lg" />
                 <div className="skeleton h-20 rounded-lg" />
                 <div className="skeleton h-10 rounded-lg" />
               </div>
@@ -1830,7 +1830,7 @@ export default function Conversations() {
                     <ConversationReferral attribution={thread.conversation.facebook_attribution} />
                     <div className="flex flex-col gap-2">
                       {messages.length === 0 && !aiTurn ? (
-                        <div className="py-12">
+                        <div className="py-8">
                           <Empty>Sem mensagens nesta conversa. As novas mensagens aparecem aqui.</Empty>
                         </div>
                       ) : (

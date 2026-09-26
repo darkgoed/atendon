@@ -57,7 +57,7 @@ export function InstagramConnections({
   }
 
   return (
-    <section className="channels-ai-section mt-6" aria-labelledby="instagram-connections-title">
+    <section className="channels-ai-section mt-4" aria-labelledby="instagram-connections-title">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="instagram-connections-title" className="flex items-center gap-2 text-lg font-semibold"><InstagramLogo size={20} /> Instagram</h2>

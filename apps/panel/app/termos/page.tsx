@@ -127,7 +127,7 @@ export default function TermsPage() {
         <div className="grid gap-10 py-10 lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-16 lg:py-16">
           <div>
             <p className="eyebrow">TRANSPARÊNCIA · ATENDIMENTO</p>
-            <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-[-0.04em] sm:text-6xl">Termos de uso</h1>
+            <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-[var(--tracking-title)] sm:text-6xl">Termos de uso</h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-[var(--text-secondary)]">As condições para usar o AtendON, inclusive quando o atendimento acontece por WhatsApp ou Instagram Direct.</p>
             <p className="mt-5 text-sm text-[var(--text-muted)]">Em vigor desde 16 de setembro de 2026 · Publicado em 16 de setembro de 2026</p>
 

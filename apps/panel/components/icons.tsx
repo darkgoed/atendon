@@ -3,21 +3,53 @@
 /**
  * Biblioteca de ícones do AtendON — Design System v2.
  *
- * O handoff (handoff/referencia/*.dc.html) desenha TODOS os ícones com o
- * vocabulário Lucide: viewBox 24, fill none, stroke currentColor, linecap e
- * linejoin round, stroke 1.8 nos ícones de 16–18px e 2 nos ícones pequenos
- * (≤15px). Este módulo é a ÚNICA fonte de ícones do painel:
- *
- * - glifos que o handoff desenha à mão (rail, topbar, composer, fluxo,
- *   pipeline) são copiados byte a byte dos .dc.html (HANDOFF_* abaixo);
- * - o resto vem do lucide-react, a mesma família do handoff.
+ * Fonte ÚNICA de ícones do painel: 100% Lucide (lucide-react), SVG de traço,
+ * viewBox 24, fill none, linecap/linejoin round e UM traço para a família
+ * inteira (1.75; 2 para `weight="bold"`). Nada desenhado à mão nem
+ * preenchido — só os logos de marca que o Lucide não distribui (Instagram,
+ * Facebook, Google) usam o mesmo vocabulário via createLucideIcon.
  *
  * Os nomes exportados mantêm a API antiga (Gauge, ChatsCircle, Kanban…) para
- * que as telas troquem só o `from`; `weight` é aceito por compatibilidade e
- * traduzido para espessura de traço (bold = 2.2, demais = padrão do handoff).
+ * que as telas não mudem; `weight` é aceito por compatibilidade.
  */
 
 import {
+  ArrowLeftRight,
+  ArrowRight as LArrowRight,
+  Bell as LBell,
+  CalendarDays,
+  ChartLine,
+  CircleDollarSign,
+  CircleDot,
+  CircleHelp,
+  CircleUser,
+  ClipboardList,
+  Ellipsis,
+  Hand,
+  EllipsisVertical,
+  SquareKanban,
+  LayoutGrid,
+  ListFilter,
+  LogOut,
+  Maximize,
+  MessageCircle,
+  MessageSquare,
+  Mic,
+  Network,
+  Paperclip as LPaperclip,
+  Pause as LPause,
+  Pencil,
+  Play as LPlay,
+  Search,
+  Settings2,
+  Sparkles,
+  Split,
+  SquareCheckBig,
+  TagX,
+  TextCursorInput,
+  UserCheck,
+  Users,
+  X as LX,
   Archive as LArchive,
   ArrowDown as LArrowDown,
   ArrowDownToLine,
@@ -142,23 +174,20 @@ import { forwardRef, type ForwardRefExoticComponent, type RefAttributes } from "
 export type IconWeight = "thin" | "light" | "regular" | "bold" | "fill" | "duotone";
 
 export type IconProps = Omit<LucideProps, "ref"> & {
-  /** Compat com a API antiga: bold engrossa o traço; os demais usam o padrão do handoff. */
+  /** Compat com a API antiga: bold engrossa o traço; os demais usam o traço único. */
   weight?: IconWeight;
   mirrored?: boolean;
 };
 
 export type Icon = ForwardRefExoticComponent<IconProps & RefAttributes<SVGSVGElement>>;
 
-/** Espessura do handoff: 1.8 em 16–18px (helper `I()` dos .dc.html), 2 nos pequenos. */
-export function handoffStroke(size: number | string | undefined, weight?: IconWeight): number {
-  if (weight === "bold") return 2.2;
-  if (weight === "thin" || weight === "light") return 1.5;
-  const px = typeof size === "number" ? size : Number.parseFloat(String(size ?? 24));
-  return Number.isFinite(px) && px <= 15 ? 2 : 1.8;
+/** Traço único da família: 1.75 em qualquer tamanho; bold = 2. */
+export function iconStroke(weight?: IconWeight): number {
+  return weight === "bold" ? 2 : 1.75;
 }
 
 function wrap(Base: LucideIcon, name: string): Icon {
-  const Wrapped = forwardRef<SVGSVGElement, IconProps>(function HandoffIcon(
+  const Wrapped = forwardRef<SVGSVGElement, IconProps>(function AtendonIcon(
     { weight, mirrored, size = 16, strokeWidth, style, ...props },
     ref
   ) {
@@ -166,7 +195,7 @@ function wrap(Base: LucideIcon, name: string): Icon {
       <Base
         ref={ref}
         size={size}
-        strokeWidth={strokeWidth ?? handoffStroke(size, weight)}
+        strokeWidth={strokeWidth ?? iconStroke(weight)}
         style={mirrored ? { transform: "scaleX(-1)", ...style } : style}
         {...props}
       />
@@ -178,281 +207,76 @@ function wrap(Base: LucideIcon, name: string): Icon {
 
 type IconNode = Parameters<typeof createLucideIcon>[1];
 
-/** Glifo desenhado à mão no handoff (copiado dos .dc.html, sem alteração de path). */
-function handoff(name: string, node: IconNode): Icon {
+/** Marca sem glifo no Lucide (o Lucide não distribui logos) — mesmo traço da família. */
+function brand(name: string, node: IconNode): Icon {
   return wrap(createLucideIcon(name, node), name);
 }
 
-/* ------------------------------------------------ glifos do handoff ------ */
-// Rail — Painel (Painel.dc.html RAIL[0])
-const HANDOFF_PAINEL = handoff("Painel", [
-  ["rect", { x: "3", y: "3", width: "7", height: "7", rx: "1.5", key: "a" }],
-  ["rect", { x: "14", y: "3", width: "7", height: "7", rx: "1.5", key: "b" }],
-  ["rect", { x: "14", y: "14", width: "7", height: "7", rx: "1.5", key: "c" }],
-  ["rect", { x: "3", y: "14", width: "7", height: "7", rx: "1.5", key: "d" }]
+/* ------------------------------------------ glifos Lucide nomeados ------ */
+// Todos os glifos de navegação, fluxo e ações vêm do Lucide oficial: nada
+// desenhado à mão, nada preenchido, um único traço para a família inteira.
+const HANDOFF_PAINEL = wrap(LayoutGrid, "Painel");
+const HANDOFF_CONVERSAS = wrap(MessageSquare, "Conversas");
+const HANDOFF_PIPELINE = wrap(SquareKanban, "Pipeline");
+const HANDOFF_TAREFAS = wrap(SquareCheckBig, "Tarefas");
+const HANDOFF_AGENTES = wrap(Bot, "AgentesIA");
+const HANDOFF_AGENDA = wrap(CalendarDays, "Agenda");
+const HANDOFF_MAIS = wrap(Ellipsis, "Mais");
+const HANDOFF_MAIS_VERTICAL = wrap(EllipsisVertical, "MaisVertical");
+const HANDOFF_CONTATOS = wrap(Users, "Contatos");
+const HANDOFF_BUSCAR = wrap(Search, "Buscar");
+const HANDOFF_OPCOES = wrap(Ellipsis, "Opcoes");
+const HANDOFF_OPCOES_VERTICAL = wrap(EllipsisVertical, "OpcoesVertical");
+const HANDOFF_TRANSFERIR = wrap(ArrowLeftRight, "Transferir");
+const HANDOFF_CLIPBOARD = wrap(ClipboardList, "Briefing");
+const HANDOFF_MIC = wrap(Mic, "GravarAudio");
+const HANDOFF_PAUSE = wrap(LPause, "Pausar");
+/* Blocos do fluxo */
+const FLOW_GATILHO = wrap(LPlug, "BlocoGatilho");
+const FLOW_OPCOES = wrap(LList, "BlocoOpcoes");
+const FLOW_SIMNAO = wrap(Split, "BlocoSimNao");
+const FLOW_TEXTO = wrap(TextCursorInput, "BlocoTexto");
+const FLOW_FINALIZAR = wrap(LPower, "BlocoFinalizar");
+const FLOW_ESPERA = wrap(LClock, "BlocoEspera");
+const FLOW_AGUARDAR = wrap(LHourglass, "BlocoAguardar");
+const FLOW_ADDTAG = wrap(LTag, "BlocoAddTag");
+const FLOW_RMTAG = wrap(TagX, "BlocoRmTag");
+const FLOW_AGENTE = wrap(UserCheck, "BlocoAgente");
+const FLOW_WEBHOOK = wrap(Webhook, "BlocoWebhook");
+// Canvas
+const HANDOFF_MAIS_ZOOM = wrap(LPlus, "Aproximar");
+const HANDOFF_MENOS_ZOOM = wrap(LMinus, "Afastar");
+const HANDOFF_FECHAR = wrap(LX, "Fechar");
+// Rail rodapé
+const HANDOFF_ATENDON = wrap(CircleDot, "AtendON");
+const HANDOFF_PERFIL = wrap(CircleUser, "Perfil");
+const HANDOFF_SAIR = wrap(LogOut, "Sair");
+// Topbar / listas / thread
+const HANDOFF_SINO = wrap(LBell, "Notificacoes");
+const HANDOFF_NOVIDADES = wrap(Sparkles, "Novidades");
+const HANDOFF_FILTROS = wrap(ListFilter, "Filtros");
+const HANDOFF_ETAPA = wrap(ChartLine, "EtapaComercial");
+const HANDOFF_EDITAR = wrap(Pencil, "Editar");
+const HANDOFF_ANEXAR = wrap(LPaperclip, "Anexar");
+const HANDOFF_PLAY = wrap(LPlay, "Simular");
+const HANDOFF_ORGANIZAR = wrap(Network, "Organizar");
+const HANDOFF_AJUSTAR = wrap(Maximize, "AjustarATela");
+const HANDOFF_AVANCAR = wrap(LArrowRight, "AvancarEtapa");
+const HANDOFF_DETALHES = wrap(LArrowUpRight, "Detalhes");
+const HANDOFF_PERSONALIZAR = wrap(Settings2, "Personalizar");
+const HANDOFF_VENDAS = wrap(CircleCheck, "Vendas");
+const HANDOFF_VALOR = wrap(CircleDollarSign, "ValorVendido");
+// Canais: WhatsApp usa o balão do Lucide (o logo oficial fica no ChannelBadge).
+const HANDOFF_WHATSAPP = wrap(MessageCircle, "WhatsApp");
+const HANDOFF_INSTAGRAM = brand("Instagram", [
+  ["rect", { x: "2", y: "2", width: "20", height: "20", rx: "5", key: "a" }],
+  ["path", { d: "M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z", key: "b" }],
+  ["path", { d: "M17.5 6.5h.01", key: "c" }]
 ]);
-// Rail — Conversas / KPI "Conversas iniciadas" / "Conversar"
-const HANDOFF_CONVERSAS = handoff("Conversas", [
-  ["path", { d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z", key: "a" }]
-]);
-// Rail — Pipeline (três colunas)
-const HANDOFF_PIPELINE = handoff("Pipeline", [
-  ["path", { d: "M6 5v11", key: "a" }],
-  ["path", { d: "M12 5v6", key: "b" }],
-  ["path", { d: "M18 5v14", key: "c" }]
-]);
-// Rail — Tarefas
-const HANDOFF_TAREFAS = handoff("Tarefas", [
-  ["rect", { x: "3", y: "3", width: "18", height: "18", rx: "3", key: "a" }],
-  ["path", { d: "m9 12 2 2 4-4", key: "b" }]
-]);
-// Rail — Agentes IA / Fluxos
-const HANDOFF_AGENTES = handoff("AgentesIA", [
-  ["path", { d: "M12 8V4H8", key: "a" }],
-  ["rect", { x: "4", y: "8", width: "16", height: "12", rx: "2", key: "b" }],
-  ["path", { d: "M2 14h2", key: "c" }],
-  ["path", { d: "M20 14h2", key: "d" }],
-  ["path", { d: "M15 13v2", key: "e" }],
-  ["path", { d: "M9 13v2", key: "f" }]
-]);
-// Rail — Agenda / KPI "Agendamentos"
-const HANDOFF_AGENDA = handoff("Agenda", [
-  ["rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", key: "a" }],
-  ["path", { d: "M16 2v4", key: "b" }],
-  ["path", { d: "M8 2v4", key: "c" }],
-  ["path", { d: "M3 10h18", key: "d" }]
-]);
-// Rail — Mais
-const HANDOFF_MAIS = handoff("Mais", [
-  ["circle", { cx: "5", cy: "12", r: "1", key: "a" }],
-  ["circle", { cx: "12", cy: "12", r: "1", key: "b" }],
-  ["circle", { cx: "19", cy: "12", r: "1", key: "c" }]
-]);
-const HANDOFF_MAIS_VERTICAL = handoff("MaisVertical", [
-  ["circle", { cx: "12", cy: "5", r: "1", key: "a" }],
-  ["circle", { cx: "12", cy: "12", r: "1", key: "b" }],
-  ["circle", { cx: "12", cy: "19", r: "1", key: "c" }]
-]);
-// Rail — Contatos (Conversas.dc.html RAIL[2]; difere do lucide-react 1.47 em 3.13/7.75)
-const HANDOFF_CONTATOS = handoff("Contatos", [
-  ["path", { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", key: "a" }],
-  ["circle", { cx: "9", cy: "7", r: "4", key: "b" }],
-  ["path", { d: "M22 21v-2a4 4 0 0 0-3-3.87", key: "c" }],
-  ["path", { d: "M16 3.13a4 4 0 0 1 0 7.75", key: "d" }]
-]);
-// Rail/topbar/paleta — Buscar (4.3, não o 4.34 do lucide-react)
-const HANDOFF_BUSCAR = handoff("Buscar", [
-  ["circle", { cx: "11", cy: "11", r: "8", key: "a" }],
-  ["path", { d: "m21 21-4.3-4.3", key: "b" }]
-]);
-// Menus de item ("Mais opções", "Opções da etapa"): pontos cheios r=1.7
-const HANDOFF_OPCOES = handoff("Opcoes", [
-  ["circle", { cx: "5", cy: "12", r: "1.7", fill: "currentColor", stroke: "none", key: "a" }],
-  ["circle", { cx: "12", cy: "12", r: "1.7", fill: "currentColor", stroke: "none", key: "b" }],
-  ["circle", { cx: "19", cy: "12", r: "1.7", fill: "currentColor", stroke: "none", key: "c" }]
-]);
-const HANDOFF_OPCOES_VERTICAL = handoff("OpcoesVertical", [
-  ["circle", { cx: "12", cy: "5", r: "1.7", fill: "currentColor", stroke: "none", key: "a" }],
-  ["circle", { cx: "12", cy: "12", r: "1.7", fill: "currentColor", stroke: "none", key: "b" }],
-  ["circle", { cx: "12", cy: "19", r: "1.7", fill: "currentColor", stroke: "none", key: "c" }]
-]);
-// Thread — Transferir
-const HANDOFF_TRANSFERIR = handoff("Transferir", [
-  ["path", { d: "M8 3 4 7l4 4", key: "a" }],
-  ["path", { d: "M4 7h16", key: "b" }],
-  ["path", { d: "m16 21 4-4-4-4", key: "c" }],
-  ["path", { d: "M20 17H4", key: "d" }]
-]);
-// Painel de contato — Briefing (clipboard)
-const HANDOFF_CLIPBOARD = handoff("Briefing", [
-  ["rect", { x: "8", y: "2", width: "8", height: "4", rx: "1", key: "a" }],
-  ["path", { d: "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2", key: "b" }]
-]);
-// Composer — Gravar áudio
-const HANDOFF_MIC = handoff("GravarAudio", [
-  ["rect", { x: "9", y: "2", width: "6", height: "13", rx: "3", key: "a" }],
-  ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2", key: "b" }],
-  ["path", { d: "M12 19v3", key: "c" }]
-]);
-// Pausar (player de áudio): barras cheias
-const HANDOFF_PAUSE = handoff("Pausar", [
-  ["rect", { x: "6", y: "4", width: "4", height: "16", rx: "1", fill: "currentColor", stroke: "none", key: "a" }],
-  ["rect", { x: "14", y: "4", width: "4", height: "16", rx: "1", fill: "currentColor", stroke: "none", key: "b" }]
-]);
-/* Blocos do fluxo — Fluxo.dc.html `const K` (paths idênticos). */
-const FLOW_GATILHO = handoff("BlocoGatilho", [
-  ["path", { d: "M12 22v-5", key: "a" }],
-  ["path", { d: "M9 8V2", key: "b" }],
-  ["path", { d: "M15 8V2", key: "c" }],
-  ["path", { d: "M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z", key: "d" }]
-]);
-const FLOW_OPCOES = handoff("BlocoOpcoes", [
-  ["path", { d: "M8 6h13", key: "a" }],
-  ["path", { d: "M8 12h13", key: "b" }],
-  ["path", { d: "M8 18h13", key: "c" }],
-  ["path", { d: "M3 6h.01", key: "d" }],
-  ["path", { d: "M3 12h.01", key: "e" }],
-  ["path", { d: "M3 18h.01", key: "f" }]
-]);
-const FLOW_SIMNAO = handoff("BlocoSimNao", [
-  ["circle", { cx: "6", cy: "6", r: "3", key: "a" }],
-  ["circle", { cx: "18", cy: "6", r: "3", key: "b" }],
-  ["circle", { cx: "12", cy: "18", r: "3", key: "c" }],
-  ["path", { d: "M6 9v1a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9", key: "d" }],
-  ["path", { d: "M12 12v3", key: "e" }]
-]);
-const FLOW_TEXTO = handoff("BlocoTexto", [
-  ["rect", { x: "2", y: "4", width: "20", height: "16", rx: "2", key: "a" }],
-  ["path", { d: "M6 8h.01", key: "b" }],
-  ["path", { d: "M10 8h.01", key: "c" }],
-  ["path", { d: "M14 8h.01", key: "d" }],
-  ["path", { d: "M7 16h10", key: "e" }]
-]);
-const FLOW_FINALIZAR = handoff("BlocoFinalizar", [
-  ["path", { d: "M12 2v10", key: "a" }],
-  ["path", { d: "M18.4 6.6a9 9 0 1 1-12.77.04", key: "b" }]
-]);
-const FLOW_ESPERA = handoff("BlocoEspera", [
-  ["circle", { cx: "12", cy: "12", r: "10", key: "a" }],
-  ["path", { d: "M12 6v6l4 2", key: "b" }]
-]);
-const FLOW_AGUARDAR = handoff("BlocoAguardar", [
-  ["path", { d: "M5 22h14", key: "a" }],
-  ["path", { d: "M5 2h14", key: "b" }],
-  ["path", { d: "M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22", key: "c" }],
-  ["path", { d: "M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2", key: "d" }]
-]);
-const TAG_PATH = "M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z";
-const FLOW_ADDTAG = handoff("BlocoAddTag", [
-  ["path", { d: TAG_PATH, key: "a" }],
-  ["circle", { cx: "7.5", cy: "7.5", r: ".5", fill: "currentColor", key: "b" }]
-]);
-const FLOW_RMTAG = handoff("BlocoRmTag", [
-  ["path", { d: TAG_PATH, key: "a" }],
-  ["path", { d: "M8 8l6 6", key: "b" }]
-]);
-const FLOW_AGENTE = handoff("BlocoAgente", [
-  ["circle", { cx: "12", cy: "8", r: "4", key: "a" }],
-  ["path", { d: "M4 21v-1a6 6 0 0 1 12 0v1", key: "b" }],
-  ["path", { d: "m17 11 2 2 4-4", key: "c" }]
-]);
-const FLOW_WEBHOOK = handoff("BlocoWebhook", [
-  ["path", { d: "M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2", key: "a" }],
-  ["path", { d: "m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06", key: "b" }],
-  ["path", { d: "m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8", key: "c" }]
-]);
-// Canvas — Aproximar / Afastar (Fluxo.dc.html, 14px traço 2)
-const HANDOFF_MAIS_ZOOM = handoff("Aproximar", [
-  ["path", { d: "M12 5v14", key: "a" }],
-  ["path", { d: "M5 12h14", key: "b" }]
-]);
-const HANDOFF_MENOS_ZOOM = handoff("Afastar", [["path", { d: "M5 12h14", key: "a" }]]);
-// Canvas — Remover bloco
-const HANDOFF_FECHAR = handoff("Fechar", [
-  ["path", { d: "M18 6 6 18", key: "a" }],
-  ["path", { d: "m6 6 12 12", key: "b" }]
-]);
-
-// Rail rodapé — AtendON (marca)
-const HANDOFF_ATENDON = handoff("AtendON", [
-  ["rect", { x: "3", y: "3", width: "18", height: "18", rx: "5", key: "a" }],
-  ["circle", { cx: "12", cy: "12", r: "3.5", key: "b" }]
-]);
-// Rail rodapé — Perfil
-const HANDOFF_PERFIL = handoff("Perfil", [
-  ["circle", { cx: "12", cy: "12", r: "10", key: "a" }],
-  ["circle", { cx: "12", cy: "10", r: "3", key: "b" }],
-  ["path", { d: "M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662", key: "c" }]
-]);
-// Rail rodapé — Sair
-const HANDOFF_SAIR = handoff("Sair", [
-  ["path", { d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", key: "a" }],
-  ["path", { d: "m16 17 5-5-5-5", key: "b" }],
-  ["path", { d: "M21 12H9", key: "c" }]
-]);
-// Topbar — Notificações
-const HANDOFF_SINO = handoff("Notificacoes", [
-  ["path", { d: "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9", key: "a" }],
-  ["path", { d: "M10.3 21a1.94 1.94 0 0 0 3.4 0", key: "b" }]
-]);
-// Topbar — Novidades (sparkle de 4 pontas)
-const HANDOFF_NOVIDADES = handoff("Novidades", [
-  ["path", { d: "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z", key: "a" }]
-]);
-// Lista de conversas — Filtros
-const HANDOFF_FILTROS = handoff("Filtros", [
-  ["path", { d: "M22 3H2l8 9.46V19l4 2v-8.54L22 3z", key: "a" }]
-]);
-// Thread — Etapa comercial / KPI "Taxa de conversão"
-const HANDOFF_ETAPA = handoff("EtapaComercial", [
-  ["path", { d: "M3 3v18h18", key: "a" }],
-  ["path", { d: "m7 14 4-4 3 3 5-6", key: "b" }]
-]);
-// Próxima ação — Editar
-const HANDOFF_EDITAR = handoff("Editar", [
-  ["path", { d: "M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z", key: "a" }]
-]);
-// Composer — Anexar
-const HANDOFF_ANEXAR = handoff("Anexar", [
-  ["path", { d: "m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48", key: "a" }]
-]);
-// Fluxo — Simular / play
-const HANDOFF_PLAY = handoff("Simular", [
-  ["path", { d: "M6 3l14 9-14 9z", key: "a" }]
-]);
-// Fluxo — Organizar
-const HANDOFF_ORGANIZAR = handoff("Organizar", [
-  ["rect", { x: "3", y: "3", width: "7", height: "7", rx: "1.5", key: "a" }],
-  ["rect", { x: "14", y: "14", width: "7", height: "7", rx: "1.5", key: "b" }],
-  ["path", { d: "M10 6.5h4a2 2 0 0 1 2 2V14", key: "c" }]
-]);
-// Fluxo — Ajustar à tela
-const HANDOFF_AJUSTAR = handoff("AjustarATela", [
-  ["path", { d: "M8 3H5a2 2 0 0 0-2 2v3", key: "a" }],
-  ["path", { d: "M21 8V5a2 2 0 0 0-2-2h-3", key: "b" }],
-  ["path", { d: "M3 16v3a2 2 0 0 0 2 2h3", key: "c" }],
-  ["path", { d: "M16 21h3a2 2 0 0 0 2-2v-3", key: "d" }]
-]);
-// Pipeline — Avançar etapa
-const HANDOFF_AVANCAR = handoff("AvancarEtapa", [
-  ["path", { d: "M5 12h14", key: "a" }],
-  ["path", { d: "m12 5 7 7-7 7", key: "b" }]
-]);
-// Pipeline — Detalhes
-const HANDOFF_DETALHES = handoff("Detalhes", [
-  ["path", { d: "M7 7h10v10", key: "a" }],
-  ["path", { d: "M7 17 17 7", key: "b" }]
-]);
-// Painel — Personalizar painel
-const HANDOFF_PERSONALIZAR = handoff("Personalizar", [
-  ["path", { d: "M20 7h-9", key: "a" }],
-  ["path", { d: "M14 17H5", key: "b" }],
-  ["circle", { cx: "17", cy: "17", r: "3", key: "c" }],
-  ["circle", { cx: "7", cy: "7", r: "3", key: "d" }]
-]);
-// Painel — KPI "Vendas"
-const HANDOFF_VENDAS = handoff("Vendas", [
-  ["circle", { cx: "12", cy: "12", r: "10", key: "a" }],
-  ["path", { d: "m9 12 2 2 4-4", key: "b" }]
-]);
-// Painel — KPI "Valor vendido"
-const HANDOFF_VALOR = handoff("ValorVendido", [
-  ["path", { d: "M12 2v20", key: "a" }],
-  ["path", { d: "M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6", key: "b" }]
-]);
-// Canais (Conversas.dc.html const WA / const IG)
-const HANDOFF_WHATSAPP = handoff("WhatsApp", [
-  ["path", { d: "M7.9 20A9 9 0 1 0 4 16.1L2 22Z", fill: "currentColor", stroke: "none", key: "a" }]
-]);
-const HANDOFF_INSTAGRAM = handoff("Instagram", [
-  ["rect", { x: "3", y: "3", width: "18", height: "18", rx: "5", key: "a" }],
-  ["circle", { cx: "12", cy: "12", r: "4", key: "b" }]
-]);
-// Marcas sem glifo no handoff nem no Lucide 1.x — mesmo traço da família.
-const BRAND_FACEBOOK = handoff("Facebook", [
+const BRAND_FACEBOOK = brand("Facebook", [
   ["path", { d: "M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z", key: "a" }]
 ]);
-const BRAND_GOOGLE = handoff("Google", [
+const BRAND_GOOGLE = brand("Google", [
   ["path", { d: "M21.5 12.2c0-.7-.1-1.4-.2-2.1H12v4h5.4a4.6 4.6 0 0 1-2 3", key: "a" }],
   ["path", { d: "M15.4 17.1A6 6 0 0 1 6.3 14", key: "b" }],
   ["path", { d: "M6.3 10a6 6 0 0 1 9.4-3", key: "c" }],
@@ -460,7 +284,7 @@ const BRAND_GOOGLE = handoff("Google", [
 ]);
 
 /* ------------------------------------------------ API pública ------------ */
-// Navegação principal (glifos do rail do handoff)
+// Navegação principal
 export const Gauge = HANDOFF_PAINEL;
 export const ChatsCircle = HANDOFF_CONVERSAS;
 export const ChatText = wrap(MessageSquareText, "ChatText");
@@ -510,7 +334,7 @@ export const FacebookLogo = BRAND_FACEBOOK;
 export const GoogleLogo = BRAND_GOOGLE;
 export const Vault = wrap(LVault, "Vault");
 
-// Ações e utilitários (Lucide — mesma família do handoff)
+// Ações e utilitários
 export const AirplaneTilt = wrap(Plane, "AirplaneTilt");
 export const Archive = wrap(LArchive, "Archive");
 export const ArrowBendUpLeft = wrap(Reply, "ArrowBendUpLeft");
@@ -562,6 +386,7 @@ export const GearSix = wrap(Settings, "GearSix");
 export const GitBranch = wrap(LGitBranch, "GitBranch");
 export const GitFork = wrap(LGitFork, "GitFork");
 export const GlobeHemisphereWest = wrap(Globe, "GlobeHemisphereWest");
+export const HandGrab = wrap(Hand, "HandGrab");
 export const HandHeart = wrap(LHandHeart, "HandHeart");
 export const HandPointing = wrap(Pointer, "HandPointing");
 export const Handshake = wrap(LHandshake, "Handshake");
@@ -570,6 +395,7 @@ export const Hourglass = wrap(LHourglass, "Hourglass");
 export const Image = wrap(LImage, "Image");
 export const ImageSquare = wrap(LImage, "ImageSquare");
 export const Info = wrap(LInfo, "Info");
+export const Question = wrap(CircleHelp, "Question");
 export const Key = wrap(LKey, "Key");
 export const Keyboard = wrap(LKeyboard, "Keyboard");
 export const Link = wrap(LLink, "Link");
@@ -621,7 +447,7 @@ export const Watch = wrap(LWatch, "Watch");
 export const WebhooksLogo = wrap(Webhook, "WebhooksLogo");
 export const X = HANDOFF_FECHAR;
 
-/** Glifos dos blocos do fluxo por chave do handoff (Fluxo.dc.html `const K`). */
+/** Glifos dos blocos do fluxo por chave do editor. */
 export const FlowIcons = {
   gatilho: FLOW_GATILHO,
   mensagem: HANDOFF_CONVERSAS,
@@ -638,7 +464,7 @@ export const FlowIcons = {
   webhook: FLOW_WEBHOOK
 } as const;
 
-// Glifos do rail por nome do handoff (usados pelo NavRail).
+// Glifos do rail (usados pelo NavRail).
 export const RailIcons = {
   painel: HANDOFF_PAINEL,
   conversas: HANDOFF_CONVERSAS,

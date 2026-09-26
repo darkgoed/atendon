@@ -18,7 +18,7 @@ describe('font sans token', () => {
   it('loads Geist from Google Fonts and not Inter', () => {
     // O @import de fontes vive em app/globals.css, não nos stylesheets de styles/.
     const globals = readFileSync(resolve(__dirname, '../app/globals.css'), 'utf8');
-    expect(globals).toMatch(/family=Geist:wght@400;500;600;700/);
+    expect(globals).toMatch(/family=Geist:wght@400\.\.700/);
     expect(globals).not.toContain('family=Inter');
   });
 });

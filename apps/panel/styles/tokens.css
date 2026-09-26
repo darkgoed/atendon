@@ -21,33 +21,33 @@
   --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --text-display: 30px;
-  --text-page-title: 22px;
+  --text-display: 24px;
+  --text-page-title: 18px;
   --text-section-title: 13px;
-  --text-body-lg: 15px;
-  --text-body: 13.5px;
+  --text-body-lg: 14px;
+  --text-body: 13px;
   --text-control: 13px;
-  --text-label: 12.5px;
+  --text-label: 12px;
   --text-meta: 11.5px;
   --text-micro: 11px;
-  --text-metric: 28px;
-  --text-metric-lg: 32px;
+  --text-metric: 22px;
+  --text-metric-lg: 26px;
 
   --text-hero: clamp(40px, 4.6vw, 64px);
   --text-hero-sub: clamp(22px, 2vw, 28px);
 
   --weight-regular: 400;
   --weight-medium: 500;
-  --weight-semibold: 600;
-  --weight-bold: 700;
+  --weight-semibold: 560;
+  --weight-bold: 620;
 
   --leading-body: 1.5;
   --leading-tight: 1.3;
   --leading-flat: 1.12;
   --tracking-tight: -0.01em;
-  --tracking-title: -0.025em;
-  --tracking-hero: -0.035em;
-  --tracking-overline: 0.06em;
+  --tracking-title: -0.015em;
+  --tracking-hero: -0.025em;
+  --tracking-overline: 0.04em;
 
   --space-0: 0px;
   --space-1: 4px;
@@ -62,37 +62,37 @@
   --space-12: 48px;
   --space-16: 64px;
 
-  --pad-panel: var(--space-5);
-  --pad-panel-lg: var(--space-7);
-  --gutter: clamp(16px, 1.8vw, 28px);
+  --pad-panel: var(--space-4);
+  --pad-panel-lg: var(--space-5);
+  --gutter: clamp(12px, 1.4vw, 20px);
   --content-max: 1160px;
   --prose-max: 68ch;
 
-  /* Raios mais generosos que a v1: painéis 16, cards 14, controles 10 */
+  /* Raios discretos (B2B minimalista): painéis 12, cards 10, controles 8 */
   --radius-xs: 4px;
-  --radius-sm: 7px;
-  --radius-md: 10px;   /* inputs, botões, icon-buttons */
-  --radius-lg: 14px;   /* cards, KPIs, nós            */
-  --radius-xl: 16px;   /* painéis, dialogs            */
+  --radius-sm: 6px;
+  --radius-md: 8px;    /* inputs, botões, icon-buttons */
+  --radius-lg: 10px;   /* cards, KPIs, nós            */
+  --radius-xl: 12px;   /* painéis, dialogs            */
   --radius-pill: 999px;
   --radius: var(--radius-md);
 
   --control-height-sm: 28px;
   --control-height: 34px;
-  --control-height-md: 36px;
-  --control-height-lg: 40px;
+  --control-height-md: 34px;
+  --control-height-lg: 38px;
   --control-height-touch: 44px;
   --control-min: var(--control-height-md);
   --icon-sm: 14px;
   --icon: 16px;
   --icon-lg: 18px;
-  --row-height: 38px;
-  --row-height-lg: 44px;
+  --row-height: 36px;
+  --row-height-lg: 42px;
 
   /* Shell v2: rail de ícones (68px) + topbar 56px + painéis flutuantes */
   --sidebar-width: 68px;
   --sidebar-width-collapsed: 68px;
-  --topbar-height: 56px;
+  --topbar-height: 52px;
   --screen-header-height: 0px;
   --list-pane-width: 340px;
   --context-pane-width: 320px;
@@ -132,7 +132,7 @@
   --theme-fx-sweep: 620ms;
   --theme-fx-settle: 380ms;
   --theme-fx-ease: cubic-bezier(0.38, 0.22, 0.2, 1);
-  --theme-fx-dark-bg: #0A0A0A;
+  --theme-fx-dark-bg: #0E0F11;
   --theme-fx-dark-accent: #22D3EE;
   --theme-fx-dark-glow: rgb(34 211 238 / 0.22);
   --theme-fx-dark-edge: #67E8F9;
@@ -147,24 +147,24 @@
      Branco Gelo como fundo, preto profundo como texto. Ciano puro não passa
      AA como texto sobre branco: fill continua #22D3EE (com texto preto),
      texto de marca usa #0E7490. */
-  --bg: #F5F5F5;
-  --sidebar: #F5F5F5;
+  --bg: #F4F5F7;
+  --sidebar: #F4F5F7;
   --surface: #FFFFFF;
   --surface-elevated: #FFFFFF;
-  --surface-sunken: #EFEFEF;
-  --surface-hover: #EBEBEC;
+  --surface-sunken: #F0F1F3;
+  --surface-hover: #ECEDF0;
   --surface-active: #E2E2E4;
   --surface-selected: #E6F8FC;
 
-  --border: #E4E4E6;
-  --border-subtle: #EDEDEE;
-  --border-strong: #CFCFD2;
+  --border: #E5E7EB;
+  --border-subtle: #EEEFF2;
+  --border-strong: #D3D6DC;
   --border-focus: var(--primary);
 
-  --text: #0A0A0A;
-  --text-secondary: #55555D;
-  --text-muted: #5F5F68;
-  --text-subtle: #6A6A72;
+  --text: #1B1D22;
+  --text-secondary: #545862;
+  --text-muted: #5F6370;
+  --text-subtle: #6B6F7A;
   --text-disabled: #9A9AA2;
   --text-inverse: #F5F5F5;
 
@@ -224,21 +224,21 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #0A0A0A;
-  --sidebar: #0A0A0A;
-  --surface: #111112;
-  --surface-elevated: #161617;
-  --surface-sunken: #0D0D0E;
-  --surface-hover: #1C1C1D;
-  --surface-active: #232325;
+  --bg: #0E0F11;
+  --sidebar: #0E0F11;
+  --surface: #141518;
+  --surface-elevated: #191A1E;
+  --surface-sunken: #111214;
+  --surface-hover: #1E2024;
+  --surface-active: #25272C;
   --surface-selected: #0B2A31;
 
-  --border: #1F1F21;
-  --border-subtle: #18181A;
-  --border-strong: #2C2C2F;
+  --border: #24262B;
+  --border-subtle: #1C1D21;
+  --border-strong: #31343A;
 
-  --text: #F5F5F5;
-  --text-secondary: #A8A8B0;
+  --text: #E6E7EA;
+  --text-secondary: #A4A7AF;
   --text-muted: #8B8B93;
   --text-subtle: #7A7A83;
   --text-disabled: #55555D;
@@ -403,7 +403,7 @@
   --ring: var(--focus-ring);
 
   /* layout herdado */
-  --stack-gap: var(--space-4);
+  --stack-gap: var(--space-3);
   --cluster-gap: var(--space-2);
   --agenda-day-column-min: 116px;
   --agenda-time-column: 60px;

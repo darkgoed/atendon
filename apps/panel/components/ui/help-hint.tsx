@@ -2,10 +2,11 @@
 
 import * as RadixPopover from "@radix-ui/react-popover";
 import { useRef, useState, type ReactNode } from "react";
+import { Question } from "@/components/icons";
 import { cn } from "@/lib/cn";
 
 /**
- * Ajuda contextual inline: um "?" discreto ao lado do rótulo que explica o
+ * Ajuda contextual inline: um ícone de ajuda discreto ao lado do rótulo que explica o
  * campo/controle no lugar onde a dúvida surge. Abre no clique/toque (funciona
  * no celular) e também ao repousar o mouse; Esc ou clique fora fecham.
  *
@@ -40,7 +41,7 @@ export function HelpHint({ label, title, children, side = "top", align = "center
           }}
           onPointerLeave={clearHover}
         >
-          <span aria-hidden="true">?</span>
+          <Question size={15} aria-hidden="true" />
         </button>
       </RadixPopover.Trigger>
       <RadixPopover.Portal>

@@ -20,7 +20,7 @@ export function AiTurnBubble({ progress }: { progress: AiTurnProgress }) {
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--primary)]" aria-hidden="true" />
           ) : null}
         </div>
-        <div className="ai-turn-minimum border border-dashed border-[var(--primary-border)] bg-[var(--primary-subtle)] px-3.5 py-2.5 shadow-sm transition-[opacity,transform] duration-300">
+        <div className="ai-turn-minimum border rounded-[var(--radius-md)] border-dashed border-[var(--primary-border)] bg-[var(--primary-subtle)] px-3.5 py-2.5 shadow-sm transition-[opacity,transform] duration-300">
           {showPreview ? (
             <>
               <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-secondary)]">

@@ -754,7 +754,7 @@ function PanelNotificationSettingsPanel() {
       title="Notificações do painel"
       sub="Controla somente novas mensagens recebidas de contatos. Alertas críticos, operacionais e de reuniões não são alterados. Os avisos de agendamento enviados ao grupo de WhatsApp ficam na seção separada “Notificações de agendamento”."
     >
-      <div className="grid gap-6">
+      <div className="grid gap-4">
       {error || saveError ? <p className="error" role="alert">{saveError || (error instanceof Error ? error.message : "Falha ao carregar preferências.")}</p> : null}
       <div className="grid gap-3 sm:grid-cols-3">
         {([
@@ -762,7 +762,7 @@ function PanelNotificationSettingsPanel() {
           ["sound_enabled", "Som", "Reproduz o toque de nova mensagem"],
           ["visual_enabled", "Toast e desktop", "Mostra a prévia visual e a notificação do navegador"]
         ] as const).map(([key, label, description]) => (
-          <label key={key} className="flex gap-3 border border-[var(--border)] p-4">
+          <label key={key} className="flex gap-3 border rounded-[var(--radius-md)] border-[var(--border)] p-4">
             <input type="checkbox" checked={preferences[key]} disabled={saving || (key !== "enabled" && !preferences.enabled)} onChange={(event) => void change(key, event.target.checked)} />
             <span><strong className="block text-sm">{label}</strong><small className="sub mt-1 block">{description}</small></span>
           </label>
@@ -1106,7 +1106,7 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
       {data?.attendants.length ? (
         <div className="responsive-table-wrap">
           <table className="responsive-table settings-table-minwidth w-full text-left text-xs">
-            <thead className="border-b border-[var(--border)] type-caption uppercase tracking-[.08em] text-[var(--text-muted)]">
+            <thead className="border-b border-[var(--border)] type-caption text-[var(--text-muted)]">
               <tr>
                 <th className="pb-3 font-medium">No pool</th>
                 <th className="pb-3 font-medium">Atendente</th>
@@ -1136,7 +1136,7 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
                     </td>
                     <td data-label="Atendente" className="py-3">
                       <strong className="block text-sm">{member.email}{member.is_current ? " · você" : ""}</strong>
-                      <span className="mono type-caption uppercase tracking-[.08em] text-[var(--text-muted)]">{member.funcao}</span>
+                      <span className="type-caption text-[var(--text-muted)]">{member.funcao}</span>
                     </td>
                     <td data-label="Cor na agenda" className="py-3">
                       {selected ? (
@@ -1265,7 +1265,7 @@ function AtendonMeetSettingsPanel({ canManage }: { canManage: boolean }) {
       title="Sala própria do AtendON"
       sub="Cria uma sala protegida assim que o agendamento é confirmado. Participantes entram pelo link recebido e a equipe acessa pelo painel."
     >
-      <form className="grid gap-6" onSubmit={submit}>
+      <form className="grid gap-4" onSubmit={submit}>
         <div className="min-w-0">
           <div className="flex flex-wrap items-start justify-between gap-5 border-b border-[var(--border)] pb-5">
             <label className="flex items-center gap-3 text-sm font-medium text-[var(--text-secondary)]">
@@ -1278,14 +1278,14 @@ function AtendonMeetSettingsPanel({ canManage }: { canManage: boolean }) {
           {!available ? <p className="mt-5 text-sm text-[var(--warning-text)]" role="status">A infraestrutura ainda está em validação. O Google Meet continua sendo usado nas novas reuniões.</p> : null}
           {saved ? <p className="mt-5 flex items-center gap-2 text-sm text-[var(--primary-text)]" role="status"><CheckCircle size={17} weight="fill" aria-hidden="true" /> Configuração salva.</p> : null}
 
-          <dl className="mt-6 grid gap-5 sm:grid-cols-2">
+          <dl className="mt-4 grid gap-5 sm:grid-cols-2">
             <div className="border-l border-[var(--border)] pl-4"><dt className="label">Criação</dt><dd className="mt-2 text-sm text-[var(--text-secondary)]">Ao confirmar o agendamento</dd></div>
             <div className="border-l border-[var(--border)] pl-4"><dt className="label">Acesso</dt><dd className="mt-2 text-sm text-[var(--text-secondary)]">Token temporário por sala</dd></div>
             <div className="border-l border-[var(--border)] pl-4"><dt className="label">Recursos</dt><dd className="mt-2 text-sm text-[var(--text-secondary)]">Vídeo, áudio, chat e compartilhamento de tela</dd></div>
             <div className="border-l border-[var(--border)] pl-4"><dt className="label">Gravações</dt><dd className="mt-2 text-sm text-[var(--text-secondary)]">Disponíveis nos detalhes do agendamento</dd></div>
           </dl>
 
-          <div className="mt-7 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] pt-5">
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] pt-5">
             <span className="sub max-w-[58ch] text-xs">Quando ativo, o AtendON Meet tem prioridade sobre a integração Google Meet para novas reuniões.</span>
             {canManage ? <SaveButton type="submit" state={saving ? "busy" : save.state} disabled={!available || saving} icon={<FloppyDisk size={16} aria-hidden="true" />}>Salvar AtendON Meet</SaveButton> : <span className="sub text-xs">Disponível somente para consulta.</span>}
           </div>
@@ -1423,9 +1423,9 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
       title="Google Meet"
       sub="Cria uma sala pela API do Google Meet assim que o agendamento é confirmado. O fluxo não cria nem consulta eventos no Google Calendar."
     >
-      <form className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)]" onSubmit={submit}>
-      <section className="border-b border-[var(--border)] pb-6 lg:border-b-0">
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-5 border-b border-[var(--border)] pb-5">
+      <form className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)]" onSubmit={submit}>
+      <section className="border-b border-[var(--border)] pb-4 lg:border-b-0">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-5 border-b border-[var(--border)] pb-5">
           <label className="flex items-center gap-3 text-sm font-medium text-[var(--text-secondary)]">
             <input type="checkbox" checked={enabled} disabled={!canManage} onChange={(event) => { setEnabled(event.target.checked); setSaved(false); }} />
             {enabled ? "Ativo" : "Inativo"}
@@ -1435,7 +1435,7 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
         {error ? <p className="error mb-5" role="alert">{error}</p> : null}
         {saved ? <p className="mb-5 flex items-center gap-2 text-sm text-[var(--primary-text)]" role="status"><CheckCircle size={17} weight="fill" aria-hidden="true" /> Configuração salva.</p> : null}
 
-        <fieldset className="mb-7 border-b border-[var(--border)] pb-7">
+        <fieldset className="mb-5 border-b border-[var(--border)] pb-5">
           <legend className="label flex items-center gap-2"><GoogleLogo size={17} weight="bold" aria-hidden="true" /> Conta Google</legend>
           <p className="sub mt-2 max-w-[68ch] text-xs">Entre com a conta que será dona das salas. O acesso renovável é criptografado no servidor; sua senha nunca passa pelo AtendON.</p>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-y border-[var(--border)] py-4">
@@ -1467,7 +1467,7 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
           </UiField>
         </div>
 
-        <div className="mt-7 border-t border-[var(--border)] pt-5">
+        <div className="mt-5 border-t border-[var(--border)] pt-5">
           <div className="flex items-center gap-2 text-sm font-medium text-[var(--text)]"><UsersThree size={17} aria-hidden="true" /> Pool compartilhado</div>
           <p className="sub mt-2 max-w-[68ch] text-xs">
             A integração usa os {data?.settings.closer_member_ids.length ?? 0} atendente(s) definidos na seção “Equipe de atendimento”. OAuth e criação da sala permanecem independentes da distribuição.
@@ -1475,14 +1475,14 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
         </div>
 
         {canManage ? (
-          <div className="mt-7 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] pt-5">
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] pt-5">
             <span className="sub text-xs">Ativar a sala automática exige uma conta Google conectada e ao menos um atendente no pool compartilhado.</span>
             <SaveButton type="submit" state={saving ? "busy" : save.state} disabled={saving || activationBlocked} icon={<FloppyDisk aria-hidden="true" />}>
               Salvar Google Meet
             </SaveButton>
             <SaveToast show={save.done}>Meet salvo</SaveToast>
           </div>
-        ) : <p className="sub mt-6 text-sm">Esta configuração está disponível somente para consulta.</p>}
+        ) : <p className="sub mt-4 text-sm">Esta configuração está disponível somente para consulta.</p>}
       </section>
 
       <aside className="border-t border-[var(--border)] pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-1" aria-label="Estado da integração com Google Meet">

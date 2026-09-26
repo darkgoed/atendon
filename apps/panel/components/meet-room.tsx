@@ -203,7 +203,7 @@ export function MeetRoom({ endpoint, publicAccess = false }: { endpoint: string;
           <div className="meet-room__overlay meet-room__overlay--ended" role={phase === "error" ? "alert" : "status"}>
             <div className="meet-room__message meet-room__message--error">
               <span className="label">{phase === "error" ? "Falha na conexão" : "Reunião encerrada"}</span>
-              <h1 className="m-0 text-2xl tracking-tight">{phase === "error" ? "Não foi possível entrar na sala" : "A chamada foi finalizada"}</h1>
+              <h1 className="m-0 text-xl tracking-tight">{phase === "error" ? "Não foi possível entrar na sala" : "A chamada foi finalizada"}</h1>
               <p>{phase === "error" ? error : "Você já pode fechar esta página ou entrar novamente."}</p>
               <div className="flex flex-wrap gap-2">
                 <button type="button" className="btn primary active:scale-[.98]" onClick={retry}><ArrowClockwise size={16} aria-hidden="true" />{phase === "error" ? "Tentar novamente" : "Entrar novamente"}</button>

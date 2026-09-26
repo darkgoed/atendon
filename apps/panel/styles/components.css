@@ -24,10 +24,10 @@
 .panel--sunken { background: var(--surface-sunken); border-color: var(--border-subtle); }
 /* Sem moldura: agrupa por spacing/tipografia. Preferência default. */
 .panel--bare { background: transparent; border: 0; border-radius: 0; }
-.panel--pad { padding: var(--pad-panel-lg); }
+.panel--pad { padding: var(--pad-panel); }
 
 /* Seção interna de um painel: divisor de 1px, nunca uma segunda borda. */
-.panel__section { padding: var(--pad-panel-lg); }
+.panel__section { padding: var(--pad-panel); }
 .panel__section + .panel__section { border-top: 1px solid var(--border-subtle); }
 .panel__header {
   display: flex;
@@ -35,7 +35,7 @@
   justify-content: space-between;
   gap: var(--space-3);
   min-height: var(--control-height-lg);
-  padding: var(--space-3) var(--pad-panel-lg);
+  padding: var(--space-2) var(--pad-panel);
   border-bottom: 1px solid var(--border-subtle);
 }
 .panel__footer {
@@ -43,17 +43,17 @@
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
-  padding: var(--space-3) var(--pad-panel-lg);
+  padding: var(--space-2) var(--pad-panel);
   border-top: 1px solid var(--border-subtle);
 }
-.panel__body { padding: var(--pad-panel-lg); }
+.panel__body { padding: var(--pad-panel); }
 .panel__body--flush { padding: 0; }
 
 /* `.card` é o nome herdado do painel padrão; mantém-se como alias do primitive
    para não reescrever ~200 call sites, mas com a nova proporção e densidade. */
 .card {
   min-width: 0;
-  padding: var(--pad-panel-lg);
+  padding: var(--pad-panel);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -120,7 +120,20 @@
   letter-spacing: var(--tracking-hero);
 }
 
-.cardtitle { color: var(--text); font-size: var(--text-section-title); font-weight: var(--weight-semibold); line-height: var(--leading-tight); }
+/* Cabeçalho de card: ícone à esquerda, título, ação/meta à direita — uma linha. */
+.cardtitle {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text);
+  font-size: var(--text-section-title);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+}
+.cardtitle > svg { flex: none; color: var(--text-subtle); }
+.card > .cardtitle { margin-bottom: var(--space-3); }
 
 /* ---- Papéis de cor como texto -----------------------------------------
    Estas classes eram FANTASMAS: `.accent` (15 arquivos), `.warning` (38),
@@ -207,7 +220,7 @@
   border-color: var(--text);
   background: var(--text);
   color: var(--text-inverse);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-medium);
 }
 .btn-primary:hover, .btn.primary:hover {
   border-color: var(--text);
@@ -226,7 +239,7 @@
   border-color: var(--primary);
   background: var(--primary);
   color: var(--primary-foreground);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-medium);
 }
 .btn--accent:hover { border-color: var(--primary-hover); background: var(--primary-hover); box-shadow: var(--shadow-glow); }
 .btn--accent:active { background: var(--primary-active); transform: scale(.97); }
@@ -479,16 +492,16 @@
 
 /* ================================================== 5. DADOS / TABELAS ==
    DS v2 — tabela de produto, não planilha: sem grade, sem caixa-alta, sem
-   fundo de cabeçalho. Cabeçalho discreto em sentence case, linhas arejadas
+   fundo de cabeçalho. Cabeçalho discreto em sentence case, linhas compactas
    separadas por hairline, hover tênue, números tabulares à direita. A
-   superfície é o painel flutuante (raio xl, borda sutil). */
+   superfície é o painel flutuante (raio lg, borda sutil). */
 
 .table-wrap, .table-scroll {
   width: 100%;
   min-width: 0;
   overflow-x: auto;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 table { width: 100%; border-collapse: separate; border-spacing: 0; }
@@ -496,13 +509,13 @@ thead th {
   position: sticky;
   top: 0;
   z-index: 1;
-  height: 40px;
-  padding: 0 var(--space-4);
+  height: 36px;
+  padding: 0 var(--space-3);
   background: var(--surface);
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-muted);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-meta);
   font-weight: var(--weight-medium);
   letter-spacing: 0;
   text-align: left;
@@ -510,15 +523,15 @@ thead th {
   white-space: nowrap;
 }
 tbody td {
-  height: 52px;
-  padding: var(--space-3) var(--space-4);
+  height: 44px;
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid color-mix(in srgb, var(--text) 6%, transparent);
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--text-body);
   vertical-align: middle;
 }
-thead th:first-child, tbody td:first-child { padding-left: var(--space-5); }
-thead th:last-child, tbody td:last-child { padding-right: var(--space-5); }
+thead th:first-child, tbody td:first-child { padding-left: var(--space-4); }
+thead th:last-child, tbody td:last-child { padding-right: var(--space-4); }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr { transition: background-color var(--duration-fast) var(--ease-out); }
 tbody tr:hover { background: color-mix(in srgb, var(--text) 3%, transparent); }
@@ -678,19 +691,19 @@ th[aria-sort="descending"]::after { content: " ↓"; color: var(--primary-text);
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
 }
 .dialog__title { color: var(--text); font-size: var(--text-section-title); font-weight: var(--weight-semibold); }
 .dialog__description { margin-top: var(--space-1); color: var(--text-muted); font-size: var(--text-meta); }
-.dialog__body { min-height: 0; flex: 1 1 auto; overflow: auto; padding: var(--space-5); }
+.dialog__body { min-height: 0; flex: 1 1 auto; overflow: auto; padding: var(--space-4); }
 .dialog__footer {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border-subtle);
   background: var(--surface-sunken);
 }
@@ -715,7 +728,7 @@ th[aria-sort="descending"]::after { content: " ↓"; color: var(--primary-text);
   display: grid;
   justify-items: center;
   gap: var(--space-2);
-  padding: var(--space-10) var(--space-5);
+  padding: var(--space-8) var(--space-4);
   color: var(--text-muted);
   font-size: var(--text-body);
   text-align: center;
@@ -764,12 +777,12 @@ th[aria-sort="descending"]::after { content: " ↓"; color: var(--primary-text);
 
 .stack { display: flex; min-width: 0; flex-direction: column; gap: var(--stack-gap, var(--space-4)); }
 .stack--tight { gap: var(--space-2); }
-.stack--loose { gap: var(--space-6); }
+.stack--loose { gap: var(--space-5); }
 .cluster { display: flex; flex-wrap: wrap; align-items: center; gap: var(--cluster-gap, var(--space-2)); min-width: 0; }
 .cluster--between { justify-content: space-between; }
 .spacer { flex: 1 1 auto; min-width: 0; }
 
-.ui-section { display: grid; gap: var(--space-4); min-width: 0; }
+.ui-section { display: grid; gap: var(--space-3); min-width: 0; }
 .ui-section__header {
   display: flex;
   align-items: flex-start;
@@ -790,9 +803,9 @@ th[aria-sort="descending"]::after { content: " ↓"; color: var(--primary-text);
    defeito real da base anterior. Agora são primitives de verdade. */
 .grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); min-width: 0; }
 .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); min-width: 0; }
-.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); min-width: 0; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); min-width: 0; }
 /* Conteúdo principal + trilha lateral de contexto. */
-.grid-main { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.4fr); gap: var(--space-4); align-items: start; min-width: 0; }
+.grid-main { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.4fr); gap: var(--space-3); align-items: start; min-width: 0; }
 
 /* Editor + coluna de configuração (tela do agente). Também existia no markup
    apenas com overrides responsivos — sem regra base, o "split" nunca acontecia
@@ -800,20 +813,20 @@ th[aria-sort="descending"]::after { content: " ↓"; color: var(--primary-text);
 .agent-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 22rem);
-  gap: var(--space-6);
+  gap: var(--space-5);
   align-items: start;
   min-width: 0;
 }
-.agent-main { display: grid; gap: var(--space-6); min-width: 0; }
+.agent-main { display: grid; gap: var(--space-4); min-width: 0; }
 .agent-side {
   display: grid;
   gap: var(--space-5);
   min-width: 0;
-  padding-left: var(--space-6);
+  padding-left: var(--space-5);
   border-left: 1px solid var(--border-subtle);
 }
 /* Separador entre blocos de um formulário longo, sem criar outra caixa. */
-.line-section { padding-top: var(--space-5); border-top: 1px solid var(--border-subtle); }
+.line-section { padding-top: var(--space-4); border-top: 1px solid var(--border-subtle); }
 
 @media (max-width: 1180px) {
   .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1050,7 +1063,7 @@ body:has(.mode-bar--priority) .mode-bar:not(.mode-bar--priority) { visibility: h
 }
 
 /* ======================================================== HELP HINT ==
-   Ajuda contextual inline (components/ui/help-hint.tsx): "?" discreto ao
+   Ajuda contextual inline (components/ui/help-hint.tsx): ícone discreto ao
    lado do rótulo; o balão explica o campo onde a dúvida surge. */
 .help-hint {
   display: inline-grid;
@@ -1060,19 +1073,16 @@ body:has(.mode-bar--priority) .mode-bar:not(.mode-bar--priority) { visibility: h
   place-items: center;
   margin-inline-start: var(--space-1);
   padding: 0;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: var(--radius-pill);
   background: transparent;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: var(--weight-semibold);
+  color: var(--text-subtle);
   line-height: 1;
   vertical-align: middle;
   cursor: help;
   transition: var(--transition-control);
 }
-.help-hint:hover, .help-hint[data-state="open"] { border-color: var(--primary-border); color: var(--primary-text); }
+.help-hint:hover, .help-hint[data-state="open"] { color: var(--primary-text); }
 .help-hint:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 /* Alvo de toque confortável sem mudar o tamanho visual. */
 .help-hint { position: relative; }

@@ -21,7 +21,6 @@
 .conversationHeader { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4); border-bottom: 1px solid var(--border); }
 .conversationHeader { min-height: var(--topbar-height); background: var(--surface); }
 .historyTitle { display: grid; gap: var(--space-1); }
-.eyebrow { color: var(--primary-text); font-family: var(--font-mono); font-size: var(--text-micro); font-weight: var(--weight-semibold); line-height: var(--leading-tight); letter-spacing: var(--tracking-overline); text-transform: uppercase; }
 .statusReady { background: var(--primary); }
 .statusGenerated { background: var(--success); }
 .statusPending { background: var(--text-muted); }

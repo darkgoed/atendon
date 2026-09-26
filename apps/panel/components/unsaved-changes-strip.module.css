@@ -85,7 +85,7 @@
 
 .diffLabel {
   color: var(--text-secondary);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .diffValues {
@@ -106,7 +106,7 @@
 
 .after {
   color: var(--text);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 @media (max-width: 640px) {

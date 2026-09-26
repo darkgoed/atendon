@@ -496,7 +496,7 @@ export function ConnectionSettingsContent() {
       ) : null}
 
       {!loaded && !pollingError ? (
-        <div className="channels-ai-grid py-6" aria-busy="true" aria-label="Carregando conexões" role="status">
+        <div className="channels-ai-grid py-4" aria-busy="true" aria-label="Carregando conexões" role="status">
           <span className="sr-only">Carregando conexões</span>
           <div className="skeleton channels-ai-skeleton--large" />
         </div>

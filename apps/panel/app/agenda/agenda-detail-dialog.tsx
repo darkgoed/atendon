@@ -186,9 +186,9 @@ function AppointmentRecordings({ appointmentId, timezone }: { appointmentId: str
                     <span className="grid size-8 place-items-center rounded-full border border-[var(--border)] text-[var(--primary-text)]"><FileVideo size={16} aria-hidden="true" /></span>
                     <div className="min-w-0"><strong className="block truncate text-xs">{recording.file_name || `Gravação ${index + 1}`}</strong><span className="mono mt-1 block type-caption text-[var(--text-muted)]">{formatRecordingDate(recordedAt, timezone)} · {formatRecordingSize(recording.size_bytes)}</span></div>
                   </div>
-                  {playable ? <a className="btn px-2 py-1 text-xs active:translate-y-px" href={fileUrl} download={recording.file_name || undefined}><DownloadSimple size={14} aria-hidden="true" />Baixar</a> : <span className="mono type-caption uppercase text-[var(--warning-text)]">{recording.status}</span>}
+                  {playable ? <a className="btn px-2 py-1 text-xs active:translate-y-px" href={fileUrl} download={recording.file_name || undefined}><DownloadSimple size={14} aria-hidden="true" />Baixar</a> : <span className="type-caption text-[var(--warning-text)]">{recording.status}</span>}
                 </div>
-                {playable ? <video className="block max-h-64 w-full border border-[var(--border)] bg-[var(--surface-elevated)]" controls preload="metadata" crossOrigin="use-credentials" src={fileUrl}>Seu navegador não consegue reproduzir esta gravação.</video> : <p className="sub m-0 text-xs">A gravação ainda está sendo processada.</p>}
+                {playable ? <video className="block max-h-64 w-full border rounded-[var(--radius-md)] border-[var(--border)] bg-[var(--surface-elevated)]" controls preload="metadata" crossOrigin="use-credentials" src={fileUrl}>Seu navegador não consegue reproduzir esta gravação.</video> : <p className="sub m-0 text-xs">A gravação ainda está sendo processada.</p>}
               </article>
             );
           })}

@@ -40,7 +40,7 @@ function CapabilityUnavailable({ name, catalogError }: { name: string; catalogEr
   const { retry } = useCapabilities();
   return (
     <Shell>
-      <section className="mx-auto grid max-w-2xl gap-5 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-5 py-8 sm:grid-cols-[44px_minmax(0,1fr)]" role="alert">
+      <section className="mx-auto grid max-w-2xl gap-5 border-y border-[var(--warning-border)] bg-[var(--warning-subtle)] px-5 py-6 sm:grid-cols-[44px_minmax(0,1fr)]" role="alert">
         <span className="grid size-11 place-items-center rounded-full border border-[var(--warning-border)] text-[var(--warning-text)]">
           <LockSimple size={21} aria-hidden="true" />
         </span>

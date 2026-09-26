@@ -38,7 +38,7 @@ function listLength(source: Record<string, unknown>, ...keys: string[]): number 
 function SummaryField({ label, value }: { label: string; value?: string }) {
   return (
     <div className="grid gap-1 border-t border-[var(--border)] py-3 first:border-t-0 first:pt-0">
-      <dt className="font-mono text-[9px] uppercase tracking-[.12em] text-[var(--text-muted)]">{label}</dt>
+      <dt className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{label}</dt>
       <dd className={`m-0 text-xs leading-5 ${value ? "text-[var(--text-secondary)]" : "text-[var(--text-muted)]"}`}>{value || "Ainda não informado"}</dd>
     </div>
   );
@@ -95,9 +95,9 @@ export function TripzProposalReview({
       describedBy="tripz-review-description"
       onClose={onClose}
     >
-      <header className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 py-4 sm:px-6">
+      <header className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 py-4 sm:px-4">
         <div className="min-w-0">
-          <span className="font-mono text-[9px] uppercase tracking-[.17em] text-[var(--primary-text)]">Revisão da proposta</span>
+          <span className="text-[length:var(--text-meta)] text-[var(--primary-text)]">Revisão da proposta</span>
           <h2 id="tripz-review-title" className="mt-1 truncate !text-lg">{proposal?.title || proposal?.destination || "Proposta em construção"}</h2>
           <p id="tripz-review-description" className="m-0 mt-1 text-[11px] text-[var(--text-secondary)]">Confira os dados estruturados e gere uma prévia antes do PDF.</p>
         </div>
@@ -107,7 +107,7 @@ export function TripzProposalReview({
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-[19rem_minmax(0,1fr)] md:overflow-hidden">
-        <section className="min-h-0 border-b border-[var(--border)] bg-[var(--surface-sunken)] p-5 md:overflow-y-auto md:border-b-0 md:border-r sm:p-6" aria-label="Resumo estruturado">
+        <section className="min-h-0 border-b border-[var(--border)] bg-[var(--surface-sunken)] p-5 md:overflow-y-auto md:border-b-0 md:border-r sm:p-4" aria-label="Resumo estruturado">
           {proposal ? (
             <>
               <div className="mb-5 flex items-center gap-2 border-b border-[var(--border)] pb-4">
@@ -138,7 +138,7 @@ export function TripzProposalReview({
               ) : null}
               {proposal.missingInformation.length > 0 ? (
                 <div className="mt-5 border-t border-[var(--border)] pt-4">
-                  <strong className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">Ainda falta</strong>
+                  <strong className="text-[length:var(--text-meta)] text-[var(--text-secondary)]">Ainda falta</strong>
                   <ul className="mb-0 mt-2 grid gap-1.5 pl-4 text-[10px] leading-4 text-[var(--text-muted)]">
                     {proposal.missingInformation.map((item) => <li key={item}>{item}</li>)}
                   </ul>
@@ -146,7 +146,7 @@ export function TripzProposalReview({
               ) : null}
             </>
           ) : (
-            <div className="py-8" role="status">
+            <div className="py-6" role="status">
               <span className="skeleton mb-3 block h-4 w-2/3" aria-hidden="true" />
               <span className="skeleton mb-2 block h-10 w-full" aria-hidden="true" />
               <span className="skeleton block h-24 w-full" aria-hidden="true" />
@@ -183,7 +183,7 @@ export function TripzProposalReview({
               ) : null}
             </div>
           </div>
-          <div className="relative min-h-0 overflow-auto p-4 sm:p-6">
+          <div className="relative min-h-0 overflow-auto p-4 sm:p-4">
             {preview?.html ? (
               <iframe
                 className={styles.reviewDocument}
@@ -193,7 +193,7 @@ export function TripzProposalReview({
                 srcDoc={preview.html}
               />
             ) : (
-              <div className="grid h-full min-h-[24rem] place-items-center border border-dashed border-[var(--border)] bg-[var(--surface-sunken)] px-6 text-center">
+              <div className="grid h-full min-h-[24rem] place-items-center border rounded-[var(--radius-md)] border-dashed border-[var(--border)] bg-[var(--surface-sunken)] px-4 text-center">
                 <div className="max-w-xs">
                   <ArrowSquareOut size={30} weight="duotone" className="mx-auto text-[var(--text-muted)]" aria-hidden="true" />
                   <h3 className="mb-0 mt-4 text-sm text-[var(--text)]">Visualize antes de finalizar</h3>
@@ -205,7 +205,7 @@ export function TripzProposalReview({
         </section>
       </div>
 
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] px-5 py-3 sm:px-6">
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] px-5 py-3 sm:px-4">
         <p className={`m-0 text-[10px] ${actionError ? "text-[var(--warning-text)]" : "text-[var(--text-muted)]"}`} role={actionError ? "alert" : undefined}>
           {actionError || "Correções continuam sendo feitas por mensagem, mantendo o histórico da revisão."}
         </p>

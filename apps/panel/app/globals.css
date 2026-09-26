@@ -1,5 +1,12 @@
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=swap");
 @import "tailwindcss";
+/* Utilitários de peso do Tailwind seguem a escala do design system (menos
+   negrito: semibold/bold ficam abaixo de 600/700 com a Geist variável). */
+@theme {
+  --font-weight-medium: 500;
+  --font-weight-semibold: 560;
+  --font-weight-bold: 620;
+}
 /* Ordem = cascata do design system: tokens → reset → primitives → shell →
    domínios. Cada domínio é dono exclusivo do seu arquivo; nada de regra de
    shell ou de primitive dentro de um domínio. */

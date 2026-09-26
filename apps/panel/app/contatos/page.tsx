@@ -222,7 +222,7 @@ export default function LeadsPage() {
       <div><h1>{hasWorkspaceScope ? "Contatos" : "Meus contatos"}</h1></div>
       <div className="leads-page__actions flex min-h-8 flex-wrap items-center gap-2">
         {canCreateLeads ? <Button className="crm-compact-button" tone="primary" onClick={() => setCreateOpen(true)}><Plus size={14} aria-hidden="true" />Novo contato</Button> : null}
-        <Link className="btn primary crm-compact-button" href="/contatos/importar"><UploadSimple size={14} aria-hidden="true" />Importar</Link>
+        <Link className="btn crm-compact-button" href="/contatos/importar"><UploadSimple size={14} aria-hidden="true" />Importar</Link>
         {canReadFollowUp ? (
           <IconButton
             label="Exportar CSV"

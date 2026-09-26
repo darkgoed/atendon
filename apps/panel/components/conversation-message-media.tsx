@@ -90,7 +90,7 @@ export function ConversationMessageMedia({ conversationId, message }: { conversa
       <FileArrowDown size={24} className="shrink-0 text-[var(--primary-text)]" />
       <span className="min-w-0 flex-1">
         <strong className="block truncate text-xs text-[var(--text)]">{fileName}</strong>
-        <span className="mono mt-1 block text-xs uppercase tracking-wide text-[var(--text-muted)]">{message.media_mime_type || "arquivo"}{message.media_size_bytes ? ` · ${formatBytes(message.media_size_bytes)}` : ""}</span>
+        <span className="mt-1 block text-xs text-[var(--text-muted)]">{message.media_mime_type || "arquivo"}{message.media_size_bytes ? ` · ${formatBytes(message.media_size_bytes)}` : ""}</span>
       </span>
     </a>
   );

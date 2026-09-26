@@ -150,7 +150,6 @@ export default function TrashPage() {
       <div className={styles.page}>
         <header className="pagehead">
           <div>
-            <div className="mono mb-3 flex items-center gap-2 type-caption uppercase tracking-[.16em] text-[var(--primary-text)]">Contatos</div>
             <h1>Lixeira <HelpHint label="Ajuda: Lixeira" title="Lixeira">Os contatos ficam aqui até serem restaurados ou excluídos definitivamente. Restaurar devolve o contato à lista; a exclusão definitiva apaga também as conversas e os agendamentos dele e não pode ser desfeita.</HelpHint></h1>
           </div>
         </header>

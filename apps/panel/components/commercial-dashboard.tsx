@@ -181,13 +181,9 @@ export function CommercialDashboard({
     <section className={`${styles.dashboard} ds-dashboard`} aria-labelledby="commercial-dashboard-title">
       <header className={styles.dashboardHeader}>
         <div>
-          <span className="label">{data.scope.type === "mine" ? "MINHA OPERAÇÃO" : "OPERAÇÃO DO WORKSPACE"}</span>
-          <h2 id="commercial-dashboard-title" className="mt-1 text-2xl font-semibold tracking-tight">Dashboard de reuniões</h2>
-          <p className="sub mt-1">
-            {data.scope.type === "mine"
-              ? `Resultados e agenda atribuídos a ${data.scope.email}.`
-              : "Resultados consolidados, agenda e equilíbrio da distribuição."}
-          </p>
+          <h2 id="commercial-dashboard-title" className="sr-only">
+            {data.scope.type === "mine" ? "Minhas reuniões" : "Reuniões"}
+          </h2>
         </div>
         <div className={styles.actions}>
           <div className={styles.periodControl} aria-label="Período do dashboard">
@@ -230,7 +226,7 @@ export function CommercialDashboard({
 
       <div className={styles.agendaChartGrid}>
         <Card className="on-enter" style={{ "--i": 0 } as CSSProperties}>
-          <div className="cardtitle"><span>Calls no período</span><CalendarBlank size={17} aria-hidden="true" /></div>
+          <div className="cardtitle"><CalendarBlank size={16} aria-hidden="true" /><span>Calls no período</span></div>
           <KpiGrid className="kpi-grid--highlight">
             <KpiCard
               className="on-enter"
@@ -254,7 +250,7 @@ export function CommercialDashboard({
         </Card>
 
         <Card className="on-enter" style={{ "--i": 1 } as CSSProperties}>
-          <div className="cardtitle"><span>Operação SDR</span><UsersThree size={19} aria-hidden="true" /></div>
+          <div className="cardtitle"><UsersThree size={16} aria-hidden="true" /><span>Operação SDR</span></div>
           <dl className={styles.sdrGrid}>
             {[
               ["Recebidos", data.sdr_metrics.received],
@@ -271,7 +267,7 @@ export function CommercialDashboard({
         </Card>
 
         <Card className="on-enter" style={{ "--i": 2 } as CSSProperties}>
-          <div className="cardtitle"><span>Comercial / Closer</span><Target size={19} aria-hidden="true" /></div>
+          <div className="cardtitle"><Target size={16} aria-hidden="true" /><span>Comercial / Closer</span></div>
           <dl className={styles.closerGrid}>
             {/* Ajuda com a fórmula real lida do backend (apps/backend/src/modules/dashboard/service.ts):
                 comparecimento = realizadas ÷ vencidas; fechamento = vendas ÷ realizadas;
@@ -297,7 +293,7 @@ export function CommercialDashboard({
         </Card>
 
         <Card className="on-enter" style={{ "--i": 3 } as CSSProperties}>
-          <div className="cardtitle"><span>Taxas</span><ChartLineUp size={19} aria-hidden="true" /></div>
+          <div className="cardtitle"><ChartLineUp size={16} aria-hidden="true" /><span>Taxas</span></div>
           <DonutChart
             height={168}
             ariaLabel="Comparecimento vs. não comparecimento no período"
@@ -312,8 +308,8 @@ export function CommercialDashboard({
 
         <Card className="on-enter" style={{ "--i": 4 } as CSSProperties}>
           <div className="cardtitle">
-            <span className="inline-flex items-center gap-2"><CalendarBlank size={19} aria-hidden="true" /> Agenda de hoje</span>
-            <Link href="/agenda" className="accent text-xs">Abrir agenda</Link>
+            <CalendarBlank size={16} aria-hidden="true" /><span>Agenda de hoje</span>
+            <Link href="/agenda" className="accent ml-auto text-xs font-normal">Abrir agenda</Link>
           </div>
           {data.today_agenda.length ? (
             <div className="divide-y divide-[var(--border)]">
@@ -415,7 +411,7 @@ export function CommercialDashboard({
           <div className="mt-4 border-t border-[var(--border)] pt-3">
             <span className="kpi-card__label">Qualidade média dos leads</span>
             <div className="mt-1.5 flex items-end gap-2">
-              <strong className="mono text-2xl font-semibold">{data.metrics.average_quality ?? "—"}</strong>
+              <strong className="mono text-xl font-semibold">{data.metrics.average_quality ?? "—"}</strong>
               <span className="sub pb-1 text-xs">{data.metrics.average_quality === null ? "sem avaliação no período" : "de 5 estrelas"}</span>
             </div>
           </div>

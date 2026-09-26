@@ -144,7 +144,7 @@ export function AiFollowUpSettingsPanel() {
   return (
     <div className="channels-ai-grid md:grid-cols-[minmax(0,1.45fr)_minmax(280px,.55fr)]">
       <form className="channels-ai-section channels-ai-form channels-ai-form--wide" onSubmit={submit}>
-        <div className="mb-6 flex items-start justify-between gap-5 border-b border-[var(--border)] pb-5">
+        <div className="mb-4 flex items-start justify-between gap-5 border-b border-[var(--border)] pb-5">
           <div>
             <div className="cardtitle">Cadência automática</div>
             <p className="sub mt-1 channels-ai-reading-width">Após o intervalo, a IA relê a conversa e só envia se a resposta for necessária para avançar ao agendamento ou ao fechamento com o SDR ou especialista. Qualquer resposta do contato encerra a sequência atual.</p>
@@ -290,7 +290,7 @@ export function AiFollowUpSettingsPanel() {
           })}
         </div>
 
-        <div className="mt-7 flex items-center justify-between gap-4 border-t border-[var(--border)] pt-5">
+        <div className="mt-5 flex items-center justify-between gap-4 border-t border-[var(--border)] pt-5">
           <span className="sub text-xs">Alterações também atualizam sequências que ainda estão aguardando.</span>
           <SaveButton type="submit" className="channels-ai-touch" state={saving ? "busy" : save.state} icon={<FloppyDisk aria-hidden="true" />}>
             Salvar cadência
@@ -300,7 +300,7 @@ export function AiFollowUpSettingsPanel() {
       </form>
 
       <aside className="border-t border-[var(--border)] pt-5 md:border-l md:border-t-0 md:pl-6 md:pt-1" aria-label="Como funcionam os follow-ups">
-        <form className="grid gap-3 border-b border-[var(--border)] pb-6" onSubmit={uploadImage}>
+        <form className="grid gap-3 border-b border-[var(--border)] pb-4" onSubmit={uploadImage}>
           <div>
             <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--text)]"><ImageSquare size={17} aria-hidden="true" />Mídias de cases</h2>
             <p className="sub mt-1 text-xs leading-relaxed">Adicione imagens, áudio OGG/MP3 ou vídeo MP4. Áudio é enviado como nota de voz sem legenda; vídeo recebe a legenda da IA.</p>
@@ -343,7 +343,7 @@ export function AiFollowUpSettingsPanel() {
           </div>
         </form>
 
-        <h2 className="mt-6 text-sm font-semibold text-[var(--text)]">Como a sequência decide</h2>
+        <h2 className="mt-4 text-sm font-semibold text-[var(--text)]">Como a sequência decide</h2>
         <div className="mt-5 grid gap-5">
           <FollowUpRule Icon={ClockCountdown} title="Segue a linha do tempo" description="Cada tentativa usa seu atraso cumulativo desde a resposta original da IA: por exemplo, 2h, 24h e 72h." />
           <FollowUpRule Icon={ChatCircleDots} title="Avalia a necessidade" description="A IA só retoma perguntas cuja resposta bloqueia o agendamento ou o fechamento pelo SDR ou especialista, como a confirmação de um horário oferecido." />

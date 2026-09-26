@@ -100,7 +100,6 @@ export function MemberProfileDialog({
     >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <span className="eyebrow">CONTA DO MEMBRO</span>
           <h2 id="member-profile-title" className="mt-2">Editar perfil</h2>
         </div>
         <button type="button" className="btn px-2" aria-label="Fechar edição" disabled={saving} onClick={onClose}>
@@ -165,7 +164,7 @@ export function MemberProfileDialog({
               />
             </label>
           </div>
-          <label className="mt-4 flex items-start gap-3 border border-[var(--border)] p-3 text-sm text-[var(--text-secondary)]">
+          <label className="mt-4 flex items-start gap-3 border rounded-[var(--radius-md)] border-[var(--border)] p-3 text-sm text-[var(--text-secondary)]">
             <input
               type="checkbox"
               checked={mustChangePassword}

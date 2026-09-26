@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { ArrowRight } from "@/components/icons";
 import styles from "./flow-connect.module.css";
 
 export type FlowConnectDirection = "horizontal" | "vertical" | "auto";
@@ -154,10 +155,7 @@ export function FlowConnect({
         <Fragment key={item.key}>
           {index > 0 ? (
             <div aria-hidden="true" className={styles.connectorSlot} data-flow-connector="true">
-              <svg viewBox="0 0 16 16" focusable="false" className={styles.connectorGlyph}>
-                <path d="M 2 8 H 13.5" />
-                <path d="M 9.5 4.5 L 13.5 8 L 9.5 11.5" />
-              </svg>
+              <ArrowRight size={16} focusable="false" className={styles.connectorGlyph} />
             </div>
           ) : null}
           <div role="listitem" className={`${styles.item} card`} data-flow-card="true">

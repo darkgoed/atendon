@@ -151,7 +151,7 @@
 }
 .nav a > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav a:hover { background: var(--surface-hover); color: var(--text); text-decoration: none; }
-.nav a.active { background: var(--surface-active); color: var(--text); font-weight: var(--weight-semibold); }
+.nav a.active { background: var(--surface-active); color: var(--text); font-weight: var(--weight-medium); }
 .nav a.active::before {
   content: "";
   position: absolute;
@@ -370,7 +370,7 @@
 }
 .account-card__identity { display: grid; min-width: 0; line-height: var(--leading-tight); }
 .account-card__identity strong, .account-card__identity small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.account-card__identity strong { color: var(--text); font-size: var(--text-label); font-weight: var(--weight-semibold); }
+.account-card__identity strong { color: var(--text); font-size: var(--text-label); font-weight: var(--weight-medium); }
 .account-card__identity small { color: var(--text-muted); font-size: var(--text-micro); }
 .account-card__actions { display: flex; align-items: center; gap: 1px; }
 .account-card__action {
@@ -411,31 +411,18 @@
   overflow: hidden;
   color: var(--text);
   font-size: var(--text-body);
-  font-weight: var(--weight-semibold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.topbar__slug {
-  max-width: 160px;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .topbar__role {
   flex: none;
-  padding: 0 var(--space-1);
-  border: 1px solid var(--success-border);
-  border-radius: var(--radius-xs);
-  background: var(--success-subtle);
-  color: var(--success-text);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--warning-subtle);
+  color: var(--warning-text);
   font-size: var(--text-micro);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-overline);
-  text-transform: uppercase;
+  font-weight: var(--weight-medium);
 }
 .topbar__meta { display: flex; flex: none; align-items: center; gap: var(--space-2); }
 .topbar__root {
@@ -446,10 +433,8 @@
   background: var(--warning-subtle);
   color: var(--warning-text);
   font-size: var(--text-micro);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-overline);
+  font-weight: var(--weight-medium);
   text-decoration: none;
-  text-transform: uppercase;
 }
 .topbar__root:hover { border-color: var(--warning); text-decoration: none; }
 .topbar__version { color: var(--text-subtle); font-family: var(--font-mono); font-size: var(--text-micro); }
@@ -500,11 +485,10 @@
   min-width: 0;
   height: calc(100dvh - var(--topbar-height));
   margin: var(--topbar-height) 0 0 var(--sidebar-width);
-  padding: var(--space-6) var(--gutter) var(--space-10);
+  padding: var(--space-4) var(--gutter) var(--space-8);
   overflow: auto;
   transition: width var(--duration-normal) var(--ease), margin-left var(--duration-normal) var(--ease);
 }
-.content > :where(.pagehead, .page-header) { width: min(100%, var(--content-max)); margin-inline: auto; }
 .content--flush { padding: 0; }
 .shell--flush .content { min-height: 0; overflow: hidden; }
 .shell--fit .content { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
@@ -516,7 +500,7 @@
   justify-content: space-between;
   gap: var(--space-4);
   min-width: 0;
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-4);
 }
 .pagehead h1 {
   color: var(--text);
@@ -604,7 +588,7 @@
   background: var(--surface);
   text-align: center;
 }
-.public-state-card h1 { font-size: var(--text-hero-sub); letter-spacing: var(--tracking-hero); }
+.public-state-card h1 { font-size: var(--text-page-title); letter-spacing: var(--tracking-title); }
 .public-state-brand {
   display: flex;
   align-items: center;

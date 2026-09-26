@@ -217,7 +217,7 @@ export function AlertasBody() {
                   <div className="channels-ai-min-zero">
                     <div className="flex flex-wrap items-center gap-2">
                       <strong className="text-sm">{meeting ? meetingTitle(meeting) : alert.message}</strong>
-                      {unread ? <span className="rounded border border-[var(--warning-border)] px-2 py-0.5 type-caption font-semibold uppercase tracking-[.1em] text-[var(--warning-text)]">Novo</span> : null}
+                      {unread ? <span className="rounded border border-[var(--warning-border)] px-2 py-0.5 type-caption font-medium text-[var(--warning-text)]">Novo</span> : null}
                     </div>
                     {meeting ? (
                       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-[var(--text-secondary)]">
@@ -248,7 +248,7 @@ export function AlertasBody() {
                       Dispensar
                     </SaveButton>
                   ) : (
-                    <span className="mono type-caption uppercase tracking-[.1em] text-[var(--text-muted)] md:text-right">
+                    <span className="type-caption text-[var(--text-muted)] md:text-right">
                       {alert.can_acknowledge ? "Revisado" : "Somente leitura"}
                     </span>
                   )}
