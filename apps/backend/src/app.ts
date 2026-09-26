@@ -737,7 +737,8 @@ export function buildApp(options: {
       role: session.role,
       isRoot: session.isRoot,
       sessionVersion: updated.rows[0].session_version,
-      rootWorkspaceAccess: session.isRoot ? true : session.rootWorkspaceAccess
+      rootWorkspaceAccess: session.isRoot ? true : session.rootWorkspaceAccess,
+      sid: session.sid
     });
     reply.setCookie("atendon_session", token, { httpOnly: true, sameSite: "lax", secure: config.NODE_ENV === "production", path: "/", maxAge: 43_200 });
     return buildMePayload({ ...session, email: updated.rows[0].email });
@@ -781,7 +782,8 @@ export function buildApp(options: {
       email: current.email,
       role: selected.role,
       isRoot: current.isRoot,
-      rootWorkspaceAccess: current.isRoot
+      rootWorkspaceAccess: current.isRoot,
+      sid: current.sid
     });
     reply.setCookie("atendon_session", token, { httpOnly: true, sameSite: "lax", secure: config.NODE_ENV === "production", path: "/", maxAge: 43_200 });
     if (current.isRoot) {
