@@ -1,5 +1,5 @@
 "use client";
-import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowsLeftRight, BellRinging, BellSlash, CalendarDots, CheckCircle, Checks, Check, DotsThreeVertical, Flask, MagnifyingGlass, Pause, Robot, UserPlus, X } from "@/components/icons";
+import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowsLeftRight, BellRinging, BellSlash, CalendarClock, CalendarDots, CheckCircle, Checks, Check, DotsThreeVertical, Flask, Inbox, MagnifyingGlass, Pause, Robot, UserPlus, X, type Icon } from "@/components/icons";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { ConversationComposer } from "@/components/conversation-composer";
@@ -13,7 +13,7 @@ import { ConversationScheduler } from "@/components/conversation-scheduler";
 import { ConversationStatusPicker } from "@/components/conversation-status-picker";
 import { Empty } from "@/components/page-state";
 import { LeadTagChips, type LeadTag } from "@/components/lead-tag-picker";
-import { Field, HelpHint, IconButton, SaveButton, SaveToast, useFlashToast, useSaveFeedback } from "@/components/ui";
+import { Field, HelpHint, IconButton, SaveButton, SaveToast, Tooltip, useFlashToast, useSaveFeedback } from "@/components/ui";
 import { ListFiltersBar, type ListFilterDef } from "@/components/ui/filters";
 import { MessageActionsMenu } from "@/components/message-actions-menu";
 import { ModalDialog } from "@/components/modal-dialog";
@@ -463,6 +463,16 @@ function MessageDateSeparator({ label }: { label: string }) {
     </div>
   );
 }
+
+// Abas da fila como ícones: cor = significado (laranja aguarda humano, roxo
+// IA, azul agenda, verde resolvido); o nome fica no aria-label e no tooltip.
+const CONVERSATION_TAB_ICONS: Record<string, Icon> = { human: Inbox, ai: Robot, scheduled: CalendarClock, resolved: CheckCircle };
+const CONVERSATION_TAB_HINTS: Record<string, string> = {
+  human: "Abertas — aguardando atendimento humano",
+  ai: "IA — a IA responde sozinha",
+  scheduled: "Agendadas — com horário confirmado",
+  resolved: "Resolvidas — encerradas"
+};
 
 export default function Conversations() {
   const { isEnabled } = useCapabilities();
@@ -1506,22 +1516,25 @@ export default function Conversations() {
                   ["ai", "IA", unreadCounts?.ai],
                   ["scheduled", "Agendadas", unreadCounts?.scheduled],
                   ["resolved", "Resolvidas", unreadCounts?.resolved]
-                ].map(([key, label, count]) => (
-                  <button
-                    type="button"
-                    key={key as string}
-                    onClick={() => setFilter(key as string)}
-                    aria-pressed={filter === key}
-                    className="flex min-w-0 items-center justify-center gap-1 truncate"
-                  >
-                    <span className="truncate">{label}</span>
-                    {Number(count) > 0 ? (
-                      <span className="mono flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] px-1 text-xs font-semibold text-[var(--primary-foreground)]">
-                        {Number(count) > 99 ? "99+" : count}
-                      </span>
-                    ) : null}
-                  </button>
-                ))}
+                ].map(([key, label, count]) => {
+                  const TabIcon = CONVERSATION_TAB_ICONS[key as string];
+                  return (
+                    <Tooltip key={key as string} content={CONVERSATION_TAB_HINTS[key as string] ?? label} side="bottom">
+                      <button
+                        type="button"
+                        onClick={() => setFilter(key as string)}
+                        aria-pressed={filter === key}
+                        aria-label={label as string}
+                        data-tab={key as string}
+                      >
+                        <span className="conversation-filter-tabs__icon" aria-hidden="true"><TabIcon size={16} /></span>
+                        {Number(count) > 0 ? (
+                          <span className="conversation-filter-tabs__count" aria-hidden="true">{Number(count) > 99 ? "99+" : count}</span>
+                        ) : null}
+                      </button>
+                    </Tooltip>
+                  );
+                })}
               </div>
             ) : (
               <div className="rounded-md border border-[var(--primary-border)] px-3 py-1.5 text-xs font-medium text-[var(--primary-text)]">

@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { Empty } from "@/components/page-state";
 import { FlowConnect } from "@/components/flow-connect";
 import { Shell } from "@/components/shell";
-import { Badge, Button, HelpHint, IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
+import { Badge, Button, HelpHint, IconButton, SaveButton, SaveToast, useSaveFeedback, Tooltip } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatPanelDateTime } from "@/lib/format";
 import {
@@ -217,7 +217,7 @@ export default function ImportContactsPage() {
             <Link href="/contatos" className={styles.back}><ArrowLeft size={14} aria-hidden="true" />Contatos</Link>
             <h1>Importar contatos <HelpHint label="Ajuda: Importar contatos">Planilhas CSV ou XLSX; possíveis duplicados são sinalizados antes de importar.</HelpHint></h1>
           </div>
-          <Button size="sm" onClick={handleTemplateDownload}><DownloadSimple size={14} aria-hidden="true" />Template CSV</Button>
+          <Tooltip content="Baixar template CSV"><Button size="sm" className="icon-button icon-button--sm" onClick={handleTemplateDownload}><DownloadSimple size={14} aria-hidden="true" /><span className="sr-only">Template CSV</span></Button></Tooltip>
         </header>
         {error ? <p className="error" role="alert">{error}</p> : null}
         {feedback ? <p className="accent" role="status" aria-live="polite">{feedback}</p> : null}

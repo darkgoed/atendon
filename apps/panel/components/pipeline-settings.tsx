@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { useCaseOrganizationEnabled } from "@/lib/organization";
 import { CANONICAL_PIPELINE_STATUSES, pipelineStatusLabel, type PipelineFollowUpConfig } from "@/lib/pipeline";
 import { usePermission } from "@/lib/use-permission";
-import { Field, IconButton, Input, SaveButton, SaveToast, Select, useSaveFeedback } from "@/components/ui";
+import { Field, IconButton, Input, SaveButton, SaveToast, Select, useSaveFeedback, Tooltip } from "@/components/ui";
 import { SETTINGS_COLOR_DEFAULTS } from "@/components/settings-colors";
 import styles from "@/components/settings-panels.module.css";
 
@@ -251,7 +251,7 @@ function StageEditor({ stage, stages, transitions, onChanged }: { stage: Configu
       <div className="flex flex-wrap items-end gap-2 border-t border-[var(--border)] pt-3">
         <SaveButton state={pending ? "busy" : stageSave.state} onClick={() => void save()} disabled={pending || !draft.name.trim()}>Salvar etapa</SaveButton>
         <label className="field min-w-52 flex-1"><span className="label">Substituta ao arquivar{needsReplacement ? " (obrigatória)" : " (opcional)"}</span><select className="input" value={replacement} onChange={(event) => setReplacement(event.target.value)}><option value="">{needsReplacement ? "Selecione" : "Sem substituta"}</option>{replacementTargets.map((target) => <option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
-        <button type="button" className="btn warn" onClick={() => void archive()} disabled={(needsReplacement && !replacement) || pending}><Archive size={15} aria-hidden="true" />Arquivar</button>
+        <Tooltip content="Arquivar"><button type="button" className="btn warn icon-button" onClick={() => void archive()} disabled={(needsReplacement && !replacement) || pending}><Archive size={15} aria-hidden="true" /><span className="sr-only">Arquivar</span></button></Tooltip>
       </div>
       {error ? <p className="error" role="alert">{error}</p> : null}
       <SaveToast show={stageSave.done}>Etapa salva</SaveToast>

@@ -481,7 +481,10 @@ export async function registerChangelogRoutes(app: FastifyInstance): Promise<voi
     const query = publicListQuery.parse(request.query);
     const rows = await listFeedForUser(db, session.userId, query.limit + 1, query.offset);
     const page = rows.slice(0, query.limit);
+    // `id` só no feed autenticado (o público segue a whitelist sem id): é o
+    // que o painel manda em POST /panel/changelog/read para marcar leitura.
     const posts = await Promise.all(page.map(async (row) => ({
+      id: row.id,
       ...toPublicPost(row, await listPostMedia(db, row.id)),
       read: row.read
     })));

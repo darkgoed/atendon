@@ -10,7 +10,7 @@
 
 import { ArrowDown, ArrowUp, FileArrowUp, Plus, Trash } from "@/components/icons";
 import { type FormEvent, useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Badge, Button, Dialog, Field, IconButton, Input, SaveButton, SaveToast, Select, Textarea, useSaveFeedback } from "@/components/ui";
+import { Badge, Button, Dialog, Field, IconButton, Input, SaveButton, SaveToast, Select, Textarea, useSaveFeedback, Tooltip } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import {
   CHANGELOG_CATEGORIES,
@@ -348,9 +348,7 @@ export function PostFormDialog({
               </IconButton>
             </div>
           ))}
-          <Button size="sm" className="justify-self-start" onClick={() => setLinks((current) => [...current, { label: "", url: "" }])}>
-            <Plus size={14} aria-hidden="true" />Adicionar link
-          </Button>
+          <Tooltip content="Adicionar link"><Button size="sm" className="justify-self-start icon-button" onClick={() => setLinks((current) => [...current, { label: "", url: "" }])}><Plus size={14} aria-hidden="true" /><span className="sr-only">Adicionar link</span></Button></Tooltip>
         </fieldset>
         {!post ? (
           <Field label="Agendar publicação (opcional)" hint="Vazio cria rascunho; data futura agenda; data passada publica imediatamente (exige resumo).">

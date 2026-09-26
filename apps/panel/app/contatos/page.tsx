@@ -21,7 +21,7 @@ import { applyLeadSavedViewFilters, leadFiltersForSavedView, useCaseOrganization
 import { useRealtimeSignals } from "@/lib/realtime";
 import { hasWorkspaceWideCaseScope, type PanelSession } from "@/lib/session";
 import { usePermission } from "@/lib/use-permission";
-import { Button, EmptyState, HelpHint, IconButton, SaveToast } from "@/components/ui";
+import { Button, EmptyState, HelpHint, IconButton, SaveToast, Tooltip } from "@/components/ui";
 import { leadStatusTone } from "./lead-domain";
 import { ListFiltersBar, type ListFilterDef } from "@/components/ui/filters";
 
@@ -242,7 +242,7 @@ export default function LeadsPage() {
             <DownloadSimple size={14} aria-hidden="true" />
           </IconButton>
         ) : null}
-        <Link className="btn crm-compact-button" href="/contatos/importar"><UploadSimple size={14} aria-hidden="true" />Importar</Link>
+        <Tooltip content="Importar contatos"><Link className="btn icon-button crm-compact-button" href="/contatos/importar"><UploadSimple size={14} aria-hidden="true" /><span className="sr-only">Importar</span></Link></Tooltip>
         {canCreateLeads ? <Button className="crm-compact-button" tone="primary" onClick={() => setCreateOpen(true)}><Plus size={14} aria-hidden="true" />Novo contato</Button> : null}
         <BulkLeadActions selected={selectedItems} onClear={() => setSelectedIds(new Set())} onChanged={mutate} />
       </div>

@@ -797,6 +797,7 @@
   .meet-room { grid-template-rows: auto minmax(0, 1fr); }
   .meet-room__header { min-height: var(--topbar-height); padding-inline: var(--space-4); }
   .meet-room__back { min-height: var(--control-min); padding-inline: var(--space-2); }
+  .meet-room__back.icon-button { padding-inline: 0; }
   .public-state-page { padding: var(--space-6) var(--space-4); }
   .public-state-card { padding: var(--space-6) var(--space-4); }
 }
