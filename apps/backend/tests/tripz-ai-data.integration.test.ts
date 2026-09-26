@@ -503,4 +503,35 @@ describe("Tripz AI tenant-safe persistence", () => {
     )).rejects.toMatchObject({ code: "23503" });
     await repository.deleteConversation(ownerScope, detail.conversation.id);
   });
+
+  it("frees storage quota when an attachment or a whole conversation is deleted", async () => {
+    const tenant = (await pool.query<{ id: string }>(
+      "INSERT INTO tenants(name,status,storage_quota_bytes) VALUES($1,'active',30) RETURNING id",
+      [`Tripz quota ${suffix}`]
+    )).rows[0].id;
+    const scope: TripzAccessScope = { tenantId: tenant, userId: ownerA, canManage: true };
+    const usedBytes = async () => Number((await pool.query<{ used_bytes: string }>(
+      "SELECT used_bytes FROM tenant_storage_usage WHERE tenant_id=$1",
+      [tenant]
+    )).rows[0]?.used_bytes ?? 0);
+    try {
+      const detail = await repository.createConversation(scope, "Quota");
+      const upload = (data: Buffer, conversationId = detail.conversation.id) =>
+        fileStore.upload(scope, { conversationId, fileName: "foto.png", mimeType: "image/png", data });
+      const first = await upload(png(2, 3));
+      expect(await usedBytes()).toBe(24);
+      expect(await repository.deleteAttachment(scope, detail.conversation.id, first.attachment.id)).toBe(true);
+      expect(await usedBytes()).toBe(0);
+      // Quota de 30 bytes: sem liberar o anexo excluído, o segundo upload seria 413.
+      await upload(png(4, 5));
+      expect(await usedBytes()).toBe(24);
+      expect(await repository.deleteConversation(scope, detail.conversation.id)).toBe(true);
+      expect(await usedBytes()).toBe(0);
+      const next = await repository.createConversation(scope, "Quota 2");
+      await upload(png(6, 7), next.conversation.id);
+      expect(await usedBytes()).toBe(24);
+    } finally {
+      await pool.query("DELETE FROM tenants WHERE id=$1", [tenant]);
+    }
+  });
 });

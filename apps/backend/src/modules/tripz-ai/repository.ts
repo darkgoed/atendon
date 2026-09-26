@@ -439,11 +439,19 @@ export class TripzAiRepository implements TripzRepositoryPort {
       if (conversation.processing_status === "queued" || conversation.processing_status === "processing") {
         throw new TripzAiError(409, "TRIPZ_TURN_IN_PROGRESS", "Aguarde a análise atual antes de excluir a proposta");
       }
+      // Anexos saem por ON DELETE CASCADE: devolve os bytes à quota na mesma
+      // transação (conversa travada acima impede upload concorrente nela).
+      const stored = await client.query<{ bytes: string }>(
+        `SELECT COALESCE(sum(octet_length(file_data)),0) bytes FROM tripz_ai_attachments
+         WHERE tenant_id=$1 AND conversation_id=$2`,
+        [scope.tenantId, conversationId]
+      );
       const result = await client.query(
         `DELETE FROM tripz_ai_conversations
          WHERE tenant_id=$1 AND id=$2`,
         [scope.tenantId, conversationId]
       );
+      await reserveStorageBytes(client, scope.tenantId, -Number(stored.rows[0].bytes));
       return (result.rowCount ?? 0) > 0;
     });
   }
@@ -754,12 +762,16 @@ export class TripzAiRepository implements TripzRepositoryPort {
   async deleteAttachment(scope: TripzAccessScope, conversationId: string, attachmentId: string): Promise<boolean> {
     return transaction(this.database, async (client) => {
       await lockVisibleConversation(client, scope, conversationId);
-      const result = await client.query(
+      const result = await client.query<{ bytes: number }>(
         `DELETE FROM tripz_ai_attachments
-         WHERE tenant_id=$1 AND conversation_id=$2 AND id=$3 AND message_id IS NULL`,
+         WHERE tenant_id=$1 AND conversation_id=$2 AND id=$3 AND message_id IS NULL
+         RETURNING octet_length(file_data) bytes`,
         [scope.tenantId, conversationId, attachmentId]
       );
-      if ((result.rowCount ?? 0) > 0) return true;
+      if (result.rows[0]) {
+        await reserveStorageBytes(client, scope.tenantId, -result.rows[0].bytes);
+        return true;
+      }
       const linked = await client.query<{ linked: boolean }>(
         `SELECT message_id IS NOT NULL linked FROM tripz_ai_attachments
          WHERE tenant_id=$1 AND conversation_id=$2 AND id=$3`,
