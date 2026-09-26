@@ -178,3 +178,19 @@ describe("C1 — busca por telefone depois do merge chega ao principal", () => {
     expect(context?.registeredLead?.id).toBe(target);
   });
 });
+
+describe("C12 — merge respeita o escopo do caso", () => {
+  it("operador (escopo mine) não faz preflight de contato de outro responsável", async () => {
+    const own = await createLead(nextPhone(), operatorMemberId);
+    const ownToo = await createLead(nextPhone(), operatorMemberId);
+    const foreign = await createLead(nextPhone(), ownerMemberId);
+    const cookie = await loginAs(operatorId);
+    const preflight = (source: string, target: string) => app.inject({
+      method: "POST", url: "/organization/leads/merge/preflight", headers: { cookie },
+      payload: { source_id: source, target_id: target }
+    });
+    expect((await preflight(own, ownToo)).statusCode).toBe(200);
+    expect((await preflight(foreign, own)).statusCode).toBe(404);
+    expect((await preflight(own, foreign)).statusCode).toBe(404);
+  });
+});
