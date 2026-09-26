@@ -811,4 +811,6 @@
 @media (max-width: 360px) {
   .sidebar { padding: var(--space-2); }
   .content { padding: var(--space-4) var(--space-3) var(--space-6); }
+  /* Mesma especificidade da regra acima: sem isso as rotas flush ganham gutter a 360px. */
+  .content--flush { padding: 0; }
 }

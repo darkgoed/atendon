@@ -690,7 +690,8 @@
   align-content: start;
   gap: 1px;
   overflow: hidden;
-  padding: var(--space-1) var(--space-2);
+  /* 2px no bloco: nome + horário + status cabem nos 51px úteis da célula de 60px. */
+  padding: 2px var(--space-2);
   border: 1px solid var(--primary-border);
   border-inline-start: 2px solid var(--primary);
   border-radius: var(--radius-sm);
@@ -1278,6 +1279,8 @@
   .agenda-head__toggle--filters {
     display: grid;
     width: 100%;
+    /* A base usa min-width: max-content; em 2 colunas isso estoura o cabeçalho a 320px. */
+    min-width: 0;
     max-width: none;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

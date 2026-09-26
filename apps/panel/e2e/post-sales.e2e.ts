@@ -157,7 +157,10 @@ test("portfolio workflow covers manual entry, result, progress, configuration, t
   await installOperationalFixture(page);
   await page.setViewportSize(viewports[2]);
   await page.goto("/pos-venda");
+  // Desktop usa o rail: páginas fora dos primários ficam no popover "Mais itens do menu".
+  await page.getByRole("button", { name: "Mais itens do menu" }).click();
   await expect(page.getByRole("link", { name: "Carteira" })).toHaveAttribute("aria-current", "page");
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("heading", { name: "Marina Oliveira" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Abrir conversa" })).toHaveCount(0);
 
@@ -206,7 +209,7 @@ test("portfolio workflow covers manual entry, result, progress, configuration, t
   }
 
   const accessibility = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
-  expect(accessibility.violations.map(({ id }) => id)).toEqual([]);
+  expect(accessibility.violations.map(({ id, nodes }) => ({ id, targets: nodes.map((node) => `${node.target.join(" ")} :: ${node.failureSummary ?? ""}`) }))).toEqual([]);
 });
 
 test("ROOT controls supported modules through the generic workspace catalog", async ({ page }) => {

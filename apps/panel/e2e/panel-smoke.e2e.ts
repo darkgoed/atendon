@@ -21,13 +21,17 @@ async function expectNoDocumentOverflow(page: Page) {
 }
 
 async function expectNoAxeViolations(page: Page) {
-  const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
-  const violations = result.violations.map(({ id, impact, nodes }) => ({
-    id,
-    impact,
-    nodes: nodes.map(({ target, html, failureSummary }) => ({ target, html, failureSummary }))
-  }));
-  expect(violations).toEqual([]);
+  // As rotas carregam dados após o "main" aparecer (ex.: botão desabilitado até a
+  // unidade chegar); reanalisa até estabilizar — violação persistente ainda falha.
+  await expect(async () => {
+    const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+    const violations = result.violations.map(({ id, impact, nodes }) => ({
+      id,
+      impact,
+      nodes: nodes.map(({ target, html, failureSummary }) => ({ target, html, failureSummary }))
+    }));
+    expect(violations).toEqual([]);
+  }).toPass({ timeout: 10_000 });
 }
 
 async function login(page: Page) {
