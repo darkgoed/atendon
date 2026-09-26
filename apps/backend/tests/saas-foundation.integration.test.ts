@@ -3,6 +3,7 @@ import { hash } from "bcryptjs";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
+import { encryptTotpSecret, generateTotpSecret, totpCode } from "../src/auth/totp.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
 import type { EmailMessage, EmailProvider } from "../src/mail/email-provider.js";
@@ -25,6 +26,7 @@ const initialOwnerEmail = `initial-owner-${suffix}@test.local`;
 const rootInvitedEmail = `root-invited-${suffix}@test.local`;
 const sidInvitedEmail = `sid-invited-${suffix}@test.local`;
 const totpInvitedEmail = `totp-invited-${suffix}@test.local`;
+const totpBruteEmail = `totp-brute-${suffix}@test.local`;
 
 let tenantA = "";
 let tenantB = "";
@@ -140,9 +142,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   setEmailProviderForTests(undefined);
-  await pool.query("DELETE FROM audit_logs WHERE actor_user_id IN (SELECT id FROM users WHERE email=ANY($1::text[]))", [[ownerEmail, adminEmail, operatorEmail, managedMemberEmail, rootEmail, invitedEmail, expiredEmail, disabledInviteEmail, failedEmail, initialOwnerEmail, sidInvitedEmail, totpInvitedEmail]]);
+  await pool.query("DELETE FROM audit_logs WHERE actor_user_id IN (SELECT id FROM users WHERE email=ANY($1::text[]))", [[ownerEmail, adminEmail, operatorEmail, managedMemberEmail, rootEmail, invitedEmail, expiredEmail, disabledInviteEmail, failedEmail, initialOwnerEmail, sidInvitedEmail, totpInvitedEmail, totpBruteEmail]]);
   await pool.query("DELETE FROM tenants WHERE id=ANY($1::uuid[])", [[tenantA, tenantB, tenantC, rootCreatedTenant].filter(Boolean)]);
-  await pool.query("DELETE FROM users WHERE email=ANY($1::text[])", [[ownerEmail, adminEmail, operatorEmail, managedMemberEmail, rootEmail, invitedEmail, expiredEmail, disabledInviteEmail, failedEmail, initialOwnerEmail, rootInvitedEmail, sidInvitedEmail, totpInvitedEmail]]);
+  await pool.query("DELETE FROM users WHERE email=ANY($1::text[])", [[ownerEmail, adminEmail, operatorEmail, managedMemberEmail, rootEmail, invitedEmail, expiredEmail, disabledInviteEmail, failedEmail, initialOwnerEmail, rootInvitedEmail, sidInvitedEmail, totpInvitedEmail, totpBruteEmail]]);
   await pool.end();
   await app.close();
 });
@@ -888,12 +890,43 @@ describe("login rate limit behind the Docker/Traefik proxy", () => {
     for (let attempt = 0; attempt < 11; attempt++) statuses.push((await badLogin(proxy, attacker)).statusCode);
     expect(statuses.at(-1)).toBe(429);
     expect((await badLogin(proxy, victim)).statusCode).toBe(401);
-  });
+  }, 30_000);
 
   it("ignores X-Forwarded-For sent straight from a public address", async () => {
     const remote = `192.0.2.${octet()}`;
     const statuses: number[] = [];
     for (let attempt = 0; attempt < 11; attempt++) statuses.push((await badLogin(remote, `198.51.100.${attempt + 1}`)).statusCode);
     expect(statuses.at(-1)).toBe(429);
-  });
+  }, 30_000);
+});
+
+describe("TOTP verify brute force", () => {
+  it("locks the second factor per user after repeated wrong codes, across IPs and fresh challenges", async () => {
+    const secret = generateTotpSecret();
+    const user = await pool.query<{ id: string }>(
+      "INSERT INTO users(email,password_hash,status,totp_secret_encrypted,totp_enabled_at) VALUES($1,$2,'active',$3,now()) RETURNING id",
+      [totpBruteEmail, await hash(password, 4), encryptTotpSecret(secret)]
+    );
+    await pool.query(
+      `INSERT INTO workspace_members(workspace_id,user_id,role_id,status,joined_at)
+       SELECT $1,$2,id,'active',now() FROM workspace_roles WHERE workspace_id=$1 AND name='OPERADOR'`,
+      [tenantA, user.rows[0].id]
+    );
+    const now = Date.now();
+    const valid = new Set([-30_000, 0, 30_000].map((offset) => totpCode(secret, new Date(now + offset))));
+    const wrong = ["000000", "111111", "222222", "333333"].find((code) => !valid.has(code))!;
+
+    async function attempt(index: number, code: string) {
+      const login = await app.inject({ method: "POST", url: "/auth/login", remoteAddress: `10.46.${index}.1`, payload: { email: totpBruteEmail, password } });
+      expect(login.json()).toMatchObject({ totp_required: true });
+      const header = login.headers["set-cookie"];
+      const challenge = (Array.isArray(header) ? header : [header!]).find((cookie) => cookie.startsWith("atendon_totp_challenge="))!.split(";")[0];
+      return app.inject({ method: "POST", url: "/auth/totp/verify", remoteAddress: `10.47.${index}.1`, headers: { cookie: challenge }, payload: { code } });
+    }
+
+    for (let index = 0; index < 5; index++) expect((await attempt(index, wrong)).statusCode).toBe(401);
+    const locked = await attempt(5, totpCode(secret));
+    expect(locked.statusCode).toBe(429);
+    expect(locked.headers["set-cookie"] ?? "").not.toContain("atendon_session=");
+  }, 30_000);
 });

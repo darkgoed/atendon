@@ -11,6 +11,7 @@ import { createSessionToken, requireIdentity, requirePermission, requireRootWork
 import { buildMePayload, listWorkspacesForUser } from "./auth/workspace-service.js";
 import { issueTotpChallenge } from "./auth/totp.js";
 import { createWorkspaceSessionRow } from "./auth/sessions.js";
+import { closeRateLimiter } from "./modules/messages/rate-limiter.js";
 import { config } from "./config.js";
 import { db } from "./db/client.js";
 import { logger } from "./logger.js";
@@ -525,6 +526,7 @@ export function buildApp(options: {
     await panelPresence.close();
     await aiTurnProgressStore.close();
     await distributedRateLimit?.close();
+    await closeRateLimiter();
   });
 
   /**
