@@ -536,6 +536,26 @@ describe("Tripz AI tenant-safe persistence", () => {
     await repository.deleteConversation(ownerScope, detail.conversation.id);
   });
 
+  it("refuses a manual proposal patch while an AI turn is queued or processing", async () => {
+    const detail = await repository.createConversation(ownerScope, "Patch durante turno");
+    const current = await repository.createUserMessage(ownerScope, {
+      conversationId: detail.conversation.id,
+      content: "Monte a proposta",
+      attachmentIds: [],
+      idempotencyKey: "tripz-patch-during-turn"
+    });
+    const patch = { conversationId: detail.conversation.id, expectedRevision: 0, patch: { destination: "Aruba" } };
+    await expect(repository.patchProposal(ownerScope, patch))
+      .rejects.toMatchObject({ statusCode: 409, code: "TRIPZ_TURN_IN_PROGRESS" });
+    const ids = { conversationId: detail.conversation.id, messageId: current.message.id };
+    await repository.markMessageProcessing(ownerScope, { ...ids, status: "processing" });
+    await expect(repository.patchProposal(ownerScope, patch))
+      .rejects.toMatchObject({ statusCode: 409, code: "TRIPZ_TURN_IN_PROGRESS" });
+    await repository.markMessageProcessing(ownerScope, { ...ids, status: "failed", errorCode: "TRIPZ_TEST" });
+    await expect(repository.patchProposal(ownerScope, patch)).resolves.toMatchObject({ revision: 1 });
+    await repository.deleteConversation(ownerScope, detail.conversation.id);
+  });
+
   it("frees storage quota when an attachment or a whole conversation is deleted", async () => {
     const tenant = (await pool.query<{ id: string }>(
       "INSERT INTO tenants(name,status,storage_quota_bytes) VALUES($1,'active',30) RETURNING id",

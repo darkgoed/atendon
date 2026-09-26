@@ -647,6 +647,11 @@ export class TripzAiRepository implements TripzRepositoryPort {
   }): Promise<TripzProposal> {
     return transaction(this.database, async (client) => {
       const conversation = await lockVisibleConversation(client, scope, input.conversationId);
+      // Um patch no meio do turno faria completeAiTurn falhar por revisão
+      // depois de o custo do provedor já ter sido gasto.
+      if (conversation.processing_status === "queued" || conversation.processing_status === "processing") {
+        throw tripzConflict("TRIPZ_TURN_IN_PROGRESS", "Aguarde a análise atual antes de editar a proposta");
+      }
       const currentResult = await client.query<ProposalRow>(
         `SELECT id,conversation_id,schema_version,revision,state,created_at,updated_at
          FROM tripz_ai_proposals WHERE tenant_id=$1 AND conversation_id=$2 FOR UPDATE`,
