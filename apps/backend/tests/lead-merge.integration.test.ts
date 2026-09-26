@@ -369,6 +369,54 @@ describe("merge execution", () => {
       .rejects.toMatchObject({ statusCode: 400, message: "Selecione dois contatos diferentes" });
   });
 
+  it("merges when both leads already have a post-sale client (target wins, source row detached)", async () => {
+    const source = await createLead(tenantId, nextPhone());
+    const target = await createLead(tenantId, nextPhone());
+    const postSale = async (leadId: string) => (await pool.query<{ id: string }>(
+      `INSERT INTO post_sale_clients(tenant_id,name,phone_e164,origin,lead_id)
+       VALUES($1,'Cliente',$2,'closed_sale',$3) RETURNING id`,
+      [tenantId, nextPhone(), leadId]
+    )).rows[0].id;
+    const sourceClient = await postSale(source);
+    const targetClient = await postSale(target);
+
+    const result = await mergeLeads(tenantId, { sourceId: source, targetId: target, confirmations: { different_phone: true } }, actor);
+    expect(result.source.merged_into_id).toBe(target);
+    const rows = (await pool.query<{ id: string; lead_id: string | null }>(
+      "SELECT id,lead_id FROM post_sale_clients WHERE id=ANY($1::uuid[])",
+      [[sourceClient, targetClient]]
+    )).rows;
+    expect(Object.fromEntries(rows.map((row) => [row.id, row.lead_id]))).toEqual({
+      [sourceClient]: null,
+      [targetClient]: target
+    });
+  });
+
+  it("preflights and merges an Instagram lead (no phone) only with explicit confirmation", async () => {
+    const instagramSession = (await pool.query<{ id: string }>(
+      `INSERT INTO whatsapp_sessions(tenant_id,status,channel,is_primary,phone_number)
+       VALUES($1,'connected','instagram',false,NULL) RETURNING id`,
+      [tenantId]
+    )).rows[0].id;
+    const instagramLead = (await pool.query<{ id: string }>(
+      `INSERT INTO scheduling_leads(tenant_id,phone,name,source,instagram_contact_id,instagram_session_id)
+       VALUES($1,NULL,'Contato Instagram','instagram',$2,$3) RETURNING id`,
+      [tenantId, `igsid-${randomUUID()}`, instagramSession]
+    )).rows[0].id;
+    const whatsappLead = await createLead(tenantId, nextPhone());
+
+    const preflight = await preflightLeadMerge(tenantId, instagramLead, whatsappLead);
+    expect(preflight.same_normalized_phone).toBe(false);
+    await expect(mergeLeads(tenantId, { sourceId: instagramLead, targetId: whatsappLead }, actor))
+      .rejects.toMatchObject({ statusCode: 400, code: "PHONE_MISMATCH" });
+    const merged = await mergeLeads(tenantId, {
+      sourceId: instagramLead,
+      targetId: whatsappLead,
+      confirmations: { different_phone: true }
+    }, actor);
+    expect(merged.source.merged_into_id).toBe(whatsappLead);
+  });
+
   it("never merges across tenants", async () => {
     const foreignLead = await createLead(foreignTenantId, nextPhone());
     const localTarget = await createLead(tenantId, nextPhone());

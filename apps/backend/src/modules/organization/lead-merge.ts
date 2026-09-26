@@ -58,18 +58,23 @@ export type MergeInput = {
 
 export type MergeResult = {
   source: { id: string; merged_into_id: string | null; deleted_at: string | null };
-  target: { id: string; phone: string; name: string | null; updated_at: string };
+  target: { id: string; phone: string | null; name: string | null; updated_at: string };
   same_normalized_phone: boolean;
   moved: Record<string, number>;
 };
 
-export function normalizePhone(value: string): string {
-  return value.replace(/\D/g, "");
+export function normalizePhone(value: string | null): string {
+  return (value ?? "").replace(/\D/g, "");
+}
+
+// Lead sem telefone (Instagram) nunca é "mesmo telefone": exige confirmação.
+function sameNormalizedPhone(a: string | null, b: string | null): boolean {
+  return normalizePhone(a) !== "" && normalizePhone(a) === normalizePhone(b);
 }
 
 type LeadMergeRow = {
   id: string;
-  phone: string;
+  phone: string | null;
   name: string | null;
   pipeline_stage_id: string;
   merged_into_id: string | null;
@@ -107,7 +112,7 @@ export async function preflightLeadMerge(
   if (sourceId === targetId) throw httpError(400, "Selecione dois contatos diferentes");
   const result = await db.query<{
     id: string;
-    phone: string;
+    phone: string | null;
     name: string | null;
     pipeline_stage_id: string;
     merged_into_id: string | null;
@@ -161,7 +166,7 @@ export async function preflightLeadMerge(
   );
   const source = result.rows[0];
   if (!source) throw httpError(404, "Contato não encontrado");
-  const target = await db.query<{ phone: string; pipeline_stage_id: string }>(
+  const target = await db.query<{ phone: string | null; pipeline_stage_id: string }>(
     "SELECT phone,pipeline_stage_id FROM scheduling_leads WHERE tenant_id=$1 AND id=$2",
     [tenantId, targetId]
   );
@@ -170,7 +175,7 @@ export async function preflightLeadMerge(
   return {
     source_id: source.id,
     target_id: targetId,
-    same_normalized_phone: normalizePhone(source.phone) === normalizePhone(target.rows[0].phone),
+    same_normalized_phone: sameNormalizedPhone(source.phone, target.rows[0].phone),
     conflicts: {
       conversations: Number(source.conversations),
       tasks: Number(source.tasks),
@@ -194,8 +199,8 @@ export async function mergeLeads(
     const source = await loadMergeableLead(client, tenantId, input.sourceId);
     const target = await loadMergeableLead(client, tenantId, input.targetId);
 
-    const sameNormalizedPhone = normalizePhone(source.phone) === normalizePhone(target.phone);
-    if (!sameNormalizedPhone && input.confirmations?.different_phone !== true) {
+    const samePhone = sameNormalizedPhone(source.phone, target.phone);
+    if (!samePhone && input.confirmations?.different_phone !== true) {
       throw Object.assign(
         new Error("Telefones diferentes: confirme explicitamente a mesclagem entre contatos distintos"),
         { statusCode: 400, code: "PHONE_MISMATCH" }
@@ -290,9 +295,17 @@ export async function mergeLeads(
        WHERE tenant_id=$1 AND lead_id=$2`,
       [tenantId, source.id, target.id]
     );
+    // Pós-venda: UNIQUE(tenant_id,lead_id) — target vence; a carteira do
+    // source é desvinculada (lead_id=NULL), nunca apagada (carrega checklist).
     const postSales = await client.query(
-      "UPDATE post_sale_clients SET lead_id=$3 WHERE tenant_id=$1 AND lead_id=$2",
+      `UPDATE post_sale_clients SET lead_id=$3
+       WHERE tenant_id=$1 AND lead_id=$2
+         AND NOT EXISTS (SELECT 1 FROM post_sale_clients WHERE tenant_id=$1 AND lead_id=$3)`,
       [tenantId, source.id, target.id]
+    );
+    await client.query(
+      "UPDATE post_sale_clients SET lead_id=NULL WHERE tenant_id=$1 AND lead_id=$2",
+      [tenantId, source.id]
     );
 
     const softDeleted = await client.query<{ id: string; deleted_at: Date | null }>(
@@ -328,8 +341,8 @@ export async function mergeLeads(
         {
           source_id: source.id,
           target_id: target.id,
-          same_normalized_phone: sameNormalizedPhone,
-          confirmed_different_phone: !sameNormalizedPhone,
+          same_normalized_phone: samePhone,
+          confirmed_different_phone: !samePhone,
           source_phone: source.phone,
           target_phone: target.phone,
           moved: counts
@@ -338,7 +351,7 @@ export async function mergeLeads(
         actor.userAgent ?? null
       ]
     );
-    return { counts, softDeleted: softDeleted.rows[0], sameNormalizedPhone };
+    return { counts, softDeleted: softDeleted.rows[0], sameNormalizedPhone: samePhone };
   });
 
   // Leitura de retorno DEPOIS do commit (padrão da casa).
@@ -347,7 +360,7 @@ export async function mergeLeads(
       "SELECT id,merged_into_id,deleted_at FROM scheduling_leads WHERE tenant_id=$1 AND id=$2",
       [tenantId, input.sourceId]
     ),
-    db.query<{ id: string; phone: string; name: string | null; updated_at: Date }>(
+    db.query<{ id: string; phone: string | null; name: string | null; updated_at: Date }>(
       "SELECT id,phone,name,updated_at FROM scheduling_leads WHERE tenant_id=$1 AND id=$2",
       [tenantId, input.targetId]
     )
