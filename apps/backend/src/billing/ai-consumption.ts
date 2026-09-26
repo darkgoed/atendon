@@ -7,6 +7,7 @@ import { estimateInteractionCents, estimateTurnCredits, getActivePricingRule, pr
 import { evaluateAlerts } from "./alerts.js";
 import { appendFinancialLedgerEntry, grantUsageCredit } from "./ledger.js";
 import { detectPaymentVelocity } from "./fraud-signals.js";
+import { CHARGEABLE_SUBSCRIPTION_STATUSES } from "./types.js";
 
 type AiPurpose = "inbound_reply" | "follow_up" | "copilot_suggestion";
 
@@ -23,7 +24,7 @@ export type AiReservationRow = {
 };
 export type ConsumeResult = {
   allowed: boolean;
-  reason?: "AI_DISABLED" | "QUOTA_EXCEEDED" | "CREDIT_CAP_REACHED" | "BILLING_UNAVAILABLE";
+  reason?: "AI_DISABLED" | "SUBSCRIPTION_INACTIVE" | "QUOTA_EXCEEDED" | "CREDIT_CAP_REACHED" | "BILLING_UNAVAILABLE";
   consumptionType?: "INCLUDED" | "ROLLOVER" | "BONUS" | "OVERAGE";
   ledgerId?: string;
   usagePeriodId?: string;
@@ -48,14 +49,17 @@ export async function consumeAiInteraction(
 ): Promise<ConsumeResult> {
   try {
     return await withTenantTransaction(db, tenantId, async (client) => {
-      const subscription = await client.query<{ id: string; plan_id: string; ai_enabled: boolean }>(
-        `SELECT ts.id, ts.plan_id, COALESCE(p.ai_enabled, true) AS ai_enabled
+      const subscription = await client.query<{ id: string; plan_id: string; status: string; ai_enabled: boolean }>(
+        `SELECT ts.id, ts.plan_id, ts.status, COALESCE(p.ai_enabled, true) AS ai_enabled
            FROM tenant_subscriptions ts JOIN plans p ON p.id=ts.plan_id
           WHERE ts.tenant_id=$1 FOR UPDATE`, [tenantId],
       );
       const sub = subscription.rows[0];
       if (!sub) return { allowed: true };
       if (!sub.ai_enabled) return { allowed: false, reason: "AI_DISABLED" };
+      // Suspensa/cancelada/expirada não consome IA (ensureOpenPeriod abriria
+      // franquia nova todo mês); carência/inadimplência segue atendida.
+      if (!(CHARGEABLE_SUBSCRIPTION_STATUSES as readonly string[]).includes(sub.status)) return { allowed: false, reason: "SUBSCRIPTION_INACTIVE" };
       return reserveAiTurnInTx(client, tenantId, sub.id, purpose, logicalTurnId, metadata);
     });
   } catch (error) {

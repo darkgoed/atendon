@@ -36,6 +36,7 @@ const COPILOT_CALL_REASON = "copilot_suggestion";
 // Erros acionáveis do gate de billing (SPEC R3): nenhuma negação chega ao provedor.
 const COPILOT_BILLING_GUARDS = {
   AI_DISABLED: { status: 409, code: "ai_disabled", error: "IA desativada no plano deste workspace" },
+  SUBSCRIPTION_INACTIVE: { status: 402, code: "subscription_inactive", error: "Assinatura do workspace inativa; regularize para usar a IA" },
   QUOTA_EXCEEDED: { status: 402, code: "ai_quota_exceeded", error: "Limite de interações de IA do plano atingido" },
   CREDIT_CAP_REACHED: { status: 402, code: "ai_credit_cap_reached", error: "Limite de gastos com IA do workspace atingido" },
   BILLING_UNAVAILABLE: { status: 503, code: "billing_unavailable", error: "Cobrança temporariamente indisponível; tente novamente em instantes" }
