@@ -473,6 +473,9 @@ export class CalendarSyncRepository {
               AND c.auth_error IS NULL
          WHERE a.start_at > now()
            AND a.status IN ('confirmado','reagendado')
+           -- Mutação local ainda não publicada: o Google está velho, não adotar.
+           AND NOT EXISTS (SELECT 1 FROM scheduling_calendar_sync_outbox o
+                           WHERE o.appointment_id=e.appointment_id AND o.tenant_id=e.tenant_id)
            AND (e.last_synced_at IS NULL
                 OR e.last_synced_at <= now() - ($2::bigint * interval '1 millisecond'))
          ORDER BY e.appointment_id
@@ -827,7 +830,8 @@ export async function reconcileLinkedCalendarEvents(
         localSnapshot: {
           status: link.status as AppointmentStatus,
           startAt: link.startAt.toISOString(),
-          endAt: link.endAt.toISOString()
+          endAt: link.endAt.toISOString(),
+          linkClaimedAt: link.claimedAt
         },
         event: removed ? null : event,
         notFound: removed || undefined,

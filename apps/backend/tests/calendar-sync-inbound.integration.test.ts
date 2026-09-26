@@ -379,6 +379,49 @@ describe("reconciliação adota mudanças do Google (bidirecional)", () => {
     await reconcileLinkedCalendarEvents(repo, processor, { now: NOW });
     expect(await conflictAlertCount(appointmentId)).toBe(1);
   });
+
+  it("reagendamento local ainda na outbox: reconciliação não reverte para o horário antigo do Google", async () => {
+    const appointmentId = await createLeadAppointment();
+    await syncAppointment(appointmentId);
+    const { rescheduleAppointment } = await import("../src/modules/scheduling/service.js");
+    await rescheduleAppointment(
+      tenantId, appointmentId,
+      { start: MOVE_START, end: MOVE_END, unidade_id: "unit" },
+      { manual: true, now: NOW }
+    );
+    expect(await outboxRow(appointmentId)).toMatchObject({ kind: "upsert" }); // push ainda pendente
+    await staleLink(appointmentId);
+    // Google ainda mostra o horário antigo (13:00-14:00Z).
+    remoteEvent = {
+      id: "evt-1", etag: "g-old", status: "confirmed",
+      start: { dateTime: SLOT_START }, end: { dateTime: "2026-10-05T14:00:00.000Z" }
+    } as unknown as GoogleCalendarEvent;
+
+    await reconcileLinkedCalendarEvents(repo, processor, { now: NOW });
+
+    expect((await appointmentRow(appointmentId)).start_at.toISOString()).toBe(MOVE_START);
+  });
+
+  it("pump mexe no vínculo entre o claim e a adoção (rotação/404): não cancela o agendamento", async () => {
+    const appointmentId = await createLeadAppointment();
+    await syncAppointment(appointmentId);
+    await staleLink(appointmentId);
+    // Reatribuição concorrente enfileira o upsert e o pump já apagou o evento
+    // antigo: a leitura do vínculo antigo devolve 404.
+    beforeGet = async () => {
+      await pool.query(
+        "INSERT INTO scheduling_calendar_sync_outbox(appointment_id,tenant_id,kind) VALUES($1,$2,'upsert')",
+        [appointmentId, tenantId]
+      );
+    };
+    getEventError = new GoogleCalendarApiError(
+      "O Google recusou a leitura do evento no Calendar (HTTP 404)", "failed", 404
+    );
+
+    await reconcileLinkedCalendarEvents(repo, processor, { now: NOW });
+
+    expect((await appointmentRow(appointmentId)).status).toBe("confirmado");
+  });
 });
 
 describe("sem Meet não solicitado no evento publicado", () => {

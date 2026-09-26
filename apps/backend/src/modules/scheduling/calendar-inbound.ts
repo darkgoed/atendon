@@ -17,6 +17,8 @@ export type LocalAppointmentSnapshot = {
   status: AppointmentStatus;
   startAt: string;
   endAt: string;
+  /** Stamp do vínculo no claim da reconciliação (guarda contra outbox pendente). */
+  linkClaimedAt?: Date;
 };
 
 export type AdoptGoogleCalendarChangeInput = {
@@ -37,7 +39,12 @@ export type AdoptGoogleCalendarChangeResult =
 const conflict = (reason: string): AdoptGoogleCalendarChangeResult => ({ kind: "conflict", reason });
 
 function expectedSnapshot(snapshot: LocalAppointmentSnapshot) {
-  return { status: snapshot.status, start_at: snapshot.startAt, end_at: snapshot.endAt };
+  return {
+    status: snapshot.status,
+    start_at: snapshot.startAt,
+    end_at: snapshot.endAt,
+    calendar_link_claimed_at: snapshot.linkClaimedAt
+  };
 }
 
 // Recusa esperada do domínio (guarda de snapshot, capacidade, busy do Google,
