@@ -446,7 +446,7 @@ describe("FlowEditor", () => {
         trace={{ running: false, steps: [{ nodeId: "P1", label: "Opções", output: "Ótica" }], endReason: "aguardando" }}
       />,
     );
-    expect(screen.getByRole("alert").textContent).toContain("problema(s)");
+    expect(screen.getByTestId("flow-issues").textContent).toContain("problema(s)");
     const region = screen.getByRole("region", { name: "Resultado da simulação" });
     expect(region.textContent).toContain("P1");
     expect(region.textContent).toContain("aguardando");
@@ -581,7 +581,7 @@ describe("forms por kind SPEC v7 (branch/finalize/interactive) — M2", () => {
     };
     render(<FlowEditor {...editorProps()} definition={broken} />);
     expect(screen.getByTestId("flow-node-B1").getAttribute("data-error")).toBe("true");
-    expect(screen.getByRole("alert").textContent).toContain("precisa de value");
+    expect(screen.getByTestId("flow-issues").textContent).toContain("precisa de value");
     fireEvent.click(screen.getByTestId("flow-issue-B1"));
     expect(screen.getByTestId("flow-node-B1").getAttribute("data-selected")).toBe("true");
     expect(screen.getByRole("complementary", { name: "Propriedades da etapa" }).textContent).toContain("Condição");
@@ -622,7 +622,8 @@ describe("forms por kind SPEC v7 (branch/finalize/interactive) — M2", () => {
     render(<FluxoEditorPage />);
     await waitFor(() => expect(screen.getByTestId("flow-node-B1")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("precisa de value"));
+    await waitFor(() => expect(screen.getByTestId("flow-issues").textContent).toContain("precisa de value"));
+    expect(screen.getByTestId("flow-issues").hasAttribute("open")).toBe(true); // salvar bloqueado expande a lista
     expect(mocks.api.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
     mocks.flowId = "fluxo-teste"; // restaura o default — os testes de página dependem dele
   });

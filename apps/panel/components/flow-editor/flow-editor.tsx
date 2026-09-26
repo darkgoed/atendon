@@ -854,19 +854,51 @@ function FlowEditorInner(props: FlowEditorProps) {
   /* Fluxo Ativo ou simulação em curso: arestas ciano tracejadas animadas (README §6). */
   const flowing = props.ativo || Boolean(props.trace?.running);
 
+  /* Tamanhos medidos pelo React Flow (changes "dimensions"). Em modo
+     controlado, nó sem `measured` perde os handleBounds e é re-medido/oculto
+     a cada render — durante o arraste isso fazia o board piscar e disparava
+     "ResizeObserver loop completed with undelivered notifications". */
+  const [measured, setMeasured] = useState<Map<string, { width: number; height: number }>>(() => new Map());
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const nodeCacheRef = useRef(new Map<string, Node>());
+
   const rfNodes: Node[] = useMemo(() => {
     let fallbackY = 0;
     for (const position of positions.values()) fallbackY = Math.max(fallbackY, position.y);
-    return graph.nodes.map((node) => ({
-      id: node.id,
-      type: node.id === TRIGGER_ID ? "trigger" : "step",
-      position: positions.get(node.id) ?? { x: 40, y: fallbackY + NODE_GAP_Y },
-      data: node as unknown as Record<string, unknown>,
-      selected: node.id === selectedId,
-      deletable: false,
-      dragHandle: undefined,
-    }));
-  }, [graph.nodes, positions, selectedId]);
+    const cache = nodeCacheRef.current;
+    const nextCache = new Map<string, Node>();
+    const nodes = graph.nodes.map((node) => {
+      const position = positions.get(node.id) ?? { x: 40, y: fallbackY + NODE_GAP_Y };
+      const size = measured.get(node.id);
+      const selected = node.id === selectedId;
+      const dragging = node.id === draggingId;
+      const prev = cache.get(node.id);
+      /* Reaproveita o objeto quando nada mudou: o React Flow compara por
+         identidade e só reprocessa os nós realmente alterados. */
+      const rfNode: Node = prev
+        && prev.data === (node as unknown as Record<string, unknown>)
+        && prev.position.x === position.x
+        && prev.position.y === position.y
+        && prev.selected === selected
+        && prev.dragging === dragging
+        && prev.measured === size
+        ? prev
+        : {
+            id: node.id,
+            type: node.id === TRIGGER_ID ? "trigger" : "step",
+            position,
+            data: node as unknown as Record<string, unknown>,
+            selected,
+            dragging,
+            measured: size,
+            deletable: false,
+          };
+      nextCache.set(node.id, rfNode);
+      return rfNode;
+    });
+    nodeCacheRef.current = nextCache;
+    return nodes;
+  }, [graph.nodes, positions, selectedId, measured, draggingId]);
 
   const rfEdges: Edge[] = useMemo(
     () => graph.edges
@@ -917,15 +949,38 @@ function FlowEditorInner(props: FlowEditorProps) {
 
   const handleNodesChange = useCallback((changes: NodeChange<Node>[]) => {
     const moves: Array<{ id: string; position: XYPos }> = [];
+    const sizes: Array<{ id: string; width: number; height: number }> = [];
     for (const change of changes) {
-      if (change.type === "position" && change.position) moves.push({ id: change.id, position: change.position });
+      if (change.type === "position") {
+        if (change.position) moves.push({ id: change.id, position: change.position });
+        if (change.dragging !== undefined) {
+          const id = change.id;
+          setDraggingId((current) => (change.dragging ? id : current === id ? null : current));
+        }
+      } else if (change.type === "dimensions" && change.dimensions) {
+        sizes.push({ id: change.id, width: change.dimensions.width, height: change.dimensions.height });
+      }
     }
-    if (!moves.length) return;
-    setPositions((current) => {
-      const next = new Map(current);
-      for (const move of moves) next.set(move.id, move.position);
-      return next;
-    });
+    if (moves.length) {
+      setPositions((current) => {
+        const next = new Map(current);
+        for (const move of moves) next.set(move.id, move.position);
+        return next;
+      });
+    }
+    if (sizes.length) {
+      setMeasured((current) => {
+        let changed = false;
+        const next = new Map(current);
+        for (const size of sizes) {
+          const prev = current.get(size.id);
+          if (prev && prev.width === size.width && prev.height === size.height) continue;
+          next.set(size.id, { width: size.width, height: size.height });
+          changed = true;
+        }
+        return changed ? next : current;
+      });
+    }
   }, []);
 
   const handleAutoLayout = useCallback(() => {
@@ -952,8 +1007,14 @@ function FlowEditorInner(props: FlowEditorProps) {
   }, [definition, onDefinition]);
 
   const clientIssues = useMemo(() => validateDefinition(definition), [definition]);
-  const shownIssues = clientIssues.slice(0, 4);
-  const extraIssues = clientIssues.length - shownIssues.length;
+  const [issuesOpen, setIssuesOpen] = useState(false);
+
+  /* Salvar com pendências (a página bloqueia o PUT) expande a lista para o
+     usuário ver o que falta, em vez de o clique parecer sem efeito. */
+  const handleSave = useCallback(() => {
+    if (clientIssues.length > 0) setIssuesOpen(true);
+    props.onSave();
+  }, [clientIssues.length, props]);
 
   /* R4: issue clicável seleciona/foca a etapa no canvas (abre o painel de
      propriedades e destaca o nó). Etapas com error também ficam marcadas. */
@@ -1002,7 +1063,7 @@ function FlowEditorInner(props: FlowEditorProps) {
             state={props.saving ? "busy" : props.saveState ?? "idle"}
             data-testid="flow-save"
             disabled={!canManage}
-            onClick={props.onSave}
+            onClick={handleSave}
           >
             Salvar
           </SaveButton>
@@ -1012,16 +1073,27 @@ function FlowEditorInner(props: FlowEditorProps) {
 
       {props.serverError ? <div className={styles.editorError} role="alert">{props.serverError}</div> : null}
       {clientIssues.length > 0 ? (
-        <div className={styles.editorError} role="alert">
-          <strong>{clientIssues.length} problema(s) no fluxo:</strong>
+        /* Barra compacta e recolhida (antes: bloco vermelho grande que
+           empurrava o canvas a cada edição). Expandir lista tudo com rolagem. */
+        <details
+          className={styles.editorIssues}
+          role="status"
+          data-testid="flow-issues"
+          open={issuesOpen}
+          onToggle={(event) => setIssuesOpen(event.currentTarget.open)}
+        >
+          <summary className={styles.issuesSummary}>
+            <strong>{clientIssues.length} problema(s) no fluxo</strong>
+            <span className={styles.issuesHint}>— salvar fica bloqueado até corrigir. Ver lista</span>
+          </summary>
           <ul className={styles.errorList}>
-            {shownIssues.map((issue, index) => (
+            {clientIssues.map((issue, index) => (
               <li key={`${issue.stepId ?? "flow"}-${index}`}>
                 {issue.stepId ? (
                   <button
                     type="button"
                     className={styles.issueLink}
-                    data-testid={`flow-issue-${issue.stepId}`}
+                    data-testid={index === clientIssues.findIndex((other) => other.stepId === issue.stepId) ? `flow-issue-${issue.stepId}` : undefined}
                     title="Seleciona a etapa no canvas"
                     onClick={() => handleIssueClick(issue.stepId as string)}
                   >
@@ -1032,9 +1104,8 @@ function FlowEditorInner(props: FlowEditorProps) {
                 )}
               </li>
             ))}
-            {extraIssues > 0 ? <li>… e mais {extraIssues}</li> : null}
           </ul>
-        </div>
+        </details>
       ) : null}
 
       <div className={styles.body} data-with-properties={Boolean(selectedNode)}>

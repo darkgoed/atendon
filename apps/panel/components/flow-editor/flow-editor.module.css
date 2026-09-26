@@ -20,15 +20,18 @@
 :global(:root:not([data-theme="dark"])) .editor [style*="--nt"] { --nt-ink: color-mix(in srgb, var(--nt) 45%, var(--text)); }
 
 /* ---- shell do editor ---- */
+/* Flex em coluna: com grid "auto 1fr" a barra de problemas/erro ocupava a
+   linha 1fr (ficava gigante) e o canvas era espremido numa linha auto. */
 .editor {
-  display: grid;
-  grid-template-rows: auto 1fr;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
   overflow: hidden;
 }
 
 .header {
+  flex-shrink: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -123,6 +126,7 @@
 .body {
   display: grid;
   grid-template-columns: 224px minmax(0, 1fr);
+  flex: 1 1 auto;
   min-height: 0;
 }
 
@@ -367,6 +371,24 @@
 
 .errorList { margin: 4px 0 0; padding-left: 16px; font-weight: var(--weight-regular); }
 
+/* ---- pendências de validação: barra compacta recolhível ---- */
+.editorIssues {
+  flex-shrink: 0;
+  margin: 0 14px 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  background: var(--warning-subtle);
+  color: var(--warning-text);
+  font-size: var(--text-label);
+}
+
+.issuesSummary { cursor: pointer; list-style-position: inside; }
+
+.issuesHint { margin-left: 4px; font-weight: var(--weight-regular); opacity: 0.85; }
+
+.editorIssues .errorList { max-height: 160px; overflow-y: auto; }
+
 .nodeChips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 
 .nodeChip {
@@ -543,6 +565,7 @@
 
 /* ---- painel de simulação ---- */
 .trace {
+  flex-shrink: 0;
   border-top: 1px solid var(--border);
   background: var(--surface);
   max-height: 240px;
@@ -584,6 +607,7 @@
 .traceEnd { font-size: var(--text-micro); color: var(--text-muted); }
 
 .editorError {
+  flex-shrink: 0;
   margin: 0 14px 10px;
   padding: 10px 12px;
   border: 1px solid var(--danger-border);
