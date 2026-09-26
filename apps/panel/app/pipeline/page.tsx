@@ -521,18 +521,29 @@ function PipelinePageContent() {
         const refreshed = await api<{ lead?: { atualizado_em?: string } }>(`/scheduling/leads/${lead.id}`);
         expectedUpdatedAt = refreshed.lead?.atualizado_em ?? expectedUpdatedAt;
       }
-      await mutate(async () => {
-        if (stage.id.startsWith("fallback:")) {
-          await updateLeadStatus(lead.id, persistenceStage.technical_status);
-        } else {
-          await api(`/organization/leads/${lead.id}/stage`, {
-            method: "PATCH",
-            body: JSON.stringify(buildPipelineTransitionPayload({ stage: persistenceStage, expectedUpdatedAt, commercial }))
-          });
-        }
-        await mutate();
-        return undefined;
-      }, { optimisticData: data, populateCache: false, rollbackOnError: false, revalidate: false });
+      if (stage.id.startsWith("fallback:")) {
+        await updateLeadStatus(lead.id, persistenceStage.technical_status);
+      } else {
+        await api(`/organization/leads/${lead.id}/stage`, {
+          method: "PATCH",
+          body: JSON.stringify(buildPipelineTransitionPayload({ stage: persistenceStage, expectedUpdatedAt, commercial }))
+        });
+      }
+      // Revalida a página 1 (descarta respostas de poll iniciadas antes do PATCH).
+      await mutate();
+      // Sucesso: a página 1 já foi revalidada; o override sai para que polls e
+      // sinais seguintes voltem a valer. Cópias em páginas extras (que o poll
+      // não recarrega) recebem a etapa persistida.
+      const moved = (item: PipelineLead) => item.id === lead.id
+        ? { ...item, status: persistenceStage.technical_status, pipeline_stage_id: persistenceStage.id, ai_follow_up: null }
+        : item;
+      setExtraLeads((current) => current.map(moved));
+      setStagePages((current) => Object.fromEntries(Object.entries(current).map(([key, page]) => [key, { ...page, leads: page.leads.map(moved) }])));
+      setStageOverrides((current) => {
+        const next = new Map(current);
+        next.delete(lead.id);
+        return next;
+      });
       // Fechamento bem-sucedido: confete + toast (ref. Pipeline.dc.html).
       if (persistenceStage.technical_status === "fechado") {
         setCelebration({ key: Date.now(), name: lead.nome ?? "Lead" });
