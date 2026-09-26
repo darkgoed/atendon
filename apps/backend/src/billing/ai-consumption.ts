@@ -707,10 +707,15 @@ export async function reconcileAiTurnFromUsageLogs(
          COALESCE(cost_usd,0)::text AS cost_usd, cost_reported
        FROM usage_logs WHERE tenant_id=$1 AND request_id=$2::uuid
        ORDER BY COALESCE(cost_usd,0) DESC, ai_model ASC NULLS LAST, id ASC`, [tenantId, logicalTurnId]);
-    const groups: AiTurnUsageGroup[] = result.rows
-      .map((g) => ({ usageLogId: g.id, model: g.model, provider: g.provider, hasCost: g.cost_reported, inputTokens: Number(g.input_tokens), outputTokens: Number(g.output_tokens), cachedTokens: Number(g.cached_input_tokens), cacheWriteTokens: Number(g.cache_write_input_tokens), providerCostUsd: Number(g.cost_usd) }))
-      .filter((g) => g.inputTokens > 0 || g.outputTokens > 0 || g.cachedTokens > 0 || g.cacheWriteTokens > 0 || (g.providerCostUsd ?? 0) > 0);
-    if (!groups.length) return;
+    const all: AiTurnUsageGroup[] = result.rows
+      .map((g) => ({ usageLogId: g.id, model: g.model, provider: g.provider, hasCost: g.cost_reported, inputTokens: Number(g.input_tokens), outputTokens: Number(g.output_tokens), cachedTokens: Number(g.cached_input_tokens), cacheWriteTokens: Number(g.cache_write_input_tokens), providerCostUsd: Number(g.cost_usd) }));
+    if (!all.length) return;
+    const nonZero = all.filter((g) => g.inputTokens > 0 || g.outputTokens > 0 || g.cachedTokens > 0 || g.cacheWriteTokens > 0 || (g.providerCostUsd ?? 0) > 0);
+    // Só logs zerados (provedor omitiu usage): a chamada existiu mas não há o
+    // que cobrar — fecha a reserva a custo zero (custo 0 REPORTADO). Retornar
+    // sem reconciliar prendia a reserva para sempre e o lote a revisitava em
+    // todo ciclo (starvation do LIMIT).
+    const groups = nonZero.length ? nonZero : [{ ...all[0], usageLogId: undefined, hasCost: true, providerCostUsd: 0 }];
     await reconcileAiTurnPriced(tenantId, purpose, logicalTurnId, await priceAiTurn(groups));
   } catch (error) { console.error(`[billing] failed to reconcile AI turn from usage logs for tenant ${tenantId}`, error); }
 }
