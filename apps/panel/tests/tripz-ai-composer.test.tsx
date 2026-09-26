@@ -77,6 +77,31 @@ describe("Tripz proposal review", () => {
     expect(html).toContain("Baixar PDF");
     expect(html).toContain("/tripz-ai/conversations/conversation-1/documents/pdf-1/content");
   });
+
+  it.each([
+    ["ready_for_review", true],
+    ["collecting", true],
+    ["ready_for_pdf", false],
+    ["pdf_generated", false]
+  ] as const)("only enables Gerar PDF when the backend accepts the %s status", (status, disabled) => {
+    const html = renderToStaticMarkup(
+      <TripzProposalReview
+        conversationId="conversation-1"
+        proposal={{ id: "proposal-1", revision: 4, status, missingInformation: [], inconsistencies: [], state: {} }}
+        preview={{ id: "preview-1", kind: "preview", proposalRevision: 4, status: "ready", html: "<h1>Aruba</h1>" }}
+        generatingPreview={false}
+        generatingPdf={false}
+        processing={false}
+        onClose={() => undefined}
+        onGeneratePreview={() => undefined}
+        onGeneratePdf={() => undefined}
+        onRequestCorrection={() => undefined}
+      />
+    );
+    const pdfButton = html.match(/<button(?:(?!<button).)*?Gerar PDF<\/button>/s)?.[0] ?? "";
+    expect(pdfButton).not.toBe("");
+    expect(pdfButton.includes('disabled=""')).toBe(disabled);
+  });
 });
 
 describe("Tripz conversation states", () => {
