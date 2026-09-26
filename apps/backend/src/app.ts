@@ -1029,7 +1029,7 @@ export function buildApp(options: {
         count(*) FILTER (WHERE c.status='open' AND c.ai_active=false AND c.assigned_user_id IS NULL AND c.handoff_reason IS DISTINCT FROM 'manually_paused')::int handoff_unassigned,
         count(*) FILTER (WHERE c.status='open' AND c.ai_active=false AND c.last_message_at < now() - interval '15 minutes' AND c.handoff_reason IS DISTINCT FROM 'manually_paused')::int handoff_over_sla,
         COALESCE(floor(extract(epoch FROM (now() - min(c.last_message_at) FILTER (WHERE c.status='open' AND c.ai_active=false AND c.handoff_reason IS DISTINCT FROM 'manually_paused'))) / 60),0)::int oldest_handoff_minutes,
-        count(*) FILTER (WHERE c.status='closed' AND c.resolved_at >= date_trunc('day',now()))::int resolved_today,
+        count(*) FILTER (WHERE c.status='closed' AND c.resolved_at >= date_trunc('day',now(),(SELECT timezone FROM tenants WHERE id=$1)))::int resolved_today,
         count(*) FILTER (WHERE c.status='open' AND c.ai_active=true)::int ai_open
         FROM conversations c
         WHERE c.tenant_id=$1 AND ($2::boolean OR c.assigned_user_id=$3)`, scopeParams),
@@ -1047,7 +1047,7 @@ export function buildApp(options: {
     ]);
     const today = await db.query(`SELECT count(*)::int count FROM messages m JOIN conversations c ON c.id=m.conversation_id
       WHERE c.tenant_id=$1 AND ($2::boolean OR c.assigned_user_id=$3)
-        AND m.created_at >= date_trunc('day', now())`, scopeParams);
+        AND m.created_at >= date_trunc('day',now(),(SELECT timezone FROM tenants WHERE id=$1))`, scopeParams);
     const canReadAgent = session.isRoot && session.rootWorkspaceAccess;
     return {
       tenant: tenant.rows[0],

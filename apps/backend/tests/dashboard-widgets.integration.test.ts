@@ -132,6 +132,39 @@ describe("dashboard widget REST resources", () => {
     });
   });
 
+  it("counts 'today' from the workspace-local midnight, not the database (UTC) midnight", async () => {
+    // Um evento 1 min antes e outro 1 min depois da meia-noite LOCAL: só o
+    // segundo é "hoje". Com meia-noite UTC (UTC-3 → 3h de diferença) a
+    // contagem daria 0 ou 2, nunca 1.
+    await pool.query("UPDATE tenants SET timezone='America/Sao_Paulo' WHERE id=$1", [tenantB]);
+    const session = (await pool.query<{ id: string }>(
+      "INSERT INTO whatsapp_sessions(tenant_id,label,is_primary,status) VALUES($1,'Hoje',false,'connected') RETURNING id",
+      [tenantB]
+    )).rows[0].id;
+    const conversations = (await pool.query<{ id: string }>(
+      `WITH local_midnight AS (SELECT date_trunc('day',now(),'America/Sao_Paulo') AS at)
+       INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name,status,resolved_at)
+       SELECT $1,$2,phone,'Hoje','closed',local_midnight.at+shift
+       FROM local_midnight,(VALUES('5511970000001',interval '-1 minute'),('5511970000002',interval '1 minute')) item(phone,shift)
+       RETURNING id`,
+      [tenantB, session]
+    )).rows.map((row) => row.id);
+    await pool.query(
+      `INSERT INTO messages(conversation_id,sender,content,created_at)
+       SELECT id,'contact','oi',resolved_at FROM conversations WHERE id=ANY($1::uuid[])`,
+      [conversations]
+    );
+
+    const messages = await app.inject({ url: "/dashboard/widgets/messages_today", headers: { cookie: ownerBCookie } });
+    expect(messages.statusCode, messages.body).toBe(200);
+    expect(messages.json().data.today).toBe(1);
+    const open = await app.inject({ url: "/dashboard/widgets/open_conversations", headers: { cookie: ownerBCookie } });
+    expect(open.json().data.resolved_today).toBe(1);
+    const dashboard = await app.inject({ url: "/dashboard", headers: { cookie: ownerBCookie } });
+    expect(dashboard.statusCode, dashboard.body).toBe(200);
+    expect(dashboard.json().counts).toMatchObject({ resolved_today: 1, messagesToday: 1 });
+  });
+
   it("persists a canonical layout per user and workspace, then restores the default", async () => {
     const saved = await app.inject({
       method: "PUT", url: "/dashboard/widgets/layout", headers: { cookie: ownerACookie },
