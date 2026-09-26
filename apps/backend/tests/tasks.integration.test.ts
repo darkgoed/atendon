@@ -232,6 +232,30 @@ describe("tarefas — tenancy e lead", () => {
     expect(linked.statusCode).toBe(201);
     expect(linked.json().task.lead.id).toBe(leadA);
   });
+
+  it("operador em escopo mine só vincula lead da própria carteira (não lê nome/telefone alheio)", async () => {
+    const lead = (await pool.query<{ id: string }>(
+      "INSERT INTO scheduling_leads(tenant_id,phone,name,unit_id,status,source) VALUES($1,$2,'Lead Alheio','calls','qualificado','tasks-test') RETURNING id",
+      [tenantA, `5511${Math.floor(Math.random() * 90_000_000 + 10_000_000)}`]
+    )).rows[0].id;
+    const foreign = await app.inject({
+      method: "POST", url: "/tasks", headers: { cookie: await loginAs(operatorA) },
+      payload: { title: "Espiar lead", assignee_id: operatorA, lead_id: lead }
+    });
+    expect(foreign.statusCode).toBe(404);
+    expect(foreign.body).not.toContain("Lead Alheio");
+
+    await pool.query(
+      "UPDATE scheduling_leads SET assigned_member_id=(SELECT id FROM workspace_members WHERE workspace_id=$1 AND user_id=$2) WHERE id=$3",
+      [tenantA, operatorA, lead]
+    );
+    const own = await app.inject({
+      method: "POST", url: "/tasks", headers: { cookie: await loginAs(operatorA) },
+      payload: { title: "Meu lead", assignee_id: operatorA, lead_id: lead }
+    });
+    expect(own.statusCode).toBe(201);
+    expect(own.json().task.lead.id).toBe(lead);
+  });
 });
 
 describe("tarefas — keyset", () => {
