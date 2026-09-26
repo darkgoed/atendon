@@ -2293,7 +2293,7 @@ export function buildApp(options: {
          WHERE lead.id=qualification.lead_id
            AND lead.tenant_id=qualification.tenant_id
            AND qualification.tenant_id=$1
-           AND lead.phone=$2
+           AND lead.id=resolve_lead_id_by_phone($1,$2)
            AND qualification.status='pausado'
          RETURNING qualification.lead_id`,
         [session.tenantId, current.contact_phone]
@@ -2376,7 +2376,7 @@ export function buildApp(options: {
          WHERE lead.id=qualification.lead_id
            AND lead.tenant_id=qualification.tenant_id
            AND qualification.tenant_id=$1
-           AND lead.phone=$2
+           AND lead.id=resolve_lead_id_by_phone($1,$2)
            AND qualification.status='em_andamento'
          RETURNING qualification.lead_id`,
         [session.tenantId, conversation.rows[0].contact_phone]
@@ -2632,7 +2632,7 @@ export function buildApp(options: {
         const sent = await db.query<{ id: string; external_message_id: string }>(`SELECT id,external_message_id FROM messages WHERE tenant_id=$2 AND conversation_id=$1 AND sender='agent' AND external_message_id IS NOT NULL ORDER BY created_at DESC LIMIT 1`, [id, session.tenantId]);
         const updated = await withTenantTransaction(db, session.tenantId, async (client) => {
           await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`follow-up:${session.tenantId}:${id}`]);
-          const lead = (await client.query<{ id: string }>(`SELECT id FROM scheduling_leads WHERE tenant_id=$1 AND regexp_replace(phone,'\\\\D','','g')=regexp_replace($2,'\\\\D','','g') FOR UPDATE`, [session.tenantId, row.contact_phone])).rows[0];
+          const lead = (await client.query<{ id: string }>(`SELECT id FROM scheduling_leads WHERE tenant_id=$1 AND id=resolve_lead_id_by_phone($1,$2) FOR UPDATE`, [session.tenantId, row.contact_phone])).rows[0];
           if (!lead) return null;
           const stageId = await defaultStageId(client, session.tenantId, "follow_up", lead.id);
           await client.query(`UPDATE scheduling_leads SET status='follow_up',pipeline_stage_id=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2`, [session.tenantId, lead.id, stageId]);

@@ -296,8 +296,8 @@ async function upsertImportedLead(tenantId: string, actor: ImportActor, filename
     await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`lead:${tenantId}:${row.phone}`]);
     const existing = await client.query<{ id: string; name: string | null; source: string }>(
       `SELECT id,name,source FROM scheduling_leads
-       WHERE tenant_id=$1 AND regexp_replace(phone,'\\D','','g')=regexp_replace($2,'\\D','','g')
-       ORDER BY created_at,id LIMIT 1 FOR UPDATE`,
+       WHERE tenant_id=$1 AND id=resolve_lead_id_by_phone($1,$2)
+       FOR UPDATE`,
       [tenantId, row.phone]
     );
     let leadId: string;

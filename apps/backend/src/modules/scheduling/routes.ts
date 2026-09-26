@@ -163,7 +163,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
     const { session, scope } = await panelCaseScope(request, "leads.create");
     if (scope.type === "mine" && !scope.memberId) throw httpError(403, "Membro ativo obrigatório para criar um lead");
     const body = leadBody.parse(request.body);
-    const existing = await db.query<{ id: string }>(`SELECT id FROM scheduling_leads WHERE tenant_id=$1 AND regexp_replace(phone,'\\D','','g')=regexp_replace($2,'\\D','','g') ORDER BY created_at,id LIMIT 1`, [session.tenantId, body.telefone]);
+    const existing = await db.query<{ id: string }>(`SELECT id FROM scheduling_leads WHERE tenant_id=$1 AND id=resolve_lead_id_by_phone($1,$2)`, [session.tenantId, body.telefone]);
     if (existing.rows[0] && !await canAccessLead(session, scope, existing.rows[0].id)) return reply.status(404).send({ error: "Lead não encontrado" });
     const result = await upsertLead(session.tenantId, body, { preferredAssignedMemberId: scope.type === "mine" ? scope.memberId ?? undefined : undefined, actor: followUpActor(request, session), expectedExistingLeadId: existing.rows[0]?.id ?? null, expectedAssignedMemberId: scope.type === "mine" ? scope.memberId ?? undefined : undefined });
     return reply.status(result.created ? 201 : 200).send({ lead: leadMapper(result.row) });
@@ -471,9 +471,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
       `SELECT id
        FROM scheduling_leads
        WHERE tenant_id=$1 AND deleted_at IS NULL
-         AND regexp_replace(phone,'\\D','','g')=regexp_replace($2,'\\D','','g')
-       ORDER BY created_at,id
-       LIMIT 1`,
+         AND id=resolve_lead_id_by_phone($1,$2)`,
       [session.tenantId, body.telefone]
     );
     if (existing.rows[0] && !await canAccessLead(session, scope, existing.rows[0].id)) {

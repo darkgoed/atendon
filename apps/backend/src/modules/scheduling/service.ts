@@ -3038,10 +3038,7 @@ export async function upsertLead(
     }>(
       `SELECT id,status,interest_category_id,unit_id,source,assigned_member_id
        FROM scheduling_leads
-       WHERE tenant_id=$1
-         AND regexp_replace(phone,'\\D','','g')=regexp_replace($2,'\\D','','g')
-       ORDER BY created_at,id
-       LIMIT 1
+       WHERE tenant_id=$1 AND id=resolve_lead_id_by_phone($1,$2)
        FOR UPDATE`,
       [tenantId, body.telefone]
     );
@@ -3205,7 +3202,10 @@ export async function createQualifiedMeetingAppointment(
 }
 
 export async function findLeadByPhone(tenantId: string, phone: string) {
-  const result = await db.query("SELECT * FROM scheduling_leads WHERE tenant_id=$1 AND phone=$2", [tenantId, phone]);
+  const result = await db.query(
+    "SELECT * FROM scheduling_leads WHERE tenant_id=$1 AND id=resolve_lead_id_by_phone($1,$2)",
+    [tenantId, phone]
+  );
   return result.rows[0] ?? null;
 }
 

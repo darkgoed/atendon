@@ -707,9 +707,7 @@ export class MessageRepository {
               (SELECT lead.name
                FROM scheduling_leads lead
                WHERE lead.tenant_id=$1 AND lead.name IS NOT NULL
-                 AND regexp_replace(lead.phone,'\\D','','g')=regexp_replace($3,'\\D','','g')
-               ORDER BY lead.updated_at DESC,lead.id
-               LIMIT 1),
+                 AND lead.id=resolve_lead_id_by_phone($1,$3)),
               EXCLUDED.contact_name,
               conversations.contact_name
             ),
@@ -802,7 +800,7 @@ export class MessageRepository {
                existing.commercial_updated_at,existing.updated_at
         FROM scheduling_leads existing
         WHERE existing.tenant_id=$1
-          AND regexp_replace(existing.phone,'\\D','','g')=regexp_replace($3,'\\D','','g')
+          AND existing.id=resolve_lead_id_by_phone($1,$3)
           AND NOT EXISTS (SELECT 1 FROM automatic_lead)
         LIMIT 1
       ),
