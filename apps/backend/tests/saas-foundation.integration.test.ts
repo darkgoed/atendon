@@ -609,7 +609,12 @@ describe("SaaS foundation auth and RBAC", () => {
        SELECT $1,id,'ACTIVE',now(),now()+interval '1 day' FROM plans WHERE code='PRO'`,
       [tenantC]
     );
-    const targetPlan = (await pool.query<{ id: string }>("SELECT id FROM plans WHERE status='active' AND code <> 'LEGACY_UNLIMITED' ORDER BY position LIMIT 1")).rows[0];
+    // O banco compartilhado de testes pode conter planos ativos órfãos sem
+    // preço (fixtures de outras suítes); contratar exige preço MONTHLY ativo e
+    // plano diferente do anterior (PRO) para preservar a semântica da troca.
+    const targetPlan = (await pool.query<{ id: string }>(
+      "SELECT p.id FROM plans p JOIN plan_prices pp ON pp.plan_id=p.id AND pp.billing_cycle='MONTHLY' AND pp.active WHERE p.status='active' AND p.code NOT IN ('LEGACY_UNLIMITED','PRO') ORDER BY p.position LIMIT 1"
+    )).rows[0];
     if (!targetPlan) throw new Error("No active commercial plan available for integration test");
     const linked = await app.inject({ method: "POST", url: `/root/saas/tenants/${tenantC}/subscription`, headers: { cookie: rootCookie }, payload: { planId: targetPlan.id } });
     expect(linked.statusCode).toBe(200);

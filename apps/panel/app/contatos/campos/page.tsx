@@ -8,7 +8,7 @@
  * key são fixados na criação, então o dialog trava o tipo na edição.
  */
 
-import { PencilSimple, Plus, Trash } from "@/components/icons";
+import { PencilSimple, Plus, SlidersHorizontal, Trash } from "@/components/icons";
 import { type FormEvent, useEffect, useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
@@ -181,7 +181,6 @@ export default function CustomFieldsPage() {
             <h1>Campos personalizados <HelpHint label="Ajuda: Campos personalizados" title="Campos personalizados">Campos extras que aparecem no perfil de cada contato da empresa: escolha o tipo, as opções (quando houver) e se é obrigatório.</HelpHint></h1>
           </div>
           <div className={styles.toolbar}>
-            <span className={styles.toolbarSpacer} />
             <Button tone="primary" onClick={() => setDialog({ open: true, field: null })}>
               <Plus size={15} aria-hidden="true" />Novo campo
             </Button>
@@ -190,10 +189,15 @@ export default function CustomFieldsPage() {
 
         {error ? <p className="error" role="alert">{error.message}</p> : null}
         {listError ? <p className="error" role="alert">{listError}</p> : null}
-        {isLoading && !data ? <div className="skeleton h-24" aria-label="Carregando campos personalizados" /> : null}
+        {isLoading && !data ? (
+          <div className={styles.list} aria-label="Carregando campos personalizados">
+            {[1, 2, 3].map((row) => <div key={row} className={`skeleton ${styles.skeletonRow}`} aria-hidden="true" />)}
+          </div>
+        ) : null}
 
         {!isLoading && !fields.length ? (
           <EmptyState
+            icon={<SlidersHorizontal size={18} aria-hidden="true" />}
             title="Nenhum campo personalizado"
             action={
               <Button tone="primary" onClick={() => setDialog({ open: true, field: null })}>
@@ -209,13 +213,19 @@ export default function CustomFieldsPage() {
           <div className={styles.list}>
             {fields.map((field) => (
               <article key={field.id} className={styles.fieldRow} data-field-id={field.id}>
-                <div className={styles.fieldRowHeader}>
-                  <h3 className={styles.fieldLabel}>{field.label}</h3>
-                  <Badge tone="info" variant="pill">{TYPE_LABELS[field.type]}</Badge>
-                  {field.required ? <Badge tone="warning" variant="outline">Obrigatório</Badge> : null}
+                <div className={styles.fieldBody}>
+                  <div className={styles.fieldRowHeader}>
+                    <h3 className={styles.fieldLabel}>{field.label}</h3>
+                    <Badge tone="info" variant="pill">{TYPE_LABELS[field.type]}</Badge>
+                    {field.required ? <Badge tone="warning" variant="outline">Obrigatório</Badge> : null}
+                  </div>
+                  <p className={styles.fieldKey}><span className="sr-only">chave: </span><code>{field.key}</code></p>
+                  {field.options?.length ? (
+                    <ul className={styles.fieldOptions} aria-label={`Opções de ${field.label}`}>
+                      {field.options.map((option) => <li key={option}>{option}</li>)}
+                    </ul>
+                  ) : null}
                 </div>
-                <p className={styles.fieldKey}>chave: {field.key}</p>
-                {field.options?.length ? <p className={styles.fieldOptions}>Opções: {field.options.join(", ")}</p> : null}
                 <div className={styles.fieldActions}>
                   <IconButton size="sm" label={`Editar campo: ${field.label}`} onClick={() => setDialog({ open: true, field })}><PencilSimple size={14} aria-hidden="true" /></IconButton>
                   <IconButton size="sm" tone="danger" label={`Excluir campo: ${field.label}`} onClick={() => void removeField(field)}>

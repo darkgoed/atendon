@@ -1,249 +1,74 @@
 /* ============================================================================
-   Domínio: troca de tema (theme-fx)
+   Domínio: troca de tema (theme-fx) — wipe diagonal via View Transition API
    ----------------------------------------------------------------------------
-   Trocar `data-theme` no `<html>` repinta a tela inteira em um frame. Em vez de
-   esconder isso com um crossfade genérico, a troca vira uma ONDA: um disco com
-   a cor do tema de DESTINO cresce a partir do botão clicado até cobrir a
-   viewport. O tema só é comitado quando a tela está coberta — o repaint
-   acontece invisível — e então o véu se dissolve revelando o tema novo.
+   lib/theme-transition.ts troca `data-theme` dentro de
+   `document.startViewTransition`. O navegador expõe dois snapshots da página
+   inteira: `::view-transition-old(root)` (tema antigo) e
+   `::view-transition-new(root)` (tema novo, ao vivo). Aqui:
+     - o antigo fica ESTÁTICO por baixo (sem a animação de fade padrão);
+     - o novo é revelado por cima por um `clip-path` diagonal que atravessa a
+       viewport — o modo "Wipe" do showcase de View Transitions do Jhey
+       Tompkins. Para o escuro o wipe entra pelo canto superior esquerdo; para
+       o claro, pelo inferior direito (direções opostas).
 
-   Três camadas, todas no mesmo overlay (uma única promoção a layer de
-   composição, nada de repaint por camada):
-     __core  — o disco sólido na cor do tema de destino; é ele que esconde.
-     __ring  — a borda luminosa da frente da onda, acompanha o disco à frente.
-     __veil  — um brilho radial suave que dá volume; some primeiro.
+   Os polígonos usam coordenadas além de 0–100% (-71%/171%) para que a borda
+   diagonal comece e termine FORA da viewport em qualquer proporção de tela.
 
    Restrições:
-   - Cobre TUDO (`--z-theme-fx` > toast/dialog): a onda não pode passar por trás
-     de um toast e revelar o repaint.
-   - `pointer-events: none` e `aria-hidden` no nó: é decoração; o clique
-     seguinte cai no botão, não no véu.
-   - Sem `clip-path`: `.theme-fx--fade` degrada para crossfade da cor de destino
-     (Safari < 13.1), o que continua escondendo o repaint.
-   - `prefers-reduced-motion`: o overlay NÃO é criado (decidido no JS); as regras
-     abaixo também zeram a animação como segunda barreira.
+   - `mix-blend-mode: normal`: o UA usa `plus-lighter` no par de imagens (feito
+     para crossfade); com os dois snapshots opacos isso somaria as cores e a
+     faixa sairia estourada.
+   - A pseudo-árvore `::view-transition` é pintada acima de toda a página,
+     inclusive da top layer (dialogs, popovers): modais, dropdowns, toasts e
+     `position: fixed` fazem parte do snapshot `root` e nunca passam por cima
+     do wipe.
+   - `prefers-reduced-motion`: o JS nem inicia a view transition; a regra no
+     fim zera a animação como segunda barreira.
    ========================================================================= */
 
-.theme-fx {
-  position: fixed;
-  z-index: var(--z-theme-fx);
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  contain: strict;
-}
-
-/* Cores do tema de destino. Ficam no nó da transição (data-theme-fx), não em
-   :root: durante a onda o `<html>` ainda está no tema ANTIGO. */
-.theme-fx[data-theme-fx="dark"] {
-  --theme-fx-bg: var(--theme-fx-dark-bg);
-  --theme-fx-accent: var(--theme-fx-dark-accent);
-  --theme-fx-glow: var(--theme-fx-dark-glow);
-  --theme-fx-edge: var(--theme-fx-dark-edge);
-  --theme-fx-spark: var(--theme-fx-dark-spark);
-}
-.theme-fx[data-theme-fx="light"] {
-  --theme-fx-bg: var(--theme-fx-light-bg);
-  --theme-fx-accent: var(--theme-fx-light-accent);
-  --theme-fx-glow: var(--theme-fx-light-glow);
-  --theme-fx-edge: var(--theme-fx-light-edge);
-  --theme-fx-spark: var(--theme-fx-light-spark);
-}
-
-.theme-fx__core,
-.theme-fx__ring,
-.theme-fx__halo,
-.theme-fx__spark,
-.theme-fx__flash,
-.theme-fx__veil {
-  position: absolute;
-  inset: 0;
-  display: block;
-  will-change: clip-path, opacity, transform;
-}
-
-/* O disco sólido: cresce de 0 até cobrir o canto mais distante da viewport. */
-.theme-fx__core {
-  background: var(--theme-fx-bg);
-  clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y));
-  -webkit-clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y));
-  animation: theme-fx-sweep var(--theme-fx-sweep) var(--ease-out) forwards;
-}
-
-/* A frente da onda. O anel é um disco SÓLIDO que corre alguns pixels à frente
-   do core; como o core é pintado depois (ordem no DOM: veil → ring → core), o
-   que sobra visível é exatamente a coroa entre os dois raios — a crista.
-   Um radial-gradient NÃO serve aqui: o `100%` dele é a extensão do elemento,
-   não o raio animado do clip, então a borda só apareceria no último frame. */
-.theme-fx__ring {
-  background: linear-gradient(135deg, var(--theme-fx-edge), var(--theme-fx-accent) 55%, var(--theme-fx-edge));
-  opacity: 0;
-  clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y));
-  -webkit-clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y));
-  animation:
-    theme-fx-ring var(--theme-fx-sweep) var(--ease-out) forwards,
-    theme-fx-ring-fade var(--theme-fx-sweep) linear forwards;
-}
-
-/* Brilho de volume: um halo macio ancorado na origem, que dá profundidade ao
-   impulso inicial e some antes do disco fechar. O raio é fixo (não segue a
-   onda) de propósito — é luz do PONTO de origem, não da frente da onda. */
-.theme-fx__veil {
-  background: radial-gradient(
-    circle calc(var(--theme-fx-r) * 0.55) at var(--theme-fx-x) var(--theme-fx-y),
-    var(--theme-fx-glow) 0%,
-    transparent 72%
-  );
-  opacity: 0;
-  animation: theme-fx-veil var(--theme-fx-sweep) var(--ease) forwards;
-}
-
-/* Halo externo da crista: um disco levemente MAIOR que o ring, com a segunda
-   cor e blur. Fica atrás do ring (ordem no DOM) e vaza por fora dele, então a
-   frente da onda ganha um bloom em vez de uma borda dura. O blur é aplicado no
-   próprio elemento, nunca em backdrop-filter — backdrop-filter aqui forçaria o
-   navegador a reler a tela inteira a cada frame e derruba o framerate. */
-.theme-fx__halo {
-  background: var(--theme-fx-edge);
-  opacity: 0;
-  filter: blur(26px);
-  clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y));
-  -webkit-clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y));
-  animation:
-    theme-fx-halo var(--theme-fx-sweep) var(--ease-out) forwards,
-    theme-fx-halo-fade var(--theme-fx-sweep) linear forwards;
-}
-
-/* Centelhas: três anéis finos que saem da origem mais rápido que a onda e se
-   apagam cedo. São conic/radial puros num único elemento — nada de N nós no
-   DOM, a animação inteira continua sendo uma só camada de composição. */
-.theme-fx__spark {
-  background:
-    radial-gradient(circle at var(--theme-fx-x) var(--theme-fx-y),
-      transparent 0%, transparent 34%, var(--theme-fx-spark) 36%, transparent 38%),
-    radial-gradient(circle at var(--theme-fx-x) var(--theme-fx-y),
-      transparent 0%, transparent 58%, var(--theme-fx-spark) 60%, transparent 62%),
-    radial-gradient(circle at var(--theme-fx-x) var(--theme-fx-y),
-      transparent 0%, transparent 82%, var(--theme-fx-spark) 84%, transparent 86%);
-  opacity: 0;
-  transform-origin: var(--theme-fx-x) var(--theme-fx-y);
-  animation: theme-fx-spark var(--theme-fx-sweep) var(--ease-out) forwards;
-}
-
-/* Clarão de impacto: o flash branco curtíssimo no instante do commit, quando a
-   tela já está coberta. É o "estalo" que faz a troca parecer instantânea mesmo
-   durando meio segundo. Entra por cima de tudo (último no DOM). */
-.theme-fx__flash {
-  background: radial-gradient(
-    circle calc(var(--theme-fx-r) * 0.9) at var(--theme-fx-x) var(--theme-fx-y),
-    var(--theme-fx-edge) 0%,
-    transparent 65%
-  );
-  opacity: 0;
-  mix-blend-mode: screen;
-  animation: theme-fx-flash var(--theme-fx-sweep) var(--ease-out) forwards;
-}
-
-/* Estado após o commit: o tema novo já está pintado por baixo; o véu sai. */
-.theme-fx--settle .theme-fx__core,
-.theme-fx--settle .theme-fx__ring,
-.theme-fx--settle .theme-fx__halo,
-.theme-fx--settle .theme-fx__spark,
-.theme-fx--settle .theme-fx__flash,
-.theme-fx--settle .theme-fx__veil {
+::view-transition-old(root),
+::view-transition-new(root) {
   animation: none;
-  clip-path: none;
-  -webkit-clip-path: none;
-  opacity: 1;
-  transition: opacity var(--theme-fx-settle) var(--ease);
-}
-.theme-fx--settle .theme-fx__core { opacity: 0; }
-.theme-fx--settle .theme-fx__ring,
-.theme-fx--settle .theme-fx__halo,
-.theme-fx--settle .theme-fx__spark,
-.theme-fx--settle .theme-fx__flash,
-.theme-fx--settle .theme-fx__veil { opacity: 0; }
-
-/* Sem clip-path (Safari < 13.1): crossfade da cor de destino cobrindo a tela.
-   Mais discreto, mas cumpre a mesma função — o repaint fica escondido. */
-.theme-fx--fade .theme-fx__core {
-  clip-path: none;
-  -webkit-clip-path: none;
-  opacity: 0;
-  animation: theme-fx-cover var(--theme-fx-sweep) var(--ease) forwards;
-}
-.theme-fx--fade .theme-fx__ring,
-.theme-fx--fade .theme-fx__halo,
-.theme-fx--fade .theme-fx__spark,
-.theme-fx--fade .theme-fx__flash { display: none; }
-
-@keyframes theme-fx-sweep {
-  from { clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y)); -webkit-clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y)); }
-  to { clip-path: circle(var(--theme-fx-r) at var(--theme-fx-x) var(--theme-fx-y)); -webkit-clip-path: circle(var(--theme-fx-r) at var(--theme-fx-x) var(--theme-fx-y)); }
+  mix-blend-mode: normal;
 }
 
-/* O anel corre à frente do core por uma margem que abre até ~22px: essa
-   defasagem É a crista. Mesma duração e mesmo easing do core, só o raio final
-   difere — assim os dois nunca se cruzam nem se descolam. */
-@keyframes theme-fx-ring {
-  from { clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y)); -webkit-clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y)); }
-  to { clip-path: circle(calc(var(--theme-fx-r) + 22px) at var(--theme-fx-x) var(--theme-fx-y)); -webkit-clip-path: circle(calc(var(--theme-fx-r) + 22px) at var(--theme-fx-x) var(--theme-fx-y)); }
+::view-transition-group(root) {
+  animation-duration: var(--theme-wipe-duration);
 }
 
-/* A crista acende cedo e apaga antes do fim: no último terço a onda já é só
-   superfície do tema novo, sem um anel de cor parado na borda da tela. */
-@keyframes theme-fx-ring-fade {
-  0% { opacity: 0; }
-  14% { opacity: 0.75; }
-  62% { opacity: 0.5; }
-  100% { opacity: 0; }
+::view-transition-new(root) {
+  animation: theme-wipe-in-dark var(--theme-wipe-duration) var(--theme-wipe-ease) both;
 }
 
-/* O halo abre ~64px à frente do core (o triplo da crista): é o bloom que faz a
-   frente da onda parecer luz e não uma borda recortada. */
-@keyframes theme-fx-halo {
-  from { clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y)); -webkit-clip-path: circle(0px at var(--theme-fx-x) var(--theme-fx-y)); }
-  to { clip-path: circle(calc(var(--theme-fx-r) + 64px) at var(--theme-fx-x) var(--theme-fx-y)); -webkit-clip-path: circle(calc(var(--theme-fx-r) + 64px) at var(--theme-fx-x) var(--theme-fx-y)); }
+html[data-theme="light"]::view-transition-new(root) {
+  animation-name: theme-wipe-in-light;
 }
 
-@keyframes theme-fx-halo-fade {
-  0% { opacity: 0; }
-  18% { opacity: 0.55; }
-  70% { opacity: 0.28; }
-  100% { opacity: 0; }
+/* Tema escuro chega do canto superior esquerdo rumo ao inferior direito. */
+@keyframes theme-wipe-in-dark {
+  from { clip-path: polygon(50% -71%, -50% 71%, -50% 71%, 50% -71%); }
+  to { clip-path: polygon(50% -71%, -50% 71%, 50% 171%, 171% 50%); }
 }
 
-/* As centelhas saem juntas da origem, escalam para além da viewport e apagam na
-   metade: são o impulso do clique, não a onda. */
-@keyframes theme-fx-spark {
-  0% { opacity: 0; transform: scale(0.15); }
-  12% { opacity: 0.9; }
-  55% { opacity: 0.35; }
-  100% { opacity: 0; transform: scale(2.4); }
+/* Tema claro chega do canto inferior direito rumo ao superior esquerdo. */
+@keyframes theme-wipe-in-light {
+  from { clip-path: polygon(171% 50%, 50% 171%, 50% 171%, 171% 50%); }
+  to { clip-path: polygon(171% 50%, 50% 171%, -50% 71%, 50% -71%); }
 }
 
-/* O clarão bate no MESMO instante do commit (fim do sweep): é o pico que
-   disfarça o repaint e faz a troca parecer um estalo. */
-@keyframes theme-fx-flash {
-  0%, 62% { opacity: 0; }
-  86% { opacity: 0.5; }
-  100% { opacity: 0; }
-}
-
-@keyframes theme-fx-veil {
-  0% { opacity: 0; }
-  30% { opacity: 1; }
-  100% { opacity: 0; }
-}
-
-@keyframes theme-fx-cover {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* Durante a troca as transitions de cor dos componentes ficam desligadas: o
+   snapshot novo precisa estar pronto de uma vez, não com cada botão/card
+   interpolando a própria cor enquanto o wipe o revela. */
+html[data-theme-switching],
+html[data-theme-switching] *,
+html[data-theme-switching] *::before,
+html[data-theme-switching] *::after {
+  transition: none !important;
 }
 
 /* ---- Botão de tema -------------------------------------------------------
-   O ícone participa da troca: gira e troca de escala no clique, então a origem
-   da onda tem um gesto próprio em vez de um ícone que pisca. */
+   O ícone participa da troca: gira e troca de escala no clique, então o
+   gatilho tem um gesto próprio em vez de um ícone que pisca. */
 .theme-toggle__icon {
   display: grid;
   place-items: center;
@@ -254,7 +79,7 @@
 .theme-toggle:hover .theme-toggle__icon { transform: rotate(-18deg); }
 .theme-toggle:active .theme-toggle__icon { transform: scale(0.88) rotate(-32deg); }
 .theme-toggle[data-swapping="true"] .theme-toggle__icon {
-  animation: theme-toggle-spin var(--theme-fx-sweep) var(--ease-out);
+  animation: theme-toggle-spin var(--theme-wipe-duration) var(--ease-out);
 }
 
 @keyframes theme-toggle-spin {
@@ -264,7 +89,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .theme-fx { display: none; }
+  ::view-transition-group(root),
+  ::view-transition-old(root),
+  ::view-transition-new(root) { animation: none; }
   .theme-toggle:hover .theme-toggle__icon,
   .theme-toggle:active .theme-toggle__icon { transform: none; }
 }

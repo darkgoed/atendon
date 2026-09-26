@@ -9,6 +9,7 @@
 import { ArrowClockwise, Trash } from "@/components/icons";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
+import { ContactAvatar } from "@/components/contact-avatar";
 import { Shell } from "@/components/shell";
 import { Badge, Button, EmptyState, HelpHint, IconButton } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -150,16 +151,20 @@ export default function TrashPage() {
       <div className={styles.page}>
         <header className="pagehead">
           <div>
-            <h1>Lixeira <HelpHint label="Ajuda: Lixeira" title="Lixeira">Os contatos ficam aqui até serem restaurados ou excluídos definitivamente. Restaurar devolve o contato à lista; a exclusão definitiva apaga também as conversas e os agendamentos dele e não pode ser desfeita.</HelpHint></h1>
+            <h1 className="flex items-center gap-2">Lixeira {items.length ? <span className={styles.count}>{items.length}{pageState.hasMore ? "+" : ""}</span> : null}<HelpHint label="Ajuda: Lixeira" title="Lixeira">Os contatos ficam aqui até serem restaurados ou excluídos definitivamente. Restaurar devolve o contato à lista; a exclusão definitiva apaga também as conversas e os agendamentos dele e não pode ser desfeita.</HelpHint></h1>
           </div>
         </header>
 
         {error ? <p className="error" role="alert">{error.message}</p> : null}
         {listError ? <p className="error" role="alert">{listError}</p> : null}
-        {isLoading && !data ? <div className="skeleton h-24" aria-label="Carregando lixeira" /> : null}
+        {isLoading && !data ? (
+          <div className={styles.list} aria-label="Carregando lixeira">
+            {[1, 2, 3].map((row) => <div key={row} className={`skeleton ${styles.skeletonRow}`} aria-hidden="true" />)}
+          </div>
+        ) : null}
 
         {!isLoading && !items.length ? (
-          <EmptyState title="A lixeira está vazia">
+          <EmptyState icon={<Trash size={18} aria-hidden="true" />} title="A lixeira está vazia">
             Contatos excluídos pela equipe aparecem aqui e podem ser restaurados.
           </EmptyState>
         ) : null}
@@ -167,12 +172,15 @@ export default function TrashPage() {
         {items.length ? (
           <div className={styles.list}>
             {items.map((item) => (
-              <article key={item.id} className={styles.item} data-trash-id={item.id}>
+              <article key={item.id} className={styles.item} data-trash-id={item.id} aria-busy={busyId === item.id || undefined}>
+                <ContactAvatar name={item.name?.trim() || item.phone} className={`${styles.avatar} h-8 w-8 text-xs`} />
                 <div className={styles.itemBody}>
-                  <h3 className={styles.itemName}>{item.name?.trim() || "Contato sem nome"}</h3>
-                  <div className={styles.itemMeta}>
-                    <span>{item.phone}</span>
+                  <div className={styles.itemHead}>
+                    <h3 className={styles.itemName}>{item.name?.trim() || "Contato sem nome"}</h3>
                     <Badge tone="neutral" variant="pill">{statusLabel(item.status)}</Badge>
+                  </div>
+                  <div className={styles.itemMeta}>
+                    <span className="mono">{item.phone}</span>
                     <span>Excluído em {formatDate(item.deleted_at)}</span>
                     {item.deleted_by ? <span>por {item.deleted_by.name?.trim() || "usuário removido"}</span> : null}
                   </div>
@@ -199,7 +207,7 @@ export default function TrashPage() {
               </article>
             ))}
             {pageState.hasMore ? (
-              <div className="flex justify-center p-3">
+              <div className={styles.more}>
                 <Button onClick={() => void loadMore()} disabled={loadingMore}>{loadingMore ? "Carregando…" : "Carregar mais"}</Button>
               </div>
             ) : null}

@@ -23,6 +23,7 @@ const rootEmail = `bonus-root-${suffix}@test.local`;
 let tenantCredit = "";
 let tenantLegacy = "";
 let rootCookie = "";
+const plans: string[] = [];
 
 async function tenant(label: string): Promise<string> {
   const slug = `root-bonus-${label}-${randomUUID()}`;
@@ -31,6 +32,7 @@ async function tenant(label: string): Promise<string> {
 async function plan(opts: { interactions?: number; credits?: number }): Promise<string> {
   const code = `ROOT_BONUS_${randomUUID()}`;
   const p = (await pool.query<{ id: string }>("INSERT INTO plans(code,name,billing_period_months,monthly_price_cents,ai_enabled) VALUES($1,$2,1,0,true) RETURNING id", [code, code])).rows[0].id;
+  plans.push(p);
   if (opts.interactions !== undefined) await pool.query("INSERT INTO plan_limits(plan_id,limit_key,limit_value) VALUES($1,'MAX_AI_INTERACTIONS',$2)", [p, opts.interactions]);
   if (opts.credits !== undefined) await pool.query("INSERT INTO plan_limits(plan_id,limit_key,limit_value) VALUES($1,'MAX_AI_CREDITS',$2)", [p, opts.credits]);
   return p;
@@ -67,6 +69,10 @@ afterAll(async () => {
     await pool.query("DELETE FROM audit_logs WHERE workspace_id=ANY($1::uuid[])", [ids]);
     await pool.query("DELETE FROM tenants WHERE id=ANY($1::uuid[])", [ids]);
   }
+  // Planos ROOT_BONUS_ (e plan_limits, em cascata) saem junto: sem isso vazam
+  // no banco compartilhado e poluem suítes que contratam o primeiro plano
+  // ativo por position (saas-foundation).
+  if (plans.length) await pool.query("DELETE FROM plans WHERE id=ANY($1::uuid[])", [plans]);
   if (rootEmail) await pool.query("DELETE FROM users WHERE email=$1", [rootEmail]);
   await app.close();
   await pool.end();
