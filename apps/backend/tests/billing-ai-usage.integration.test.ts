@@ -308,13 +308,13 @@ describe("Relatório de consumo/custo de IA (usage_logs + ai_usage_ledger)", () 
 
   it("ROOT vê todos os tenants, filtra por tenantId e quebra por tenant/modelo", async () => {
     const all = (await app.inject({ url: rootUrl(), headers: { cookie: cookieRoot } })).json();
-    expect(all.summary.calls.count).toBe(9);
-    // A (0.0112) + B (0.01).
-    expect(all.summary.calls.costUsd).toBeCloseTo(0.0212, 6);
-    expect(all.summary.turns.count).toBe(3);
-    expect(all.summary.turns.billableBrlCents).toBe(25 + 90); // T1 + turno B, uma vez cada
-    expect(all.summary.turns.normalizedCredits).toBe(450 + 1500);
+    // A visão ROOT é global: outros arquivos de teste gravam uso no mesmo banco em
+    // paralelo, então o total é conferido contra a soma dos buckets (não um número fixo).
     const tenantBuckets = all.buckets;
+    type TenantBucket = { calls: number; costUsd: number };
+    expect(all.summary.calls.count).toBe(tenantBuckets.reduce((sum: number, b: TenantBucket) => sum + b.calls, 0));
+    expect(all.summary.calls.costUsd).toBeCloseTo(tenantBuckets.reduce((sum: number, b: TenantBucket) => sum + b.costUsd, 0), 6);
+    expect(all.summary.calls.count).toBeGreaterThanOrEqual(9);
     const bucketA = tenantBuckets.find((b: { key: string }) => b.key === tenantA);
     const bucketB = tenantBuckets.find((b: { key: string }) => b.key === tenantB);
     expect(bucketA.tenantName).toMatch(/AIUsage A /);
@@ -326,6 +326,10 @@ describe("Relatório de consumo/custo de IA (usage_logs + ai_usage_ledger)", () 
     const onlyA = (await app.inject({ url: rootUrl(`&tenantId=${tenantA}`), headers: { cookie: cookieRoot } })).json();
     expect(onlyA.summary.calls.count).toBe(8);
     expect(onlyA.calls.every((c: { model: string }) => c.model !== "gpt-z")).toBe(true);
+    expect(onlyA.summary.turns).toMatchObject({ count: 2, billableBrlCents: 25, normalizedCredits: 450 });
+    const onlyB = (await app.inject({ url: rootUrl(`&tenantId=${tenantB}`), headers: { cookie: cookieRoot } })).json();
+    expect(onlyB.summary.calls.count).toBe(1);
+    expect(onlyB.summary.turns).toMatchObject({ count: 1, billableBrlCents: 90, normalizedCredits: 1500 });
 
     const byModel = (await app.inject({ url: rootUrl("&groupBy=model"), headers: { cookie: cookieRoot } })).json().buckets;
     expect(byModel.find((b: { key: string }) => b.key === "gpt-z").calls).toBe(1);
