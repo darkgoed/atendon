@@ -6,7 +6,7 @@ import { humanOutboundQueue } from "../../queue/human-message-queue.js";
 import { meetingContactDeliveryQueue } from "../../queue/meeting-contact-delivery-queue.js";
 import { meetingProvisioningQueue } from "../../queue/meeting-provisioning-queue.js";
 import { inboundQueue } from "../../queue/message-queue.js";
-import { inMemoryOperationalMetrics } from "./observability-metrics.js";
+import { inMemoryOperationalMetrics, WORKER_RECONCILER_METRICS_KEY } from "./observability-metrics.js";
 
 const QUEUES = [
   ["inbound", inboundQueue],
@@ -222,17 +222,29 @@ async function databaseHealthCounters(pool: pg.Pool) {
   return result.rows[0] ?? { deadlocks: 0, temporary_bytes: 0, connections: 0 };
 }
 
+// Métricas dos reconciliadores publicadas pelo worker (null: worker sem heartbeat).
+async function workerReconcilerMetrics() {
+  try {
+    const raw = await (await handoffNotificationQueue.client).get(WORKER_RECONCILER_METRICS_KEY);
+    return raw ? JSON.parse(raw) as ReturnType<typeof inMemoryOperationalMetrics>["reconcilers"] : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function collectOperationalSnapshot(pool: pg.Pool) {
-  const [queues, outboxes, activity, sizes, statements, health] = await Promise.all([
+  const [queues, outboxes, activity, sizes, statements, health, reconcilers] = await Promise.all([
     Promise.all(QUEUES.map(([name, queue]) => queueSnapshot(name, queue))),
     outboxSnapshot(pool),
     databaseActivity(pool),
     databaseSizes(pool),
     statementStatistics(pool),
-    databaseHealthCounters(pool)
+    databaseHealthCounters(pool),
+    workerReconcilerMetrics()
   ]);
+  const processMetrics = inMemoryOperationalMetrics(pool);
   return {
-    process: inMemoryOperationalMetrics(pool),
+    process: { ...processMetrics, reconcilers: reconcilers ?? processMetrics.reconcilers },
     postgres: {
       activity,
       health,

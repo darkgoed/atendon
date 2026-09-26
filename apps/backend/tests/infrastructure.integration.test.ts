@@ -16,9 +16,15 @@ import { AiTurnProgressStore } from "../src/modules/realtime/ai-turn-progress.js
 import {
   checkReadiness,
   CRITICAL_WORKER_HEARTBEAT_KEYS,
+  recordWorkerHeartbeats,
   WORKER_HEARTBEAT_KEY,
   WORKER_HEARTBEAT_TTL_MS
 } from "../src/readiness.js";
+import { collectOperationalSnapshot } from "../src/modules/operations/operational-snapshot.js";
+import {
+  recordReconcilerMetric,
+  resetOperationalMetricsForTests
+} from "../src/modules/operations/observability-metrics.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 let tenantId: string;
@@ -165,6 +171,43 @@ describe("phase 1 infrastructure", () => {
         worker_meeting_contact_delivery: false
       }
     });
+  });
+
+  it("refreshes a critical heartbeat only while its BullMQ worker is running", async () => {
+    const redis = await inboundQueue.client;
+    await redis.del(WORKER_HEARTBEAT_KEY, ...Object.values(CRITICAL_WORKER_HEARTBEAT_KEYS));
+    const running = { isRunning: () => true, closing: undefined };
+    const closed = { isRunning: () => false, closing: Promise.resolve() };
+    const now = Date.now();
+
+    await recordWorkerHeartbeats(redis, {
+      inbound: closed,
+      meeting_provisioning: running,
+      meeting_contact_delivery: running
+    }, now);
+
+    expect(await redis.get(WORKER_HEARTBEAT_KEY)).toBe(String(now));
+    expect(await redis.get(CRITICAL_WORKER_HEARTBEAT_KEYS.inbound)).toBeNull();
+    expect(await redis.get(CRITICAL_WORKER_HEARTBEAT_KEYS.meeting_provisioning)).toBe(String(now));
+    expect((await checkReadiness(now)).checks.worker_inbound).toBe(false);
+  });
+
+  it("reports reconciler metrics published by the worker process, not the API's own zeros", async () => {
+    // Simula o worker: grava as métricas no processo dele e publica no heartbeat.
+    resetOperationalMetricsForTests();
+    recordReconcilerMetric("handoff", "error", 4);
+    const redis = await inboundQueue.client;
+    const running = { isRunning: () => true, closing: undefined };
+    await recordWorkerHeartbeats(redis, {
+      inbound: running, meeting_provisioning: running, meeting_contact_delivery: running
+    });
+    // Processo da API: contadores em memória zerados.
+    resetOperationalMetricsForTests();
+
+    const snapshot = await collectOperationalSnapshot(pool);
+
+    const handoff = snapshot.process.reconcilers.find((entry) => entry.labels.workflow === "handoff");
+    expect(handoff?.counters).toContainEqual({ event: "error", value: 4 });
   });
 
   it("persists inbound, AI reply and usage as one processing flow", async () => {
