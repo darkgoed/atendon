@@ -47,6 +47,8 @@ export type AttendantTimeBlock = {
   end: string;
   reason: string | null;
   created_at: string;
+  /** Ocorrência de bloqueio recorrente: remoção é pela regra. */
+  rule_id?: string;
 };
 export type AttendantTimeBlocksResponse = { blocks: AttendantTimeBlock[] };
 export type RecurringTimeBlock = {

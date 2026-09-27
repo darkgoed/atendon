@@ -170,6 +170,9 @@ function TaskDialog({
     setError("");
   }, [open, task, canAssign, currentUserId]);
 
+  // Na edição, prazo/prioridade são de gestão (tasks.assign).
+  const lockedSchedule = Boolean(task) && !canAssign;
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     const trimmed = title.trim();
@@ -186,9 +189,8 @@ function TaskDialog({
           body: JSON.stringify({
             title: trimmed,
             description: description.trim() ? description.trim() : null,
-            ...(canAssign ? { assignee_id: assigneeId || null } : {}),
-            priority,
-            due_at: dueIso
+            // Prazo/prioridade/responsável só com tasks.assign (o backend recusa).
+            ...(canAssign ? { assignee_id: assigneeId || null, priority, due_at: dueIso } : {})
           })
         });
         saved = response.task;
@@ -231,12 +233,12 @@ function TaskDialog({
         </Field>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Prioridade">
-            <Select value={priority} onChange={(event) => setPriority(event.target.value as TaskPriority)}>
+            <Select value={priority} onChange={(event) => setPriority(event.target.value as TaskPriority)} disabled={lockedSchedule}>
               {(["baixa", "media", "alta"] as const).map((value) => <option key={value} value={value}>{PRIORITY_LABELS[value]}</option>)}
             </Select>
           </Field>
           <Field label="Prazo" help="Tarefas vencidas e não concluídas aparecem como Atrasadas.">
-            <Input type="datetime-local" value={dueLocal} onChange={(event) => setDueLocal(event.target.value)} />
+            <Input type="datetime-local" value={dueLocal} onChange={(event) => setDueLocal(event.target.value)} disabled={lockedSchedule} />
           </Field>
         </div>
         {canAssign ? (

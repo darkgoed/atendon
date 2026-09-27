@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import type { MessageGateway } from "../messages/types.js";
+import { localDateKey } from "../../timezone.js";
 
 export type ConfirmationMoment = "pos_agendamento" | "duas_horas_antes" | "quinze_minutos_antes";
 export type ContactConfirmationState = "nao_solicitada" | "solicitada" | "confirmada" | "sem_resposta";
@@ -86,6 +87,8 @@ export function formatMeetingTime(startAt: Date, timeZone: string): string {
 export function buildConfirmationMessage(input: {
   appointmentId: string; moment: ConfirmationMoment; name: string; formattedTime: string;
   state: ContactConfirmationState; variant?: number;
+  /** false quando a reunião é num dia local posterior ao envio (ex.: 01h com lembrete às 23h). */
+  sameDay?: boolean;
 }): string {
   const group = input.state === "confirmada" && input.moment !== "pos_agendamento" ? "confirmada" : "outros";
   const choices = TEXTS[input.moment][group];
@@ -101,7 +104,8 @@ export function buildConfirmationMessage(input: {
     ? choice[0].replaceAll("[Nome]", input.name)
     : choice[0].replace(/^\[Nome\],\s*/, "").replace(/^(.)/, (letter) => letter.toUpperCase());
   // Duas frases em parágrafos separados, como no material aprovado.
-  return `${opening.replaceAll("{time}", input.formattedTime)}\n\n${choice[1]}`;
+  const text = `${opening.replaceAll("{time}", input.formattedTime)}\n\n${choice[1]}`;
+  return input.sameDay === false ? text.replaceAll("hoje", "amanhã") : text;
 }
 
 export function decideConfirmationMoments(input: { startAt: Date; now: Date; state: ContactConfirmationState; appointmentStatus: AppointmentStatus }): { moment: ConfirmationMoment; availableAt: Date }[] {
@@ -378,14 +382,16 @@ export class MeetingConfirmationRepository {
       // O texto é redigido AGORA, não no enfileiramento: usa o horário da
       // reunião no fuso do tenant e o estado de confirmação vigente, de forma
       // que quem confirmou receba lembrete e quem não confirmou receba pedido.
-      const formattedTime = formatMeetingTime(row.start_at, row.timezone || "America/Sao_Paulo");
+      const timeZone = row.timezone || "America/Sao_Paulo";
+      const formattedTime = formatMeetingTime(row.start_at, timeZone);
       const contactName = displayFirstName(row.lead_name);
       const messageText = buildConfirmationMessage({
         appointmentId: row.appointment_id,
         moment: row.moment,
         name: contactName,
         formattedTime,
-        state: row.contact_confirmation_state
+        state: row.contact_confirmation_state,
+        sameDay: localDateKey(new Date(), timeZone) === localDateKey(row.start_at, timeZone)
       });
       await client.query(
         "UPDATE scheduling_meeting_confirmation_outbox SET message_text=$3, updated_at=now() WHERE id=$1 AND tenant_id=$2",

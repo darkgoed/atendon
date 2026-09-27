@@ -6,7 +6,7 @@ import { zonedParts } from "../../timezone.js";
 import type { InteractivePayload, MessageGateway, MessageReferral } from "../messages/types.js";
 import { httpError, withTransaction } from "../scheduling/service.js";
 import {
-  assertPublicWebhookUrl, conditionValueHidden, evaluateCondition, flowDefinitionSchema, interactiveChoices, interactivePayload,
+  QUESTION_KINDS, assertPublicWebhookUrl, conditionValueHidden, evaluateCondition, flowDefinitionSchema, interactiveChoices, interactivePayload,
   nextStepId, remainingQuestions, renderFinalMessage, renderInteractivePreview, renderQuestion,
   renderTemplate, totalQuestions, type FlowDefinition, type FlowStep, type FlowVars
 } from "./flow.js";
@@ -504,6 +504,11 @@ export class QualificationService {
 
     const vars = flowVars(state.answers, { name: state.lead_name, phone: input.contactPhone }, timezone);
     if (state.ask_pending) {
+      // Reinício aponta para definition.start sem caminhar: etapa inicial que
+      // não é pergunta (message/action/delay/...) precisa ser executada agora.
+      if (!QUESTION_KINDS.includes(step.kind) && step.kind !== "interactive") {
+        return this.walkPendingStep(input, state, definition, timezone);
+      }
       return this.applyPrompt(input, state, { pendingValue: state.pending_value, askPending: false }, renderQuestion(step, vars), "question");
     }
     if (state.pending_value) {
@@ -654,7 +659,9 @@ export class QualificationService {
         return { processed: false, reason: "not_a_wait_step" };
       }
       const target = step.kind === "delay" ? step.next : step.on_timeout;
-      const ctx = this.waitContext(state, `flow:${state.id}:${state.current_step}`);
+      // wait_until identifica a instância da espera: num laço que volta à mesma
+      // etapa, a chave da outbox muda e as mensagens da nova volta são enviadas.
+      const ctx = this.waitContext(state, `flow:${state.id}:${state.current_step}:${state.wait_until.toISOString()}`);
       if (!target || !definition.steps[target]) {
         await client.query("UPDATE lead_qualifications SET wait_until=NULL,updated_at=now() WHERE id=$1", [state.id]);
         await logExecution(client, ctx, { id: state.current_step, kind: step.kind }, "failed", { motivo: "destino_da_espera_inexistente" });
@@ -691,7 +698,7 @@ export class QualificationService {
        WHERE status='pending' AND next_attempt_at<=now() AND (claimed_at IS NULL OR claimed_at<now()-interval '2 minutes')
          AND EXISTS (SELECT 1 FROM whatsapp_sessions s WHERE s.id=qualification_message_outbox.session_id
            AND s.tenant_id=qualification_message_outbox.tenant_id AND s.channel='whatsapp' AND s.archived_at IS NULL)
-       ORDER BY created_at LIMIT $1`, [limit]
+       ORDER BY created_at,id LIMIT $1`, [limit]
     );
     return result.rows;
   }
@@ -827,7 +834,7 @@ export class QualificationService {
       `SELECT id,message FROM qualification_message_outbox
        WHERE tenant_id=$1 AND qualification_id=$2 AND inbound_external_id=$3 AND status='pending'
          AND message_kind <> 'interactive'
-       ORDER BY created_at DESC LIMIT 1`, [tenantId, qualificationId, externalId]
+       ORDER BY created_at,id LIMIT 1`, [tenantId, qualificationId, externalId]
     );
     return pending.rows[0] ? { reply: pending.rows[0].message, outboxId: pending.rows[0].id } : { reply: null };
   }
@@ -944,6 +951,41 @@ export class QualificationService {
       );
       return updated.rows[0] ? this.queueSingleMessage(client, input, state.id, state.current_step, kind, reply) : { reply: null };
     });
+  }
+
+  /** Executa o caminho a partir da etapa atual (reinício com etapa inicial que não é pergunta). */
+  private async walkPendingStep(input: QualificationInbound, state: StateRow, definition: FlowDefinition, timezone: string | null): Promise<QualificationOutcome> {
+    const ctx: WalkContext = {
+      tenantId: input.tenantId,
+      qualificationId: state.id,
+      leadId: state.lead_id,
+      flowId: state.flow_id,
+      conversationId: state.conversation_id,
+      sessionId: input.sessionId,
+      contactPhone: input.contactPhone,
+      contactJid: input.contactJid ?? null,
+      externalId: input.externalId,
+      timezone
+    };
+    const result = await withTransaction(async (client) => {
+      const fresh = await client.query<{ status: string; current_step: string; ask_pending: boolean; wait_until: Date | null; last_inbound_external_id: string | null }>(
+        "SELECT status,current_step,ask_pending,wait_until,last_inbound_external_id FROM lead_qualifications WHERE id=$1 AND tenant_id=$2 FOR UPDATE",
+        [state.id, input.tenantId]
+      );
+      const row = fresh.rows[0];
+      if (!row || row.status !== "em_andamento" || row.current_step !== state.current_step || !row.ask_pending || row.wait_until || row.last_inbound_external_id === input.externalId) return null;
+      const vars = flowVars(state.answers ?? {}, { name: state.lead_name, phone: input.contactPhone }, timezone);
+      const walk = await this.walkFlow(client, ctx, definition, vars, state.current_step);
+      await this.persistWalkState(client, ctx, { qualificationId: state.id, answers: state.answers ?? {} }, walk, input.sessionId, input.externalId, definition);
+      const outcome = await this.queueWalkMessages(client, ctx, state.id, walk.messages);
+      return { outcome, walk };
+    });
+    if (!result) return { reply: null };
+    if (result.walk.webhooks.length) {
+      void fireFlowWebhooks(result.walk.webhooks, ctx).catch((error) => logger.warn({ error }, "Qualification flow webhook dispatch failed"));
+    }
+    this.scheduleWalkResume(result.walk, ctx);
+    return result.outcome;
   }
 
   /**
@@ -1341,9 +1383,11 @@ export class QualificationService {
     for (const message of messages) {
       try {
         const queued = await client.query<{ id: string }>(
+          // clock_timestamp(): as N mensagens de um caminho nascem na mesma
+          // transação (now() idêntico); a ordem de envio do pump vem daqui.
           `INSERT INTO qualification_message_outbox
-             (tenant_id,qualification_id,session_id,contact_phone,contact_jid,step_id,inbound_external_id,message_kind,message,interactive_payload)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+             (tenant_id,qualification_id,session_id,contact_phone,contact_jid,step_id,inbound_external_id,message_kind,message,interactive_payload,created_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,clock_timestamp())
            ON CONFLICT (qualification_id,step_id,inbound_external_id,message_kind)
            DO UPDATE SET message=EXCLUDED.message,interactive_payload=EXCLUDED.interactive_payload
            RETURNING id`,

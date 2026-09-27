@@ -14,11 +14,11 @@ import { AgendaMonth } from "./agenda-month";
 import { AgendaCreateDialog } from "./agenda-create-dialog";
 import { AgendaDetailDialog } from "./agenda-detail-dialog";
 import { AgendaHeader } from "./agenda-header";
-import { AgendaTimeBlockDialog, AgendaTimeBlockList } from "./agenda-time-blocks";
+import { AgendaTimeBlockDialog, AgendaTimeBlockList, timeBlockDeletePath } from "./agenda-time-blocks";
 import { AgendaSlotDialog } from "./agenda-slot-dialog";
 import { isAppointmentResultPending } from "./agenda-appointment-state";
 import { AgendaError, AgendaLoading } from "./agenda-states";
-import type { AgendaPermissions, Appointment, AppointmentView, Slot } from "./agenda-types";
+import type { AgendaPermissions, Appointment, AppointmentView, AttendantTimeBlock, Slot } from "./agenda-types";
 import { dayKey, isActiveAppointment, messageFrom } from "./agenda-utils";
 import { useAgendaActions } from "./use-agenda-actions";
 import { useAgendaData } from "./use-agenda-data";
@@ -120,12 +120,12 @@ function AgendaContent() {
     if (summary) showFlash(summary);
   }
 
-  async function deleteTimeBlock(id: string) {
+  async function deleteTimeBlock(block: AttendantTimeBlock) {
     if (deletingTimeBlockId) return;
-    setDeletingTimeBlockId(id);
+    setDeletingTimeBlockId(block.id);
     setTimeBlockActionError("");
     try {
-      await api(`/scheduling/attendants/me/time-blocks/${id}`, { method: "DELETE" });
+      await api(timeBlockDeletePath(block), { method: "DELETE" });
       await refreshAfterTimeBlock("Bloqueio removido");
     } catch (error) {
       setTimeBlockActionError(messageFrom(error, "Não foi possível remover o bloqueio."));

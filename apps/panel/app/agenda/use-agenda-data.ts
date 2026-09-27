@@ -67,13 +67,22 @@ export function useAgendaData({ requestedUnit, requestedDate, requestedAppointme
     start: instantFromLocalMinute(`${dayKey(days[0])}T00:00`, timezone),
     end: instantFromLocalMinute(`${dayKey(addDays(days.at(-1)!, 1))}T00:00`, timezone)
   }), [days, timezone]);
+  const blocksQueryString = blocksRange.start && blocksRange.end
+    ? `?start=${encodeURIComponent(blocksRange.start)}&end=${encodeURIComponent(blocksRange.end)}`
+    : null;
+  const blocksOptions = { refreshInterval: 10_000, revalidateOnFocus: false, dedupingInterval: 5_000, shouldRetryOnError: false };
+  const blocksFetcher = (url: string) => api<AttendantTimeBlocksResponse>(url);
   const timeBlocksQuery = useSWR<AttendantTimeBlocksResponse>(
-    blocksRange.start && blocksRange.end
-      ? `/scheduling/attendants/me/time-blocks?start=${encodeURIComponent(blocksRange.start)}&end=${encodeURIComponent(blocksRange.end)}`
-      : null,
-    (url: string) => api<AttendantTimeBlocksResponse>(url),
-    { refreshInterval: 10_000, revalidateOnFocus: false, dedupingInterval: 5_000, shouldRetryOnError: false }
+    blocksQueryString ? `/scheduling/attendants/me/time-blocks${blocksQueryString}` : null, blocksFetcher, blocksOptions
   );
+  // Ocorrências dos bloqueios recorrentes do período (id = regra; a chave vira regra+início).
+  const recurringBlocksQuery = useSWR<AttendantTimeBlocksResponse>(
+    blocksQueryString ? `/scheduling/attendants/me/recurring-time-blocks${blocksQueryString}` : null, blocksFetcher, blocksOptions
+  );
+  const timeBlocks = useMemo(() => [
+    ...(timeBlocksQuery.data?.blocks ?? []),
+    ...(recurringBlocksQuery.data?.blocks ?? []).map((block) => ({ ...block, id: `${block.rule_id ?? block.id}:${block.start}`, rule_id: block.rule_id ?? block.id }))
+  ], [recurringBlocksQuery.data?.blocks, timeBlocksQuery.data?.blocks]);
   const workspaceTimezoneLoaded = Boolean(appointmentsQuery.data?.timezone || (availability.unitId === unit && availability.loadedDays.length > 0));
   const today = localDay(new Date(), timezone);
 
@@ -145,8 +154,8 @@ export function useAgendaData({ requestedUnit, requestedDate, requestedAppointme
     appointmentsData: appointmentsQuery.data, appointmentsError: appointmentsQuery.error,
     appointmentsLoading: appointmentsQuery.isLoading, mutateAppointments: appointmentsQuery.mutate,
     appointments, timezone, today, loadUnits, loadAvailability, navigate, goToday,
-    timeBlocks: timeBlocksQuery.data?.blocks ?? [], timeBlocksError: timeBlocksQuery.error,
-    mutateTimeBlocks: timeBlocksQuery.mutate
+    timeBlocks, timeBlocksError: timeBlocksQuery.error ?? recurringBlocksQuery.error,
+    mutateTimeBlocks: () => Promise.all([timeBlocksQuery.mutate(), recurringBlocksQuery.mutate()])
   };
 }
 

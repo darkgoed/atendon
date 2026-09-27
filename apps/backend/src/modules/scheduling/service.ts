@@ -16,7 +16,7 @@ import {
 } from "./notification-repository.js";
 import { APPOINTMENT_STATUS_REACTIONS } from "./status-reaction.js";
 import { encryptSecret } from "../ai-router/secret-box.js";
-import { localDateKey, localDateTimeToUtc, localWeekday, zonedParts } from "../../timezone.js";
+import { isValidIanaTimeZone, localDateKey, localDateTimeToUtc, localWeekday, zonedParts } from "../../timezone.js";
 import {
   ensureCaseAssignment,
   listAvailableAppointmentAttendants,
@@ -1471,7 +1471,26 @@ export async function selectAppointmentAttendant(
 ): Promise<AppointmentAttendantAssignment | null> {
   const start = options.start ?? new Date();
   const end = options.end ?? new Date(start.getTime() + 1);
-  return selectAvailableAppointmentAttendant(client, tenantId, { start, end }, options);
+  const busyMemberIds = [...await membersWithRecurringBlock(client, tenantId, null, { start, end })];
+  return selectAvailableAppointmentAttendant(client, tenantId, { start, end }, { ...options, busyMemberIds });
+}
+
+// Bloqueio recorrente (0125) é conflito do closer como o pontual: a seleção
+// automática pula quem está bloqueado e a escolha explícita recebe 409.
+async function membersWithRecurringBlock(
+  client: PoolClient,
+  tenantId: string,
+  memberId: string | null,
+  interval: { start: Date; end: Date }
+): Promise<Set<string>> {
+  const rules = await client.query<RecurringTimeBlockRow>(
+    `SELECT * FROM scheduling_attendant_recurring_time_blocks
+     WHERE tenant_id=$1 AND active=true AND ($2::uuid IS NULL OR member_id=$2)`,
+    [tenantId, memberId]
+  );
+  return new Set(rules.rows
+    .filter((rule) => recurringOccurrences(rule, interval.start, interval.end).length > 0)
+    .map((rule) => rule.member_id));
 }
 
 /** @deprecated Compatibility alias for the previous closer terminology. */
@@ -1570,7 +1589,9 @@ async function loadExplicitAppointmentAttendant(
      LIMIT 1`,
     [tenantId, memberId, interval.start, interval.end]
   );
-  if (blocked.rows[0]) throw httpError(409, "Este closer bloqueou esse horário na agenda");
+  if (blocked.rows[0] || (await membersWithRecurringBlock(client, tenantId, memberId, interval)).size > 0) {
+    throw httpError(409, "Este closer bloqueou esse horário na agenda");
+  }
   return {
     memberId: row.member_id,
     userId: row.user_id,
@@ -2394,6 +2415,16 @@ export async function rescheduleAppointment(
     }
     await assertExpectedAppointmentSnapshot(client, tenantId, current.rows[0], options.expectedSnapshot);
     if (current.rows[0].status === "cancelado") throw httpError(409, "Agendamento cancelado não pode ser reagendado");
+    if (current.rows[0].status !== "confirmado" && current.rows[0].status !== "reagendado") {
+      // Reagendar concluído/no_show o reativa: mesma regra (e lock do lead) da
+      // criação — no máximo um agendamento ativo por lead.
+      await client.query("SELECT 1 FROM scheduling_leads WHERE id=$1 AND tenant_id=$2 FOR UPDATE", [current.rows[0].lead_id, tenantId]);
+      const otherActive = await client.query(
+        "SELECT 1 FROM scheduling_appointments WHERE tenant_id=$1 AND lead_id=$2 AND id<>$3 AND status IN ('confirmado','reagendado') LIMIT 1",
+        [tenantId, current.rows[0].lead_id, appointmentId]
+      );
+      if (otherActive.rows[0]) throw httpError(409, "O lead já possui um agendamento ativo; reagende ou cancele o agendamento existente");
+    }
     const unit = await loadUnit(client, tenantId, input.unidade_id ?? current.rows[0].unit_id);
     const start = new Date(input.start);
     const end = options.manual
@@ -2461,6 +2492,16 @@ export async function rescheduleAppointment(
        SET unit_id=$3,start_at=$4,end_at=$5,status='confirmado',result_pending_at=NULL,updated_at=now()
        WHERE id=$1 AND tenant_id=$2 RETURNING *`, [appointmentId, tenantId, unit.id, start.toISOString(), end.toISOString()]
     );
+    // Lembretes de confirmação foram planejados para o horário antigo (available_at
+    // fixo, chave única por momento): descarta-os para a varredura replanejar no
+    // novo horário. Linha em envio (processing) fica — o claim não é interrompido.
+    if (current.rows[0].start_at.getTime() !== start.getTime()) {
+      await client.query(
+        `DELETE FROM scheduling_meeting_confirmation_outbox
+         WHERE tenant_id=$1 AND appointment_id=$2 AND status<>'processing'`,
+        [tenantId, appointmentId]
+      );
+    }
     await client.query(
       `UPDATE scheduling_leads
        SET unit_id=$2,
@@ -3470,23 +3511,34 @@ export async function verificarHorarios(
 export type RecurringTimeBlockInput = {
   start_local_time: string; end_local_time: string; weekdays: number[]; starts_on: string; ends_on?: string | null; timezone: string; reason: string; active?: boolean;
 };
+// Fuso inválido quebraria recurringOccurrences (RangeError) e a grade inteira da unidade.
+const ianaTimeZone = z.string().trim().min(1).max(100).refine(isValidIanaTimeZone, "Fuso horário IANA inválido");
 export const recurringTimeBlockBody = z.object({
   start_local_time: time, end_local_time: time, weekdays: z.array(z.number().int().min(1).max(7)).min(1),
-  starts_on: date, ends_on: date.nullable().optional(), timezone: z.string().trim().min(1).max(100),
+  starts_on: date, ends_on: date.nullable().optional(), timezone: ianaTimeZone,
   reason: z.string().trim().min(1).max(500), active: z.boolean().optional()
 }).strict().superRefine((v, c) => {
   if (v.end_local_time <= v.start_local_time) c.addIssue({ code: z.ZodIssueCode.custom, path: ["end_local_time"], message: "O término deve ser posterior ao início" });
   if (new Set(v.weekdays).size !== v.weekdays.length) c.addIssue({ code: z.ZodIssueCode.custom, path: ["weekdays"], message: "Dias duplicados" });
   if (v.ends_on && v.ends_on < v.starts_on) c.addIssue({ code: z.ZodIssueCode.custom, path: ["ends_on"], message: "Data final inválida" });
 });
-export const recurringTimeBlockPatch = z.object({ start_local_time: time.optional(), end_local_time: time.optional(), weekdays: z.array(z.number().int().min(1).max(7)).min(1).optional(), starts_on: date.optional(), ends_on: date.nullable().optional(), timezone: z.string().trim().min(1).max(100).optional(), reason: z.string().trim().min(1).max(500).optional(), active: z.boolean().optional() }).strict().superRefine((v,c) => { if (v.start_local_time && v.end_local_time && v.end_local_time <= v.start_local_time) c.addIssue({code:z.ZodIssueCode.custom,path:["end_local_time"],message:"O término deve ser posterior ao início"}); if (v.weekdays && new Set(v.weekdays).size !== v.weekdays.length) c.addIssue({code:z.ZodIssueCode.custom,path:["weekdays"],message:"Dias duplicados"}); if (v.ends_on && v.starts_on && v.ends_on < v.starts_on) c.addIssue({code:z.ZodIssueCode.custom,path:["ends_on"],message:"Data final inválida"}); });
-type RecurringTimeBlockRow = RecurringTimeBlockInput & { id: string; tenant_id: string; member_id: string; active: boolean; created_at: Date; updated_at: Date };
-function mapRecurring(row: RecurringTimeBlockRow) { return { id: row.id, member_id: row.member_id, start_local_time: row.start_local_time, end_local_time: row.end_local_time, weekdays: row.weekdays, starts_on: row.starts_on, ends_on: row.ends_on, timezone: row.timezone, reason: row.reason, active: row.active, created_at: row.created_at.toISOString(), updated_at: row.updated_at.toISOString() }; }
+export const recurringTimeBlockPatch = z.object({ start_local_time: time.optional(), end_local_time: time.optional(), weekdays: z.array(z.number().int().min(1).max(7)).min(1).optional(), starts_on: date.optional(), ends_on: date.nullable().optional(), timezone: ianaTimeZone.optional(), reason: z.string().trim().min(1).max(500).optional(), active: z.boolean().optional() }).strict().superRefine((v,c) => { if (v.start_local_time && v.end_local_time && v.end_local_time <= v.start_local_time) c.addIssue({code:z.ZodIssueCode.custom,path:["end_local_time"],message:"O término deve ser posterior ao início"}); if (v.weekdays && new Set(v.weekdays).size !== v.weekdays.length) c.addIssue({code:z.ZodIssueCode.custom,path:["weekdays"],message:"Dias duplicados"}); if (v.ends_on && v.starts_on && v.ends_on < v.starts_on) c.addIssue({code:z.ZodIssueCode.custom,path:["ends_on"],message:"Data final inválida"}); });
+// starts_on/ends_on são `date`: node-pg (postgres-date) os entrega como Date à
+// meia-noite LOCAL do processo; comparar Date com a chave "YYYY-MM-DD" é sempre false.
+type RecurringTimeBlockRow = Omit<RecurringTimeBlockInput, "starts_on" | "ends_on"> & { starts_on: string | Date; ends_on?: string | Date | null; id: string; tenant_id: string; member_id: string; active: boolean; created_at: Date; updated_at: Date };
+const dateOnly = (value: string | Date) => typeof value === "string" ? value.slice(0, 10)
+  : `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+function mapRecurring(row: RecurringTimeBlockRow) { return { id: row.id, member_id: row.member_id, start_local_time: row.start_local_time, end_local_time: row.end_local_time, weekdays: row.weekdays, starts_on: dateOnly(row.starts_on), ends_on: row.ends_on ? dateOnly(row.ends_on) : null, timezone: row.timezone, reason: row.reason, active: row.active, created_at: row.created_at.toISOString(), updated_at: row.updated_at.toISOString() }; }
 export function recurringOccurrences(row: RecurringTimeBlockRow, start: Date, end: Date) {
   const out: Array<Record<string, unknown>> = [];
-  for (let cursor = new Date(start); cursor < end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
-    const key = localDateKey(cursor, row.timezone); const weekday = ((localWeekday(cursor, row.timezone) + 6) % 7) + 1;
-    if (!row.active || key < row.starts_on || (row.ends_on && key > row.ends_on) || !row.weekdays.includes(weekday)) continue;
+  if (!row.active || end <= start) return out;
+  const startsOn = dateOnly(row.starts_on); const endsOn = row.ends_on ? dateOnly(row.ends_on) : null;
+  // Itera dias LOCAIS (do dia local do início ao do fim), independente de DST.
+  const last = localDateKey(end, row.timezone);
+  for (const day = new Date(`${localDateKey(start, row.timezone)}T00:00:00Z`); ; day.setUTCDate(day.getUTCDate() + 1)) {
+    const key = day.toISOString().slice(0, 10); if (key > last) break;
+    const weekday = ((day.getUTCDay() + 6) % 7) + 1;
+    if (key < startsOn || (endsOn && key > endsOn) || !row.weekdays.includes(weekday)) continue;
     const s = localDateTimeToUtc(key, row.start_local_time, row.timezone); const e = localDateTimeToUtc(key, row.end_local_time, row.timezone);
     if (s < end && e > start) out.push({ ...mapRecurring(row), start: s.toISOString(), end: e.toISOString(), origin: "recorrente", rule_id: row.id });
   } return out;

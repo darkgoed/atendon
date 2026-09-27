@@ -189,6 +189,13 @@ describe("tarefas — permissões", () => {
     });
     expect(titleOwn.statusCode).toBe(200);
     expect(titleOwn.json().task.title).toBe("Minha tarefa renomeada");
+    // Formulário de edição reenvia prioridade/prazo inalterados: não é atribuição.
+    const formSave = await app.inject({
+      method: "PATCH", url: `/tasks/${taskId}`, headers: { cookie: await loginAs(operatorA) },
+      payload: { title: "Minha tarefa (form)", description: null, priority: titleOwn.json().task.priority, due_at: null }
+    });
+    expect(formSave.statusCode).toBe(200);
+    expect(formSave.json().task.title).toBe("Minha tarefa (form)");
 
     // Responsável pode excluir a própria tarefa (autor ou tasks.assign).
     const selfDelete = await app.inject({

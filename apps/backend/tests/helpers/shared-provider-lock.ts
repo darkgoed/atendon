@@ -15,6 +15,12 @@ export const INSTAGRAM_GLOBAL_LOCK_KEY = 7_202_609_262;
 /** Chave própria para suítes cujo lote mensal Efí varre TODOS os mandatos (cria cobranças para os da outra suíte). */
 export const EFI_MONTHLY_BATCH_LOCK_KEY = 7_202_609_263;
 
+/** Chave própria para suítes que drenam o outbox GLOBAL do Google Agenda (claimDue reivindica linhas das outras). */
+export const CALENDAR_OUTBOX_LOCK_KEY = 7_202_609_264;
+
+/** Chave própria para suítes do outbox GLOBAL do robô de fluxos (pumpOutbox entrega e muda status das linhas das outras). */
+export const QUALIFICATION_OUTBOX_LOCK_KEY = 7_202_609_265;
+
 export async function acquireSharedProviderLock(key = LOCK_KEY): Promise<() => Promise<void>> {
   const client = new pg.Client({ connectionString: config.DATABASE_URL });
   await client.connect();

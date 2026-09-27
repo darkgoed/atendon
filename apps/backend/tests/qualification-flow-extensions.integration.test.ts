@@ -11,6 +11,13 @@ import { DEFAULT_QUALIFICATION_FLOW, activationIssues, flowDefinitionSchema, typ
 import { QualificationService } from "../src/modules/qualification/service.js";
 import { MessageProcessor } from "../src/modules/messages/process-message.js";
 import type { ConversationContext } from "../src/modules/messages/repository.js";
+import { acquireSharedProviderLock, QUALIFICATION_OUTBOX_LOCK_KEY, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
+
+// pumpOutbox do robô é GLOBAL: em paralelo, uma suíte entrega (e marca como
+// enviadas) as mensagens pendentes da outra.
+let releaseQualificationOutboxLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseQualificationOutboxLock = await acquireSharedProviderLock(QUALIFICATION_OUTBOX_LOCK_KEY); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseQualificationOutboxLock?.(); });
 
 // Fakes do ponto de wire (padrão de process-message.test.ts): redis e billing
 // fora do caminho; robô e IA são o que está em prova aqui.

@@ -224,4 +224,29 @@ describe("página Tarefas (R6)", () => {
       expect(created?.body).toMatchObject({ assignee_id: "user-1" });
     });
   });
+  it("sem tasks.assign: editar a própria tarefa envia só título/descrição (prazo/prioridade travados)", async () => {
+    const user = userEvent.setup();
+    apiMock.mockImplementation((path: string, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
+      calls.push({ path, method, body });
+      if (path === "/me") return jsonResponse({ ...SESSION, permissions: ["tasks.read"] });
+      if (path.startsWith("/tasks?")) return jsonResponse({ items: [makeTask()], page: { limit: 30, has_more: false, next_cursor: null } });
+      if (path === "/tasks/task-a" && method === "PATCH") return jsonResponse({ task: makeTask({ ...body }) });
+      return jsonResponse({});
+    });
+    renderPage();
+    await screen.findByText("Enviar proposta revisada");
+    await user.click(screen.getByRole("button", { name: "Editar tarefa: Enviar proposta revisada" }));
+    const dialog = await screen.findByRole("dialog", { name: /Editar tarefa/ });
+    expect(within(dialog).getByLabelText("Prioridade")).toBeDisabled();
+    expect(within(dialog).getByLabelText("Prazo")).toBeDisabled();
+    const title = within(dialog).getByLabelText("Título");
+    await user.clear(title);
+    await user.type(title, "Enviar proposta final");
+    await user.click(within(dialog).getByRole("button", { name: /Salvar/ }));
+    await waitFor(() => expect(calls.some((call) => call.method === "PATCH")).toBe(true));
+    const patch = calls.find((call) => call.method === "PATCH");
+    expect(patch?.body).toEqual({ title: "Enviar proposta final", description: "Ajustar preço e reenviar" });
+  });
 });

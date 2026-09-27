@@ -263,7 +263,12 @@ export async function updateTask(
     )).rows[0];
     if (!current) throw httpError(404, "Tarefa não encontrada");
 
-    const touchesAssignment = input.assignee_id !== undefined || input.due_at !== undefined || input.priority !== undefined;
+    // Só MUDANÇA de responsável/prazo/prioridade exige tasks.assign: o formulário
+    // de edição reenvia os valores atuais junto com título/descrição.
+    const epoch = (value: string | Date | null) => value === null ? null : new Date(value).getTime();
+    const touchesAssignment = (input.assignee_id !== undefined && input.assignee_id !== current.assignee_id)
+      || (input.due_at !== undefined && epoch(input.due_at) !== epoch(current.due_at))
+      || (input.priority !== undefined && input.priority !== current.priority);
     if (touchesAssignment && !options.canAssign) {
       throw httpError(403, "Permissão insuficiente");
     }

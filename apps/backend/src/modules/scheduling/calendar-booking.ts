@@ -10,6 +10,7 @@ import {
   type GoogleCalendarClient
 } from "./google-calendar.js";
 import { httpError } from "./service.js";
+import { localDateTimeToUtc } from "../../timezone.js";
 
 // Rota da etapa do lead (specs/active/google-calendar-team-sync.md):
 // conexão fixa → responsável é o dono da conexão; equipe → pool restrito aos
@@ -154,12 +155,25 @@ export async function assertGoogleCalendarAvailability(
         new Date(windowStart).toISOString(),
         new Date(windowEnd).toISOString()
       );
+      // Evento de dia inteiro ("date" sem hora) vale no dia LOCAL: Date.parse
+      // leria meia-noite UTC e deslocaria o bloqueio pelo offset do fuso.
+      const allDayZone = events.some((event) => event.start?.date || event.end?.date)
+        ? (await client.query<{ timezone: string }>("SELECT timezone FROM tenants WHERE id=$1", [tenantId])).rows[0]?.timezone ?? "UTC"
+        : "UTC";
+      const edge = (value?: { dateTime?: string; date?: string; timeZone?: string }) => {
+        if (value?.dateTime || !value?.date) return Date.parse(value?.dateTime ?? "");
+        try {
+          return localDateTimeToUtc(value.date, "00:00", value.timeZone ?? allDayZone).getTime();
+        } catch {
+          return Number.NaN;
+        }
+      };
       conflicts = events.some((event) => {
         // Nosso evento vinculado: excusado por identidade (nunca só por intervalo).
         if (event.id === linkedEventId) return false;
         if (event.transparency === "transparent") return false;
-        const startMs = Date.parse(event.start?.dateTime ?? event.start?.date ?? "");
-        const endMs = Date.parse(event.end?.dateTime ?? event.end?.date ?? "");
+        const startMs = edge(event.start);
+        const endMs = edge(event.end);
         // Entrada indecifrável → fail-closed: sem confirmação de horário livre.
         if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) return true;
         return startMs < windowEnd && endMs > windowStart;

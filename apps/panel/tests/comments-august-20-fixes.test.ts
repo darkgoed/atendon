@@ -24,7 +24,9 @@ describe("comments.md August 20 regressions", () => {
     expect(agendaHeader).toContain("Bloquear horário");
     expect(agendaPage).toContain("AgendaTimeBlockDialog");
     expect(agendaBlocks).toContain('"/scheduling/attendants/me/time-blocks"');
-    expect(agendaPage).toContain("/scheduling/attendants/me/time-blocks/${id}");
+    expect(agendaPage).toContain("timeBlockDeletePath(block)");
+    expect(agendaBlocks).toContain("/scheduling/attendants/me/time-blocks/${block.id}");
+    expect(agendaBlocks).toContain("/scheduling/attendants/me/recurring-time-blocks/${block.rule_id}");
     expect(agendaBlocks).toContain("A IA e o agendamento automático tratarão o período como ocupado");
   });
 

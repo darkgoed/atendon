@@ -19,6 +19,13 @@ import {
   type GoogleCalendarEvent,
   type GoogleCalendarEventFields
 } from "../src/modules/scheduling/google-calendar.js";
+import { acquireSharedProviderLock, CALENDAR_OUTBOX_LOCK_KEY, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
+
+// claimDue do outbox do Google Agenda é GLOBAL: em paralelo, uma suíte
+// reivindica (e rouba a lease de) linhas da outra.
+let releaseCalendarOutboxLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseCalendarOutboxLock = await acquireSharedProviderLock(CALENDAR_OUTBOX_LOCK_KEY); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseCalendarOutboxLock?.(); });
 
 // Integração real (Postgres de teste): gatilho 0189, outbox, vínculos e
 // worker. O Google é substituído por um stub injetado na costura existente
@@ -136,9 +143,9 @@ async function createAppointment(memberId: string | null): Promise<string> {
 }
 
 async function claimOne(appointmentId: string): Promise<CalendarSyncJob> {
-  // claimDue é global: drena também linhas residuais de testes anteriores e
-  // escolhe a linha alvo (residuais reclamadas ficam sob lease até expirar).
-  const jobs = await repo.claimDue(100);
+  // Recorte pelo tenant da suíte: o claimDue do worker é global e reivindicaria
+  // linhas de outras suítes em paralelo (lease → 409 ao excluir, contagens erradas).
+  const jobs = await repo.claimDue(100, tenantId);
   const job = jobs.find((candidate) => candidate.appointmentId === appointmentId);
   expect(job, `linha do outbox de ${appointmentId} não estava disponível`).toBeDefined();
   return job!;
@@ -298,12 +305,12 @@ describe("claimDue", () => {
        WHERE appointment_id=$1 AND tenant_id=$2`,
       [appointmentId, tenantId]
     );
-    expect(await repo.claimDue(20)).toEqual([]); // RED: hoje ignora available_at
+    expect(await repo.claimDue(20, tenantId)).toEqual([]); // RED: hoje ignora available_at
     await pool.query(
       "UPDATE scheduling_calendar_sync_outbox SET available_at=now() WHERE appointment_id=$1 AND tenant_id=$2",
       [appointmentId, tenantId]
     );
-    expect(await repo.claimDue(20)).toHaveLength(1);
+    expect(await repo.claimDue(20, tenantId)).toHaveLength(1);
   });
 });
 
@@ -312,7 +319,7 @@ describe("posse do claim (lease)", () => {
     const leaseless = new CalendarSyncRepository(pool, 0);
     const appointmentId = await createAppointment(memberA);
     const claimSame = async (): Promise<CalendarSyncJob> =>
-      (await leaseless.claimDue(100)).find((job) => job.appointmentId === appointmentId)!;
+      (await leaseless.claimDue(100, tenantId)).find((job) => job.appointmentId === appointmentId)!;
     const staleJob = await claimSame();
     const freshJob = await claimSame(); // lease 0 → mesmo agendamento reclamado de novo
     expect(freshJob.attempts).toBeGreaterThan(staleJob.attempts);

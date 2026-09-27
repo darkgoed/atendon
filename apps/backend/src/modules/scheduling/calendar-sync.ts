@@ -281,7 +281,8 @@ export class CalendarSyncRepository {
   // garante que só o dono atual conclui (lease vencido → outro worker pode
   // ter reclamado de novo: complete obsoleto não grava por cima). Backoff é
   // o available_at: sem o filtro, linha em retry seria reclamada a cada tick.
-  async claimDue(limit = OUTBOX_BATCH_LIMIT): Promise<CalendarSyncJob[]> {
+  /** onlyTenantId: recorte opcional (o worker drena todos os tenants). */
+  async claimDue(limit = OUTBOX_BATCH_LIMIT, onlyTenantId?: string): Promise<CalendarSyncJob[]> {
     return this.transaction(async (client) => {
       const rows = await client.query<{
         appointment_id: string; tenant_id: string; kind: string; attempts: number; claim_token: string;
@@ -292,6 +293,7 @@ export class CalendarSyncRepository {
            SELECT appointment_id,tenant_id
            FROM scheduling_calendar_sync_outbox
            WHERE available_at <= now()
+             AND ($3::uuid IS NULL OR tenant_id=$3)
              AND (claimed_at IS NULL
                   OR claimed_at <= now() - ($2::bigint * interval '1 millisecond'))
            ORDER BY available_at,appointment_id
@@ -301,7 +303,7 @@ export class CalendarSyncRepository {
          WHERE outbox.appointment_id=due.appointment_id
            AND outbox.tenant_id=due.tenant_id
          RETURNING outbox.appointment_id,outbox.tenant_id,outbox.kind,outbox.attempts,outbox.claim_token`,
-        [limit, this.leaseMs]
+        [limit, this.leaseMs, onlyTenantId ?? null]
       );
       return rows.rows.map((row) => ({
         tenantId: row.tenant_id,

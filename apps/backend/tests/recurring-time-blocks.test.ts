@@ -86,6 +86,13 @@ describe("recurring time block validation", () => {
     expect(recurringTimeBlockBody.safeParse({ ...base, starts_on: "2026-01-10", ends_on: "2026-01-09" }).success).toBe(false);
   });
 
+  it("rejects a timezone that is not a valid IANA zone in both schemas", () => {
+    expect(recurringTimeBlockBody.safeParse({ ...base, timezone: "Foo/Bar" }).success).toBe(false);
+    expect(recurringTimeBlockPatch.safeParse({ timezone: "Foo/Bar" }).success).toBe(false);
+    expect(recurringTimeBlockBody.safeParse({ ...base, timezone: "America/Sao_Paulo" }).success).toBe(true);
+    expect(recurringTimeBlockPatch.safeParse({ timezone: "America/Sao_Paulo" }).success).toBe(true);
+  });
+
   it("rejects unknown payload fields because schemas are strict", () => {
     expect(recurringTimeBlockBody.safeParse({ ...base, unexpected: true }).success).toBe(false);
     expect(recurringTimeBlockPatch.safeParse({ reason: "Pausa", unexpected: true }).success).toBe(false);
@@ -115,6 +122,28 @@ describe("recurring time block occurrence expansion", () => {
     expect(occurrences.map((item) => item.start)).toEqual([
       "2026-01-07T12:00:00.000Z", "2026-01-08T12:00:00.000Z", "2026-01-09T12:00:00.000Z"
     ]);
+  });
+
+  it("honours starts_on/ends_on delivered by node-pg as Date objects (local midnight)", () => {
+    // node-pg (postgres-date) parses a SQL `date` as local-midnight Date.
+    const dbRow = {
+      ...row({ weekdays: [1], timezone: "America/Sao_Paulo", start_local_time: "14:00:00", end_local_time: "16:00:00" }),
+      starts_on: new Date(2026, 8, 1),
+      ends_on: new Date(2026, 8, 15)
+    };
+    const mondayOct5 = [new Date("2026-10-05T03:00:00Z"), new Date("2026-10-06T03:00:00Z")] as const;
+    expect(recurringOccurrences(dbRow, ...mondayOct5)).toEqual([]);
+    const mondaySep14 = [new Date("2026-09-14T03:00:00Z"), new Date("2026-09-15T03:00:00Z")] as const;
+    expect(recurringOccurrences(dbRow, ...mondaySep14).map((item) => [item.start, item.starts_on, item.ends_on])).toEqual([
+      ["2026-09-14T17:00:00.000Z", "2026-09-01", "2026-09-15"]
+    ]);
+    expect(recurringOccurrences({ ...dbRow, starts_on: new Date(2026, 9, 12), ends_on: null }, ...mondayOct5)).toEqual([]);
+  });
+
+  it("finds an occurrence on the next local day for an interval crossing local midnight", () => {
+    const early = row({ start_local_time: "00:00", end_local_time: "01:00", timezone: "America/Sao_Paulo" });
+    // 23:30 → 00:30 (America/Sao_Paulo) overlaps the 00:00-01:00 block of the next day.
+    expect(recurringOccurrences(early, new Date("2026-01-06T02:30:00Z"), new Date("2026-01-06T03:30:00Z"))).toHaveLength(1);
   });
 
   it("does not expand an inactive rule", () => {

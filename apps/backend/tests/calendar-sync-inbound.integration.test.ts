@@ -30,6 +30,13 @@ import {
   type GoogleCalendarEvent,
   type GoogleCalendarEventFields
 } from "../src/modules/scheduling/google-calendar.js";
+import { acquireSharedProviderLock, CALENDAR_OUTBOX_LOCK_KEY, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
+
+// claimDue do outbox do Google Agenda é GLOBAL: em paralelo, uma suíte
+// reivindica (e rouba a lease de) linhas da outra.
+let releaseCalendarOutboxLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseCalendarOutboxLock = await acquireSharedProviderLock(CALENDAR_OUTBOX_LOCK_KEY); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseCalendarOutboxLock?.(); });
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const repo = new CalendarSyncRepository(pool);
@@ -201,8 +208,8 @@ async function createLeadAppointment(): Promise<string> {
 }
 
 async function claimOne(appointmentId: string): Promise<CalendarSyncJob> {
-  // claimDue é global: escolhe a linha alvo entre eventuais residuais.
-  const jobs = await repo.claimDue(100);
+  // Recorte pelo tenant da suíte (o claimDue do worker é global).
+  const jobs = await repo.claimDue(100, tenantId);
   const job = jobs.find((candidate) => candidate.appointmentId === appointmentId);
   expect(job, `linha do outbox de ${appointmentId} não estava disponível`).toBeDefined();
   return job!;

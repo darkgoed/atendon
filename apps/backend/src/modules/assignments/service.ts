@@ -231,10 +231,13 @@ export async function selectAvailableAppointmentAttendant(
   client: PoolClient,
   tenantId: string,
   interval: { start: Date; end: Date },
-  options: { excludeMemberIds?: string[]; excludeAppointmentId?: string } = {}
+  // busyMemberIds: ocupados por regra calculada fora do SQL (bloqueio recorrente);
+  // ficam na rotação (cursor) mas não podem ser escolhidos.
+  options: { excludeMemberIds?: string[]; excludeAppointmentId?: string; busyMemberIds?: string[] } = {}
 ): Promise<AppointmentAttendantAssignment | null> {
   await lockAttendantRotation(client, tenantId);
   const excluded = new Set(options.excludeMemberIds ?? []);
+  const busy = new Set(options.busyMemberIds ?? []);
   const eligible = (await listAvailableAppointmentAttendants(client, tenantId))
     .filter((candidate) => !excluded.has(candidate.memberId));
   if (!eligible.length) return null;
@@ -271,7 +274,8 @@ export async function selectAvailableAppointmentAttendant(
   );
   const loadByMember = new Map(load.rows.map((row) => [row.member_id, row]));
   const withoutConflict = eligible.filter(
-    (candidate) => (loadByMember.get(candidate.memberId)?.overlapping_appointments ?? 0) === 0
+    (candidate) => !busy.has(candidate.memberId)
+      && (loadByMember.get(candidate.memberId)?.overlapping_appointments ?? 0) === 0
       && (loadByMember.get(candidate.memberId)?.overlapping_blocks ?? 0) === 0
   );
   if (!withoutConflict.length) return null;

@@ -10,6 +10,13 @@ import { OpenRouterClient } from "../src/modules/ai-router/openrouter.js";
 import { QualificationService } from "../src/modules/qualification/service.js";
 import { WhatsAppSessionManager } from "../src/modules/whatsapp/session-manager.js";
 import { WhatsAppSendRejectedError } from "../src/modules/whatsapp/errors.js";
+import { acquireSharedProviderLock, QUALIFICATION_OUTBOX_LOCK_KEY, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
+
+// pumpOutbox do robô é GLOBAL: em paralelo, uma suíte entrega (e marca como
+// enviadas) as mensagens pendentes da outra.
+let releaseQualificationOutboxLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseQualificationOutboxLock = await acquireSharedProviderLock(QUALIFICATION_OUTBOX_LOCK_KEY); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseQualificationOutboxLock?.(); });
 
 const pool=new pg.Pool({connectionString:config.DATABASE_URL});
 const app=buildApp();
