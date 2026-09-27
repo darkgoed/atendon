@@ -186,7 +186,7 @@ async function applyStageAutomation(
   tenantId: string,
   leadId: string,
   automation: StageRow["automation"],
-  actorUserId: string | null
+  actorUserId: string
 ) {
   const parsed = (automation ?? {}) as { add_tag_ids?: string[]; assign_member_id?: string | null };
   const tagIds = parsed.add_tag_ids ?? [];
@@ -1207,15 +1207,12 @@ export async function replaceStageTransitions(tenantId: string, stageId: string,
 // PIPELINE ALVO; sequência só vale dentro do mesmo pipeline (cross-pipeline
 // ignora o grafo). Automação da etapa alvo roda quando o lead entra nela e o
 // sinal realtime sai na mesma transação, uma vez por lead.
-// Robô de fluxos (automação) move sem usuário: actor.userId nulo.
-type StageMoveActor = Omit<OrganizationActor,"userId"> & { userId: string | null };
-
 async function moveLeadToStage(
   client: PoolClient,
   tenantId: string,
   lead: LeadRow,
   target: StageRow,
-  actor: StageMoveActor,
+  actor: OrganizationActor,
   requireConfiguredTransition = true,
   commercial?: CommercialTransitionPayload,
   enforceTransitions = true
@@ -1289,20 +1286,6 @@ async function moveLeadToStage(
   );
   await notifyLeadMoved(client,tenantId,lead.id,previousUserId,assignedUserAfter ?? null);
   return result;
-}
-
-/**
- * Movimento feito por automação (ação stage_move do robô de fluxos), dentro da
- * transação do chamador: mesmas regras do movimento pelo painel — status
- * técnico sincronizado, transições do pipeline alvo, etapa que exige dados
- * comerciais recusada (400), follow-ups cancelados, automação e eventos.
- */
-export async function moveLeadStageByAutomation(client: PoolClient, tenantId: string, leadId: string, stageId: string) {
-  const lead = await assertAccessibleLead(client,tenantId,leadId,{ workspaceWide: true, memberId: null },true);
-  const target = await stageById(client,tenantId,stageId);
-  if (target.archived_at) throw httpError(400,"Etapa arquivada");
-  const enforceTransitions = await pipelineEnforcesTransitions(client,tenantId,target.id);
-  return moveLeadToStage(client,tenantId,lead,target,{ userId: null, actorScope: "workspace" },true,undefined,enforceTransitions);
 }
 
 export async function moveLeadStage(

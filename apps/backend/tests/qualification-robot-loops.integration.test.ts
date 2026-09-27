@@ -114,35 +114,4 @@ describe("auditoria P1 — fluxos de robô", () => {
     await service.handleInbound({ tenantId, sessionId, contactPhone: lead.phone, text: "produto", externalId: `ext-${randomUUID()}` });
     expect((await pool.query<{ status: string }>("SELECT status FROM lead_qualifications WHERE id=$1", [lead.id])).rows[0].status).toBe("concluido");
   });
-
-  it("F7: action stage_move segue a regra do pipeline (status sincronizado; etapa comercial recusada)", async () => {
-    const stageOf = async (status: string) => (await pool.query<{ id: string }>(
-      "SELECT id FROM pipeline_stages WHERE tenant_id=$1 AND technical_status=$2 AND is_default AND archived_at IS NULL", [tenantId, status]
-    )).rows[0].id;
-    const attending = await stageOf("em_atendimento");
-    await useFlow({
-      start: "A", origem: "facebook", triggers: { ctwa: false, session_ids: [], keywords: ["mover"] },
-      steps: {
-        A: { kind: "action", action_type: "stage_move", stage_id: attending, next: "F" },
-        F: { kind: "final", message: "Fim" }
-      }
-    });
-    const moved = await startLead("mover");
-    expect((await pool.query("SELECT status,pipeline_stage_id FROM scheduling_leads WHERE id=$1", [moved.lead_id])).rows[0])
-      .toEqual({ status: "em_atendimento", pipeline_stage_id: attending });
-
-    // Etapa que exige dados comerciais (fechado) não é aplicada pelo robô: coluna e status seguem coerentes.
-    await useFlow({
-      start: "A", origem: "facebook", triggers: { ctwa: false, session_ids: [], keywords: ["fechar"] },
-      steps: {
-        A: { kind: "action", action_type: "stage_move", stage_id: await stageOf("fechado"), next: "F" },
-        F: { kind: "final", message: "Fim" }
-      }
-    });
-    const closed = await startLead("fechar");
-    const row = (await pool.query<{ status: string; pipeline_stage_id: string }>("SELECT status,pipeline_stage_id FROM scheduling_leads WHERE id=$1", [closed.lead_id])).rows[0];
-    expect(row.status).not.toBe("fechado");
-    expect(row.pipeline_stage_id).not.toBe(await stageOf("fechado"));
-  });
 });
-
