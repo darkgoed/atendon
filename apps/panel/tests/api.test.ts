@@ -60,4 +60,17 @@ describe("panel API client", () => {
     await expect(api("/me")).rejects.toThrow("Altere sua senha para continuar");
     expect(location.href).toBe("/alterar-senha");
   });
+  // C2 (auditoria P1): só sessão inválida (401) volta ao login; senha atual
+  // errada agora é 400 e a mensagem fica no formulário.
+  it("keeps the user on the page for a wrong current password (400) and redirects only on 401", async () => {
+    const location = { pathname: "/perfil", href: "" };
+    vi.stubGlobal("window", { location, dispatchEvent: vi.fn() });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ error: "Senha atual inválida" }, { status: 400 })));
+    await expect(api("/me/profile", { method: "PATCH", body: "{}" })).rejects.toThrow("Senha atual inválida");
+    expect(location.href).toBe("");
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ error: "Sessão revogada" }, { status: 401 })));
+    await expect(api("/me")).rejects.toThrow("Sessão revogada");
+    expect(location.href).toBe("/login");
+  });
 });

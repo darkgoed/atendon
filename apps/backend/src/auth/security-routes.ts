@@ -33,7 +33,7 @@ import {
  * 2FA TOTP por usuário e sessões ativas revogáveis.
  *
  * - Setup NÃO ativa: só grava o segredo (cifrado); ativação exige código
- *   válido; desativação exige re-autenticação por senha (padrão 401
+ *   válido; desativação exige re-autenticação por senha (padrão 400
  *   "Senha atual inválida" do PATCH /me/profile).
  * - /auth/totp/verify é o 2º passo do login: consome o cookie de desafio
  *   (totp.ts), replica o picking de workspace do /auth/login
@@ -139,7 +139,7 @@ export async function registerSecurityRoutes(app: FastifyInstance) {
     );
     const user = current.rows[0];
     if (!user?.password_hash || !(await compare(body.current_password, user.password_hash))) {
-      throw Object.assign(new Error("Senha atual inválida"), { statusCode: 401 });
+      throw Object.assign(new Error("Senha atual inválida"), { statusCode: 400 });
     }
     const state = await loadTotpState(session.userId);
     if (!state.enabled) {

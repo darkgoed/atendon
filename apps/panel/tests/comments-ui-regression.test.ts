@@ -66,7 +66,8 @@ describe("comments.md UI regressions", () => {
 
     const moreActions = header.slice(moreIndex);
     expect(moreActions).toMatch(/\bAgendar\b/);
-    expect(moreActions).toContain("Avaliar com IA");
+    // Melhoria da IA foi removida do backend (spec R1): o item sempre dava 404.
+    expect(moreActions).not.toContain("Avaliar com IA");
     expect(moreActions).toContain("Assumir conversa");
     expect(moreActions).toContain("Assinatura do atendente");
     expect(moreActions).toContain("Reativar IA");

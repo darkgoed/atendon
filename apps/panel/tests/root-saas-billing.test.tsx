@@ -23,4 +23,15 @@ describe("root SaaS billing panel", () => {
   it("requires confirmation for destructive plan actions", async () => { setup(); const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: /Mais ações do plano Pro/ })); await user.click(await screen.findByRole("button", { name: "Arquivar plano" })); expect(screen.getByRole("heading", { name: "Arquivar plano?" })).toBeTruthy(); await user.click(screen.getByRole("button", { name: "Confirmar arquivamento" })); await waitFor(() => expect(api).toHaveBeenCalledWith("/root/saas/plans/p1/archive", expect.objectContaining({ method: "POST" }))); });
   it("shows tenant metrics and sends subscription payload", async () => { setup(); const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: /Empresas/ })); expect(await screen.findByText(/IA:/)).toHaveTextContent("3700"); await user.selectOptions(screen.getByRole("combobox"), "p1"); await user.click(screen.getByRole("button", { name: "Salvar plano" })); await waitFor(() => expect(api).toHaveBeenCalledWith("/root/saas/tenants/t1/subscription", expect.objectContaining({ body: JSON.stringify({ planId: "p1" }) }))); });
   it("renders backend event vocabulary without inventing unavailable OAuth/test buttons", async () => { setup(); const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "Histórico" })); expect(await screen.findByText(/Plano alterado/)).toBeTruthy(); expect(screen.queryByRole("button", { name: /OAuth|Teste/ })).toBeNull(); });
+  // C7 (auditoria P1): tenant_subscriptions.status é maiúsculo ('SUSPENDED').
+  it("offers reactivation for a SUSPENDED tenant and calls the reactivate route", async () => {
+    api.mockImplementation(async (path: string) => path === "/me" ? rootSession : path === "/root/saas/tenants" ? { tenants: [{ ...tenant, subscription_status: "SUSPENDED" }] } : path === "/root/saas/plans" ? { plans: [plan] } : {});
+    render(<SWRConfig value={{ provider: () => new Map() }}><RootPlansPage /></SWRConfig>);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Empresas/ }));
+    await user.click(await screen.findByRole("button", { name: /Mais ações de Acme/ }));
+    expect(screen.queryByRole("button", { name: "Suspender empresa" })).toBeNull();
+    await user.click(await screen.findByRole("button", { name: "Reativar empresa" }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/root/saas/tenants/t1/subscription/reactivate", expect.objectContaining({ method: "POST" })));
+  });
 });

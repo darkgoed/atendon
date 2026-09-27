@@ -11,7 +11,7 @@ const fetcher=<T,>(u:string)=>api<T>(u);
 type Tab="dunning"|"coupons"|"ledger"|"fraud"|"reconciliation";
 export default function BillingAdminPage(){
  const {data:session}=useSWR<PanelSession>("/me",fetcher); const root=Boolean(session?.user.isRoot); const [tab,setTab]=React.useState<Tab>("dunning"); const [tenantId,setTenantId]=React.useState(""); const [page,setPage]=React.useState(1);
- const endpoint=tab==="fraud"?"fraud-signals":tab; const query=tenantId?`&tenantId=${encodeURIComponent(tenantId)}`:"";
+ const endpoint=tab==="fraud"?"fraud-signals":tab==="reconciliation"?"reconciliation-findings":tab; const query=tenantId?`&tenantId=${encodeURIComponent(tenantId)}`:"";
  const {data,error,mutate}=useSWR<Record<string,unknown>>(root?`/root/billing/${endpoint}?page=${page}&limit=25${query}`:null,fetcher);
  const [coupon,setCoupon]=React.useState({code:"",discountType:"PERCENT",discountValue:""}); const [message,setMessage]=React.useState(""); const couponSave=useSaveFeedback();
  async function createCoupon(e:React.FormEvent){e.preventDefault();try{await couponSave.run(async()=>{await api("/root/billing/coupons",{method:"POST",body:JSON.stringify({...coupon,discountValue:Number(coupon.discountValue)})});setCoupon({code:"",discountType:"PERCENT",discountValue:""});setMessage("Cupom criado");mutate()})}catch{setMessage("Não foi possível criar o cupom")}}

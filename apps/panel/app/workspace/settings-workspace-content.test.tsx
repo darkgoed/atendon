@@ -16,6 +16,12 @@ vi.mock("@/components/shell", async (importOriginal) => {
   return { ...actual, Shell: ({ children }: { children?: ReactNode }) => <div data-testid="shell-marker">{children}</div> };
 });
 
+// A guarda de acesso tem teste próprio (tests/workspace-roles-page.test.tsx);
+// aqui só o contrato estrutural importa, então ela é transparente.
+vi.mock("@/app/configuracoes/settings-destination-access", () => ({
+  SettingsDestinationAccess: ({ children }: { children?: ReactNode }) => <>{children}</>
+}));
+
 import WorkspaceAuditPage from "./audit/page";
 import { WorkspaceAuditContent } from "./audit/content";
 import WorkspaceMembersPage from "./members/page";

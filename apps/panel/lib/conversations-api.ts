@@ -18,7 +18,6 @@ export const deleteMessage = (conversationId: string, messageId: string, forEver
 export const assignConversation = (id: string, userId: string | null) => action(`/conversations/${id}/assign`, "PATCH", { userId: userId || null });
 export const setConversationSignature = (id: string, enabled: boolean | null) => action(`/conversations/${id}/signature`, "PATCH", { enabled });
 export const setConversationNotificationMute = (id: string, muted: boolean) => action(`/conversations/${id}/notification-mute`, "PATCH", { muted });
-export const runConversationEvaluation = (conversationId: string) => action("/agent/evaluations/run", "POST", { conversationId });
 export const deleteConversationMessages = (id: string) => action(`/conversations/${id}/messages`, "DELETE");
 export const renameConversationContact = (id: string, name: string) => action(`/conversations/${id}/contact`, "PATCH", { name });
 export const fetchConversationAssets = <T = ConversationAssetsResponse>(id: string, query = "limit=50", signal?: AbortSignal) => api<T>(`/conversations/${id}/assets?${query}`, { signal });

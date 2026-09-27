@@ -265,7 +265,7 @@ describe("SaaS foundation auth and RBAC", () => {
     });
     expect(newPasswordAttempt.statusCode).toBe(400);
     const wrongPassword = await app.inject({ method: "POST", url: "/auth/accept-invitation", payload: { token, currentPassword: "incorrect-password" } });
-    expect(wrongPassword.statusCode).toBe(401);
+    expect(wrongPassword.statusCode).toBe(400);
     const accepted = await app.inject({ method: "POST", url: "/auth/accept-invitation", payload: { token, currentPassword: password } });
     expect(accepted.statusCode).toBe(200);
     expect((await app.inject({ url: `/invitations/${token}` })).json().invitation).toMatchObject({ status: "accepted", existingUser: true });

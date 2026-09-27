@@ -3,6 +3,7 @@ import { getEmailProvider } from "../mail/index.js";
 import { logger } from "../logger.js";
 import { getBillingSettings } from "./settings.js";
 import { getOpenPeriod } from "./usage-period.js";
+import { previewRollover } from "./rollover.js";
 
 export type TriggeredAlert = {
   alertType: "QUOTA" | "CREDIT";
@@ -122,7 +123,10 @@ export async function getUsageDashboard(client: PoolClient, tenantId: string) {
     totalAvailable, totalUsed, usedPercentBps: totalAvailable == null ? 0 : bps(totalUsed, totalAvailable),
     usageUnit: creditUnit ? "CREDIT" : "INTERACTION",
     periodStart: row.start_at, periodEnd, daysUntilRenewal, creditEnabled: Boolean(credit?.enabled),
-    creditLimitCents: credit ? integer(credit.monthly_spending_limit_cents) : null,
+    // UNLIMITED grava limite NULL: precisa sair null ("sem limite"), não 0.
+    creditLimitCents: credit?.monthly_spending_limit_cents == null ? null : integer(credit.monthly_spending_limit_cents),
+    // Prévia na unidade do período aberto (o painel lê este campo no card Rollover).
+    rolloverPreviewInteractions: (await previewRollover(client, tenantId)).projectedRollover,
     creditUsedCents: integer(row.overage_amount_brl_cents) + integer(row.reserved_cents),
     balanceLabel: creditUnit ? "Creditos de IA (tokens normalizados)" : "Creditos de IA",
     usageLabel: creditUnit ? "Tokens normalizados consumidos" : "Interacoes acumuladas" };

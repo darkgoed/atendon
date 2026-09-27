@@ -731,7 +731,8 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
               i.expires_at,t.name workspace_name,r.name role_name,
               EXISTS(
                 SELECT 1 FROM users u
-                WHERE u.email=i.email AND u.password_hash IS NOT NULL
+                -- Mesma regra do aceite: conta 'invited' com senha cria nova senha.
+                WHERE u.email=i.email AND u.password_hash IS NOT NULL AND u.status<>'invited'
               ) "existingUser"
        FROM workspace_invitations i
        JOIN tenants t ON t.id=i.workspace_id
@@ -773,7 +774,7 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
       if (user?.status === "disabled") throw httpError(403, "Usuário desativado");
       if (user?.status === "active" && user.password_hash) {
         if (!body.currentPassword) throw httpError(400, "Informe a senha atual da sua conta");
-        if (!(await compare(body.currentPassword, user.password_hash))) throw httpError(401, "Senha atual inválida");
+        if (!(await compare(body.currentPassword, user.password_hash))) throw httpError(400, "Senha atual inválida");
       } else if (user) {
         if (!body.newPassword) throw httpError(400, "Crie uma nova senha para a sua conta");
         await client.query("UPDATE users SET password_hash=$2,status='active',session_version=session_version+1,updated_at=now() WHERE id=$1", [user.id, await hash(body.newPassword, 12)]);

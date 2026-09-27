@@ -172,20 +172,26 @@ export function importMappingMissingRequired(mapping: ImportMapping): ImportFiel
 }
 
 /* ------------------------------------------------------------------ */
-/* Contratos de API (pendentes do backend)                             */
+/* Contratos de API (backend: modules/contact-ops/routes.ts)           */
 /* ------------------------------------------------------------------ */
 
 export type ImportPreview = { headers: string[]; rows: string[][] };
 
-export const IMPORT_PREVIEW_PATH = "/organization/leads/import/preview";
+export const IMPORT_PREVIEW_PATH = "/contact-ops/import/preview";
 export const IMPORT_SUBMIT_PATH = "/contact-ops/import";
-export const IMPORT_HISTORY_PATH = "/organization/leads/import/history";
+export const IMPORT_HISTORY_PATH = "/contact-ops/import/history";
 
-/** Preview no backend (obrigatório p/ XLSX; CSV é pré-parseado no cliente). */
-export function previewImportFile(file: Blob, filename: string): Promise<ImportPreview> {
-  const form = new FormData();
-  form.append("file", file, filename);
-  return api<ImportPreview>(IMPORT_PREVIEW_PATH, { method: "POST", body: form });
+/** Preview de XLSX no backend (o CSV é pré-parseado no cliente). */
+export async function previewImportFile(file: Blob): Promise<ImportPreview> {
+  return api<ImportPreview>(IMPORT_PREVIEW_PATH, {
+    method: "POST",
+    body: JSON.stringify({ xlsx_base64: await fileToBase64(file) })
+  });
+}
+
+/** Histórico é opcional na tela: falha não dispara o toast global. */
+export function fetchImportHistory(): Promise<ImportHistoryResponse> {
+  return api<ImportHistoryResponse>(IMPORT_HISTORY_PATH, undefined, { reportErrors: false });
 }
 
 /** Base64 puro (sem o prefixo `data:…;base64,`) — o backend decodifica com Buffer.from(raw, "base64"). */

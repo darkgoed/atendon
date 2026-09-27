@@ -19,6 +19,8 @@ import {
   importResultLines,
   normalizeImportHeader,
   parseCsv,
+  fetchImportHistory,
+  previewImportFile,
   submitImport,
   type ImportResult
 } from "@/lib/lead-import";
@@ -159,5 +161,24 @@ describe("import result", () => {
     expect(importResultLines(result)).toHaveLength(1);
     // Sem erros por linha (duplicados sinalizados viram só o contador).
     expect(importResultLines({ imported: 1, updated: 0, skipped: 0, duplicates_flagged: 3 })).toEqual([]);
+  });
+});
+
+// C5 (auditoria P1): prévia XLSX e histórico usam as rotas reais de contact-ops.
+describe("import preview/history (contrato real de /contact-ops)", () => {
+  it("previewImportFile envia o XLSX em base64 para POST /contact-ops/import/preview", async () => {
+    vi.mocked(api).mockClear().mockResolvedValue({ headers: ["Nome"], rows: [["Ana"]] });
+    const file = new File(["PK-fake"], "contatos.xlsx");
+    await expect(previewImportFile(file)).resolves.toEqual({ headers: ["Nome"], rows: [["Ana"]] });
+    const [path, init] = vi.mocked(api).mock.calls[0];
+    expect(path).toBe("/contact-ops/import/preview");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({ xlsx_base64: btoa("PK-fake") });
+  });
+
+  it("fetchImportHistory lê GET /contact-ops/import/history sem toast global", async () => {
+    vi.mocked(api).mockClear().mockResolvedValue({ imports: [] });
+    await fetchImportHistory();
+    expect(vi.mocked(api)).toHaveBeenCalledWith("/contact-ops/import/history", undefined, { reportErrors: false });
   });
 });
