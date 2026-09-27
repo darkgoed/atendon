@@ -276,19 +276,20 @@ export class AiFollowUpRepository {
   constructor(private readonly db: Pool, private readonly config?: AppConfig) {}
 
   /**
-   * `triggerExternalId`: mensagem que motivou o cancelamento. Reentrega do
+   * `trigger`: mensagem que motivou o cancelamento. Reentrega do
    * webhook de uma mensagem já gravada não é resposta nova e não cancela a
    * sequência agendada depois dela (auditoria runtime S9).
    */
-  async cancelForContact(tenantId: string, contactPhone: string, reason = "contact_replied", triggerExternalId?: string): Promise<number> {
+  async cancelForContact(tenantId: string, contactPhone: string, reason = "contact_replied", trigger?: { sessionId: string; externalId: string }): Promise<number> {
     const result = await this.db.query(
       `UPDATE ai_follow_up_schedules f
        SET status='cancelled',next_run_at=NULL,processing_started_at=NULL,cancellation_reason=$3,updated_at=now()
        FROM conversations c
        WHERE f.conversation_id=c.id AND f.tenant_id=c.tenant_id
          AND c.tenant_id=$1 AND c.contact_phone=$2 AND f.status IN ('scheduled','processing')
-         AND ($4::text IS NULL OR NOT EXISTS (SELECT 1 FROM messages m WHERE m.external_message_id=$4))`,
-      [tenantId, contactPhone, reason, triggerExternalId ?? null]
+         -- provider_message_key (único, com tenant e sessão): índice, sem varrer messages.
+         AND ($4::text IS NULL OR NOT EXISTS (SELECT 1 FROM messages m WHERE m.provider_message_key=$4))`,
+      [tenantId, contactPhone, reason, trigger ? `${tenantId}:${trigger.sessionId}:${trigger.externalId}` : null]
     );
     return result.rowCount ?? 0;
   }

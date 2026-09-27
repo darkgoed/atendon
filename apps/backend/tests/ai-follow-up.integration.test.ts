@@ -325,9 +325,9 @@ describe("AI follow-up persistence", () => {
 
     // Reentrega do webhook de mensagem já gravada não cancela (runtime S9).
     const redelivered = `redelivered-${randomUUID()}`;
-    await pool.query("INSERT INTO messages(conversation_id,sender,content,external_message_id,created_at) VALUES($1,'contact','antiga',$2,now()-interval '1 hour')", [conversationId, redelivered]);
-    await expect(followUps.cancelForContact(tenantId, contactPhone, "contact_replied", redelivered)).resolves.toBe(0);
-    await expect(followUps.cancelForContact(tenantId, contactPhone, "contact_replied", `nova-${randomUUID()}`)).resolves.toBe(1);
+    await pool.query("INSERT INTO messages(conversation_id,sender,content,external_message_id,provider_message_key,created_at) VALUES($1,'contact','antiga',$2,$3,now()-interval '1 hour')", [conversationId, redelivered, `${tenantId}:${sessionId}:${redelivered}`]);
+    await expect(followUps.cancelForContact(tenantId, contactPhone, "contact_replied", { sessionId, externalId: redelivered })).resolves.toBe(0);
+    await expect(followUps.cancelForContact(tenantId, contactPhone, "contact_replied", { sessionId, externalId: `nova-${randomUUID()}` })).resolves.toBe(1);
     const webhookCancelled = await pool.query(
       "SELECT status,cancellation_reason FROM ai_follow_up_schedules WHERE conversation_id=$1",
       [conversationId]

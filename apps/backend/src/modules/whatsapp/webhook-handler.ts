@@ -73,7 +73,7 @@ export async function handleEvolutionWebhook(request: FastifyRequest, reply: Fas
           message.tenantId,
           message.contactPhone,
           message.kind === "human" ? "human_intervened" : "contact_replied",
-          message.externalId
+          { sessionId: message.sessionId, externalId: message.externalId }
         );
         // Fora do horário comercial o lead não é respondido: o job de resposta
         // fica agendado para o próximo início de expediente, com jitter para o
