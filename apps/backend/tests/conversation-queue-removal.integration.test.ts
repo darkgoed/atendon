@@ -17,7 +17,6 @@ let userId = "";
 let ownerId = "";
 let conversationId = "";
 let leadId = "";
-const q = async (sql: string, values: unknown[] = []) => (await pool.query(sql, values)).rows;
 const first = async <T = Record<string, unknown>>(sql: string, values: unknown[] = []) => (await pool.query(sql, values)).rows[0] as T;
 
 beforeAll(async () => {

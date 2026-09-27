@@ -11,7 +11,6 @@ const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const app = buildApp(); const suffix = randomUUID();
 const phoneDigits = suffix.replace(/\D/g, "").padEnd(8, "7").slice(0, 8);
 let tenantId = ""; let sessionId = ""; let userId = ""; let conversationId = ""; let leadId = ""; let ownerCookie = "";
-const q = async (sql: string, values: unknown[] = []) => (await pool.query(sql, values)).rows;
 const first = async <T = Record<string, unknown>>(sql: string, values: unknown[] = []) => (await pool.query(sql, values)).rows[0] as T;
 
 beforeAll(async () => {
