@@ -161,7 +161,7 @@ async function loadWidgetData(
     return (await db.query(
       `SELECT count(*) FILTER (WHERE status='open')::int open,
               count(*) FILTER (WHERE status='open' AND ai_active=true)::int ai_open,
-              count(*) FILTER (WHERE status='closed' AND resolved_at >= date_trunc('day',now()))::int resolved_today
+              count(*) FILTER (WHERE status='closed' AND resolved_at >= date_trunc('day',now(),(SELECT timezone FROM tenants WHERE id=$1)))::int resolved_today
        FROM conversations
        WHERE tenant_id=$1 AND ($2::boolean OR assigned_user_id=$3)`,
       caseParams
@@ -196,7 +196,7 @@ async function loadWidgetData(
       `SELECT count(*)::int today
        FROM messages message JOIN conversations conversation ON conversation.id=message.conversation_id
        WHERE conversation.tenant_id=$1 AND ($2::boolean OR conversation.assigned_user_id=$3)
-         AND message.created_at >= date_trunc('day',now())`,
+         AND message.created_at >= date_trunc('day',now(),(SELECT timezone FROM tenants WHERE id=$1))`,
       caseParams
     )).rows[0];
   }

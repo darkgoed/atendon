@@ -146,6 +146,25 @@ describe("lixeira — restore e keyset", () => {
     expect((await app.inject({ method: "POST", url: `/trash/leads/${leadId}/restore`, headers: { cookie: await loginAs(ownerA) } })).statusCode).toBe(404);
   });
 
+  it("source de merge não aparece na lixeira nem é restaurado como contato fantasma", async () => {
+    const target = await createLead(tenantA, "Principal do merge");
+    const source = await createLead(tenantA, "Duplicado mesclado");
+    const merged = await app.inject({
+      method: "POST", url: "/organization/leads/merge", headers: { cookie: await loginAs(ownerA) },
+      payload: { source_id: source, target_id: target, confirmations: { different_phone: true } }
+    });
+    expect(merged.statusCode, merged.body).toBe(200);
+
+    const trash = await app.inject({ url: "/trash?limit=100", headers: { cookie: await loginAs(ownerA) } });
+    expect(trash.json().items.map((item: { id: string }) => item.id)).not.toContain(source);
+    expect((await app.inject({ method: "POST", url: `/trash/leads/${source}/restore`, headers: { cookie: await loginAs(ownerA) } })).statusCode).toBe(404);
+    const row = (await pool.query<{ deleted_at: Date | null; merged_into_id: string | null }>(
+      "SELECT deleted_at,merged_into_id FROM scheduling_leads WHERE id=$1", [source]
+    )).rows[0];
+    expect(row.deleted_at).not.toBeNull();
+    expect(row.merged_into_id).toBe(target);
+  });
+
   it("keyset pagina a lixeira sem repetir itens", async () => {
     const first = await createLead(tenantA, "Lixo 1");
     const second = await createLead(tenantA, "Lixo 2");

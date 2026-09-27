@@ -463,7 +463,8 @@ export class QualificationService {
        JOIN lead_qualifications q ON q.lead_id=l.id AND q.tenant_id=l.tenant_id
        JOIN qualification_flows f ON f.id=q.flow_id AND f.tenant_id=q.tenant_id
        JOIN conversations c ON c.lead_id=l.id AND c.tenant_id=l.tenant_id
-       WHERE l.tenant_id=$1 AND l.phone=$2 AND c.session_id=$3`,
+       WHERE l.tenant_id=$1 AND l.id=resolve_lead_id_by_phone($1,$2) AND c.session_id=$3
+         AND regexp_replace(c.contact_phone,'\\D','','g')=regexp_replace($2,'\\D','','g')`,
       [input.tenantId, input.contactPhone, input.sessionId]
     );
     const state = snapshot.rows[0];
@@ -845,7 +846,8 @@ export class QualificationService {
         `SELECT l.id,c.id conversation_id FROM scheduling_leads l
          JOIN conversations c ON c.lead_id=l.id AND c.tenant_id=l.tenant_id
          WHERE l.tenant_id=$1 AND c.session_id=$3
-           AND regexp_replace(l.phone,'\\D','','g')=regexp_replace($2,'\\D','','g')
+           AND l.id=resolve_lead_id_by_phone($1,$2)
+           AND regexp_replace(c.contact_phone,'\\D','','g')=regexp_replace($2,'\\D','','g')
          ORDER BY l.created_at,l.id LIMIT 1 FOR UPDATE OF l`,
         [input.tenantId, input.contactPhone, input.sessionId]
       );

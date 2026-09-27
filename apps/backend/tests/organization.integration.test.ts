@@ -434,4 +434,46 @@ describe("case organization REST API",() => {
       [tenantId,secondLeadId,tagId]
     )).rows[0].count).toBe(1);
   });
+
+  it("bulk assign follows the single-transfer rules: pool-only target and active meetings move along",async () => {
+    const ownerMemberId = (await pool.query<{ id: string }>(
+      "SELECT id FROM workspace_members WHERE workspace_id=$1 AND user_id=$2",[tenantId,ownerUserId]
+    )).rows[0].id;
+    await pool.query(
+      `INSERT INTO scheduling_google_meet_closers(tenant_id,member_id,availability_status)
+       VALUES($1,$2,'available') ON CONFLICT DO NOTHING`,
+      [tenantId,ownerMemberId]
+    );
+    await pool.query(
+      `INSERT INTO scheduling_units(tenant_id,id,name,opening_time,closing_time,operating_days)
+       VALUES($1,'bulk-unit','Bulk','00:00','23:59',ARRAY[0,1,2,3,4,5,6]::smallint[]) ON CONFLICT DO NOTHING`,
+      [tenantId]
+    );
+    const bulkLeadId = (await pool.query<{ id: string }>(
+      `INSERT INTO scheduling_leads(tenant_id,phone,name,source,assigned_member_id)
+       VALUES($1,'5511977000033','Lead com reunião','test',$2) RETURNING id`,
+      [tenantId,operatorMemberId]
+    )).rows[0].id;
+    const appointmentId = (await pool.query<{ id: string }>(
+      `INSERT INTO scheduling_appointments(lead_id,tenant_id,unit_id,start_at,end_at,status,assigned_member_id)
+       VALUES($1,$2,'bulk-unit','2036-05-10T10:00:00Z','2036-05-10T10:30:00Z','confirmado',$3) RETURNING id`,
+      [bulkLeadId,tenantId,operatorMemberId]
+    )).rows[0].id;
+
+    // Operador fora do pool não é destino válido (mesma regra da transferência).
+    const outsidePool = await app.inject({
+      method: "POST",url: "/organization/bulk/preview",headers: { cookie: ownerCookie },
+      payload: { action: "assign",assigned_member_id: operatorMemberId,items: [{ id: bulkLeadId }] }
+    });
+    expect(outsidePool.json().errors).toEqual([expect.objectContaining({ code: "invalid_assignee" })]);
+
+    const applied = await app.inject({
+      method: "POST",url: "/organization/bulk/apply",headers: { cookie: ownerCookie },
+      payload: { action: "assign",assigned_member_id: ownerMemberId,items: [{ id: bulkLeadId }],idempotency_key: `assign-pool-${suffix}` }
+    });
+    expect(applied.statusCode,applied.body).toBe(200);
+    expect((await pool.query<{ assigned_member_id: string }>(
+      "SELECT assigned_member_id FROM scheduling_appointments WHERE id=$1",[appointmentId]
+    )).rows[0].assigned_member_id).toBe(ownerMemberId);
+  });
 });

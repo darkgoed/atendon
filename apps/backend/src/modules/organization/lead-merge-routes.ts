@@ -1,6 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { requirePermission } from "../../auth/session.js";
+import { leadScopeCondition, resolveCaseScope } from "../../auth/case-scope.js";
+import { requirePermission, type WorkspaceSession } from "../../auth/session.js";
+import { db } from "../../db/client.js";
+import { httpError } from "../scheduling/service.js";
 import {
   mergeLeads,
   preflightLeadMerge,
@@ -29,11 +32,24 @@ function actor(
   return { userId, actorScope, ipAddress: ip, userAgent };
 }
 
+// Mesmo escopo da exclusão de leads: fora do caso do operador é 404.
+async function assertLeadsInScope(session: WorkspaceSession, leadIds: string[]) {
+  const scope = await resolveCaseScope(db, session);
+  if (scope.type === "workspace") return;
+  const visible = await db.query<{ n: number }>(
+    `SELECT count(*)::int n FROM scheduling_leads lead
+     WHERE lead.tenant_id=$1 AND lead.id=ANY($2::uuid[]) AND (${leadScopeCondition(scope, "lead", "$3")})`,
+    [session.tenantId, leadIds, scope.memberId]
+  );
+  if (visible.rows[0].n !== new Set(leadIds).size) throw httpError(404, "Contato não encontrado");
+}
+
 export async function registerLeadMergeRoutes(app: FastifyInstance) {
   // Preflight é leitura (contagens + igualdade de telefone normalizado).
   app.post("/organization/leads/merge/preflight", async (request) => {
     const session = await requirePermission(request, "leads.read");
     const input = leadMergeIdsSchema.parse(request.body);
+    await assertLeadsInScope(session, [input.source_id, input.target_id]);
     return preflightLeadMerge(session.tenantId, input.source_id, input.target_id);
   });
 
@@ -41,6 +57,7 @@ export async function registerLeadMergeRoutes(app: FastifyInstance) {
   app.post("/organization/leads/merge", async (request) => {
     const session = await requirePermission(request, "leads.delete");
     const input = leadMergeSchema.parse(request.body);
+    await assertLeadsInScope(session, [input.source_id, input.target_id]);
     return mergeLeads(
       session.tenantId,
       { sourceId: input.source_id, targetId: input.target_id, confirmations: input.confirmations },

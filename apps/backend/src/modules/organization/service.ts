@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "../../db/client.js";
 import { httpError, withTransaction } from "../scheduling/service.js";
 import { refreshAppointmentGroupNotificationsForLead } from "../scheduling/notification-repository.js";
+import { eligibleAttendants, transferCaseAssignment } from "../assignments/service.js";
 import {
   DEFAULT_BOARD_STATUSES,
   configuredStageTransitionIsUndoable,
@@ -1341,13 +1342,10 @@ async function validateBulk(
   let enforceTransitions = false;
   if (input.action === "assign") {
     if (input.assigned_member_id) {
-      const member = await client.query<{ user_id: string }>(
-        `SELECT user_id FROM workspace_members
-         WHERE workspace_id=$1 AND id=$2 AND status='active'`,
-        [tenantId,input.assigned_member_id]
-      );
-      if (!member.rows[0]) errors.push({ id: input.assigned_member_id, code: "invalid_assignee", message: "Responsável ativo não encontrado" });
-      else targetMemberUserId = member.rows[0].user_id;
+      // Mesmo destino válido da transferência individual: atendente ativo do pool.
+      const attendant = (await eligibleAttendants(client,tenantId)).find((candidate) => candidate.memberId === input.assigned_member_id);
+      if (!attendant) errors.push({ id: input.assigned_member_id, code: "invalid_assignee", message: "Responsável deve ser um atendente ativo do pool" });
+      else targetMemberUserId = attendant.userId;
     } else targetMemberUserId = null;
   } else if (input.action === "tags_add" || input.action === "tags_remove") {
     const tags = await client.query<{ id: string }>(
@@ -1438,15 +1436,13 @@ export async function applyBulkOperation(
         applied_member_id: input.assigned_member_id,
         items: validation.items.map((lead) => ({ id: lead.id, previous_member_id: lead.assigned_member_id }))
       };
-      await client.query(
-        "UPDATE scheduling_leads SET assigned_member_id=$3,updated_at=now() WHERE tenant_id=$1 AND id=ANY($2::uuid[])",
-        [tenantId,leadIds,input.assigned_member_id]
-      );
-      await client.query(
-        `UPDATE conversations conversation SET assigned_user_id=$3
-         WHERE conversation.tenant_id=$1 AND conversation.lead_id=ANY($2::uuid[])`,
-        [tenantId,leadIds,validation.targetMemberUserId ?? null]
-      );
+      // Transferência por caso: reuniões ativas, claimed_at, sinal realtime e
+      // auditoria por conversa seguem a mesma regra da transferência individual.
+      for (const leadId of leadIds) {
+        await transferCaseAssignment(client,{
+          tenantId,selector: { leadId },targetMemberId: input.assigned_member_id,actor,manager: true,preserveAutomation: true
+        });
+      }
     } else if (input.action === "tags_add" || input.action === "tags_remove") {
       const present = await client.query<{ lead_id: string; tag_id: string }>(
         `SELECT lead_id,tag_id FROM lead_tag_assignments
@@ -1530,12 +1526,9 @@ export async function undoBulkOperation(tenantId: string, operationId: string, a
         throw httpError(409,"Não é possível desfazer após alterações concorrentes");
       }
       for (const item of undo.items) {
-        const member = item.previous_member_id ? await client.query<{ user_id: string }>(
-          "SELECT user_id FROM workspace_members WHERE workspace_id=$1 AND id=$2",
-          [tenantId,item.previous_member_id]
-        ) : null;
-        await client.query("UPDATE scheduling_leads SET assigned_member_id=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2",[tenantId,item.id,item.previous_member_id]);
-        await client.query("UPDATE conversations SET assigned_user_id=$3 WHERE tenant_id=$1 AND lead_id=$2",[tenantId,item.id,member?.rows[0]?.user_id ?? null]);
+        await transferCaseAssignment(client,{
+          tenantId,selector: { leadId: item.id },targetMemberId: item.previous_member_id,actor,manager: true,preserveAutomation: true
+        });
       }
     } else if (undo.action === "tags_add" || undo.action === "tags_remove") {
       const leadIds = [...new Set(undo.items.map((item) => item.lead_id))];

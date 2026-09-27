@@ -381,6 +381,9 @@ describe("B1 — escopo e tenancy", () => {
 
     const quality = await get(operatorA, tenantA, "/reports/quality", windowQuery);
     expect(quality.json().queue.items[0].conversation_id).toBe(convAwaiting);
+    // Ociosos e gargalos também no escopo: nada de colegas nem de leads alheios.
+    expect(quality.json().idle_agents.map((item: { user_id: string }) => item.user_id)).not.toContain(ownerA);
+    expect(quality.json().bottlenecks).toEqual([]);
   });
 
   it("tenant B não vê dados de A (volume, produtividade, fila, status)", async () => {

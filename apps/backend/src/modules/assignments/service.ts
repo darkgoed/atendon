@@ -57,7 +57,7 @@ export async function lockAttendantRotation(client: PoolClient, tenantId: string
   );
 }
 
-async function eligibleAttendants(
+export async function eligibleAttendants(
   client: PoolClient,
   tenantId: string,
   options: { teamId?: string } = {}
@@ -368,24 +368,24 @@ async function loadCaseRows(
     )).rows[0]?.contact_phone ?? null;
   }
   if (!phone) return null;
-  const [leads, conversations] = await Promise.all([
-    client.query<{ id: string; assigned_member_id: string | null; status: string }>(
-      `SELECT id,assigned_member_id,status
-       FROM scheduling_leads
-       WHERE tenant_id=$1 AND ${normalizedPhoneSql("phone")}=${normalizedPhoneSql("$2")}
-       ORDER BY created_at,id
-       FOR UPDATE`,
-      [tenantId, phone]
-    ),
-    client.query<{ id: string; assigned_user_id: string | null; status: string }>(
-      `SELECT id,assigned_user_id,status
-       FROM conversations
-       WHERE tenant_id=$1 AND ${normalizedPhoneSql("contact_phone")}=${normalizedPhoneSql("$2")}
-       ORDER BY created_at,id
-       FOR UPDATE`,
-      [tenantId, phone]
-    )
-  ]);
+  // Telefone de um source mesclado resolve para o principal; o caso inclui
+  // as conversas do lead (inclusive as de telefones mesclados nele).
+  const leads = await client.query<{ id: string; assigned_member_id: string | null; status: string }>(
+    `SELECT id,assigned_member_id,status
+     FROM scheduling_leads
+     WHERE tenant_id=$1 AND id=resolve_lead_id_by_phone($1,$2)
+     FOR UPDATE`,
+    [tenantId, phone]
+  );
+  const conversations = await client.query<{ id: string; assigned_user_id: string | null; status: string }>(
+    `SELECT id,assigned_user_id,status
+     FROM conversations
+     WHERE tenant_id=$1
+       AND (${normalizedPhoneSql("contact_phone")}=${normalizedPhoneSql("$2")} OR lead_id=ANY($3::uuid[]))
+     ORDER BY created_at,id
+     FOR UPDATE`,
+    [tenantId, phone, leads.rows.map((lead) => lead.id)]
+  );
   return { phone, leads: leads.rows, conversations: conversations.rows };
 }
 
@@ -506,10 +506,10 @@ async function synchronizeRows(
                          WHEN assigned_user_id IS DISTINCT FROM $3 THEN now()
                          ELSE claimed_at END
      WHERE tenant_id=$1
-       AND ${normalizedPhoneSql("contact_phone")}=${normalizedPhoneSql("$2")}
+       AND id=ANY($2::uuid[])
        AND ($4::boolean=false OR status='open')
        AND assigned_user_id IS DISTINCT FROM $3`,
-    [tenantId, rows.phone, userId, options.preserveFinalHistory === true]
+    [tenantId, rows.conversations.map((conversation) => conversation.id), userId, options.preserveFinalHistory === true]
   );
   for (const conversation of rows.conversations) {
     if (conversation.assigned_user_id === userId) continue;
@@ -806,21 +806,18 @@ export async function transferCaseAssignment(
       `UPDATE conversations
        SET ai_active=false,handoff_reason='manually_paused',handoff_error_code=NULL
        WHERE tenant_id=$1
-         AND ${normalizedPhoneSql("contact_phone")}=${normalizedPhoneSql("$2")}
+         AND id=ANY($2::uuid[])
          AND status='open'`,
-      [input.tenantId, rows.phone]
+      [input.tenantId, rows.conversations.map((conversation) => conversation.id)]
     );
     const paused = await client.query<{ lead_id: string }>(
       `UPDATE lead_qualifications qualification
        SET status='pausado',updated_at=now()
-       FROM scheduling_leads lead
-       WHERE lead.id=qualification.lead_id
-         AND lead.tenant_id=qualification.tenant_id
-         AND qualification.tenant_id=$1
-         AND ${normalizedPhoneSql("lead.phone")}=${normalizedPhoneSql("$2")}
+       WHERE qualification.tenant_id=$1
+         AND qualification.lead_id=ANY($2::uuid[])
          AND qualification.status='em_andamento'
        RETURNING qualification.lead_id`,
-      [input.tenantId, rows.phone]
+      [input.tenantId, rows.leads.map((lead) => lead.id)]
     );
     for (const pausedLead of paused.rows) {
       await client.query(

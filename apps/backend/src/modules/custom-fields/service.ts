@@ -111,12 +111,13 @@ export async function updateCustomField(
       [tenantId, fieldId]
     );
     if (!current.rows[0]) throw httpError(404, "Campo não encontrado");
-    assertOptions(current.rows[0].type, input.options !== undefined ? input.options : current.rows[0].options);
+    const options = input.options !== undefined ? input.options : current.rows[0].options;
+    assertOptions(current.rows[0].type, options);
     const updated = await client.query<CustomFieldDefRow>(
       `UPDATE custom_field_defs SET label=$3,options=$4,required=$5
        WHERE tenant_id=$1 AND id=$2
        RETURNING id,tenant_id,entity,key,label,type,options,required,created_at`,
-      [tenantId, fieldId, input.label ?? current.rows[0].label, input.options !== undefined ? input.options : current.rows[0].options, input.required ?? current.rows[0].required]
+      [tenantId, fieldId, input.label ?? current.rows[0].label, options ? JSON.stringify(options) : null, input.required ?? current.rows[0].required]
     );
     await insertFieldAudit(client, tenantId, fieldId, actor, "custom_field.update", {});
     return mapField(updated.rows[0]);

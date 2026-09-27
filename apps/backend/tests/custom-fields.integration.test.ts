@@ -118,6 +118,22 @@ describe("campos personalizados — CRUD", () => {
     expect(after.json().fields.map((item: { id: string }) => item.id)).not.toContain(field.id);
   });
 
+  it("edita rótulo e opções de campo de seleção (options é JSONB)", async () => {
+    const field = await createField(ownerA, { key: "canal_entrada", label: "Canal", type: "select", options: ["Instagram"] });
+    const renamed = await app.inject({
+      method: "PATCH", url: `/organization/custom-fields/${field.id}`, headers: { cookie: await loginAs(ownerA) },
+      payload: { label: "Canal de entrada" }
+    });
+    expect(renamed.statusCode).toBe(200);
+    expect(renamed.json().field).toMatchObject({ label: "Canal de entrada", options: ["Instagram"] });
+    const reoptioned = await app.inject({
+      method: "PATCH", url: `/organization/custom-fields/${field.id}`, headers: { cookie: await loginAs(ownerA) },
+      payload: { options: ["Instagram", "Google"] }
+    });
+    expect(reoptioned.statusCode).toBe(200);
+    expect(reoptioned.json().field.options).toEqual(["Instagram", "Google"]);
+  });
+
   it("key duplicada → 409; select sem opções → 400", async () => {
     await createField(ownerA, { key: "cpf", label: "CPF", type: "text" });
     const duplicate = await app.inject({
