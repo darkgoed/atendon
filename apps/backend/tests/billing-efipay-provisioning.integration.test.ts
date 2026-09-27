@@ -239,6 +239,9 @@ describe("isolamento da Efí no PIX avulso", () => {
   });
 
   afterAll(async () => {
+    // Faturas das fixtures referenciam a linha do Mercado Pago (FK): sem apagá-las
+    // antes, o restore não removia a linha inserida aqui e ela vazava para outras suítes.
+    await pool.query("DELETE FROM tenants WHERE id = ANY($1::uuid[])", [tenants]);
     await restore("efipay", snapshots.efipay);
     await restore("mercadopago", snapshots.mercadopago);
   });
