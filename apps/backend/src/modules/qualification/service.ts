@@ -5,6 +5,7 @@ import { logger } from "../../logger.js";
 import { zonedParts } from "../../timezone.js";
 import type { InteractivePayload, MessageGateway, MessageReferral } from "../messages/types.js";
 import { httpError, withTransaction } from "../scheduling/service.js";
+import { moveLeadStageByAutomation } from "../organization/service.js";
 import {
   QUESTION_KINDS, assertPublicWebhookUrl, conditionValueHidden, evaluateCondition, flowDefinitionSchema, interactiveChoices, interactivePayload,
   nextStepId, remainingQuestions, renderFinalMessage, renderInteractivePreview, renderQuestion,
@@ -1257,15 +1258,24 @@ export class QualificationService {
         return { ok: true, detail: { acao: "tag_remove", removidas: removed.rowCount } };
       }
       case "stage_move": {
-        const moved = await client.query<{ id: string }>(
-          `UPDATE scheduling_leads l SET pipeline_stage_id=$3,updated_at=now()
-           WHERE l.id=$2 AND l.tenant_id=$1
-             AND EXISTS (SELECT 1 FROM pipeline_stages s WHERE s.tenant_id=$1 AND s.id=$3 AND s.archived_at IS NULL)
-           RETURNING id`, [ctx.tenantId, ctx.leadId, step.stage_id]
-        );
-        return moved.rows[0]
-          ? { ok: true, detail: { acao: "stage_move", stage_id: step.stage_id } }
-          : { ok: false, detail: { acao: "stage_move", motivo: "estagio_invalido" } };
+        // Mesmo caminho do painel (status técnico, regras do pipeline, eventos).
+        // Antes só trocava pipeline_stage_id: coluna "Fechado" com status "novo",
+        // IA seguindo ativa, sem venda. Recusa vira etapa com falha no log, sem
+        // abortar a transação do caminho (savepoint).
+        await client.query("SAVEPOINT robot_stage_move");
+        try {
+          await moveLeadStageByAutomation(client, ctx.tenantId, ctx.leadId, step.stage_id!);
+          await client.query("RELEASE SAVEPOINT robot_stage_move");
+          return { ok: true, detail: { acao: "stage_move", stage_id: step.stage_id } };
+        } catch (error) {
+          await client.query("ROLLBACK TO SAVEPOINT robot_stage_move");
+          const statusCode = (error as { statusCode?: number }).statusCode;
+          if (!statusCode) throw error;
+          return {
+            ok: false,
+            detail: { acao: "stage_move", motivo: statusCode === 404 ? "estagio_invalido" : "movimento_recusado", erro: error instanceof Error ? error.message : String(error) }
+          };
+        }
       }
       case "assign_agent": {
         const assigned = await client.query<{ assigned_member_id: string }>(
