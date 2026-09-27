@@ -1038,6 +1038,11 @@ export class MessageProcessor {
     }
     const initialContext = await this.repository.recordInboundAndLoadContext(message, { turnId: requestId });
     if (!initialContext) return "duplicate";
+    // Retomada do mesmo turno após crash: bolha já entregue e gravada → a
+    // entrega é ambígua; nunca gerar/enviar de novo (mesma regra do retry).
+    if (await this.repository.hasAgentReplyAfterInbound?.(initialContext.conversationId, message.externalId)) {
+      return this.handOffAmbiguousDelivery(message, initialContext.conversationId, [message.externalId], new Error("AI reply already delivered by a previous attempt of this turn"));
+    }
     const turnBudget = await this.repository.getAiUsageTotals({
       tenantId: message.tenantId,
       conversationId: initialContext.conversationId,

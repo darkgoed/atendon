@@ -98,3 +98,19 @@ describe("realtime signal of in-place message changes (ORG C6)", () => {
     }
   });
 });
+
+describe("same-turn retake detects an already delivered reply (Ponytail #2)", () => {
+  it("only an agent message saved AFTER the inbound counts", async () => {
+    const repository = new MessageRepository(pool, config, { followUp: vi.fn().mockResolvedValue(undefined) });
+    const contact = `5511${randomUUID().replace(/\D/g, "").padEnd(9, "6").slice(0, 9)}`;
+    await pool.query("INSERT INTO conversations(tenant_id,session_id,contact_phone) VALUES($1,$2,$3)", [tenantId, sessionId, contact]);
+    const conversationId = (await pool.query<{ id: string }>("SELECT id FROM conversations WHERE tenant_id=$1 AND contact_phone=$2", [tenantId, contact])).rows[0].id;
+    await pool.query("INSERT INTO messages(conversation_id,sender,content,created_at) VALUES($1,'agent','antes',now()-interval '1 minute')", [conversationId]);
+    const inbound = `retake-${randomUUID()}`;
+    await pool.query("INSERT INTO messages(conversation_id,sender,content,external_message_id) VALUES($1,'contact','oi',$2)", [conversationId, inbound]);
+    await pool.query("INSERT INTO messages(conversation_id,sender,content) VALUES($1,'human','operador')", [conversationId]);
+    expect(await repository.hasAgentReplyAfterInbound(conversationId, inbound)).toBe(false);
+    await pool.query("INSERT INTO messages(conversation_id,sender,content,created_at) VALUES($1,'agent','bolha 1',now()+interval '1 second')", [conversationId]);
+    expect(await repository.hasAgentReplyAfterInbound(conversationId, inbound)).toBe(true);
+  });
+});

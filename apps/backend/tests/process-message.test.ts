@@ -2875,6 +2875,20 @@ Full name: Renan de Carvalho`;
     });
   });
 
+  describe("a same-turn retake after a worker crash never replies twice (Ponytail #2)", () => {
+    it("hands off without generating when a bubble of this turn was already delivered and persisted", async () => {
+      const { processor, repository, gateway, ai } = setup();
+      Object.assign(repository, { hasAgentReplyAfterInbound: vi.fn().mockResolvedValue(true) });
+
+      await expect(processor.process(message)).resolves.toBe("handoff");
+
+      expect(ai.complete).not.toHaveBeenCalled();
+      expect(contactSends(gateway)).toHaveLength(0);
+      expect(repository.pauseForHandoff).toHaveBeenCalledWith(expect.objectContaining({ errorCode: "delivery_ambiguous" }));
+      expect(repository.markInboundProcessed).toHaveBeenCalledWith(message, ["wamid-1"]);
+    });
+  });
+
   describe("an operator pause during the AI turn stops the reply", () => {
     it("sends nothing when the AI was paused while the reply was being generated", async () => {
       const { processor, repository, gateway } = setup();

@@ -1402,6 +1402,25 @@ export class MessageRepository {
     );
   }
 
+  /**
+   * Já existe resposta da IA gravada DEPOIS desta mensagem do contato? Num turno
+   * retomado após crash do worker, significa que bolhas deste turno já chegaram
+   * ao contato (cada bolha é persistida logo após o envio): gerar de novo
+   * duplicaria a resposta.
+   */
+  async hasAgentReplyAfterInbound(conversationId: string, inboundExternalId: string): Promise<boolean> {
+    const result = await this.db.query<{ found: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM messages reply, messages inbound
+         WHERE inbound.conversation_id=$1 AND inbound.sender='contact' AND inbound.external_message_id=$2
+           AND reply.conversation_id=inbound.conversation_id AND reply.sender='agent'
+           AND (reply.created_at,reply.id) > (inbound.created_at,inbound.id)
+       ) AS found`,
+      [conversationId, inboundExternalId]
+    );
+    return result.rows[0]?.found === true;
+  }
+
   async isAiActive(tenantId: string, conversationId: string): Promise<boolean> {
     const result = await this.db.query<{ ai_active: boolean }>(
       "SELECT ai_active FROM conversations WHERE id=$1 AND tenant_id=$2",
