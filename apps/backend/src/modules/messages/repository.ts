@@ -1520,8 +1520,12 @@ export class MessageRepository {
 
   private async notifyConversationMessagesChanged(tenantId: string, conversationId: string): Promise<void> {
     await this.db.query(
+      // Mesmo formato do trigger de INSERT (0077): o schema do realtime é estrito
+      // (tenantId + entityId). Com 'workspaceId' e sem entityId todo eco/reação
+      // do Instagram era descartado; entityId novo evita o dedupe de 60s do hub.
       `SELECT pg_notify('atendon_realtime_changes',json_build_object(
-         'v',1,'type','conversation.messages.changed','workspaceId',$1::text,'conversationId',$2::text
+         'v',1,'type','conversation.messages.changed','tenantId',$1::text,'conversationId',$2::text,
+         'entityId',gen_random_uuid()::text
        )::text)`,
       [tenantId, conversationId]
     );

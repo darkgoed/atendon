@@ -3,6 +3,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { config } from "../src/config.js";
 import { MessageRepository } from "../src/modules/messages/repository.js";
+import { parseInternalRealtimeSignal, REALTIME_POSTGRES_CHANNEL } from "../src/modules/realtime/signals.js";
 
 // MSG C5: o worker morre no meio do turno; o BullMQ devolve o MESMO job
 // (mesmo aiTurnId) antes da lease de 10 min vencer. Esse retry precisa
@@ -64,5 +65,35 @@ describe("pending contact fragments (MSG C7)", () => {
     }
     const pending = await repository.findPendingContactTextMessages(conversationId, ids[2].externalId);
     expect(pending.map((item) => item.text)).toEqual(["oi", "quero saber o preço", "do plano X"]);
+  });
+});
+
+describe("realtime signal of in-place message changes (ORG C6)", () => {
+  it("is accepted by the strict realtime schema, with a unique entityId per change", async () => {
+    const repository = new MessageRepository(pool, config, { followUp: vi.fn().mockResolvedValue(undefined) });
+    const context = await repository.recordInboundAndLoadContext(
+      { tenantId, sessionId, contactPhone: `5511${randomUUID().replace(/\D/g, "").padEnd(9, "5").slice(0, 9)}`, text: "sinal", externalId: `signal-${suffix}` },
+      { claim: false }
+    );
+    const listener = new pg.Client({ connectionString: config.DATABASE_URL });
+    await listener.connect();
+    const payloads: string[] = [];
+    listener.on("notification", (notification) => { if (notification.payload) payloads.push(notification.payload); });
+    await listener.query(`LISTEN ${REALTIME_POSTGRES_CHANNEL}`);
+    try {
+      // Eco/reação do Instagram atualizam a linha no lugar e sinalizam por aqui.
+      const notify = (repository as unknown as { notifyConversationMessagesChanged(tenant: string, conversation: string): Promise<void> })
+        .notifyConversationMessagesChanged.bind(repository);
+      await notify(tenantId, context!.conversationId);
+      await notify(tenantId, context!.conversationId);
+      await vi.waitFor(() => expect(payloads.length).toBeGreaterThanOrEqual(2), { timeout: 2_000 });
+      const signals = payloads.map((payload) => parseInternalRealtimeSignal(payload))
+        .filter((signal) => signal?.type === "conversation.messages.changed" && signal.conversationId === context!.conversationId);
+      expect(signals).toHaveLength(2);
+      expect(signals[0]).toMatchObject({ tenantId });
+      expect(signals[0]!.entityId).not.toBe(signals[1]!.entityId);
+    } finally {
+      await listener.end();
+    }
   });
 });
