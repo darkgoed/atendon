@@ -91,6 +91,33 @@ async function createWithin(client: PoolClient, tenantId: string, periodId: stri
   return invoice;
 }
 
+/**
+ * Fatura do 1º ciclo contratado quando o trial expira sem pagamento: é o que o
+ * cliente precisa pagar para sair de PAST_DUE/SUSPENDED. Leva cycle_end do
+ * ciclo atual, então o fechamento do período desse ciclo não cobra de novo.
+ * Retorna null quando o contrato não tem preço (plano gratuito ou legado).
+ */
+export async function createFirstCycleInvoice(client: PoolClient, subscriptionId: string): Promise<string | null> {
+  const sub = (await client.query<PricedSubscription & { tenant_id: string; snapshot_currency: string | null; cycle_start: string | null; cycle_end: string | null }>(
+    `SELECT tenant_id,billing_cycle,base_price_cents,final_price_cents,snapshot_currency,
+            to_json(current_period_start)#>>'{}' cycle_start, to_json(current_period_end)#>>'{}' cycle_end
+       FROM tenant_subscriptions WHERE id=$1`, [subscriptionId])).rows[0];
+  const lines = sub ? planLines(sub) : [];
+  if (!sub || !lines.length) return null;
+  const amount = lines.reduce((sum, line) => sum + line.amount, 0);
+  const invoice = (await client.query<{ id: string }>(
+    `INSERT INTO invoices(tenant_id,subscription_id,kind,amount_cents,currency,status,due_date,period_start,period_end,metadata)
+     VALUES($1,$2,'subscription',$3,$4,'pending',now() + make_interval(days => $5),$6,$7,$8) RETURNING id`,
+    [sub.tenant_id, subscriptionId, amount, sub.snapshot_currency ?? "BRL", invoiceDueDays(), sub.cycle_start, sub.cycle_end,
+      { reference: `trial-conversion:${subscriptionId}`, billing_cycle: sub.billing_cycle, cycle_start: sub.cycle_start, cycle_end: sub.cycle_end }])).rows[0];
+  for (const line of lines) {
+    await client.query(
+      `INSERT INTO invoice_line_items(invoice_id,kind,description,quantity,unit_amount_cents,amount_cents,usage_period_id,metadata)
+       VALUES($1,$2,$3,$4,$5,$6,NULL,$7)`, [invoice.id, line.kind, line.description, line.quantity, line.unit, line.amount, line.metadata]);
+  }
+  return invoice.id;
+}
+
 /** Dias entre a emissão e o vencimento de um recebível (DUNNING só age depois). */
 export function invoiceDueDays(): number {
   return Math.max(0, Math.trunc(Number(process.env.INVOICE_DUE_DAYS ?? 5)));
