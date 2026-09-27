@@ -256,6 +256,29 @@ describe("tarefas — tenancy e lead", () => {
     expect(own.statusCode).toBe(201);
     expect(own.json().task.lead.id).toBe(lead);
   });
+
+  it("operador em escopo mine não lê nome/telefone de lead alheio pela lista nem pelo PATCH vazio", async () => {
+    const phone = `5511${Math.floor(Math.random() * 90_000_000 + 10_000_000)}`;
+    const lead = (await pool.query<{ id: string }>(
+      "INSERT INTO scheduling_leads(tenant_id,phone,name,unit_id,status,source) VALUES($1,$2,'Lead Da Gestao','calls','qualificado','tasks-test') RETURNING id",
+      [tenantA, phone]
+    )).rows[0].id;
+    const created = await app.inject({
+      method: "POST", url: "/tasks", headers: { cookie: await loginAs(ownerA) },
+      payload: { title: "Tarefa da gestão com lead", assignee_id: operatorA, lead_id: lead }
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().task.lead).toMatchObject({ id: lead, name: "Lead Da Gestao" });
+    const taskId = created.json().task.id;
+
+    const list = await app.inject({ url: "/tasks?scope=mine", headers: { cookie: await loginAs(operatorA) } });
+    expect(list.statusCode).toBe(200);
+    expect(list.body).not.toContain("Lead Da Gestao");
+    expect(list.body).not.toContain(phone);
+    const patched = await app.inject({ method: "PATCH", url: `/tasks/${taskId}`, headers: { cookie: await loginAs(operatorA) }, payload: {} });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().task.lead).toMatchObject({ id: lead, name: null, phone: null });
+  });
 });
 
 describe("tarefas — keyset", () => {

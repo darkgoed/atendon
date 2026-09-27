@@ -157,9 +157,13 @@ export async function importContacts(
   access: { permissions: PermissionKey[]; scope: CaseScope }
 ) {
   // Mesmos gates das rotas dedicadas: valores/catálogo de campos exigem
-  // fields.manage (PUT custom-values), etiquetas exigem tags.apply.
+  // fields.manage (PUT custom-values), etiquetas exigem tags.apply. Sem
+  // fields.manage as colunas de campo são ignoradas (o modelo oficial mapeia
+  // "email" sozinho) em vez de recusar o arquivo inteiro.
+  const warnings: string[] = [];
   if ((body.mapping.email || Object.keys(body.mapping.custom ?? {}).length) && !access.permissions.includes("fields.manage")) {
-    throw httpError(403, "Importar e-mail ou campos personalizados exige permissão para gerenciar campos");
+    body = { ...body, mapping: { ...body.mapping, email: undefined, custom: undefined } };
+    warnings.push("Colunas de e-mail e campos personalizados foram ignoradas: exigem permissão para gerenciar campos");
   }
   if (body.mapping.tags && !access.permissions.includes("tags.apply")) {
     throw httpError(403, "Importar etiquetas exige permissão para aplicar etiquetas");
@@ -192,7 +196,7 @@ export async function importContacts(
   const defsByKey = new Map(defs.map((def) => [def.key, def]));
   const emailDef = mapping.email === undefined ? undefined : defsByKey.get("email");
 
-  const result = { imported: 0, updated: 0, skipped: 0, duplicates_flagged: 0, errors: [] as Array<{ row: number; field: string; message: string }> };
+  const result = { imported: 0, updated: 0, skipped: 0, duplicates_flagged: 0, errors: [] as Array<{ row: number; field: string; message: string }>, warnings };
   const flaggedLeadIds: string[] = [];
   const totalDataRows = rows.length - 1;
   if (totalDataRows > MAX_IMPORT_ROWS) {
@@ -318,10 +322,13 @@ async function upsertImportedLead(tenantId: string, actor: ImportActor, filename
     );
     let leadId: string;
     if (!existing.rows[0]) {
+      // Escopo "mine": o contato nasce na carteira de quem importa (mesma regra do
+      // POST /scheduling/leads); sem isso o OPERADOR perde acesso ao que importou.
+      if (row.scope.type === "mine" && !row.scope.memberId) throw httpError(403, "Membro ativo obrigatório para criar um lead");
       const inserted = await client.query<{ id: string }>(
-        `INSERT INTO scheduling_leads(tenant_id,phone,name,source,campaign)
-         VALUES($1,$2,$3,$4,$5) RETURNING id`,
-        [tenantId, row.phone, row.nome, row.origem, row.campanha]
+        `INSERT INTO scheduling_leads(tenant_id,phone,name,source,campaign,assigned_member_id)
+         VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,
+        [tenantId, row.phone, row.nome, row.origem, row.campanha, row.scope.type === "mine" ? row.scope.memberId : null]
       );
       leadId = inserted.rows[0].id;
       committed.push(row.imported);
@@ -343,7 +350,8 @@ async function upsertImportedLead(tenantId: string, actor: ImportActor, filename
       if (row.scope.type === "mine" && (!row.scope.memberId || existing.rows[0].assigned_member_id !== row.scope.memberId)) {
         throw httpError(403, "Contato pertence a outro responsável");
       }
-      row.seenUpdatedPhones.add(row.phone);
+      // Só após o COMMIT: linha desfeita (ex.: etiqueta recusada) não bloqueia a próxima com o mesmo telefone.
+      committed.push(() => row.seenUpdatedPhones.add(row.phone));
       leadId = existing.rows[0].id;
       // Atualização conservadora: célula vazia nunca apaga dado existente;
       // histórico/notas/tags de outras tabelas ficam intactos.

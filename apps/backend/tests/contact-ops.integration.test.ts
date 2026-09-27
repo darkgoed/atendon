@@ -315,13 +315,45 @@ describe("R20 — onboarding-status", () => {
 });
 
 describe("R14 — importação respeita RBAC e escopo do OPERADOR", () => {
-  it("OPERADOR não cria campo personalizado nem grava valores de campo pela importação", async () => {
+  it("OPERADOR não cria campo personalizado nem grava valores de campo: colunas ignoradas com aviso", async () => {
     const response = await importCsv(operatorA, "Nome,Telefone,Segredo\nNovo Op,21911110000,x\n", {
       nome: "Nome", telefone: "Telefone", custom: { campo_op: "Segredo" }
     });
-    expect(response.statusCode).toBe(403);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ imported: 1, warnings: [expect.stringContaining("campos personalizados")] });
     const defs = await pool.query("SELECT 1 FROM custom_field_defs WHERE tenant_id=$1 AND key='campo_op'", [tenantA]);
     expect(defs.rowCount).toBe(0);
+  });
+
+  it("OPERADOR importa o modelo oficial (email auto-mapeado) sem 403 e sem gravar email", async () => {
+    const response = await importCsv(operatorA, "nome,telefone,email\nCliente Op,21966660000,op@test.local\n", { nome: "nome", telefone: "telefone", email: "email" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ imported: 1, errors: [] });
+    const email = await pool.query(
+      `SELECT 1 FROM lead_custom_values value JOIN custom_field_defs def ON def.id=value.field_id AND def.key='email'
+       JOIN scheduling_leads lead ON lead.id=value.lead_id WHERE lead.tenant_id=$1 AND lead.phone='5521966660000'`,
+      [tenantA]
+    );
+    expect(email.rowCount).toBe(0);
+  });
+
+  it("linha desfeita (etiqueta recusada) não impede a próxima linha do mesmo telefone em update", async () => {
+    await pool.query("INSERT INTO scheduling_leads(tenant_id,phone,name,source,assigned_member_id) VALUES($1,'5521977770000','Original','teste',$2)", [tenantA, operatorMemberA]);
+    const response = await importCsv(operatorA, "Nome,Telefone,Tags\nComTag,5521977770000,Nao Existe Rv\nNovoNome,5521977770000,\n", { nome: "Nome", telefone: "Telefone", tags: "Tags" }, { on_duplicate: "update" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().errors.map((e: { row: number }) => e.row)).toEqual([2]);
+    expect(response.json().updated).toBe(1);
+    const name = (await pool.query<{ name: string }>("SELECT name FROM scheduling_leads WHERE tenant_id=$1 AND phone='5521977770000'", [tenantA])).rows[0].name;
+    expect(name).toBe("NovoNome");
+  });
+
+  it("contato criado pelo OPERADOR nasce na carteira dele e pode ser reimportado em update", async () => {
+    const first = await importCsv(operatorA, "Nome,Telefone\nCriado Op,5521988880001\n", { nome: "Nome", telefone: "Telefone" });
+    expect(first.json()).toMatchObject({ imported: 1 });
+    const row = (await pool.query<{ assigned_member_id: string | null }>("SELECT assigned_member_id FROM scheduling_leads WHERE tenant_id=$1 AND phone='5521988880001'", [tenantA])).rows[0];
+    expect(row.assigned_member_id).toBe(operatorMemberA);
+    const second = await importCsv(operatorA, "Nome,Telefone\nCriado Op 2,5521988880001\n", { nome: "Nome", telefone: "Telefone" }, { on_duplicate: "update" });
+    expect(second.json()).toMatchObject({ updated: 1, errors: [] });
   });
 
   it("OPERADOR aplica etiqueta existente mas não cria etiqueta nova no catálogo", async () => {

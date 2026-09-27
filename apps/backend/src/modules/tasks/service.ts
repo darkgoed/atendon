@@ -149,6 +149,9 @@ export async function listTasks(
     values.push(value);
     return `$${values.length}`;
   };
+  // Tarefas são do workspace, mas nome/telefone do lead seguem o escopo de casos.
+  const scope = await resolveCaseScope(db, session);
+  const leadScope = leadScopeCondition(scope, "lead", `${bind(scope.memberId)}`);
   const where = [`task.tenant_id=${bind(session.tenantId)}`];
   if (query.scope === "mine") where.push(`task.assignee_id=${bind(session.userId)}`);
   if (query.status) where.push(`task.status=${bind(query.status)}`);
@@ -167,7 +170,7 @@ export async function listTasks(
      FROM tasks task
      LEFT JOIN users assignee ON assignee.id=task.assignee_id
      LEFT JOIN users author ON author.id=task.created_by
-     LEFT JOIN scheduling_leads lead ON lead.id=task.lead_id AND lead.tenant_id=task.tenant_id
+     LEFT JOIN scheduling_leads lead ON lead.id=task.lead_id AND lead.tenant_id=task.tenant_id AND ${leadScope}
      WHERE ${where.join(" AND ")}
      ORDER BY task.created_at DESC,task.id DESC
      LIMIT ${limit}`,
@@ -213,10 +216,11 @@ export async function createTask(
     }
     return newTaskId;
   });
-  return getTask(session.tenantId, taskId);
+  return getTask(session, taskId);
 }
 
-export async function getTask(tenantId: string, taskId: string): Promise<ReturnType<typeof mapTask>> {
+export async function getTask(session: WorkspaceSession, taskId: string): Promise<ReturnType<typeof mapTask>> {
+  const scope = await resolveCaseScope(db, session);
   const result = await db.query<TaskRow>(
     `SELECT task.id,task.tenant_id,task.title,task.description,task.status,task.priority,
             task.due_at,task.assignee_id,assignee.name assignee_name,
@@ -226,9 +230,9 @@ export async function getTask(tenantId: string, taskId: string): Promise<ReturnT
      FROM tasks task
      LEFT JOIN users assignee ON assignee.id=task.assignee_id
      LEFT JOIN users author ON author.id=task.created_by
-     LEFT JOIN scheduling_leads lead ON lead.id=task.lead_id AND lead.tenant_id=task.tenant_id
+     LEFT JOIN scheduling_leads lead ON lead.id=task.lead_id AND lead.tenant_id=task.tenant_id AND ${leadScopeCondition(scope, "lead", "$3")}
      WHERE task.tenant_id=$1 AND task.id=$2`,
-    [tenantId, taskId]
+    [session.tenantId, taskId, scope.memberId]
   );
   if (!result.rows[0]) throw httpError(404, "Tarefa não encontrada");
   return mapTask(result.rows[0]);
@@ -299,7 +303,7 @@ export async function updateTask(
       );
     }
   });
-  return getTask(session.tenantId, taskId);
+  return getTask(session, taskId);
 }
 
 export async function deleteTask(
