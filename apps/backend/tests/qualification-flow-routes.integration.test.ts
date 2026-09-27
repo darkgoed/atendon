@@ -278,6 +278,17 @@ async function startInteractive(phone: string) {
   return { conversationId, state };
 }
 
+// Em produção a 1ª mensagem do caminho sai inline antes do resto; o outbox só
+// libera uma linha quando as anteriores do mesmo caminho saíram (auditoria #4).
+async function markEarlierWalkMessagesSent(row: { id: string; qualification_id: string }) {
+  await pool.query(
+    `UPDATE qualification_message_outbox SET status='sent',sent_at=now()
+     WHERE qualification_id=$1 AND id<>$2 AND status='pending'
+       AND (created_at,id) < (SELECT created_at,id FROM qualification_message_outbox WHERE id=$2)`,
+    [row.qualification_id, row.id]
+  );
+}
+
 async function interactiveOutboxRow(qualificationId: string) {
   return (await pool.query<{
     id: string;
@@ -492,6 +503,7 @@ describe("Executor — branch/finalize/interactive", () => {
       setPresence: vi.fn(),
       sendInteractive: vi.fn().mockResolvedValue({ externalId: "int-1" })
     };
+    await markEarlierWalkMessagesSent(row);
     expect(await service.deliverOutbox(row as never, gateway as never)).toBe("int-1");
     expect(gateway.sendText).not.toHaveBeenCalled(); // payload estruturado nunca vira texto
     expect(gateway.sendInteractive).toHaveBeenCalledWith(sessionIdQ, phone, row.interactive_payload);
@@ -520,6 +532,7 @@ describe("Executor — branch/finalize/interactive", () => {
       markMessageAsRead: vi.fn(),
       setPresence: vi.fn()
     };
+    await markEarlierWalkMessagesSent(row);
     expect(await service.deliverOutbox(row as never, gateway as never)).toBe("");
     expect(gateway.sendText).not.toHaveBeenCalled();
     const failed = (await interactiveOutboxRow(state.id))!;

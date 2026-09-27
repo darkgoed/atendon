@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { config } from "../src/config.js";
 import { seedTenantCapabilities } from "./helpers/capability-seed.js";
 import { QualificationService } from "../src/modules/qualification/service.js";
 import { acquireSharedProviderLock, QUALIFICATION_OUTBOX_LOCK_KEY, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
+import { WhatsAppSendRejectedError } from "../src/modules/whatsapp/errors.js";
 
 // pumpOutbox do robô é GLOBAL: em paralelo, uma suíte entrega (e marca como
 // enviadas) as mensagens pendentes da outra.
@@ -114,4 +115,50 @@ describe("auditoria P1 — fluxos de robô", () => {
     await service.handleInbound({ tenantId, sessionId, contactPhone: lead.phone, text: "produto", externalId: `ext-${randomUUID()}` });
     expect((await pool.query<{ status: string }>("SELECT status FROM lead_qualifications WHERE id=$1", [lead.id])).rows[0].status).toBe("concluido");
   });
+
+  it("auditoria runtime #4/#5: mensagens do caminho saem em ordem e envio rejeitado não repete para sempre", async () => {
+    await useFlow({
+      start: "M1", origem: "facebook", triggers: { ctwa: false, session_ids: [], keywords: ["ordem"] },
+      steps: {
+        M1: { kind: "message", message: "1 - Oi, tudo bem?", next: "M2" },
+        M2: { kind: "message", message: "2 - Sou o assistente", next: "F1" },
+        F1: { kind: "final", message: "3 - Qual seu nome?" }
+      }
+    });
+    const phone = nextPhone();
+    await pool.query("INSERT INTO conversations(tenant_id,session_id,contact_phone) VALUES($1,$2,$3)", [tenantId, sessionId, phone]);
+    const outcome = await service.handleInbound({ tenantId, sessionId, contactPhone: phone, text: "ordem", externalId: `ext-${randomUUID()}` });
+    expect(outcome?.reply).toBe("1 - Oi, tudo bem?");
+    const delivered: string[] = [];
+    let rejectFirst = true;
+    const gateway = {
+      sendText: vi.fn(async (_session: string, to: string, text: string) => {
+        if (to !== phone) return { externalId: `other-${randomUUID()}` }; // pump é global: outras conversas do arquivo
+        if (rejectFirst && text.startsWith("1")) throw new WhatsAppSendRejectedError("connection closed");
+        delivered.push(text);
+        return { externalId: `x-${randomUUID()}` };
+      })
+    };
+    // Envio inline da 1ª rejeitado (fica pendente com backoff): o pump não pode adiantar a 2ª e a 3ª.
+    await expect(service.deliverOutboxById(outcome!.outboxId!, gateway as never)).rejects.toThrow();
+    await service.pumpOutbox(gateway as never);
+    expect(delivered).toEqual([]);
+    rejectFirst = false;
+    await pool.query("UPDATE qualification_message_outbox SET next_attempt_at=now() WHERE id=$1", [outcome!.outboxId]);
+    await service.pumpOutbox(gateway as never);
+    await service.pumpOutbox(gateway as never);
+    await service.pumpOutbox(gateway as never);
+    expect(delivered).toEqual(["1 - Oi, tudo bem?", "2 - Sou o assistente", "3 - Qual seu nome?"]);
+
+    // Rejeição persistente: após o teto de tentativas vira falha, sem reenviar dias depois.
+    const stale = (await pool.query<{ id: string }>(
+      `INSERT INTO qualification_message_outbox(tenant_id,qualification_id,session_id,contact_phone,step_id,inbound_external_id,message_kind,message,attempts,created_at)
+       SELECT tenant_id,qualification_id,session_id,contact_phone,'Z',$2,'message','antiga',19,now()-interval '1 hour'
+       FROM qualification_message_outbox WHERE id=$1 RETURNING id`, [outcome!.outboxId, `stale-${randomUUID()}`]
+    )).rows[0].id;
+    const rejecting = { sendText: vi.fn(async () => { throw new WhatsAppSendRejectedError("connection closed"); }) };
+    await expect(service.deliverOutboxById(stale, rejecting as never)).rejects.toThrow();
+    expect((await pool.query<{ status: string }>("SELECT status FROM qualification_message_outbox WHERE id=$1", [stale])).rows[0].status).toBe("failed");
+  });
 });
+

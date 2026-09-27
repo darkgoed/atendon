@@ -710,6 +710,12 @@ export class QualificationService {
          AND (claimed_at IS NULL OR claimed_at<now()-interval '2 minutes')
          AND EXISTS (SELECT 1 FROM whatsapp_sessions s WHERE s.id=qualification_message_outbox.session_id
            AND s.tenant_id=qualification_message_outbox.tenant_id AND s.channel='whatsapp' AND s.archived_at IS NULL)
+         -- Ordem do caminho: não sai enquanto houver mensagem ANTERIOR do mesmo
+         -- caminho (mesmo inbound) pendente (em backoff ou sendo enviada inline).
+         AND NOT EXISTS (SELECT 1 FROM qualification_message_outbox earlier
+           WHERE earlier.qualification_id=qualification_message_outbox.qualification_id AND earlier.status='pending'
+             AND earlier.inbound_external_id=qualification_message_outbox.inbound_external_id
+             AND (earlier.created_at,earlier.id)<(qualification_message_outbox.created_at,qualification_message_outbox.id))
        RETURNING id,tenant_id,qualification_id,step_id,session_id,contact_phone,contact_jid,message,inbound_external_id,message_kind,interactive_payload`, [row.id]
     );
     if (!claimed.rows[0]) return "";
@@ -760,8 +766,11 @@ export class QualificationService {
     } catch (error) {
       if (interactive) await this.logInteractiveDelivery(current, "failed", { erro: error instanceof Error ? error.message : String(error) });
       await db.query(
+        // Rejeição definitiva volta com backoff, mas com teto (20 tentativas ou
+        // 24h): sem ele um número desconectado reenviava para sempre e, dias
+        // depois, despejava mensagens velhas de uma vez ao reconectar.
         `UPDATE qualification_message_outbox SET attempts=attempts+1,last_error=$2,claimed_at=NULL,
-         status=CASE WHEN $3::boolean THEN 'pending' ELSE 'failed' END,
+         status=CASE WHEN $3::boolean AND attempts+1<20 AND created_at>now()-interval '24 hours' THEN 'pending' ELSE 'failed' END,
          next_attempt_at=CASE WHEN $3::boolean THEN now() + make_interval(secs => LEAST(300, power(2,LEAST(attempts,8))::int)) ELSE next_attempt_at END
          WHERE id=$1 AND status='pending'`, [current.id, error instanceof Error ? error.message : String(error), isWhatsAppSendRejectedError(error)]
       );
