@@ -969,14 +969,13 @@ export default function Conversations() {
       if (items.some((conversation) => conversation.id === revokedConversationIdRef.current)) return;
       revokedConversationIdRef.current = null;
     }
-    if (!items.length) {
-      if (selected) setSelected("");
-      return;
-    }
+    if (!items.length) return;
     if (manualDeselectRef.current) return;
-    if (!selected || !items.some((conversation: Conversation) => conversation.id === selected)) {
-      setSelected(items[0].id);
-    }
+    // Só escolhe sozinho quando nada está aberto. A conversa aberta que sai da
+    // lista (lida sob "Não lidas", IA pausada na aba IA) continua aberta: pular
+    // para items[0] marcava a próxima como lida, em cascata até zerar a lista.
+    // Perda de acesso é tratada pelo 404 (clearConversationAfterAccessChange).
+    if (!selected) setSelected(items[0].id);
   }, [items, listLoading, selected]);
 
   const selectConversation = useCallback((id: string) => {
