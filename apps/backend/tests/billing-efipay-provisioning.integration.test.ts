@@ -51,7 +51,7 @@ async function tenantFixture(): Promise<{ tenant: string; provider: string }> {
     tenants.push(tenant);
     // Linha de gateway dedicada (código único por execução): o mandato só
     // precisa de um provider_id válido; os efipay globais ficam intocados aqui.
-    const provider = (await client.query<{ id: string }>("INSERT INTO billing_providers(code,name,enabled,environment) VALUES($1,$1,false,'sandbox') RETURNING id", [`efipay-mandate-${id}`])).rows[0].id;
+    const provider = (await client.query<{ id: string }>("INSERT INTO billing_providers(code,name,enabled,environment) VALUES($1,$1,false,'sandbox') RETURNING id", [`efipay-provision-${id}`])).rows[0].id;
     mandateProviders.push(provider);
     await client.query("COMMIT");
     return { tenant, provider };
@@ -91,7 +91,7 @@ afterAll(async () => {
   // Tenants primeiro: cascata leva mandatos/cobranças e libera as linhas de
   // gateway dedicadas; o ator só sai depois de perder as referências.
   await pool.query("DELETE FROM tenants WHERE slug LIKE 'efipay-provision-%'");
-  await pool.query("DELETE FROM billing_providers WHERE code LIKE 'efipay-mandate-%'");
+  await pool.query("DELETE FROM billing_providers WHERE code LIKE 'efipay-provision-%'");
   await pool.query("DELETE FROM audit_logs WHERE actor_user_id=$1", [ACTOR]);
   await pool.query("DELETE FROM users WHERE id=$1", [ACTOR]);
   await pool.end();

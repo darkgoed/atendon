@@ -8,6 +8,7 @@ import { config } from "../src/config.js";
 import { encryptCredentials } from "../src/billing/providers/credentials.js";
 import { setEfiPixMandateOverridesForTests } from "../src/billing/efipay-mandates.js";
 import type { EfiTransport } from "../src/billing/providers/efipay-pix-automatic.js";
+import { acquireSharedProviderLock, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
 
 /**
  * Rotas do mandato Pix Automático (Efí) contra o serviço REAL (efipay-mandates.ts)
@@ -19,8 +20,8 @@ import type { EfiTransport } from "../src/billing/providers/efipay-pix-automatic
  * sem provider Efí e sem documento do titular.
  */
 const PATH="/billing/ai-credit-packs/pix-automatic";
-const MANDATE_OVERRIDE={providerCode:`efipay-mandate-${randomUUID().slice(0,8)}`};
-const runId=MANDATE_OVERRIDE.providerCode.slice("efipay-mandate-".length);
+const MANDATE_OVERRIDE={providerCode:`efipay-mroutes-${randomUUID().slice(0,8)}`};
+const runId=MANDATE_OVERRIDE.providerCode.slice("efipay-mroutes-".length);
 const recStatus=new Map<string,string>();
 let recSeq=0;let locSeq=0;
 
@@ -67,6 +68,12 @@ async function ownerCookie(workspace:string,tag:string):Promise<{userId:string;c
 async function mandateCount(tenant:string):Promise<number>{
   return (await pool.query<{n:number}>("SELECT count(*)::int n FROM ai_credit_pix_mandates WHERE tenant_id=$1",[tenant])).rows[0].n;
 }
+
+// O teste "sem provider" lê a linha GLOBAL 'efipay', que billing-efipay-provisioning
+// liga temporariamente segurando este lock.
+let releaseSharedProviderLock:(()=>Promise<void>)|undefined;
+beforeAll(async()=>{releaseSharedProviderLock=await acquireSharedProviderLock();},SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async()=>{await releaseSharedProviderLock?.();});
 
 beforeAll(async()=>{
   await app.ready();

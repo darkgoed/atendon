@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { db } from "../../db/client.js";
 import { HTTP_RATE_LIMITS } from "../../security/http-rate-limit.js";
 import { createTripzFeatureGate, requireTripzAiPermission, type TripzAuthorizer, type TripzFeatureGate } from "./authorization.js";

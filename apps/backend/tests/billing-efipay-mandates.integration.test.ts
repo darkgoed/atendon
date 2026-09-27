@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { config } from "../src/config.js";
+import { acquireSharedProviderLock, EFI_MONTHLY_BATCH_LOCK_KEY, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
 import {
   firstDueOnFrom,
   getMonthlyPixMandate,
@@ -134,6 +135,13 @@ async function insertCharge(mandateId: string, txid: string, dueOn: string, stat
     [mandateId, dueOn, txid, status, invoiceId ?? null]);
   return r.rows[0].id;
 }
+
+
+// O lote mensal Efí é GLOBAL (varre todos os mandatos APPROVED): em paralelo,
+// cria cobranças para os mandatos da outra suíte e infla os contadores do lote.
+let releaseEfiBatchLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseEfiBatchLock = await acquireSharedProviderLock(EFI_MONTHLY_BATCH_LOCK_KEY); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseEfiBatchLock?.(); });
 
 beforeAll(async () => {
   await pool.query("SELECT 1");

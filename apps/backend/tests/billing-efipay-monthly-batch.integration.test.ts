@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { config } from "../src/config.js";
+import { acquireSharedProviderLock, EFI_MONTHLY_BATCH_LOCK_KEY, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
 import { runEfiPixMonthlyBatch, type EfiMonthlyBatchResult } from "../src/billing/efipay-monthly-batch.js";
 import type { EfiChargeInput } from "../src/billing/providers/efipay-pix-automatic.js";
 import { applyVerifiedEfiRefund } from "../src/billing/efipay-refunds.js";
@@ -102,6 +103,13 @@ type ChargeRow = { id: string; txid: string; status: string; invoice_id: string 
 const chargeOf = async (mandateId: string): Promise<ChargeRow | undefined> =>
   (await pool.query<ChargeRow>(
     "SELECT id,txid,status,invoice_id,due_on::text AS due_on FROM ai_credit_pix_charges WHERE mandate_id=$1 ORDER BY due_on", [mandateId])).rows[0];
+
+
+// O lote mensal Efí é GLOBAL (varre todos os mandatos APPROVED): em paralelo,
+// cria cobranças para os mandatos da outra suíte e infla os contadores do lote.
+let releaseEfiBatchLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseEfiBatchLock = await acquireSharedProviderLock(EFI_MONTHLY_BATCH_LOCK_KEY); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseEfiBatchLock?.(); });
 
 beforeAll(async () => {
   await pool.query("SELECT 1");

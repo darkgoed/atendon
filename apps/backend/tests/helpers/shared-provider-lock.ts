@@ -12,6 +12,9 @@ export const SHARED_PROVIDER_LOCK_TIMEOUT_MS = 600_000;
 /** Chave própria para suítes que varrem o estado GLOBAL do Instagram (tokens vencidos, tenants ativos). */
 export const INSTAGRAM_GLOBAL_LOCK_KEY = 7_202_609_262;
 
+/** Chave própria para suítes cujo lote mensal Efí varre TODOS os mandatos (cria cobranças para os da outra suíte). */
+export const EFI_MONTHLY_BATCH_LOCK_KEY = 7_202_609_263;
+
 export async function acquireSharedProviderLock(key = LOCK_KEY): Promise<() => Promise<void>> {
   const client = new pg.Client({ connectionString: config.DATABASE_URL });
   await client.connect();

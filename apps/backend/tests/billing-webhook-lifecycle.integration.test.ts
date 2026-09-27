@@ -47,6 +47,9 @@ afterAll(async () => {
   globalThis.fetch = originalFetch;
   if (tenants.length) await pool.query("DELETE FROM tenants WHERE id=ANY($1::uuid[])", [tenants]);
   if (saved) await pool.query("UPDATE billing_providers SET credentials_encrypted=$2,webhook_secret_encrypted=$3,enabled=$4,status=$5,homologated=$6 WHERE id=$1", [providerId, saved.credentials_encrypted, saved.webhook_secret_encrypted, saved.enabled, saved.status, saved.homologated]);
+  // Linha criada aqui: volta ao estado de fábrica (desligada, sem credencial) em
+  // vez de ficar CONNECTED para a próxima suíte que segurar o lock.
+  else await pool.query("UPDATE billing_providers SET credentials_encrypted=NULL,credentials_hint=NULL,webhook_secret_encrypted=NULL,enabled=false,status='NOT_CONFIGURED' WHERE id=$1", [providerId]);
   await pool.end();
 });
 
