@@ -532,7 +532,10 @@ describe("Tripz AI tenant-safe persistence", () => {
     // Nova tentativa do usuário: chamadas/tokens zeram, custo acumulado do turno permanece.
     expect(await repository.getUsageBudget(ownerScope, ids))
       .toEqual({ providerRequests: 0, inputTokens: 0, outputTokens: 0, costUsd: 0.05 });
-    await repository.markMessageProcessing(ownerScope, { ...ids, status: "failed", errorCode: "TRIPZ_TEST_CLEANUP" });
+    // Teto de CUSTO soma todas as tentativas: repetir falharia na hora sem chamar a IA.
+    await repository.markMessageProcessing(ownerScope, { ...ids, status: "failed", errorCode: "TRIPZ_AI_COST_BUDGET_EXCEEDED" });
+    await expect(repository.retryUserMessage(ownerScope, detail.conversation.id, current.message.id))
+      .rejects.toMatchObject({ code: "TRIPZ_RETRY_BUDGET_EXHAUSTED" });
     await repository.deleteConversation(ownerScope, detail.conversation.id);
   });
 

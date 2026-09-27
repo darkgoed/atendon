@@ -52,12 +52,15 @@ function ProcessingCard({
           <span><strong className="block text-[11px] text-[var(--text-secondary)]">A análise foi interrompida</strong><span className="text-[10px] leading-4 text-[var(--text-secondary)]">Seus dados continuam salvos. Tente processar o mesmo turno novamente.</span></span>
           {conversation.processingErrorCode ? <code className="text-[9px] text-[var(--text-muted)]">{conversation.processingErrorCode}</code> : null}
           {retryError ? <span className="text-[10px] text-[var(--warning-text)]">{retryError}</span> : null}
-          <button type="button" className="btn w-fit" disabled={!failedMessageId || retrying} onClick={() => {
+          {/* Teto de custo soma todas as tentativas: repetir falharia sem chamar a IA. */}
+          {conversation.processingErrorCode === "TRIPZ_AI_COST_BUDGET_EXCEEDED" ? (
+            <span className="text-[10px] text-[var(--warning-text)]">Esta mensagem atingiu o limite de custo da IA. Envie uma nova mensagem para continuar.</span>
+          ) : <button type="button" className="btn w-fit" disabled={!failedMessageId || retrying} onClick={() => {
             if (!failedMessageId || retrying) return;
             setRetrying(true);
             setRetryError("");
             void onRetry(failedMessageId).catch((error) => setRetryError(error instanceof Error ? error.message : "Não foi possível tentar novamente.")).finally(() => setRetrying(false));
-          }}><ArrowClockwise size={14} aria-hidden="true" />{retrying ? "Reenviando…" : "Tentar novamente"}</button>
+          }}><ArrowClockwise size={14} aria-hidden="true" />{retrying ? "Reenviando…" : "Tentar novamente"}</button>}
         </span>
       </div>
     );

@@ -188,4 +188,30 @@ describe("Tripz conversation states", () => {
     expect(html).toContain("Analisando dados");
     expect(html).toContain('placeholder="Aguarde a análise atual…"');
   });
+
+  it("sem 'Tentar novamente' quando o turno parou no teto de custo (repetir falharia sem chamar a IA)", () => {
+    const render = (processingErrorCode: string) => renderToStaticMarkup(
+      <TripzConversationView
+        conversation={{
+          id: "conversation-5", title: "Aruba", status: "collecting", processingStatus: "failed", processingErrorCode,
+          createdAt: "2026-08-14T10:00:00.000Z", updatedAt: "2026-08-14T10:05:00.000Z"
+        }}
+        messages={[{ id: "message-5", role: "user", content: "Monte a proposta", createdAt: "2026-08-14T10:01:00.000Z", metadata: {}, processingStatus: "failed", attachments: [] }]}
+        proposal={undefined}
+        loading={false}
+        onOpenHistory={() => undefined}
+        onOpenReview={() => undefined}
+        onOpenEditor={() => undefined}
+        onOpenBrand={() => undefined}
+        onRetry={() => undefined}
+        onRetryTurn={async () => undefined}
+        onSent={() => undefined}
+      />
+    );
+    const capped = render("TRIPZ_AI_COST_BUDGET_EXCEEDED");
+    expect(capped).not.toContain("Tentar novamente");
+    expect(capped).toContain("atingiu o limite de custo da IA");
+    expect(render("TRIPZ_AI_OPENROUTER_UNAVAILABLE")).toContain("Tentar novamente");
+  });
 });
+

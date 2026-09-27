@@ -25,6 +25,8 @@ import {
 import { tripzProposalStateSchema } from "./schemas.js";
 import { validateTripzProposal } from "./ai/proposal-validator.js";
 
+const TRIPZ_COST_BUDGET_EXCEEDED = "TRIPZ_AI_COST_BUDGET_EXCEEDED";
+
 type TripzDatabase = Pick<pg.Pool, "query" | "connect">;
 
 interface ConversationRow {
@@ -620,8 +622,8 @@ export class TripzAiRepository implements TripzRepositoryPort {
   ): Promise<TripzRetryMessageResult> {
     return transaction(this.database, async (client) => {
       const conversation = await lockVisibleConversation(client, scope, conversationId);
-      const messageResult = await client.query<MessageRow>(
-        `SELECT ${MESSAGE_COLUMNS} FROM tripz_ai_messages message
+      const messageResult = await client.query<MessageRow & { last_error_code: string | null }>(
+        `SELECT ${MESSAGE_COLUMNS},message.last_error_code FROM tripz_ai_messages message
          WHERE message.tenant_id=$1 AND message.conversation_id=$2
            AND message.id=$3 AND message.role='user' FOR UPDATE`,
         [scope.tenantId, conversationId, messageId]
@@ -640,6 +642,11 @@ export class TripzAiRepository implements TripzRepositoryPort {
       }
       if (current.processing_status !== "failed" || conversation.processing_status !== "failed") {
         throw tripzConflict("TRIPZ_MESSAGE_NOT_RETRYABLE", "A mensagem não está disponível para nova tentativa");
+      }
+      // O teto de custo soma todas as tentativas da mensagem: repetir falharia
+      // de novo na hora, sem chamar a IA. O caminho é uma mensagem nova.
+      if (current.last_error_code === TRIPZ_COST_BUDGET_EXCEEDED) {
+        throw tripzConflict("TRIPZ_RETRY_BUDGET_EXHAUSTED", "Esta mensagem já atingiu o limite de custo da IA. Envie uma nova mensagem para continuar.");
       }
       const updated = await client.query<MessageRow>(
         `UPDATE tripz_ai_messages message SET
