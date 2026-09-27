@@ -137,7 +137,7 @@ function TaskDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const { data: membersData } = useSWR<MembersResponse>(open && canAssign ? "/workspaces/current/members" : null, fetcher, {
+  const { data: membersData } = useSWR<MembersResponse>(open && canAssign ? "/workspaces/current/member-directory" : null, fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
     shouldRetryOnError: false

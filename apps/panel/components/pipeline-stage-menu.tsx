@@ -265,7 +265,7 @@ function StageAutomationsDialog({
     api<{ tags: LeadTag[] }>("/organization/tags")
       .then((data) => { if (alive) setTags((data.tags ?? []).filter((tag) => !tag.archived_at)); })
       .catch(() => { if (alive) setTags([]); });
-    api<{ members: StageMember[] }>("/workspaces/current/members")
+    api<{ members: StageMember[] }>("/workspaces/current/member-directory")
       .then((data) => { if (alive) setMembers((data.members ?? []).filter((member) => member.status === "active")); })
       .catch(() => { if (alive) setMembers([]); });
     return () => { alive = false; };

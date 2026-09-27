@@ -54,7 +54,7 @@ describe("ConversationStatusPicker operator flow", () => {
 
     await user.click(screen.getByRole("button", { name: /Etapa comercial atual: Novo/i }));
     expect(screen.getByRole("option", { name: "Operador" })).toBeInTheDocument();
-    expect(apiMock).not.toHaveBeenCalledWith("/workspaces/current/members", expect.anything());
+    expect(apiMock).not.toHaveBeenCalledWith("/workspaces/current/member-directory", expect.anything());
     await user.type(screen.getByLabelText("Produto"), "Plano");
     await user.type(screen.getByLabelText("Valor da venda"), "100");
     await user.selectOptions(screen.getByLabelText("Responsável"), "member-1");

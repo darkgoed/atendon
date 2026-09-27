@@ -60,7 +60,7 @@ beforeEach(() => {
     const method = (init?.method ?? "GET").toUpperCase();
     calls.push({ path, method, body: init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined });
     if (path === "/me") return jsonResponse(SESSION);
-    if (path === "/workspaces/current/members") return jsonResponse(MEMBERS);
+    if (path === "/workspaces/current/member-directory") return jsonResponse(MEMBERS);
     if (path === "/conversations/conv-1/notes" && method === "GET") return jsonResponse({ items: [NOTE] });
     if (path === "/conversations/conv-1/notes" && method === "POST") return jsonResponse({ id: "note-2" });
     return jsonResponse({});
@@ -134,13 +134,13 @@ describe("nota interna da conversa (R3)", () => {
     expect(await screen.findByText("Cliente pediu retorno amanhã.")).toBeInTheDocument();
     expect(screen.queryByLabelText("Nova nota")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Salvar nota" })).not.toBeInTheDocument();
-    expect(apiMock).not.toHaveBeenCalledWith("/workspaces/current/members");
+    expect(apiMock).not.toHaveBeenCalledWith("/workspaces/current/member-directory");
   });
 
   it("sem notas mostra o estado vazio", async () => {
     apiMock.mockImplementation((path: string) => {
       if (path === "/me") return jsonResponse(SESSION);
-      if (path === "/workspaces/current/members") return jsonResponse(MEMBERS);
+      if (path === "/workspaces/current/member-directory") return jsonResponse(MEMBERS);
       if (path === "/conversations/conv-1/notes") return jsonResponse({ items: [] });
       return jsonResponse({});
     });

@@ -31,7 +31,7 @@ const MENTION_LIMIT = 6;
 
 /** Fonte única de membros para @menções: apenas membros ativos do workspace. */
 export function useMentionMembers(enabled: boolean): MentionMember[] {
-  const { data } = useSWR<MembersResponse>(enabled ? "/workspaces/current/members" : null, fetcher, {
+  const { data } = useSWR<MembersResponse>(enabled ? "/workspaces/current/member-directory" : null, fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
     shouldRetryOnError: false

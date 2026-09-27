@@ -71,7 +71,7 @@ beforeEach(() => {
     const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
     calls.push({ path, method, body });
     if (path === "/me") return jsonResponse(SESSION);
-    if (path === "/workspaces/current/members") return jsonResponse(MEMBERS);
+    if (path === "/workspaces/current/member-directory") return jsonResponse(MEMBERS);
     if (path.startsWith("/scheduling/leads")) return jsonResponse({ leads: [{ id: "lead-1", nome: "Aurora Nogueira", telefone: "+5511988881200" }] });
     if (path.startsWith("/tasks?")) {
       const url = new URL(`http://localhost${path}`);

@@ -746,6 +746,18 @@ describe("panel API tenant isolation",()=>{
       await pool.query("DELETE FROM tenant_feature_flag_overrides WHERE tenant_id=$1 AND flag_key='conversations_delta_v2'",[tenantA]);
     }
   });
+  it("member directory lists active members with minimal fields for operators and denies roles without any related permission (painel P2-1/P2-2)",async()=>{
+    const login=await app.inject({method:"POST",url:"/auth/login",remoteAddress:"10.45.0.11",payload:{email:operatorEmail,password}});
+    const operatorCookie=[login.headers["set-cookie"]!].flat()[0].split(";")[0];
+    expect((await app.inject({url:"/workspaces/current/members",headers:{cookie:operatorCookie}})).statusCode).toBe(403);
+    const directory=await app.inject({url:"/workspaces/current/member-directory",headers:{cookie:operatorCookie}});
+    expect(directory.statusCode).toBe(200);
+    const members=directory.json().members as Array<Record<string,unknown>>;
+    expect(members.map((member)=>member.email)).toEqual(expect.arrayContaining([emailA,operatorEmail]));
+    expect(Object.keys(members[0]).sort()).toEqual(["email","id","name","status","user_id"]);
+    expect((await app.inject({url:"/workspaces/current/member-directory",headers:{cookie:readOnlyCookie}})).statusCode).toBe(403);
+    expect((await app.inject({url:"/workspaces/current/member-directory",headers:{cookie:cookieB}})).json().members.map((member:{email:string})=>member.email)).not.toContain(operatorEmail);
+  });
   it("delta with more than 200 changes delivers the rest on the next poll (Ponytail #4c)",async()=>{
     await pool.query(
       `INSERT INTO tenant_feature_flag_overrides(tenant_id,flag_key,enabled) VALUES($1,'conversations_delta_v2',true)

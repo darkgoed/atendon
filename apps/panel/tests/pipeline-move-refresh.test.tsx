@@ -80,7 +80,7 @@ beforeEach(() => {
     if (path.startsWith("/organization/pipeline")) {
       return Promise.resolve({ stages: STAGES, transitions: [], enforce_transitions: false, follow_up_config: {} });
     }
-    if (path === "/workspaces/current/members") return Promise.resolve({ members: [] });
+    if (path === "/workspaces/current/members" || path === "/workspaces/current/member-directory") return Promise.resolve({ members: [] });
     if (path === "/organization/leads/lead-a/stage" && method === "PATCH") {
       // Automação da etapa (ou outro usuário) leva o lead adiante logo após o movimento.
       serverState.stageOfA = serverState.afterPatchStage;

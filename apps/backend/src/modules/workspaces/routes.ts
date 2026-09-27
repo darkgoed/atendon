@@ -4,7 +4,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { PermissionKey } from "../../auth/rbac.js";
-import { createSessionToken, requirePermission, requireRootWorkspace, requireSession, type WorkspaceSession } from "../../auth/session.js";
+import { createSessionToken, requirePermission, requireRootWorkspace, requireSession, requireWorkspace, type WorkspaceSession } from "../../auth/session.js";
 import { createWorkspaceSessionRow } from "../../auth/sessions.js";
 import { issueTotpChallenge } from "../../auth/totp.js";
 import { db } from "../../db/client.js";
@@ -165,6 +165,8 @@ function assertCanManageMemberProfile(
   throw httpError(403, "Seu perfil não pode alterar os dados deste membro");
 }
 
+const MEMBER_DIRECTORY_PERMISSIONS = ["members.read", "tasks.assign", "conversations.reply", "leads.follow_up.manage", "pipeline.manage"] as const;
+
 export async function registerWorkspaceRoutes(app: FastifyInstance) {
 
   app.get("/workspaces/current/timezone", async (request) => {
@@ -267,6 +269,25 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
       resourceId: session.tenantId
     });
     return { workspace: result.rows[0] };
+  });
+
+  // Diretório mínimo de membros ativos (id, nome, e-mail) para quem atribui
+  // tarefas, menciona em notas ou configura automação de etapa. A lista
+  // administrativa completa segue restrita a members.read (auditoria painel P2-1/P2-2).
+  app.get("/workspaces/current/member-directory", async (request) => {
+    const session = await requireWorkspace(request);
+    const allowed = session.isRoot
+      ? session.rootWorkspaceAccess === true
+      : MEMBER_DIRECTORY_PERMISSIONS.some((permission) => session.permissions.includes(permission));
+    if (!allowed) throw Object.assign(new Error("Permissão insuficiente"), { statusCode: 403 });
+    const result = await db.query(
+      `SELECT m.id,m.status,u.id user_id,u.name,u.email
+       FROM workspace_members m JOIN users u ON u.id=m.user_id
+       WHERE m.workspace_id=$1 AND m.status='active' AND u.status='active'
+       ORDER BY COALESCE(u.name,u.email)`,
+      [session.tenantId]
+    );
+    return { members: result.rows };
   });
 
   app.get("/workspaces/current/members", async (request) => {
