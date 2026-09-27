@@ -93,8 +93,11 @@ export class RealtimeCoordinator {
 
   private async start(): Promise<void> {
     if (!this.postgresClient) {
+      let client: pg.PoolClient | null = null;
       try {
-        const client = await this.pool.connect();
+        client = await this.pool.connect();
+        const listener = client;
+        let released = false;
         client.on("notification", (notification) => {
           if (notification.channel !== REALTIME_POSTGRES_CHANNEL) return;
           const signal = parseInternalRealtimeSignal(notification.payload);
@@ -119,7 +122,14 @@ export class RealtimeCoordinator {
         client.on("error", (error) => {
           incrementRealtimeMetric("postgres_listener", "disconnect");
           this.log.warn({ error }, "Realtime PostgreSQL listener disconnected");
-          if (this.postgresClient === client) this.postgresClient = null;
+          if (this.postgresClient === listener) this.postgresClient = null;
+          // Cliente em checkout só sai do pool por release: sem isto cada queda
+          // do Postgres vazava uma vaga do pool da API (max 10) até travá-la.
+          if (!released) {
+            released = true;
+            listener.removeAllListeners("notification");
+            listener.release(error);
+          }
           this.scheduleReconnect();
         });
         await client.query(`LISTEN ${REALTIME_POSTGRES_CHANNEL}`);
@@ -129,6 +139,11 @@ export class RealtimeCoordinator {
       } catch (error) {
         incrementRealtimeMetric("postgres_listener", "disconnect");
         this.log.warn({ error }, "Realtime PostgreSQL listener unavailable; polling remains active");
+        if (client) {
+          client.removeAllListeners("notification");
+          client.removeAllListeners("error");
+          client.release(error instanceof Error ? error : true);
+        }
         this.scheduleReconnect();
       }
     }
@@ -145,13 +160,17 @@ export class RealtimeCoordinator {
     const socket = { connectTimeout: 1_000, reconnectStrategy: false as const };
     const publisher = createClient({ url: this.redisUrl, socket });
     const subscriber = createClient({ url: this.redisUrl, socket });
+    // reconnectStrategy:false: sem reagendar aqui, um restart do Redis deixava
+    // o pub/sub morto até alguém abrir um /events novo nesta instância.
     publisher.on("error", (error) => {
       incrementRealtimeMetric("redis_publisher", "disconnect");
       this.log.warn({ error }, "Realtime Redis publisher error");
+      this.scheduleReconnect();
     });
     subscriber.on("error", (error) => {
       incrementRealtimeMetric("redis_subscriber", "disconnect");
       this.log.warn({ error }, "Realtime Redis subscriber error");
+      this.scheduleReconnect();
     });
     try {
       await Promise.all([publisher.connect(), subscriber.connect()]);
