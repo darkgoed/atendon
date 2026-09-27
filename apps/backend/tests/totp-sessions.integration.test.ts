@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { jwtVerify } from "jose";
 import pg from "pg";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -142,9 +143,11 @@ describe("TOTP login challenge", () => {
     }), aliceUserId);
     expect(challengeToken).not.toBe("");
 
-    // O desafio NÃO é sessão: requireIdentity o rejeita (invariante B2).
+    // O desafio NÃO é sessão: requireIdentity o rejeita (invariante B2) — já na
+    // assinatura, pois o desafio usa chave derivada própria (seg. S6).
     await expect(requireIdentity(requestWithCookies({ atendon_session: challengeToken })))
-      .rejects.toMatchObject({ statusCode: 401, message: "Conclua a verificação em duas etapas" });
+      .rejects.toMatchObject({ statusCode: 401 });
+    await expect(jwtVerify(challengeToken, new TextEncoder().encode(config.JWT_SECRET))).rejects.toThrow();
 
     // /auth/totp/verify lê o userId do desafio.
     expect(await readTotpChallenge(requestWithCookies({ atendon_totp_challenge: challengeToken })))

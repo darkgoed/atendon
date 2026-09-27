@@ -5,6 +5,7 @@ import { config } from "../config.js";
 import { db } from "../db/client.js";
 import { encryptSecret, decryptSecret } from "../modules/ai-router/secret-box.js";
 import { httpError } from "../modules/scheduling/service.js";
+import { purposeJwtSecret } from "./session.js";
 
 /**
  * B2 Security (b): TOTP (RFC 6238) + desafio do 2º passo do login.
@@ -119,7 +120,7 @@ export function decryptTotpSecret(encrypted: string): string {
   return decryptSecret(encrypted, config.DATA_ENCRYPTION_KEY);
 }
 
-const challengeSecret = new TextEncoder().encode(config.JWT_SECRET);
+const challengeSecret = new TextEncoder().encode(purposeJwtSecret("totp-challenge"));
 
 /**
  * 2º passo do login: cookie de DESAFIO de 5 minutos (não é sessão). Não

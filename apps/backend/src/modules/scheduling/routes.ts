@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { config } from "../../config.js";
-import { requirePermission, requireWorkspace, type WorkspaceSession } from "../../auth/session.js";
+import { purposeJwtSecret, requirePermission, requireWorkspace, type WorkspaceSession } from "../../auth/session.js";
 import type { PermissionKey } from "../../auth/rbac.js";
 import {
   appointmentScopeCondition,
@@ -1164,7 +1164,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
   app.get("/scheduling/config/google-meet/oauth/start", async (request) => {
     const session = await requirePermission(request, "units.manage");
     const oauth = createGoogleMeetOAuthClient();
-    const state = await createGoogleMeetOAuthState({ tenantId: session.tenantId, userId: session.userId }, config.JWT_SECRET);
+    const state = await createGoogleMeetOAuthState({ tenantId: session.tenantId, userId: session.userId }, purposeJwtSecret("google-meet-oauth-state"));
     return { authorization_url: oauth.authorizationUrl(state) };
   });
   app.get("/scheduling/config/google-meet/oauth/callback", async (request, reply) => {
@@ -1181,7 +1181,7 @@ export async function registerSchedulingRoutes(app: FastifyInstance) {
       return reply.redirect(returnUrl.toString());
     }
     try {
-      const state = await verifyGoogleMeetOAuthState(query.state, config.JWT_SECRET);
+      const state = await verifyGoogleMeetOAuthState(query.state, purposeJwtSecret("google-meet-oauth-state"));
       if (state.tenantId !== session.tenantId || state.userId !== session.userId) {
         throw httpError(403, "A conexão Google pertence a outra sessão");
       }

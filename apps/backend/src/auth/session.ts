@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { SignJWT, errors, jwtVerify } from "jose";
 import type { FastifyRequest } from "fastify";
 import { config } from "../config.js";
@@ -28,6 +28,15 @@ export interface WorkspaceSession extends IdentitySession {
 }
 
 const secret = new TextEncoder().encode(config.JWT_SECRET);
+
+/**
+ * Chave própria por finalidade, derivada do JWT_SECRET (seg. S6): um token de
+ * desafio TOTP ou state de OAuth nunca verifica como sessão (nem o contrário),
+ * mesmo que um verificador esqueça de checar o formato do payload.
+ */
+export function purposeJwtSecret(purpose: "totp-challenge" | "google-meet-oauth-state"): string {
+  return createHmac("sha256", config.JWT_SECRET).update(`atendon:jwt:${purpose}`).digest("hex");
+}
 
 export async function createSessionToken(session: PanelSession | IdentitySession): Promise<string> {
   const sessionVersion = session.sessionVersion ?? (await db.query<{ session_version: number }>(
