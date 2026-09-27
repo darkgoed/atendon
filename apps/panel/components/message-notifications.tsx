@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { conversationMessagesPath } from "@/lib/conversation-messages";
+import { confirmLeave } from "@/lib/leave-guard";
 import {
   panelFeatureEnabled,
   type PanelFeatureFlagsResponse
@@ -127,7 +128,7 @@ export function MessageNotifications({
           });
           desktop.onclick = () => {
             window.focus();
-            router.push(`/conversas?id=${encodeURIComponent(nextNotification.conversationId)}`);
+            if (confirmLeave()) router.push(`/conversas?id=${encodeURIComponent(nextNotification.conversationId)}`);
             desktop.close();
           };
         }
@@ -155,7 +156,7 @@ export function MessageNotifications({
     setLeaving(false);
     if (pathname.startsWith("/conversas") && onOpenConversation) {
       onOpenConversation(conversationId);
-    } else {
+    } else if (confirmLeave()) {
       router.push(`/conversas?id=${encodeURIComponent(conversationId)}`);
     }
   };

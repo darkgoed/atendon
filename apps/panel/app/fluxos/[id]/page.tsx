@@ -6,8 +6,8 @@
    guarda a revisao viva do GET e envia revisao_base em TODO save; 409
    FLOW_VERSION_CONFLICT abre o FlowConflictModal (Recarregar = SWR mutate;
    Ver histórico = drawer FlowHistory da própria página, não rota).
-   Guarda dirty: beforeunload + bloqueio da navegação interna com descarte
-   explícito; o id do fluxo é capturado no closure do save — resposta tardia
+   Guarda dirty (lib/leave-guard): beforeunload, <a>, Voltar e router.push
+   pedem descarte explícito; o id do fluxo é capturado no closure do save — resposta tardia
    após trocar de rota não toca em outro fluxo. A validação client mostra os
    problemas antes de salvar; erros do servidor são autoridade final.
    Concorrência (WP-E1): o Recarregar adota revisão+documento como UNIDADE só
@@ -22,6 +22,7 @@ import useSWR from "swr";
 import { Shell } from "@/components/shell";
 import { ApiError, api } from "@/lib/api";
 import { usePermission } from "@/lib/use-permission";
+import { useLeaveGuard } from "@/lib/leave-guard";
 import { useSaveFeedback } from "@/components/ui";
 import { FlowEditor, type SimTrace } from "@/components/flow-editor/flow-editor";
 import type { FlowConflict } from "@/components/flow-editor/FlowConflictModal";
@@ -134,33 +135,9 @@ export default function FluxoEditorPage() {
     if (revisao === null && typeof loaded?.revisao === "number") setRevisao(loaded.revisao);
   }, [loaded, revisao]);
 
-  /* Guarda dirty real (R5): só com edição não salva. beforeunload cobre a
-     saída da aba; o clique em captura cobre a navegação interna (<a> do app),
-     com descarte EXPLÍCITO via confirm — cancelar aborta a navegação. */
-  useEffect(() => {
-    if (!dirty) return;
-    const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    const onClickCapture = (event: MouseEvent) => {
-      const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
-      if (!anchor || anchor.hasAttribute("download") || anchor.target === "_blank") return;
-      const href = anchor.getAttribute("href") ?? "";
-      if (href.startsWith("#")) return;
-      if (new URL(href, window.location.href).origin !== window.location.origin) return;
-      if (!window.confirm("Há alterações não salvas neste fluxo. Navegar agora vai descartá-las — descartar as alterações?")) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      }
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    document.addEventListener("click", onClickCapture, true);
-    return () => {
-      window.removeEventListener("beforeunload", onBeforeUnload);
-      document.removeEventListener("click", onClickCapture, true);
-    };
-  }, [dirty]);
+  /* Guarda dirty real (R5): só com edição não salva. Cobre aba, <a> do app,
+     Voltar do navegador e router.push (paleta/notificações) — lib/leave-guard. */
+  useLeaveGuard(dirty ? "Há alterações não salvas neste fluxo. Navegar agora vai descartá-las — descartar as alterações?" : null);
 
   const currentNome = nome ?? loaded?.nome ?? "";
   const currentAtivo = ativo ?? loaded?.ativo ?? false;

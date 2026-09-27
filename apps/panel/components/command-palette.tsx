@@ -2,6 +2,7 @@
 
 import { ChatsCircle, ListChecks, MagnifyingGlass, UsersThree, type Icon } from "@/components/icons";
 import { useRouter } from "next/navigation";
+import { confirmLeave } from "@/lib/leave-guard";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ModalDialog } from "@/components/modal-dialog";
 import { api } from "@/lib/api";
@@ -252,6 +253,7 @@ export function CommandPalette({ items, open, onOpenChange, workspaceId }: {
   if (!open) return null;
 
   const go = (href: string) => {
+    if (!confirmLeave()) return;
     onOpenChange(false);
     router.push(href);
   };
