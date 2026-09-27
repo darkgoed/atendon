@@ -3,9 +3,9 @@
 // R14 — Central de importação de contatos: wizard enxuto de 3 passos
 // (Enviar arquivo → Mapear colunas → Revisar/Importar) com o mapa visual em
 // FlowConnect. CSV é parseado no cliente (prévia de 5 linhas + mapeamento
-// offline); XLSX depende do contrato pendente de preview no backend.
-// Submissão fala o contrato real (POST /contact-ops/import, base64 + mapping
-// objeto); histórico segue pendente e é omitido sem o endpoint.
+// offline); XLSX usa POST /contact-ops/import/preview. Submissão fala o
+// contrato real (POST /contact-ops/import, base64 + mapping objeto); histórico
+// vem de GET /contact-ops/import/history.
 
 import { ArrowClockwise, ArrowLeft, DownloadSimple, UploadSimple, Warning } from "@/components/icons";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
@@ -13,17 +13,16 @@ import { Empty } from "@/components/page-state";
 import { FlowConnect } from "@/components/flow-connect";
 import { Shell } from "@/components/shell";
 import { Badge, Button, HelpHint, IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
-import { api } from "@/lib/api";
 import { formatPanelDateTime } from "@/lib/format";
 import {
   IMPORT_DUPLICATE_OPTIONS,
   IMPORT_ERRORS_FILENAME,
   IMPORT_FIELDS,
-  IMPORT_HISTORY_PATH,
   IMPORT_TEMPLATE_FILENAME,
   autoMapColumns,
   buildImportErrorsCsv,
   buildImportTemplateCsv,
+  fetchImportHistory,
   importMappingMissingRequired,
   importResultLines,
   parseCsv,
@@ -31,7 +30,6 @@ import {
   submitImport,
   type ImportDuplicatePolicy,
   type ImportHistoryItem,
-  type ImportHistoryResponse,
   type ImportMapping,
   type ImportPreview,
   type ImportResult
@@ -80,12 +78,11 @@ export default function ImportContactsPage() {
   const [history, setHistory] = useState<ImportHistoryItem[] | null>(null);
   const save = useSaveFeedback();
 
-  // Histórico só aparece se o backend expuser o endpoint; qualquer falha
-  // (inclusive 404/contrato pendente) omite a seção silenciosamente.
+  // Histórico é complementar: qualquer falha omite a seção silenciosamente.
   useEffect(() => {
     if (!canImport) return;
     let cancelled = false;
-    api<ImportHistoryResponse>(IMPORT_HISTORY_PATH)
+    fetchImportHistory()
       .then((response) => {
         if (!cancelled) setHistory(response.imports ?? []);
       })
@@ -132,9 +129,8 @@ export default function ImportContactsPage() {
     const isXlsx = /\.xlsx$/i.test(selected.name) || selected.type.includes("spreadsheet");
     try {
       if (isXlsx) {
-        // XLSX: parsing é do backend (contrato pendente). Sem o endpoint a UI
-        // falha com instrução clara em vez de quebrar.
-        const serverPreview = await previewImportFile(selected, selected.name);
+        // XLSX: parsing é do backend.
+        const serverPreview = await previewImportFile(selected);
         applyPreview(serverPreview, "xlsx", selected);
       } else {
         const text = await readFileAsText(selected);
@@ -145,13 +141,7 @@ export default function ImportContactsPage() {
       setFile(null);
       setFileKind(null);
       setStep("upload");
-      setError(
-        isXlsx
-          ? "Não foi possível pré-visualizar o XLSX (o parsing no servidor ainda não está disponível). Enquanto isso, exporte a planilha como CSV e importe o CSV."
-          : loadError instanceof Error
-            ? loadError.message
-            : "Falha ao ler o arquivo"
-      );
+      setError(loadError instanceof Error ? loadError.message : "Falha ao ler o arquivo");
     } finally {
       event.target.value = "";
     }

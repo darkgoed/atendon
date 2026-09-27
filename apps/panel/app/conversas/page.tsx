@@ -1,5 +1,5 @@
 "use client";
-import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowsLeftRight, BellRinging, BellSlash, CalendarDots, CheckCircle, Checks, Check, DotsThreeVertical, Flask, MagnifyingGlass, Pause, Robot, UserPlus, X } from "@/components/icons";
+import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowsLeftRight, BellRinging, BellSlash, CalendarDots, CheckCircle, Checks, Check, DotsThreeVertical, MagnifyingGlass, Pause, Robot, UserPlus, X } from "@/components/icons";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { ConversationComposer } from "@/components/conversation-composer";
@@ -56,7 +56,6 @@ import { handoffReasonLabel } from "@/lib/labels";
 import { useRealtimeSignals } from "@/lib/realtime";
 import {
   canLeaveCaseUnassigned,
-  canAccessRootWorkspace,
   hasWorkspaceWideCaseScope,
   losesCaseAccessAfterTransfer,
   type PanelSession
@@ -488,8 +487,6 @@ export default function Conversations() {
   const [aiActionNotice, setAiActionNotice] = useState("");
   const [changingOwner, setChangingOwner] = useState(false);
   const [followUpPending, setFollowUpPending] = useState(false);
-  const [queueingEvaluation, setQueueingEvaluation] = useState(false);
-  const [evaluationNotice, setEvaluationNotice] = useState("");
   const [schedulerOpen, setSchedulerOpen] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<{ message: string; confirmLabel: string; danger?: boolean; onConfirm: () => void } | null>(null);
   const [contactPanelOpen, setContactPanelOpen] = useState(false);
@@ -569,7 +566,6 @@ export default function Conversations() {
   const deltaEnabled = panelFeatureEnabled(featureFlags, "conversations_delta_v2");
   const aiTurnVisibilityEnabled = panelFeatureEnabled(featureFlags, "ai_turn_visibility_v1");
   const messageMode = deltaEnabled ? "delta" : "legacy";
-  const canQueueEvaluation = Boolean(session && canAccessRootWorkspace(session));
   const hasWorkspaceScope = Boolean(session && hasWorkspaceWideCaseScope(session));
   const effectiveFilter = hasWorkspaceScope ? filter : "mine";
   // Filtros no padrão único (ListFiltersBar, igual a /contatos): o objeto é a
@@ -1339,21 +1335,6 @@ export default function Conversations() {
     }
   }
 
-  async function queueManualEvaluation() {
-    if (!selected || queueingEvaluation) return;
-    setError("");
-    setEvaluationNotice("");
-    setQueueingEvaluation(true);
-    try {
-      await api("/agent/evaluations/run", { method: "POST", body: JSON.stringify({ conversationId: selected }) });
-      setEvaluationNotice("Avaliação manual enfileirada. O resultado aparecerá em Melhoria da IA.");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Falha ao enfileirar a avaliação manual");
-    } finally {
-      setQueueingEvaluation(false);
-    }
-  }
-
   function clearContactConversation() {
     if (!selected) return;
     setPendingConfirm({
@@ -1733,9 +1714,6 @@ export default function Conversations() {
                                 ? <><BellRinging size={15} aria-hidden="true" />Reativar avisos</>
                                 : <><BellSlash size={15} aria-hidden="true" />Silenciar conversa</>}
                             </button>
-                            {canQueueEvaluation ? <button className="conversation-action-menu__item" onClick={queueManualEvaluation} disabled={queueingEvaluation}>
-                              <Flask size={15} aria-hidden="true" />{queueingEvaluation ? "Enfileirando…" : "Avaliar com IA"}
-                            </button> : null}
                             {hasWorkspaceScope && canReply && activeConversation.status === "open" && !activeConversation.assigned_user_id ? (
                               <button className="conversation-action-menu__item" onClick={claimConversation} disabled={changingOwner}>
                                 <UserPlus size={15} aria-hidden="true" />
@@ -1787,7 +1765,6 @@ export default function Conversations() {
                 </div>
               </header>
 
-              {evaluationNotice ? <div className="shrink-0 border-b border-[var(--primary-border)] px-4 py-2 text-xs text-[var(--primary-text)]" role="status">{evaluationNotice}</div> : null}
               {aiActionNotice ? <div className="shrink-0 border-b border-[var(--primary-border)] px-4 py-2 text-xs text-[var(--primary-text)]" role="status">{aiActionNotice}</div> : null}
 
               {thread.conversation.status === "open" && !thread.conversation.ai_active ? (

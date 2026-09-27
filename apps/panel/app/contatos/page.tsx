@@ -17,7 +17,6 @@ import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { buildLeadFilterQuery, type LeadFilters } from "@/lib/lead-filters";
 import { leadStatusLabel } from "@/lib/labels";
-import { apiContentUrl } from "@/lib/meet";
 import { applyLeadSavedViewFilters, leadFiltersForSavedView, useCaseOrganizationEnabled } from "@/lib/organization";
 import { useRealtimeSignals } from "@/lib/realtime";
 import { hasWorkspaceWideCaseScope, type PanelSession } from "@/lib/session";
@@ -183,13 +182,30 @@ export default function LeadsPage() {
     }
   }
 
+  // Via api(): 401 volta ao login e 4xx vira mensagem no painel, em vez de
+  // navegar para o JSON cru da API.
+  async function exportCsv() {
+    setError("");
+    try {
+      const csv = await api<string>(query ? `/contact-ops/export.csv?${query}` : "/contact-ops/export.csv");
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `contatos-${new Date().toISOString().slice(0, 10)}.csv`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Falha ao exportar contatos");
+    }
+  }
+
   async function loadMoreLeads() {
     if (!pageState.cursor || loadingMore) return;
     setLoadingMore(true);
     setError("");
     try {
-      const cursorQuery = `cursor=${encodeURIComponent(pageState.cursor)}&limit=${LEADS_PAGE_SIZE}`;
-      const response = await api<LeadsResponse>(`/scheduling/leads?${listQuery}&${cursorQuery}`);
+      // listQuery já traz limit; repetir vira array no Fastify e o backend responde 400.
+      const response = await api<LeadsResponse>(`/scheduling/leads?${listQuery}&cursor=${encodeURIComponent(pageState.cursor)}`);
       setOlderLeads((current) => {
         const seen = new Set(current.map((lead) => lead.id));
         return [...current, ...response.leads.filter((lead) => !seen.has(lead.id))];
@@ -227,7 +243,7 @@ export default function LeadsPage() {
           <IconButton
             label="Exportar CSV"
             size="sm"
-            onClick={() => window.location.assign(apiContentUrl(query ? `/contact-ops/export.csv?${query}` : "/contact-ops/export.csv"))}
+            onClick={() => void exportCsv()}
           >
             <DownloadSimple size={14} aria-hidden="true" />
           </IconButton>

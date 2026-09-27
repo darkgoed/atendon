@@ -10,6 +10,8 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // 2FA: /auth/login só emite o desafio; a sessão vem de /auth/totp/verify.
+  const [totpStep, setTotpStep] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -20,13 +22,23 @@ export default function Login() {
     const data = new FormData(event.currentTarget);
 
     try {
-      const session = await api<{ user: { isRoot: boolean; mustChangePassword: boolean } }>("/auth/login", {
-        method: "POST",
-        body: JSON.stringify({
-          email: String(data.get("email") ?? ""),
-          password: String(data.get("password") ?? "")
+      const session = totpStep
+        ? await api<{ user: { isRoot: boolean; mustChangePassword: boolean } }>("/auth/totp/verify", {
+          method: "POST",
+          body: JSON.stringify({ code: String(data.get("code") ?? "") })
         })
-      });
+        : await api<{ totp_required?: boolean; user: { isRoot: boolean; mustChangePassword: boolean } }>("/auth/login", {
+          method: "POST",
+          body: JSON.stringify({
+            email: String(data.get("email") ?? ""),
+            password: String(data.get("password") ?? "")
+          })
+        });
+      if ("totp_required" in session && session.totp_required) {
+        setTotpStep(true);
+        setLoading(false);
+        return;
+      }
       window.location.assign(
         session.user.mustChangePassword
           ? "/alterar-senha"
@@ -66,6 +78,21 @@ export default function Login() {
           <p>Use as credenciais fornecidas pela equipe AtendON.</p>
         </header>
 
+        {totpStep ? (
+          <Field label="Código de verificação" htmlFor="code" hint="Digite o código de 6 dígitos do seu app autenticador.">
+            <Input
+              id="code"
+              name="code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="[0-9 ]{6,12}"
+              maxLength={12}
+              disabled={loading}
+              required
+              autoFocus
+            />
+          </Field>
+        ) : <>
         <Field label="E-mail" htmlFor="email">
           <Input
             id="email"
@@ -102,11 +129,12 @@ export default function Login() {
             </button>
           </div>
         </Field>
+        </>}
 
         {error ? <p className="error" role="alert">{error}</p> : null}
 
         <Button type="submit" tone="primary" className="button-wide" disabled={loading}>
-          {loading ? "Entrando…" : "Entrar"}
+          {loading ? "Entrando…" : totpStep ? "Verificar e entrar" : "Entrar"}
         </Button>
         <p className="login-note">Acesso restrito · sem cadastro público</p>
       </form>

@@ -18,8 +18,10 @@ import {
 import { BrandMark } from "./brand-mark";
 import { Shell } from "./shell";
 
-const publicPaths = ["/login", "/privacidade", "/termos", "/convite", "/invitations", "/reuniao", "/offline", "/403"] as const;
-const capabilityExemptPaths = ["/conversas", "/perfil", "/alterar-senha", "/root"] as const;
+// /alterar-senha é pública: com senha temporária o /me responde 428 e a página
+// só faz POST /auth/password-change-required (aceito no estado 428).
+const publicPaths = ["/login", "/alterar-senha", "/privacidade", "/termos", "/convite", "/invitations", "/reuniao", "/offline", "/403"] as const;
+const capabilityExemptPaths = ["/conversas", "/perfil", "/root"] as const;
 const startsAt = (path: string, base: string) => path === base || path.startsWith(`${base}/`);
 const createTenantCache = () => new Map();
 
