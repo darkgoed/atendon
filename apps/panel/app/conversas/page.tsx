@@ -586,8 +586,10 @@ export default function Conversations() {
     pendencias: pendingOnly ? "true" : "",
     numero: connectionFilter
   };
+  // Busca no SERVIDOR (todas as conversas, não só a 1ª página carregada), com debounce.
+  const [debouncedListQuery, setDebouncedListQuery] = useState("");
   const listKey = session
-    ? `/conversations?filter=${effectiveFilter}${connectionFilter ? `&session_id=${connectionFilter}` : ""}${unreadOnly ? "&unread=true" : ""}${pendingOnly ? "&pending_action=true" : ""}`
+    ? `/conversations?filter=${effectiveFilter}${connectionFilter ? `&session_id=${connectionFilter}` : ""}${unreadOnly ? "&unread=true" : ""}${pendingOnly ? "&pending_action=true" : ""}${debouncedListQuery ? `&q=${encodeURIComponent(debouncedListQuery)}` : ""}`
     : null;
   const { data: listData, error: listError, isLoading: listLoading, mutate: mutateList } = useSWR<ConversationsResponse>(listKey, fetcher, {
     refreshInterval: 10_000,
@@ -679,8 +681,12 @@ export default function Conversations() {
     const seen = new Set(fresh.map((item) => item.id));
     return [...fresh, ...olderConversations.filter((item) => !seen.has(item.id))];
   }, [listData?.conversations, olderConversations]);
-  // Busca local da lista (Conversas.dc.html: "Buscar por nome, telefone ou tag").
+  // Refino local sobre o resultado do servidor (Conversas.dc.html: "Buscar por nome, telefone ou tag").
   const [listQuery, setListQuery] = useState("");
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedListQuery(listQuery.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [listQuery]);
   const items = useMemo(() => {
     const q = listQuery.trim().toLocaleLowerCase("pt-BR");
     if (!q) return allItems;
@@ -1224,12 +1230,14 @@ export default function Conversations() {
 
   async function reactToMessage(messageId: string, emoji: string) {
     if (!selected) return;
-    const previous = messages;
+    const previousEmoji = messages.find((item) => item.id === messageId)?.reaction_emoji ?? null;
     setMessages((current) => current.map((item) => item.id === messageId ? { ...item, reaction_emoji: emoji || null } : item));
     try {
       await reactToMessageApi(selected, messageId, emoji || null);
     } catch (e) {
-      setMessages(previous);
+      // Desfaz só a reação desta mensagem: restaurar o snapshot do clique
+      // apagava mensagens que chegaram no meio (e o cursor delta já passou delas).
+      setMessages((current) => current.map((item) => item.id === messageId ? { ...item, reaction_emoji: previousEmoji } : item));
       setError(e instanceof Error ? e.message : "Falha ao reagir à mensagem");
     }
   }

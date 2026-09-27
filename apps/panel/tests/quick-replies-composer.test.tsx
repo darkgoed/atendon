@@ -165,4 +165,11 @@ describe("respostas rápidas do composer ('/')", () => {
     expect(onSent).not.toHaveBeenCalled();
     expect(textarea.value).toBe("/xyz");
   });
+
+  it("não mostra chips estáticos sem ação (PAINEL C11): o recurso é o '/'", () => {
+    renderComposer();
+    expect(screen.queryByText("Pedir CNPJ")).not.toBeInTheDocument();
+    expect(screen.queryByText("Enviar proposta")).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Respostas rápidas" })).not.toHaveAttribute("tabindex");
+  });
 });

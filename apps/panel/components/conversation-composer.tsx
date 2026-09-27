@@ -504,13 +504,11 @@ export function ConversationComposer({
             {generating ? <span className="on-spinner" aria-hidden="true" /> : <MagicWand size={16} aria-hidden="true" />}
           </Button>
         </Tooltip>
-          <div className="conversation-composer__quick-replies" role="group" aria-label="Respostas rápidas" tabIndex={0}>
+          {/* Os chips estáticos ("Enviar proposta" etc.) não faziam nada: o recurso real é o "/". */}
+          <div className="conversation-composer__quick-replies" role="group" aria-label="Respostas rápidas">
             <HelpHint label="Ajuda: Respostas rápidas" title="Respostas rápidas">
               Digite <kbd>/</kbd> no começo da mensagem para abrir a lista de respostas rápidas. A escolhida substitui o atalho e variáveis como {"{{nome}}"} e {"{{data}}"} são preenchidas na inserção.
             </HelpHint>
-            <span className="chip-action">Enviar proposta</span>
-            <span className="chip-action">Confirmar horário</span>
-            <span className="chip-action">Pedir CNPJ</span>
           </div>
         {/* DS v2: envio circular de 32px (ref. Conversas.dc.html). O nome
             acessível "Enviar mensagem"/"Enviando mensagem" não muda; sem

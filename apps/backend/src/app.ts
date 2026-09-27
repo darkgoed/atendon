@@ -1585,7 +1585,12 @@ export function buildApp(options: {
       OR strpos(lower(COALESCE(c.contact_name,'')),lower($2)) > 0
       OR strpos(COALESCE(c.contact_phone,''),$2) > 0
       OR strpos(lower(COALESCE(c.instagram_username,'')),lower(replace($2,'@',''))) > 0
-      OR strpos(COALESCE(c.instagram_contact_id,''),$2) > 0)`;
+      OR strpos(COALESCE(c.instagram_contact_id,''),$2) > 0
+      OR EXISTS (
+        SELECT 1 FROM lead_tag_assignments search_assignment
+        JOIN lead_tags search_tag ON search_tag.tenant_id=search_assignment.tenant_id AND search_tag.id=search_assignment.tag_id
+        WHERE search_assignment.tenant_id=c.tenant_id AND search_assignment.lead_id=c.lead_id
+          AND strpos(lower(search_tag.name),lower($2)) > 0))`;
     const values: unknown[] = [session.tenantId, q ?? "", session.userId, session_id ?? null, team_id ?? null];
     // Keyset page: (last_message_at, id) < before-cursor, matching ORDER BY.
     if (before) {

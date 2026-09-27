@@ -715,6 +715,22 @@ describe("panel API tenant isolation",()=>{
       await pool.query("DELETE FROM tenant_feature_flag_overrides WHERE tenant_id=$1 AND flag_key='conversations_delta_v2'",[tenantA]);
     }
   });
+  it("conversation search runs on the server over every conversation and also matches tag names (PAINEL C2)",async()=>{
+    const session=await pool.query<{session_id:string}>("SELECT session_id FROM conversations WHERE id=$1",[conversationA]);
+    const marker=`Zé${randomUUID().slice(0,6)}`;
+    const conversation=(await pool.query<{id:string;lead_id:string}>(
+      "INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name,last_message_at) VALUES($1,$2,$3,$4,now()-interval '400 days') RETURNING id,lead_id",
+      [tenantA,session.rows[0].session_id,nextPhone(),`Contato ${marker}`]
+    )).rows[0];
+    const byName=await app.inject({url:`/conversations?filter=all&q=${encodeURIComponent(marker)}`,headers:{cookie:cookieA}});
+    expect(byName.statusCode).toBe(200);
+    expect(byName.json().conversations.map((item:{id:string})=>item.id)).toEqual([conversation.id]);
+    const tagName=`etiqueta-${marker}`;
+    const tag=(await pool.query<{id:string}>("INSERT INTO lead_tags(tenant_id,name,color) VALUES($1,$2,'#00aa00') RETURNING id",[tenantA,tagName])).rows[0].id;
+    await pool.query("INSERT INTO lead_tag_assignments(tenant_id,lead_id,tag_id) VALUES($1,$2,$3)",[tenantA,conversation.lead_id,tag]);
+    const byTag=await app.inject({url:`/conversations?filter=all&q=${encodeURIComponent(tagName)}`,headers:{cookie:cookieA}});
+    expect(byTag.json().conversations.map((item:{id:string})=>item.id)).toEqual([conversation.id]);
+  });
   it("returns sanitized Meta attribution with the selected conversation",async()=>{
     const response=await app.inject({url:`/conversations/${conversationA}/messages`,headers:{cookie:cookieA}});
     expect(response.statusCode).toBe(200);
