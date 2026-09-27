@@ -78,7 +78,8 @@ export function ConversationContactPanel({
   onClose: () => void;
   onLoadMoreAssets?: () => void;
   onRetryAssets?: () => void;
-  onClearConversation: () => void;
+  /** Ausente: sem `leads.delete` (limpar histórico é irreversível). */
+  onClearConversation?: () => void;
   onSaveContactName: (name: string) => Promise<void>;
 }) {
   const [tab, setTab] = useState<PanelTab>("media");
@@ -345,7 +346,7 @@ export function ConversationContactPanel({
         <section className="border-b border-[var(--border-subtle)] px-4 py-3.5" aria-label="Nota interna da conversa">
           <ConversationNotes conversationId={conversation.id} />
         </section>
-        {canEdit ? (
+        {canEdit && onClearConversation ? (
           <section className="px-4 py-4">
             <IconButton type="button" tone="danger" label="Limpar conversa" onClick={onClearConversation}>
               <Trash size={17} aria-hidden="true" />

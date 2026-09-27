@@ -1884,7 +1884,7 @@ export function buildApp(options: {
     return { conversation_id: id, contact_name: updated.contact_name };
   });
   app.delete("/conversations/:id/messages", async (request, reply) => {
-    const session = await requirePermission(request, "conversations.reply");
+    const session = await requirePermission(request, "leads.delete");
     const { id } = idParams.parse(request.params);
     const scope = await resolveCaseScope(db, session);
     const cleared = await withTenantTransaction(db, session.tenantId, async (client) => {

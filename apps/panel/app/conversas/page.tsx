@@ -481,6 +481,7 @@ export default function Conversations() {
   const canReply = usePermission("conversations.reply");
 
   const canChangeAi = usePermission("conversations.reactivate");
+  const canClearHistory = usePermission("leads.delete");
   const canCreateAppointment = usePermission("appointments.create");
   const canReadAvailability = usePermission("availability.read");
   const canReadUnits = usePermission("units.read");
@@ -1879,7 +1880,7 @@ export default function Conversations() {
             onClose={() => setContactPanelOpen(false)}
             onLoadMoreAssets={loadMoreContactAssets}
             onRetryAssets={retryContactAssets}
-            onClearConversation={clearContactConversation}
+            onClearConversation={canClearHistory ? clearContactConversation : undefined}
             onSaveContactName={saveContactName}
           />
         ) : null}

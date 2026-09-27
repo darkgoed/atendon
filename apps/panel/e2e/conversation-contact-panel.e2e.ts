@@ -22,7 +22,7 @@ const session = {
   user: { id: "20000000-0000-4000-8000-000000000001", email: "revisao.tripz@example.test", isRoot: false, name: "Revisão Tripz" },
   activeWorkspace: { id: "30000000-0000-4000-8000-000000000001", name: "Tripz Turismo", slug: "tripzturismo-a44ab4", status: "active", role: "OWNER", timezone: "America/Sao_Paulo" },
   workspaces: [{ id: "30000000-0000-4000-8000-000000000001", name: "Tripz Turismo", slug: "tripzturismo-a44ab4", status: "active", role: "OWNER", timezone: "America/Sao_Paulo" }],
-  permissions: ["conversations.read", "conversations.reply", "conversations.reactivate"],
+  permissions: ["conversations.read", "conversations.reply", "conversations.reactivate", "leads.delete"],
   actorScope: "workspace"
 };
 

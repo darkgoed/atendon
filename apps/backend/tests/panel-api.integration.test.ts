@@ -559,6 +559,10 @@ describe("panel API tenant isolation",()=>{
     expect((await app.inject({method:"PATCH",url:`/conversations/${conversationA}/contact`,headers:{cookie:readOnlyCookie},payload:{name:"Sem permissão"}})).statusCode).toBe(403);
     expect((await app.inject({method:"DELETE",url:`/conversations/${conversationA}/messages`,headers:{cookie:readOnlyCookie}})).statusCode).toBe(403);
     expect((await app.inject({method:"DELETE",url:`/conversations/${conversationB}/messages`,headers:{cookie:cookieA}})).statusCode).toBe(404);
+    // Limpar histórico é irreversível: OPERADOR (sem leads.delete) não pode (seg. S1).
+    const operatorClear=await app.inject({method:"POST",url:"/auth/login",remoteAddress:"10.45.0.9",payload:{email:operatorEmail,password}});
+    const operatorClearCookie=[operatorClear.headers["set-cookie"]!].flat()[0].split(";")[0];
+    expect((await app.inject({method:"DELETE",url:`/conversations/${conversationA}/messages`,headers:{cookie:operatorClearCookie}})).statusCode).toBe(403);
 
     const assets=await app.inject({url:`/conversations/${conversationA}/assets?limit=2`,headers:{cookie:cookieA}});
     expect(assets.statusCode).toBe(200);
