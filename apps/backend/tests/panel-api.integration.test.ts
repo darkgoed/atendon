@@ -610,6 +610,24 @@ describe("panel API tenant isolation",()=>{
       refresh.mockRestore();
     }
   });
+  it("legacy thread returns the NEWEST 500 messages in chronological order (MSG C9)",async()=>{
+    const session=await pool.query<{session_id:string}>("SELECT session_id FROM conversations WHERE id=$1",[conversationA]);
+    const conversation=(await pool.query<{id:string}>(
+      "INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name) VALUES($1,$2,$3,'Conversa longa') RETURNING id",
+      [tenantA,session.rows[0].session_id,nextPhone()]
+    )).rows[0].id;
+    await pool.query(
+      `INSERT INTO messages(conversation_id,sender,content,created_at)
+       SELECT $1,'contact','msg '||n,now()-interval '1 hour'+n*interval '1 second' FROM generate_series(1,501) n`,
+      [conversation]
+    );
+    const response=await app.inject({url:`/conversations/${conversation}/messages`,headers:{cookie:cookieA}});
+    expect(response.statusCode).toBe(200);
+    const contents=response.json().messages.map((message:{content:string})=>message.content);
+    expect(contents).toHaveLength(500);
+    expect(contents[0]).toBe("msg 2");
+    expect(contents.at(-1)).toBe("msg 501");
+  });
   it("returns sanitized Meta attribution with the selected conversation",async()=>{
     const response=await app.inject({url:`/conversations/${conversationA}/messages`,headers:{cookie:cookieA}});
     expect(response.statusCode).toBe(200);

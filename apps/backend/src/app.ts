@@ -2134,15 +2134,19 @@ export function buildApp(options: {
       WHERE c.id=$1 AND c.tenant_id=$2
         AND (${conversationScopeCondition(scope, "c", "$3")})`, [id, session.tenantId, scope.userId]);
     if (!conversation.rows[0]) return reply.status(404).send({ error: "Conversa não encontrada" });
+    // As 500 MAIS RECENTES, em ordem cronológica: com LIMIT sobre a ordem
+    // ascendente, conversas longas nunca mostravam as mensagens novas.
     const messages = await db.query(
-      `SELECT m.id, m.sender, m.content, m.media_type, m.media_mime_type, m.media_file_name, m.media_size_bytes, m.media_is_sticker,
-              m.ai_model_used, m.status, m.created_at, COALESCE(su.name, su.email) sender_name,
-              m.reaction_emoji, m.edited_at, m.deleted_at, m.deleted_for_everyone_at,
-              reply.id reply_to_message_id, reply.content reply_to_content, reply.sender reply_to_sender
-       FROM messages m LEFT JOIN users su ON su.id=m.sent_by_user_id
-              LEFT JOIN messages reply
-                ON reply.id=m.reply_to_message_id AND reply.conversation_id=m.conversation_id
-       WHERE m.conversation_id=$1 ORDER BY m.created_at LIMIT 500`,
+      `SELECT * FROM (
+         SELECT m.id, m.sender, m.content, m.media_type, m.media_mime_type, m.media_file_name, m.media_size_bytes, m.media_is_sticker,
+                m.ai_model_used, m.status, m.created_at, COALESCE(su.name, su.email) sender_name,
+                m.reaction_emoji, m.edited_at, m.deleted_at, m.deleted_for_everyone_at,
+                reply.id reply_to_message_id, reply.content reply_to_content, reply.sender reply_to_sender
+         FROM messages m LEFT JOIN users su ON su.id=m.sent_by_user_id
+                LEFT JOIN messages reply
+                  ON reply.id=m.reply_to_message_id AND reply.conversation_id=m.conversation_id
+         WHERE m.conversation_id=$1 ORDER BY m.created_at DESC, m.id DESC LIMIT 500
+       ) newest ORDER BY created_at, id`,
       [id]
     );
     const aiTurn = await aiTurnProgressStore.get(session.tenantId, id);
