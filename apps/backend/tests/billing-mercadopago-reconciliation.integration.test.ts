@@ -160,4 +160,23 @@ describe("reconciliação ativa Mercado Pago", () => {
     await first;
     expect(getPayment).toHaveBeenCalledTimes(1);
   });
+
+  it("C9: vocabulário do gateway é normalizado (approved=paid, cancelled=rejected) antes de comparar", async () => {
+    const paid = await seedPayment({ status: "paid" });
+    const expired = await seedPayment({ status: "rejected" });
+    const byId = new Map([[paid.externalId, { local: paid, status: "approved" }], [expired.externalId, { local: expired, status: "cancelled" }]]);
+    const result = await runMercadoPagoReconciliationBatch(100, {
+      getPayment: async (id: string) => ({ id, status: byId.get(id)!.status, transaction_amount: 10, currency_id: "BRL", external_reference: byId.get(id)!.local.reference })
+    });
+    expect(result).toMatchObject({ scanned: 2, findings: 0, errors: [] });
+  });
+
+  it("C9: divergência real (gateway aprovou, banco segue pendente) continua crítica", async () => {
+    const local = await seedPayment();
+    const result = await runMercadoPagoReconciliationBatch(100, {
+      getPayment: async () => ({ id: local.externalId, status: "approved", transaction_amount: 10, currency_id: "BRL", external_reference: local.reference })
+    });
+    expect(result).toMatchObject({ scanned: 1, findings: 1 });
+    expect((await pool.query("SELECT severity FROM mercadopago_reconciliation_findings WHERE payment_id=$1 AND finding_type='STATUS_MISMATCH'", [local.paymentId])).rows[0].severity).toBe("critical");
+  });
 });

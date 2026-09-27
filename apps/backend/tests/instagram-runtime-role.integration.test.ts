@@ -8,6 +8,13 @@ import { InstagramRepository } from "../src/modules/instagram/repository.js";
 import { InstagramService } from "../src/modules/instagram/service.js";
 import { verifyChallenge } from "../src/modules/instagram/provider.js";
 import type { InstagramProvider, NormalizedInstagramEvent } from "../src/modules/instagram/types.js";
+import { acquireSharedProviderLock, INSTAGRAM_GLOBAL_LOCK_KEY, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
+
+// Varre tokens vencidos/tenants ativos do banco inteiro: serializa com as outras suítes do Instagram.
+let releaseInstagramLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseInstagramLock = await acquireSharedProviderLock(INSTAGRAM_GLOBAL_LOCK_KEY); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseInstagramLock?.(); });
+
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const key = "instagram-runtime-role-key-000000000000000";

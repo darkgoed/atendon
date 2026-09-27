@@ -10,6 +10,7 @@ import {
   stopMonthlyPixMandate,
 } from "../src/billing/efipay-mandates.js";
 import { encryptCredentials } from "../src/billing/providers/credentials.js";
+import { NEXT_DUE_SQL } from "../src/billing/efipay-monthly-batch.js";
 import type { EfiTransport, EfiTransportRequest, EfiTransportResponse } from "../src/billing/providers/efipay-pix-automatic.js";
 
 /**
@@ -119,11 +120,12 @@ async function insertStuckCreatingMandate(tenantId: string): Promise<string> {
   // Simula queda no meio da criação remota: CREATING, sem idRec nem location.
   const r = await pool.query<{ id: string }>(
     `INSERT INTO ai_credit_pix_mandates(tenant_id,provider_id,status,first_due_on,consent_actor_user_id,credits,price_cents)
-     VALUES($1,$2,'CREATING',CURRENT_DATE+30,$3,50000000,15700) RETURNING id`, [tenantId, providerId, ACTOR]);
+     VALUES($1,$2,'CREATING',(now() AT TIME ZONE 'America/Sao_Paulo')::date+30,$3,50000000,15700) RETURNING id`, [tenantId, providerId, ACTOR]);
   return r.rows[0].id;
 }
 
-const futureDate = (days: number): string => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+// Datas da Efí são do calendário de Brasília (o mesmo que o código usa).
+const futureDate = (days: number): string => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date(Date.now() + days * 86_400_000));
 const txidFor = (seed: string): string => seed.replaceAll("-", "").slice(-26); // cauda carrega o sufixo distinto (txid é global único)
 
 async function insertCharge(mandateId: string, txid: string, dueOn: string, status = "PENDING", invoiceId?: string): Promise<string> {
@@ -477,5 +479,32 @@ describe("stopMonthlyPixMandate", () => {
     expect(stopped?.status).toBe("CANCELLED");
     expect(fake.requests.filter((r) => r.path.startsWith("/v2/cobr"))).toHaveLength(0);
     expect((await pool.query<{ status: string }>("SELECT status FROM ai_credit_pix_charges WHERE id=$1", [chargeId])).rows[0].status).toBe("PENDING");
+  });
+});
+
+// S6: a janela 2–10 dias do Pix Automático é contada no calendário de Brasília,
+// não no fuso da sessão do banco (UTC em produção vira o dia às 21h BRT).
+describe("janela do lote mensal em America/Sao_Paulo", () => {
+  it("seleciona pelo dia BRT mesmo com a sessão do banco em outro fuso", async () => {
+    const brtHour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", hour: "numeric", hourCycle: "h23" }).format(new Date()));
+    const skewed = brtHour >= 7 ? "Pacific/Kiritimati" : "Etc/GMT+12"; // data da sessão ≠ data BRT agora
+    // Tudo numa transação desfeita no fim: os mandatos de teste nunca ficam
+    // visíveis ao lote mensal de outra suíte rodando em paralelo.
+    const client = await pool.connect();
+    await client.query("BEGIN");
+    const mandates: Record<number, string> = {};
+    try {
+    for (const offset of [1, 2, 10, 11]) {
+      // Um mandato ativo por tenant (unique parcial): um tenant por vencimento.
+      const tenant = (await client.query<{ id: string }>("INSERT INTO tenants(name,slug,status) VALUES($1,$1,'active') RETURNING id", [`efipay-mandate-tz-${randomUUID()}`])).rows[0].id;
+      mandates[offset] = (await client.query<{ id: string }>(
+        `INSERT INTO ai_credit_pix_mandates(tenant_id,provider_id,status,first_due_on,consent_actor_user_id,credits,price_cents,external_id_rec)
+         VALUES($1,$2,'APPROVED',(now() AT TIME ZONE 'America/Sao_Paulo')::date + $3::int,$4,50000000,15700,$5) RETURNING id`,
+        [tenant, providerId, offset, ACTOR, `rec-tz-${offset}-${randomUUID()}`])).rows[0].id;
+    }
+      await client.query(`SET LOCAL TIME ZONE '${skewed}'`);
+      const rows = (await client.query<{ mandate_id: string }>(NEXT_DUE_SQL, [100000, 24, 2, 10])).rows.map((r) => r.mandate_id);
+      expect([1, 2, 10, 11].filter((o) => rows.includes(mandates[o]))).toEqual([2, 10]);
+    } finally { await client.query("ROLLBACK"); client.release(); }
   });
 });

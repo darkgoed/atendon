@@ -91,7 +91,7 @@ async function fixture(dueOffsetDays: number, mandateStatus = "APPROVED"): Promi
     const rec = `rec-${id}`;
     const mandate = (await client.query<{ id: string }>(
       `INSERT INTO ai_credit_pix_mandates(tenant_id,provider_id,status,first_due_on,consent_actor_user_id,credits,price_cents,external_id_rec)
-       VALUES($1,$2,$3,CURRENT_DATE + $4::int,$5,50000000,15700,$6) RETURNING id`,
+       VALUES($1,$2,$3,(now() AT TIME ZONE 'America/Sao_Paulo')::date + $4::int,$5,50000000,15700,$6) RETURNING id`,
       [tenant, provider, mandateStatus, dueOffsetDays, ACTOR, rec])).rows[0].id;
     await client.query("COMMIT");
     return { tenant, provider, mandate, rec };
@@ -199,6 +199,13 @@ describe("fase de criação (janela 2–10 dias)", () => {
     expect(charge).toBeDefined(); // fase 1 criou a linha local
     expect(recCalls).toBe(2);
     expect(fake.charges.has(charge.txid)).toBe(false); // nenhum PUT desta cobrança
+  });
+
+  it("S4: mandato cancelado entre o GET da rec e o lock não deixa fatura de pacote órfã pendente", async () => {
+    const f = await fixture(5); const fake = new FakeEfi();
+    fake.getRecurrence = async (idRec: string) => { if (idRec === f.rec) await pool.query("UPDATE ai_credit_pix_mandates SET status='CANCELLED',cancelled_at=now() WHERE id=$1", [f.mandate]); return { idRec, status: "APROVADA", payload: {} }; };
+    await runBatch(fake);
+    expect((await pool.query<{ status: string }>("SELECT status FROM invoices WHERE tenant_id=$1", [f.tenant])).rows.map((r) => r.status)).not.toContain("pending");
   });
 
   it("rec não-APROVADA na Efí bloqueia, espelha o status terminal e não cria", async () => {

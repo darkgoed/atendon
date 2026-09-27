@@ -18,6 +18,9 @@ async function setup(limit = 10, expired = false) {
   const c = await pool.connect(); try { await c.query("BEGIN"); const r = await ensureOpenPeriod(c, t); await c.query("COMMIT"); return { t, period: r! }; } catch (e) { await c.query("ROLLBACK"); throw e; } finally { c.release(); }
 }
 async function scalar<T = string>(sql: string, p: unknown[] = []) { return (await pool.query<{ value: T }>(sql, p)).rows[0]?.value; }
+// Reservas do tenant liberadas por TTL: o lote é global e outros arquivos o rodam em paralelo,
+// então os contadores do resultado não são atribuíveis a este teste.
+async function expiredFor(t: string) { return Number(await scalar("SELECT count(*)::int AS value FROM ai_usage_ledger WHERE tenant_id=$1 AND pricing_snapshot->>'reconciliation'='expired_without_usage_logs'", [t])); }
 async function credit(t: string, cap: number) { await pool.query("INSERT INTO tenant_usage_credit_settings(tenant_id,enabled,limit_type,monthly_spending_limit_cents) VALUES($1,true,'FIXED',$2)", [t, cap]); }
 
 afterAll(async () => { if (tenants.length) await pool.query("DELETE FROM tenants WHERE id=ANY($1::uuid[])", [tenants]); if (plans.length) await pool.query("DELETE FROM plans WHERE id=ANY($1::uuid[])", [plans]); await pool.end(); });
@@ -33,7 +36,7 @@ describe("billing lifecycle with real Postgres", () => {
     await pool.query("UPDATE tenant_subscriptions SET billing_cycle='YEARLY', current_period_end=now()+interval '12 months' WHERE tenant_id=$1", [x.t]);
     await pool.query("UPDATE usage_periods SET sequence=2, end_at=now()-interval '1 day', included_usage=0 WHERE id=$1", [x.period.id]);
     const boundary = await scalar<string>("SELECT current_period_end::text AS value FROM tenant_subscriptions WHERE tenant_id=$1", [x.t]);
-    const r = await runBillingReconciliationBatch();
+    const r = await runBillingReconciliationBatch(100000);
     expect(r.errors).toEqual([]);
     expect(r.periods).toBeGreaterThanOrEqual(1);
     expect(await scalar("SELECT status AS value FROM usage_periods WHERE id=$1", [x.period.id])).toBe("CLOSED");
@@ -46,16 +49,16 @@ describe("billing lifecycle with real Postgres", () => {
   });
   it("consume persists usage alerts when quota threshold is crossed", async () => { const x = await setup(1); await consumeAiInteraction(x.t, "inbound_reply", randomUUID()); expect(await scalar("SELECT count(*)::int AS value FROM usage_alerts WHERE tenant_id=$1 AND alert_type='QUOTA'", [x.t])).toBeGreaterThan(0); });
   it("reconcile persists credit alerts when credit threshold is crossed", async () => { const x = await setup(0); await credit(x.t, 100); const key = randomUUID(); const c = await consumeAiInteraction(x.t, "inbound_reply", key); expect(c.allowed).toBe(true); await reconcileAiInteraction(x.t, "inbound_reply", key, { model: null, inputTokens: 0, outputTokens: 0, cachedTokens: 0, providerCostUsd: 1 }); expect(await scalar("SELECT count(*)::int AS value FROM usage_alerts WHERE tenant_id=$1 AND alert_type='CREDIT'", [x.t])).toBeGreaterThan(0); });
-  it("expires old OVERAGE without logs, releases exactly the reservation, and records reconciliation", async () => { const x = await setup(0); await credit(x.t, 100000); await consumeAiInteraction(x.t, "inbound_reply", randomUUID()); const before = Number(await scalar("SELECT reserved_cents AS value FROM usage_periods WHERE id=$1", [x.period.id])); expect(before).toBeGreaterThan(0); await pool.query("UPDATE ai_usage_ledger SET created_at=now()-interval '2 days' WHERE tenant_id=$1", [x.t]); const r = await runBillingReconciliationBatch(); expect(r.expiredReservations).toBe(1); expect(Number(await scalar("SELECT reserved_cents AS value FROM usage_periods WHERE id=$1", [x.period.id]))).toBe(0); expect(await scalar("SELECT reconciled AS value FROM ai_usage_ledger WHERE tenant_id=$1", [x.t])).toBe(true); expect(await scalar("SELECT pricing_snapshot->>'reconciliation' AS value FROM ai_usage_ledger WHERE tenant_id=$1", [x.t])).toBe("expired_without_usage_logs"); });
-  it("running batch twice does not duplicate rollover, alerts, or release", async () => { const x = await setup(0); await credit(x.t, 100000); const key = randomUUID(); await consumeAiInteraction(x.t, "inbound_reply", key); await pool.query("UPDATE usage_periods SET end_at=now()-interval '1 day' WHERE id=$1", [x.period.id]); await runBillingReconciliationBatch(); const a = { r: Number(await scalar("SELECT count(*)::int AS value FROM rollover_ledger WHERE tenant_id=$1", [x.t])), u: Number(await scalar("SELECT count(*)::int AS value FROM usage_alerts WHERE tenant_id=$1", [x.t])) }; await runBillingReconciliationBatch(); expect(Number(await scalar("SELECT count(*)::int AS value FROM rollover_ledger WHERE tenant_id=$1", [x.t]))).toBe(a.r); expect(Number(await scalar("SELECT count(*)::int AS value FROM usage_alerts WHERE tenant_id=$1", [x.t]))).toBe(a.u); });
-  it("an invalid tenant does not prevent another tenant from processing", async () => { const bad = await setup(10), good = await setup(10); await pool.query("UPDATE tenant_subscriptions SET status='CANCELED', current_period_end=now()-interval '1 day' WHERE tenant_id=$1", [bad.t]); await pool.query("UPDATE usage_periods SET end_at=now()-interval '1 day' WHERE tenant_id=$1", [good.t]); const r = await runBillingReconciliationBatch(); expect(r.periods).toBeGreaterThanOrEqual(1); expect(await scalar("SELECT count(*)::int AS value FROM usage_periods WHERE tenant_id=$1 AND status='OPEN'", [good.t])).toBe(1); expect(await scalar("SELECT count(*)::int AS value FROM usage_periods WHERE tenant_id=$1 AND status='OPEN'", [bad.t])).toBe(1); expect(r.errors.length).toBeGreaterThanOrEqual(0); });
+  it("expires old OVERAGE without logs, releases exactly the reservation, and records reconciliation", async () => { const x = await setup(0); await credit(x.t, 100000); await consumeAiInteraction(x.t, "inbound_reply", randomUUID()); const before = Number(await scalar("SELECT reserved_cents AS value FROM usage_periods WHERE id=$1", [x.period.id])); expect(before).toBeGreaterThan(0); await pool.query("UPDATE ai_usage_ledger SET created_at=now()-interval '2 days' WHERE tenant_id=$1", [x.t]); await runBillingReconciliationBatch(100000); expect(await expiredFor(x.t)).toBe(1); expect(Number(await scalar("SELECT reserved_cents AS value FROM usage_periods WHERE id=$1", [x.period.id]))).toBe(0); expect(await scalar("SELECT reconciled AS value FROM ai_usage_ledger WHERE tenant_id=$1", [x.t])).toBe(true); expect(await scalar("SELECT pricing_snapshot->>'reconciliation' AS value FROM ai_usage_ledger WHERE tenant_id=$1", [x.t])).toBe("expired_without_usage_logs"); });
+  it("running batch twice does not duplicate rollover, alerts, or release", async () => { const x = await setup(0); await credit(x.t, 100000); const key = randomUUID(); await consumeAiInteraction(x.t, "inbound_reply", key); await pool.query("UPDATE usage_periods SET end_at=now()-interval '1 day' WHERE id=$1", [x.period.id]); await runBillingReconciliationBatch(100000); const a = { r: Number(await scalar("SELECT count(*)::int AS value FROM rollover_ledger WHERE tenant_id=$1", [x.t])), u: Number(await scalar("SELECT count(*)::int AS value FROM usage_alerts WHERE tenant_id=$1", [x.t])) }; await runBillingReconciliationBatch(100000); expect(Number(await scalar("SELECT count(*)::int AS value FROM rollover_ledger WHERE tenant_id=$1", [x.t]))).toBe(a.r); expect(Number(await scalar("SELECT count(*)::int AS value FROM usage_alerts WHERE tenant_id=$1", [x.t]))).toBe(a.u); });
+  it("an invalid tenant does not prevent another tenant from processing", async () => { const bad = await setup(10), good = await setup(10); await pool.query("UPDATE tenant_subscriptions SET status='CANCELED', current_period_end=now()-interval '1 day' WHERE tenant_id=$1", [bad.t]); await pool.query("UPDATE usage_periods SET end_at=now()-interval '1 day' WHERE tenant_id=$1", [good.t]); const r = await runBillingReconciliationBatch(100000); expect(r.periods).toBeGreaterThanOrEqual(1); expect(await scalar("SELECT count(*)::int AS value FROM usage_periods WHERE tenant_id=$1 AND status='OPEN'", [good.t])).toBe(1); expect(await scalar("SELECT count(*)::int AS value FROM usage_periods WHERE tenant_id=$1 AND status='OPEN'", [bad.t])).toBe(1); expect(r.errors.length).toBeGreaterThanOrEqual(0); });
   it("TTL expiry releases the included counter and renews quota, not only reserved_cents", async () => {
     const x = await setup(1);
     expect(await consumeAiInteraction(x.t, "inbound_reply", randomUUID())).toMatchObject({ allowed: true, consumptionType: "INCLUDED" });
     expect(await scalar("SELECT included_usage AS value FROM usage_periods WHERE id=$1", [x.period.id])).toBe("1");
     await pool.query("UPDATE ai_usage_ledger SET created_at=now()-interval '2 days' WHERE tenant_id=$1", [x.t]);
-    const r = await runBillingReconciliationBatch();
-    expect(r.errors).toEqual([]); expect(r.expiredReservations).toBe(1);
+    const r = await runBillingReconciliationBatch(100000);
+    expect(r.errors.filter((e) => e.includes(x.t))).toEqual([]); expect(await expiredFor(x.t)).toBe(1);
     expect(await scalar("SELECT included_usage AS value FROM usage_periods WHERE id=$1", [x.period.id])).toBe("0");
     expect(await consumeAiInteraction(x.t, "inbound_reply", randomUUID())).toMatchObject({ allowed: true, consumptionType: "INCLUDED" });
     expect(await scalar("SELECT included_usage AS value FROM usage_periods WHERE id=$1", [x.period.id])).toBe("1");
@@ -68,8 +71,9 @@ describe("billing lifecycle with real Postgres", () => {
     expect(await consumeAiInteraction(x.t, "inbound_reply", "r")).toMatchObject({ allowed: true, consumptionType: "ROLLOVER" });
     expect(await consumeAiInteraction(x.t, "inbound_reply", "b")).toMatchObject({ allowed: true, consumptionType: "BONUS" });
     await pool.query("UPDATE ai_usage_ledger SET created_at=now()-interval '2 days' WHERE tenant_id=$1", [x.t]);
-    const r = await runBillingReconciliationBatch();
-    expect(r.errors).toEqual([]); expect(r.expiredReservations).toBe(2);
+    // Lote global: outros arquivos gravam reservas no mesmo banco em paralelo.
+    const r = await runBillingReconciliationBatch(100000);
+    expect(r.errors.filter((e) => e.includes(x.t))).toEqual([]); expect(await expiredFor(x.t)).toBe(2);
     expect(await pool.query("SELECT rollover_usage,bonus_usage FROM usage_periods WHERE id=$1", [u]).then(x => x.rows[0])).toMatchObject({ rollover_usage: "0", bonus_usage: "0" });
     expect(await scalar("SELECT consumed_amount AS value FROM rollover_ledger WHERE tenant_id=$1", [x.t])).toBe("0");
     expect(await scalar("SELECT consumed_amount AS value FROM usage_grants WHERE id=$1", [g])).toBe("0");
@@ -81,8 +85,8 @@ describe("billing lifecycle with real Postgres", () => {
     expect(await consumeAiInteraction(x.t, "inbound_reply", turn)).toMatchObject({ allowed: true, consumptionType: "INCLUDED" });
     await pool.query("INSERT INTO usage_logs(tenant_id,request_id,ai_model,input_tokens,output_tokens,cost_usd) VALUES($1,$2,'test-model',10,10,0.01)", [x.t, turn]);
     await pool.query("UPDATE ai_usage_ledger SET created_at=now()-interval '2 days' WHERE tenant_id=$1", [x.t]);
-    const r = await runBillingReconciliationBatch();
-    expect(r.expiredReservations).toBe(0);
+    await runBillingReconciliationBatch(100000);
+    expect(await expiredFor(x.t)).toBe(0);
     expect(await scalar("SELECT reconciled AS value FROM ai_usage_ledger WHERE tenant_id=$1", [x.t])).toBe(true);
     expect(await scalar("SELECT pricing_snapshot->>'reconciliation' AS value FROM ai_usage_ledger WHERE tenant_id=$1", [x.t])).toBe(null);
     expect(await scalar("SELECT included_usage AS value FROM usage_periods WHERE id=$1", [x.period.id])).toBe("1");
@@ -101,9 +105,9 @@ describe("billing lifecycle with real Postgres", () => {
     expect(before[0]).toMatchObject({ direction: "CREDIT", amount_cents: String(estimated) });
     expect(Number(before[0].balance_after_cents)).toBeGreaterThan(Number(before[0].balance_before_cents));
     await pool.query("UPDATE ai_usage_ledger SET created_at=now()-interval '2 days' WHERE tenant_id=$1", [x.t]);
-    const r = await runBillingReconciliationBatch();
-    expect(r.errors).toEqual([]);
-    expect(r.expiredReservations).toBe(1);
+    const r = await runBillingReconciliationBatch(100000);
+    expect(r.errors.filter((e) => e.includes(x.t))).toEqual([]);
+    expect(await expiredFor(x.t)).toBe(1);
     const rows = (await pool.query<{ direction: string; amount_cents: string; balance_before_cents: string; balance_after_cents: string }>(
       "SELECT direction,amount_cents,balance_before_cents,balance_after_cents FROM financial_ledger WHERE tenant_id=$1 AND actor_type='AI_RESERVATION' ORDER BY created_at,id", [x.t])).rows;
     expect(rows).toHaveLength(2);
@@ -119,16 +123,29 @@ describe("billing lifecycle with real Postgres", () => {
     const turn = randomUUID();
     expect(await consumeAiInteraction(x.t, "inbound_reply", turn)).toMatchObject({ allowed: true, consumptionType: "OVERAGE" });
     await pool.query("UPDATE ai_usage_ledger SET created_at=now()-interval '2 days' WHERE tenant_id=$1", [x.t]);
-    const first = await runBillingReconciliationBatch();
-    expect(first.errors).toEqual([]);
-    expect(first.expiredReservations).toBe(1);
-    const second = await runBillingReconciliationBatch();
-    expect(second.expiredReservations).toBe(0);
+    const first = await runBillingReconciliationBatch(100000);
+    expect(first.errors.filter((e) => e.includes(x.t))).toEqual([]);
+    expect(await expiredFor(x.t)).toBe(1);
+    await runBillingReconciliationBatch(100000);
+    expect(await expiredFor(x.t)).toBe(1);
     await releaseAiInteractionWithoutUsage(x.t, "inbound_reply", turn);
     const rows = (await pool.query<{ direction: string; amount_cents: string }>(
       "SELECT direction,amount_cents FROM financial_ledger WHERE tenant_id=$1 AND actor_type='AI_RESERVATION' ORDER BY created_at,id", [x.t])).rows;
     expect(rows.filter(row => row.direction === "DEBIT")).toHaveLength(1);
     expect(rows.reduce((sum, row) => sum + (row.direction === "CREDIT" ? Number(row.amount_cents) : -Number(row.amount_cents)), 0)).toBe(0);
     expect(await scalar("SELECT reconciled AS value FROM ai_usage_ledger WHERE tenant_id=$1", [x.t])).toBe(true);
+  });
+  it("C11: a period is only invoiced after its in-flight AI reservations reconcile, so late overage is billed", async () => {
+    const x = await setup(0); await credit(x.t, 100000);
+    const key = randomUUID();
+    expect(await consumeAiInteraction(x.t, "inbound_reply", key)).toMatchObject({ allowed: true, consumptionType: "OVERAGE" });
+    await pool.query("UPDATE usage_periods SET end_at=now()-interval '1 second' WHERE id=$1", [x.period.id]);
+    await runBillingReconciliationBatch(1000);
+    expect(await scalar("SELECT status AS value FROM usage_periods WHERE id=$1", [x.period.id])).toBe("CLOSED");
+    await reconcileAiInteraction(x.t, "inbound_reply", key, { model: null, inputTokens: 0, outputTokens: 0, cachedTokens: 0, providerCostUsd: 1 });
+    const overage = Number(await scalar("SELECT overage_amount_brl_cents AS value FROM usage_periods WHERE id=$1", [x.period.id]));
+    expect(overage).toBeGreaterThan(0);
+    await runBillingReconciliationBatch(1000);
+    expect(Number(await scalar("SELECT l.amount_cents AS value FROM invoice_line_items l JOIN invoices i ON i.id=l.invoice_id WHERE i.metadata->>'usage_period_id'=$1 AND l.kind='AI_OVERAGE'", [x.period.id]))).toBe(overage);
   });
 });

@@ -13,6 +13,8 @@ export interface PaymentInput {
   description?: string;
   payer?: BillingPayload;
   metadata?: BillingPayload;
+  /** Validade do Pix no provedor: menor que a janela em que a cobrança é reemitida. */
+  expiresAt?: Date;
 }
 export interface ProviderResult { externalId: string; status?: string; payload?: BillingPayload; }
 export interface WebhookResult {

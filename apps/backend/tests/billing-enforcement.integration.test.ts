@@ -6,6 +6,7 @@ import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
 import { seedTenantCapabilities } from "./helpers/capability-seed.js";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
+import { createHash } from "node:crypto";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const app = buildApp();
@@ -71,5 +72,50 @@ describe("HTTP entitlement enforcement", () => {
     const rootCookie = await login(rootEmail);
     expect((await app.inject({ method: "GET", url: "/root/workspaces", headers: { cookie: rootCookie } })).json().code).not.toBe("FEATURE_NOT_AVAILABLE");
     expect((await app.inject({ method: "POST", url: "/agendamentos", headers: { cookie }, payload: {} })).json().code).not.toBe("FEATURE_NOT_AVAILABLE");
+  });
+});
+
+// C10: MAX_USERS (is_enforced no catálogo) precisa ser barrado no servidor na
+// criação e no aceite de convite, não só no painel.
+describe("MAX_USERS enforcement", () => {
+  const ownerEmail = `max-users-owner-${suffix}@test.local`;
+  let limited = "", plan = "", adminRole = "";
+  beforeAll(async () => {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      limited = (await client.query<{ id: string }>("INSERT INTO tenants(name,slug,status) VALUES($1,$1,'active') RETURNING id", [`max-users-${suffix}`])).rows[0].id;
+      await seedTenantCapabilities(client, [limited]);
+      await ensureWorkspaceDefaultRoles(client, limited);
+      plan = (await client.query<{ id: string }>("INSERT INTO plans(code,name,billing_period_months,monthly_price_cents) VALUES($1,$1,1,100) RETURNING id", [`MAXU-${suffix}`])).rows[0].id;
+      await client.query("INSERT INTO plan_limits(plan_id,limit_key,limit_value) VALUES($1,'MAX_USERS',1)", [plan]);
+      await client.query("INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,current_period_start,current_period_end) VALUES($1,$2,'ACTIVE',now(),now()+interval '1 month')", [limited, plan]);
+      const owner = (await client.query<{ id: string }>("INSERT INTO users(email,password_hash,status) VALUES($1,$2,'active') RETURNING id", [ownerEmail, await hash(password, 4)])).rows[0].id;
+      await client.query("INSERT INTO workspace_members(workspace_id,user_id,role_id,status,joined_at) SELECT $1,$2,id,'active',now() FROM workspace_roles WHERE workspace_id=$1 AND name='OWNER'", [limited, owner]);
+      adminRole = (await client.query<{ id: string }>("SELECT id FROM workspace_roles WHERE workspace_id=$1 AND name='ADMIN'", [limited])).rows[0].id;
+      await client.query("COMMIT");
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  });
+  afterAll(async () => {
+    await pool.query("DELETE FROM tenants WHERE id=$1", [limited]);
+    await pool.query("DELETE FROM plans WHERE id=$1", [plan]);
+    await pool.query("DELETE FROM audit_logs WHERE actor_user_id IN (SELECT id FROM users WHERE email LIKE $1)", [`max-users-%${suffix}@test.local`]);
+    await pool.query("DELETE FROM users WHERE email LIKE $1", [`max-users-%${suffix}@test.local`]);
+  });
+
+  it("rejects creating an invitation beyond MAX_USERS with PLAN_LIMIT_REACHED", async () => {
+    const response = await app.inject({ method: "POST", url: "/workspaces/current/invitations", headers: { cookie: await login(ownerEmail) }, payload: { email: `max-users-guest-${suffix}@test.local`, roleId: adminRole } });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "PLAN_LIMIT_REACHED" });
+  });
+
+  it("rejects accepting an invitation beyond MAX_USERS and creates no membership", async () => {
+    const token = `max-users-token-${suffix}-${"x".repeat(16)}`;
+    await pool.query("INSERT INTO workspace_invitations(workspace_id,email,role_id,token_hash,status,expires_at,invited_by_user_id) SELECT $1,$2,$3,$4,'pending',now()+interval '7 days',id FROM users WHERE email=$5",
+      [limited, `max-users-late-${suffix}@test.local`, adminRole, createHash("sha256").update(token).digest("hex"), ownerEmail]);
+    const response = await app.inject({ method: "POST", url: "/auth/accept-invitation", remoteAddress: "10.77.1.1", payload: { token, newPassword: "max-users-pass", passwordConfirmation: "max-users-pass" } });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "PLAN_LIMIT_REACHED" });
+    expect((await pool.query("SELECT count(*)::int n FROM workspace_members WHERE workspace_id=$1", [limited])).rows[0].n).toBe(1);
   });
 });

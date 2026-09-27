@@ -4,7 +4,7 @@ import { ensureOpenPeriod } from "./usage-period.js";
 import { expireRollover } from "./rollover.js";
 import { getBillingSettings } from "./settings.js";
 import { reconcileAiTurnFromUsageLogs, releaseAiReservation, type AiReservationRow } from "./ai-consumption.js";
-import { createInvoiceForUsagePeriod } from "./invoices.js";
+import { createFirstCycleInvoice, createInvoiceForUsagePeriod } from "./invoices.js";
 import { createChargeForInvoice, type ChargeDeps } from "./charges.js";
 import { CHARGEABLE_SUBSCRIPTION_STATUSES } from "./types.js";
 
@@ -17,7 +17,7 @@ export async function runSubscriptionLifecycleBatch(limit = 100): Promise<Subscr
   for (const { tenant_id } of candidates.rows) {
     try {
       await withTenantTransaction(db, tenant_id, async (client) => {
-        const locked = await client.query<{ id: string; status: string; paid: boolean }>(`SELECT s.id,s.status,EXISTS (SELECT 1 FROM invoices i JOIN payments p ON p.invoice_id=i.id WHERE i.subscription_id=s.id AND i.status IN ('paid','PAID') AND p.status IN ('paid','PAID')) AS paid FROM tenant_subscriptions s WHERE s.tenant_id=$1 AND ((s.status IN ('PAST_DUE','GRACE_PERIOD') AND s.grace_period_ends_at IS NOT NULL AND s.grace_period_ends_at <= now()) OR (s.status='TRIALING' AND s.trial_ends_at IS NOT NULL AND s.trial_ends_at <= now())) FOR UPDATE`, [tenant_id]);
+        const locked = await client.query<{ id: string; status: string; paid: boolean; final_price_cents: string | null }>(`SELECT s.id,s.status,s.final_price_cents,EXISTS (SELECT 1 FROM invoices i JOIN payments p ON p.invoice_id=i.id WHERE i.subscription_id=s.id AND i.status IN ('paid','PAID') AND p.status IN ('paid','PAID')) AS paid FROM tenant_subscriptions s WHERE s.tenant_id=$1 AND ((s.status IN ('PAST_DUE','GRACE_PERIOD') AND s.grace_period_ends_at IS NOT NULL AND s.grace_period_ends_at <= now()) OR (s.status='TRIALING' AND s.trial_ends_at IS NOT NULL AND s.trial_ends_at <= now())) FOR UPDATE`, [tenant_id]);
         for (const sub of locked.rows) {
           if (sub.status === 'TRIALING' && sub.paid) {
             await client.query(`UPDATE tenant_subscriptions SET status='ACTIVE',grace_period_ends_at=NULL,updated_at=now() WHERE id=$1 AND status='TRIALING'`, [sub.id]);
@@ -25,6 +25,14 @@ export async function runSubscriptionLifecycleBatch(limit = 100): Promise<Subscr
             continue;
           }
           if (sub.status === 'TRIALING') {
+            // Contrato gratuito não tem o que pagar: converte em vez de inadimplir.
+            if (sub.final_price_cents !== null && Number(sub.final_price_cents) <= 0) {
+              await client.query(`UPDATE tenant_subscriptions SET status='ACTIVE',grace_period_ends_at=NULL,updated_at=now() WHERE id=$1 AND status='TRIALING'`, [sub.id]);
+              await client.query(`INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_status,to_status,metadata) VALUES($1,$2,'LIFECYCLE_STATUS_CHANGED','TRIALING','ACTIVE',$3)`, [tenant_id, sub.id, { reason: "trial_converted_free" }]);
+              continue;
+            }
+            // Sem fatura a inadimplência não teria saída: emite a do 1º ciclo.
+            await createFirstCycleInvoice(client, sub.id);
             await client.query(`UPDATE tenant_subscriptions SET status='PAST_DUE',grace_period_ends_at=now() + (COALESCE((SELECT grace_period_days FROM plans WHERE id=tenant_subscriptions.plan_id),7) * interval '1 day'),updated_at=now() WHERE id=$1 AND status='TRIALING'`, [sub.id]);
             await client.query(`INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_status,to_status,metadata) VALUES($1,$2,'LIFECYCLE_STATUS_CHANGED','TRIALING','PAST_DUE',$3)`, [tenant_id, sub.id, { reason: "trial_expired" }]);
             continue;
@@ -50,6 +58,12 @@ export async function runBillingReconciliationBatch(limit = 100, chargeDeps: Cha
       JOIN tenant_subscriptions ts ON ts.tenant_id = u.tenant_id
       WHERE u.status = 'OPEN' AND u.end_at <= now() AND ts.status = ANY($1)
       UNION
+      -- Período fechado fora daqui (ex.: reserva de IA na virada) e ainda não avaliado.
+      SELECT ts.tenant_id
+      FROM usage_periods u
+      JOIN tenant_subscriptions ts ON ts.tenant_id = u.tenant_id
+      WHERE u.status = 'CLOSED' AND u.billing_evaluated_at IS NULL AND ts.status = ANY($1)
+      UNION
       SELECT ts.tenant_id
       FROM rollover_ledger l
       JOIN tenant_subscriptions ts ON ts.tenant_id = l.tenant_id
@@ -67,7 +81,7 @@ export async function runBillingReconciliationBatch(limit = 100, chargeDeps: Cha
         // lista antes, o período recém-fechado nunca aparecia — e no ciclo seguinte
         // o tenant já não era candidato, então a fatura de renovação nunca nascia.
         await ensureOpenPeriod(client, tenant_id); result.periods++; result.rolloverExpired += await expireRollover(client, tenant_id);
-        const pending = await client.query<{ id: string }>(`SELECT id FROM usage_periods WHERE tenant_id=$1 AND status IN ('CLOSED','INVOICED') AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.metadata->>'usage_period_id'=usage_periods.id::text AND EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id=i.id AND p.external_id IS NOT NULL))`, [tenant_id]);
+        const pending = await client.query<{ id: string }>(`SELECT id FROM usage_periods WHERE tenant_id=$1 AND ((status='CLOSED' AND billing_evaluated_at IS NULL AND NOT EXISTS (SELECT 1 FROM ai_usage_ledger l WHERE l.usage_period_id=usage_periods.id AND l.reconciled=false)) OR status='INVOICED') AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.metadata->>'usage_period_id'=usage_periods.id::text AND EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id=i.id AND p.external_id IS NOT NULL))`, [tenant_id]);
         return pending.rows.map(x => x.id);
       });
       for (const periodId of closed) {

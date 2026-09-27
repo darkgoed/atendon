@@ -29,7 +29,7 @@ export class MercadoPagoProvider implements BillingProvider {
   // A API /v1/payments infere a moeda da conta do vendedor e REJEITA `currency_id`
   // com 400 "The name of the following parameters is wrong : currency_id".
   // O campo só é válido em /preapproval (createSubscription), onde segue em uso.
-  createPayment(input: PaymentInput) { return this.request("/v1/payments", "POST", { transaction_amount: input.amountCents / 100, description: input.description, payment_method_id: input.method, payer: input.payer, external_reference: input.externalReference }, input.idempotencyKey); }
+  createPayment(input: PaymentInput) { return this.request("/v1/payments", "POST", { transaction_amount: input.amountCents / 100, description: input.description, payment_method_id: input.method, payer: input.payer, external_reference: input.externalReference, ...(input.expiresAt ? { date_of_expiration: brazilIso(input.expiresAt) } : {}) }, input.idempotencyKey); }
   getPayment(externalId: string) { return this.request(`/v1/payments/${encodeURIComponent(externalId)}`, "GET"); }
   async handleWebhook(rawBody: string, headers: Headers, secret: string): Promise<WebhookResult> {
     const payload = JSON.parse(rawBody) as Record<string, unknown>;
@@ -120,4 +120,9 @@ export class MercadoPagoProvider implements BillingProvider {
       payload
     };
   }
+}
+
+/** ISO com offset fixo -03:00 (o Brasil não tem horário de verão desde 2019), formato aceito pelo Mercado Pago. */
+function brazilIso(date: Date): string {
+  return new Date(date.getTime() - 3 * 60 * 60 * 1000).toISOString().replace("Z", "-03:00");
 }
