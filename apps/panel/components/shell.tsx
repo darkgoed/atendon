@@ -27,6 +27,7 @@ import {
   panelManifestGroups,
   type PanelManifestItem
 } from "@/lib/panel-manifest";
+import { bindDraftsToUser, clearAllDrafts } from "@/lib/drafts";
 import { useRealtimeSignals } from "@/lib/realtime";
 import {
   canAccessWithSession,
@@ -291,6 +292,7 @@ export function Shell({
 
   const logout = useCallback(async () => {
     await api("/auth/logout", { method: "POST" }).catch(() => undefined);
+    clearAllDrafts();
     await mutateSession(undefined, false);
     router.replace("/login");
     router.refresh();
@@ -302,6 +304,8 @@ export function Shell({
     return <SessionState error={!redirecting} onRetry={redirecting ? undefined : () => void mutateSession()} />;
   }
 
+  // Antes de renderizar as telas (que leem drafts no primeiro render).
+  bindDraftsToUser(session.user.id);
   const workspaceName = session.activeWorkspace?.name ?? "Workspace";
   const workspaceSlug = session.activeWorkspace?.slug ?? "";
   const workspaceStatus = session.activeWorkspace?.status ?? "inactive";

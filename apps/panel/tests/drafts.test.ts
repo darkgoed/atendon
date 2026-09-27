@@ -5,6 +5,8 @@
 import { cleanup, renderHook, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  bindDraftsToUser,
+  clearAllDrafts,
   clearDraft,
   DEFAULT_DRAFT_TTL_MS,
   DRAFT_KEY_PREFIX,
@@ -108,5 +110,23 @@ describe("useDraft", () => {
     expect(result.current.draft).toBeNull();
     act(() => result.current.save({ nome: "Novo", telefone: "1" }));
     expect(readDraft<IdentityDraft>("disabled-key")?.data.nome).toBe("Duda");
+  });
+});
+
+describe("drafts por usuário (Ponytail #5)", () => {
+  it("outro usuário no mesmo navegador não herda o draft; logout limpa tudo", () => {
+    window.localStorage.clear();
+    bindDraftsToUser("user-a");
+    writeDraft("composer:conv-1", "segredo meio digitado");
+    bindDraftsToUser("user-a");
+    expect(readDraft<string>("composer:conv-1")?.data).toBe("segredo meio digitado");
+    bindDraftsToUser("user-b");
+    expect(readDraft<string>("composer:conv-1")).toBeNull();
+
+    writeDraft("composer:conv-2", "rascunho do B");
+    window.localStorage.setItem("outra-chave", "fica");
+    clearAllDrafts();
+    expect(readDraft<string>("composer:conv-2")).toBeNull();
+    expect(window.localStorage.getItem("outra-chave")).toBe("fica");
   });
 });

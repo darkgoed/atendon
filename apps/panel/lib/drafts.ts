@@ -107,6 +107,45 @@ export function clearDraft(key: string): void {
   }
 }
 
+/** Remove todos os drafts do navegador (logout / troca de usuário). */
+export function clearAllDrafts(): void {
+  boundUserId = null;
+  const store = safeLocalStorage();
+  if (!store) return;
+  try {
+    const keys: string[] = [];
+    for (let index = 0; index < store.length; index += 1) {
+      const key = store.key(index);
+      if (key?.startsWith(DRAFT_KEY_PREFIX)) keys.push(key);
+    }
+    for (const key of keys) store.removeItem(key);
+  } catch {
+    // storage indisponível: nada a limpar
+  }
+}
+
+export const DRAFT_OWNER_KEY = "atendon-draft-owner:v1";
+
+/**
+ * Drafts são do usuário que os digitou (Ponytail #5): se outra pessoa entrar
+ * no mesmo navegador (sem logout, sessão expirada), os drafts do anterior são
+ * descartados antes de qualquer tela lê-los.
+ */
+let boundUserId: string | null = null;
+export function bindDraftsToUser(userId: string): void {
+  if (boundUserId === userId) return;
+  boundUserId = userId;
+  const store = safeLocalStorage();
+  if (!store) return;
+  try {
+    if (store.getItem(DRAFT_OWNER_KEY) === userId) return;
+    clearAllDrafts();
+    store.setItem(DRAFT_OWNER_KEY, userId);
+  } catch {
+    // storage indisponível: drafts também não persistem
+  }
+}
+
 export function useDraft<T>(key: string, options: UseDraftOptions = {}): UseDraftResult<T> {
   const enabled = options.enabled ?? true;
   const ttlMs = options.ttlMs ?? DEFAULT_DRAFT_TTL_MS;
