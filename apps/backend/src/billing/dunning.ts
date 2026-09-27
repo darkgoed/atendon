@@ -63,11 +63,29 @@ export async function runDunningBatch(limit = 100, chargeDeps: ChargeDeps = {}):
       }
     } catch (error) { result.errors.push(`invoice:${id}:${error instanceof Error ? error.message : "unknown"}`); }
   }
-  const paid = await pool.query<{ tenant_id: string; subscription_id: string }>(`SELECT DISTINCT i.tenant_id,i.subscription_id FROM invoices i WHERE i.subscription_id IS NOT NULL AND i.status IN ('paid','PAID') AND NOT EXISTS (SELECT 1 FROM invoices open WHERE open.subscription_id=i.subscription_id AND open.status IN ('open','pending') AND open.due_date <= now()) LIMIT $1`, [limit]);
-  for (const row of paid.rows) {
-    const before = (await pool.query<{ tenant_id: string; status: string }>("SELECT tenant_id,status FROM tenant_subscriptions WHERE id=$1 AND status IN ('PAST_DUE','GRACE_PERIOD','SUSPENDED')", [row.subscription_id])).rows[0];
-    const changed = before ? await pool.query("UPDATE tenant_subscriptions SET status='ACTIVE',grace_period_ends_at=NULL,suspended_at=NULL,updated_at=now() WHERE id=$1 AND status IN ('PAST_DUE','GRACE_PERIOD','SUSPENDED')", [row.subscription_id]) : { rowCount: 0 };
-    if (changed.rowCount) { await pool.query(`INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_status,to_status,metadata) VALUES($1,$2,'LIFECYCLE_STATUS_CHANGED',$3,'ACTIVE',$4)`, [before.tenant_id, row.subscription_id, before.status, { reason: "dunning_debt_paid" }]); result.reactivated++; }
+  // Reativação parte das assinaturas inadimplentes (não das faturas pagas, que
+  // incluiriam todo tenant em dia e esgotariam o LIMIT). Suspensão manual do ROOT
+  // (evento com ator) não é revertida pelo dunning. Pacote de crédito vencido
+  // não é dívida de assinatura.
+  const delinquent = await pool.query<{ id: string; tenant_id: string; status: string }>(
+    `SELECT s.id,s.tenant_id,s.status FROM tenant_subscriptions s
+      WHERE s.status IN ('PAST_DUE','GRACE_PERIOD','SUSPENDED')
+        AND EXISTS (SELECT 1 FROM invoices i WHERE i.subscription_id=s.id AND i.status IN ('paid','PAID'))
+        AND NOT EXISTS (SELECT 1 FROM invoices o WHERE o.subscription_id=s.id AND o.status IN ('open','pending') AND o.kind <> 'credit_package' AND o.due_date <= now())
+        AND (s.status <> 'SUSPENDED' OR COALESCE((SELECT e.actor_user_id IS NULL FROM subscription_events e
+              WHERE e.subscription_id=s.id AND e.to_status='SUSPENDED' ORDER BY e.created_at DESC LIMIT 1), true))
+      ORDER BY s.updated_at, s.id LIMIT $1`, [limit]);
+  for (const row of delinquent.rows) {
+    // Ciclo vencido durante a suspensão recomeça hoje: os meses suspensos não são cobrados retroativamente.
+    const changed = await pool.query(
+      `UPDATE tenant_subscriptions
+          SET status='ACTIVE',grace_period_ends_at=NULL,suspended_at=NULL,updated_at=now(),
+              current_period_start=CASE WHEN current_period_end IS NOT NULL AND current_period_end <= now() THEN now() ELSE current_period_start END,
+              current_period_end=CASE WHEN current_period_end IS NOT NULL AND current_period_end <= now()
+                THEN now() + make_interval(months => CASE billing_cycle WHEN 'YEARLY' THEN 12 WHEN 'QUARTERLY' THEN 3 ELSE 1 END)
+                ELSE current_period_end END
+        WHERE id=$1 AND status=$2`, [row.id, row.status]);
+    if (changed.rowCount) { await pool.query(`INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_status,to_status,metadata) VALUES($1,$2,'LIFECYCLE_STATUS_CHANGED',$3,'ACTIVE',$4)`, [row.tenant_id, row.id, row.status, { reason: "dunning_debt_paid" }]); result.reactivated++; }
   }
   return result;
 }

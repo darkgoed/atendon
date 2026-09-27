@@ -123,16 +123,25 @@ async function advanceContractCycle(client: PoolClient, subscriptionId: string, 
     const applied = await applyScheduledChange(client, subscriptionId);
     if (applied) return;
   }
+  // Menor k≥1 tal que âncora + k ciclos passe do fim do período fechado.
   await client.query(
-    `UPDATE tenant_subscriptions s
-        SET current_period_start = COALESCE(s.current_period_end, p.end_at) + make_interval(months => m.months * (k.n - 1)),
-            current_period_end = COALESCE(s.current_period_end, p.end_at) + make_interval(months => m.months * k.n),
+    `WITH base AS (
+       SELECT s.id, COALESCE(s.current_period_end, p.end_at) AS anchor, p.end_at,
+              CASE s.billing_cycle WHEN 'YEARLY' THEN 12 WHEN 'QUARTERLY' THEN 3 ELSE 1 END AS months
+         FROM tenant_subscriptions s, usage_periods p
+        WHERE s.id=$1 AND p.id=$2
+     ), next AS (
+       SELECT b.id, b.anchor, b.months,
+              (SELECT min(g) FROM generate_series(1, 1200) g
+                WHERE b.anchor + make_interval(months => b.months * g) > b.end_at + interval '1 minute') AS n
+         FROM base b
+     )
+     UPDATE tenant_subscriptions s
+        SET current_period_start = next.anchor + make_interval(months => next.months * (next.n - 1)),
+            current_period_end = next.anchor + make_interval(months => next.months * next.n),
             updated_at = now()
-       FROM usage_periods p,
-            LATERAL (SELECT CASE s.billing_cycle WHEN 'YEARLY' THEN 12 WHEN 'QUARTERLY' THEN 3 ELSE 1 END AS months) m,
-            LATERAL (SELECT min(g) AS n FROM generate_series(1, 1200) g
-                      WHERE COALESCE(s.current_period_end, p.end_at) + make_interval(months => m.months * g) > p.end_at + interval '1 minute') k
-      WHERE s.id=$1 AND p.id=$2`, [subscriptionId, periodId]);
+       FROM next
+      WHERE s.id = next.id`, [subscriptionId, periodId]);
 }
 
 export async function createInvoiceForUsagePeriod(client: Client, tenantId: string, usagePeriodId: string, options: InvoiceOptions = {}): Promise<Invoice | null> {
