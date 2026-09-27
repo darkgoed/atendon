@@ -137,4 +137,20 @@ describe("MAX_USERS enforcement", () => {
     expect(response.json()).toMatchObject({ code: "PLAN_LIMIT_REACHED" });
     expect((await pool.query("SELECT count(*)::int n FROM workspace_members WHERE workspace_id=$1", [limited])).rows[0].n).toBe(1);
   });
+
+  it("rejects reactivating a suspended member beyond MAX_USERS (seg. C4)", async () => {
+    const suspended = (await pool.query<{ id: string }>(
+      `INSERT INTO users(email,password_hash,status) VALUES($1,'x','active') RETURNING id`, [`max-users-suspended-${suffix}@test.local`]
+    )).rows[0].id;
+    const member = (await pool.query<{ id: string }>(
+      "INSERT INTO workspace_members(workspace_id,user_id,role_id,status,joined_at) VALUES($1,$2,$3,'suspended',now()) RETURNING id", [limited, suspended, adminRole]
+    )).rows[0].id;
+    const response = await app.inject({ method: "PATCH", url: `/workspaces/current/members/${member}`, headers: { cookie: await login(ownerEmail) }, payload: { status: "active" } });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "PLAN_LIMIT_REACHED" });
+    expect((await pool.query("SELECT count(*)::int n FROM workspace_members WHERE workspace_id=$1 AND status='active'", [limited])).rows[0].n).toBe(1);
+    // Suspender (ou mudar papel) de quem já está ativo não esbarra no limite.
+    const roleOnly = await app.inject({ method: "PATCH", url: `/workspaces/current/members/${member}`, headers: { cookie: await login(ownerEmail) }, payload: { status: "suspended" } });
+    expect(roleOnly.statusCode).toBe(200);
+  });
 });

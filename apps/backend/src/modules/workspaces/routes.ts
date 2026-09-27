@@ -298,16 +298,29 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
       const team = await db.query("SELECT id FROM teams WHERE tenant_id=$1 AND id=$2", [session.tenantId, body.team_id]);
       if (!team.rows[0]) throw httpError(400, "Equipe não encontrada neste workspace");
     }
-    const result = await db.query(
-      `UPDATE workspace_members SET
-         role_id=COALESCE($3,role_id),
-         status=COALESCE($4,status),
-         team_id=CASE WHEN $5::boolean THEN $6::uuid ELSE team_id END,
-         updated_at=now()
-       WHERE workspace_id=$1 AND id=$2
-       RETURNING id,status,role_id,team_id,updated_at`,
-      [session.tenantId, memberId, body.roleId ?? null, body.status ?? null, body.team_id !== undefined, body.team_id ?? null]
-    );
+    const result = await withTenantTransaction(db, session.tenantId, async (client) => {
+      // Reativar um suspenso ocupa um assento: mesmo limite MAX_USERS do convite
+      // (sem isso: suspender → convidar → reativar passava do plano).
+      if (body.status === "active") {
+        const locked = await client.query<{ status: string }>(
+          "SELECT status FROM workspace_members WHERE workspace_id=$1 AND id=$2 FOR UPDATE",
+          [session.tenantId, memberId]
+        );
+        if (locked.rows[0] && locked.rows[0].status !== "active") {
+          await assertLimitWithinTransaction(client, session.tenantId, "MAX_USERS");
+        }
+      }
+      return client.query(
+        `UPDATE workspace_members SET
+           role_id=COALESCE($3,role_id),
+           status=COALESCE($4,status),
+           team_id=CASE WHEN $5::boolean THEN $6::uuid ELSE team_id END,
+           updated_at=now()
+         WHERE workspace_id=$1 AND id=$2
+         RETURNING id,status,role_id,team_id,updated_at`,
+        [session.tenantId, memberId, body.roleId ?? null, body.status ?? null, body.team_id !== undefined, body.team_id ?? null]
+      );
+    });
     await audit(request, { action: "members.update", resourceType: "workspace_member", resourceId: memberId, metadata: body });
     await db.query("UPDATE users SET session_version=session_version+1,updated_at=now() WHERE id=$1", [current.rows[0].user_id]);
     return { member: result.rows[0] };
