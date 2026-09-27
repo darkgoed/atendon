@@ -316,7 +316,8 @@ describe("Evolution webhook contact mapping", () => {
     expect(evolutionContactUpdates([
       { remoteJid: "5511999999999@s.whatsapp.net", profilePicUrl: "https://cdn.example/avatar.jpg" },
       { id: "5511888888888@s.whatsapp.net", profilePictureUrl: "javascript:alert(1)" },
-      { remoteJid: "120363@g.us", profilePicUrl: "https://cdn.example/group.jpg" }
+      { remoteJid: "120363@g.us", profilePicUrl: "https://cdn.example/group.jpg" },
+      { remoteJid: "5511777777777@s.whatsapp.net", pushName: "Só o nome" }
     ])).toEqual([
       {
         contactPhone: "5511999999999",
@@ -327,6 +328,12 @@ describe("Evolution webhook contact mapping", () => {
         contactPhone: "5511888888888",
         contactJid: "5511888888888@s.whatsapp.net",
         avatarUrl: null
+      },
+      // Sem campo de foto: undefined (o handler mantém o avatar atual — runtime S8).
+      {
+        contactPhone: "5511777777777",
+        contactJid: "5511777777777@s.whatsapp.net",
+        avatarUrl: undefined
       }
     ]);
   });

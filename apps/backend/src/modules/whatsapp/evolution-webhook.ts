@@ -155,7 +155,8 @@ export interface EvolutionEvent {
 export interface EvolutionContactUpdate {
   contactPhone: string;
   contactJid: string;
-  avatarUrl: string | null;
+  /** undefined: evento sem campo de foto (mantém a atual); null: sem foto válida. */
+  avatarUrl: string | null | undefined;
 }
 
 export function evolutionContactUpdates(data: unknown): EvolutionContactUpdate[] {
@@ -165,11 +166,12 @@ export function evolutionContactUpdates(data: unknown): EvolutionContactUpdate[]
     const row = object(rawRow);
     const contactJid = clean(row.remoteJid ?? row.id ?? row.wuid, 200);
     if (!contactJid || contactJid === "status@broadcast" || contactJid.endsWith("@g.us")) continue;
+    const hasAvatarField = ["profilePicUrl", "profilePictureUrl", "picture"].some((key) => key in row);
     const rawAvatar = row.profilePicUrl ?? row.profilePictureUrl ?? row.picture;
     updates.push({
       contactPhone: phone(contactJid),
       contactJid,
-      avatarUrl: webUrl(rawAvatar) ?? null
+      avatarUrl: hasAvatarField ? webUrl(rawAvatar) ?? null : undefined
     });
   }
   return updates;

@@ -125,11 +125,12 @@ export async function handleEvolutionWebhook(request: FastifyRequest, reply: Fas
         await (deps.db ?? defaultDb).query(
           `UPDATE conversations SET
              contact_jid=COALESCE(contact_jid,$4),
-             contact_avatar_url=$5,
-             contact_avatar_updated_at=now()
+             -- Evento sem campo de foto (ex.: só nome) não apaga o avatar (runtime S8).
+             contact_avatar_url=CASE WHEN $6 THEN $5 ELSE contact_avatar_url END,
+             contact_avatar_updated_at=CASE WHEN $6 THEN now() ELSE contact_avatar_updated_at END
            WHERE tenant_id=$1 AND session_id=$2
              AND (contact_jid=$4 OR regexp_replace(contact_phone,'\\D','','g')=regexp_replace($3,'\\D','','g'))`,
-          [identity.tenantId, identity.id, update.contactPhone, update.contactJid, update.avatarUrl]
+          [identity.tenantId, identity.id, update.contactPhone, update.contactJid, update.avatarUrl ?? null, update.avatarUrl !== undefined]
         );
       }
     } else if (event.event === "PRESENCE_UPDATE") {
