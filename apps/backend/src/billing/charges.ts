@@ -5,6 +5,11 @@ import { config } from "../config.js";
 import { MercadoPagoProvider } from "./providers/mercadopago.js";
 import { assertAutomaticProvider, providerNotHomologated } from "./providers/homologation.js";
 import type { BillingProvider, PaymentInput, ProviderResult } from "./providers/types.js";
+
+// Pix pendente é reemitido após 12h; ele expira no provedor antes disso, então
+// nunca há dois QR codes da mesma fatura pagáveis ao mesmo tempo.
+const PIX_REISSUE_AFTER_MS = 12 * 60 * 60 * 1000;
+const PIX_PROVIDER_EXPIRY_MS = 11.5 * 60 * 60 * 1000;
 import { CHARGEABLE_SUBSCRIPTION_STATUSES } from "./types.js";
 
 type ProviderRow = { credentials_encrypted: string; webhook_secret_encrypted: string | null };
@@ -54,7 +59,7 @@ async function createChargeForInvoiceUncoalesced(invoiceId: string, method: stri
         // criação de um NOVO pagamento enquanto for recente — QR pendente velho
         // já expirou no provider, e bloquear para sempre faria o dunning
         // "esgotar" tentativas sem NENHUM retry real (residual do B2).
-        const PENDING_FRESH_MS = 12 * 60 * 60 * 1000;
+        const PENDING_FRESH_MS = PIX_REISSUE_AFTER_MS;
         const settledLike = ["paid", "approved"].includes(payment.status);
         const freshPending = ["pending", "in_process", "authorized"].includes(payment.status)
           && (Date.now() - new Date(payment.created_at).getTime()) < PENDING_FRESH_MS;
@@ -92,7 +97,7 @@ async function createChargeForInvoiceUncoalesced(invoiceId: string, method: stri
   if (prepared.done) return prepared.result;
   let result: ProviderResult;
   try {
-    const input: PaymentInput = { tenantId: prepared.tenantId, invoiceId, externalReference: prepared.ext, idempotencyKey: prepared.attempts === 0 ? `atendon-invoice-${invoiceId}` : `atendon-invoice-${invoiceId}-retry-${prepared.attempts}`, amountCents: prepared.amount, currency: prepared.currency, method, payer: { email: prepared.payer.email, identification: prepared.payer.document ? { type: "CPF", number: prepared.payer.document } : undefined } };
+    const input: PaymentInput = { tenantId: prepared.tenantId, invoiceId, externalReference: prepared.ext, idempotencyKey: prepared.attempts === 0 ? `atendon-invoice-${invoiceId}` : `atendon-invoice-${invoiceId}-retry-${prepared.attempts}`, amountCents: prepared.amount, currency: prepared.currency, method, ...(method === "pix" ? { expiresAt: new Date(Date.now() + PIX_PROVIDER_EXPIRY_MS) } : {}), payer: { email: prepared.payer.email, identification: prepared.payer.document ? { type: "CPF", number: prepared.payer.document } : undefined } };
     result = await prepared.provider.createPayment(input);
   } catch { throw safeError(); }
   return tx(pool, async c => {
