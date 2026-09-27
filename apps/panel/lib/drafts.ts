@@ -16,7 +16,7 @@ import { safeLocalStorage } from "./compat";
 export const DRAFT_KEY_PREFIX = "atendon-draft:v1:";
 export const DEFAULT_DRAFT_TTL_MS = 6 * 60 * 60 * 1000;
 
-export type DraftEnvelope<T> = { data: T; updated_at: string };
+export type DraftEnvelope<T> = { data: T; updated_at: string; owner?: string };
 
 export type UseDraftOptions = {
   /** TTL do envelope em ms; padrão 6h. */
@@ -33,6 +33,14 @@ export type UseDraftResult<T> = {
   clear: () => void;
 };
 
+function currentDraftOwner(store: Storage): string | null {
+  try {
+    return store.getItem(DRAFT_OWNER_KEY);
+  } catch {
+    return null;
+  }
+}
+
 function storageKey(key: string): string {
   return `${DRAFT_KEY_PREFIX}${key}`;
 }
@@ -41,9 +49,9 @@ function parseEnvelope<T>(raw: string): DraftEnvelope<T> | null {
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    const candidate = parsed as { data?: unknown; updated_at?: unknown };
+    const candidate = parsed as { data?: unknown; updated_at?: unknown; owner?: unknown };
     if (!("data" in candidate) || typeof candidate.updated_at !== "string") return null;
-    return { data: candidate.data as T, updated_at: candidate.updated_at };
+    return { data: candidate.data as T, updated_at: candidate.updated_at, ...(typeof candidate.owner === "string" ? { owner: candidate.owner } : {}) };
   } catch {
     return null;
   }
@@ -68,7 +76,11 @@ export function readDraft<T>(key: string, options: { ttlMs?: number; now?: numbe
   }
   if (raw == null) return null;
   const envelope = parseEnvelope<T>(raw);
-  if (!envelope || isExpired(envelope, options.ttlMs ?? DEFAULT_DRAFT_TTL_MS, options.now ?? Date.now())) {
+  // Aba antiga de outro usuário pode ter gravado depois da troca: draft de
+  // outro dono nunca aparece (Ponytail-2).
+  const owner = currentDraftOwner(store);
+  const foreign = Boolean(envelope && owner && envelope.owner !== owner);
+  if (!envelope || foreign || isExpired(envelope, options.ttlMs ?? DEFAULT_DRAFT_TTL_MS, options.now ?? Date.now())) {
     try {
       store.removeItem(namespaced);
     } catch {
@@ -82,9 +94,13 @@ export function readDraft<T>(key: string, options: { ttlMs?: number; now?: numbe
 /** Persiste o envelope com updated_at agora. Falha de storage é silenciosa. */
 export function writeDraft<T>(key: string, data: T, options: { now?: number } = {}): DraftEnvelope<T> {
   const store = safeLocalStorage();
+  // Dono = usuário a que ESTA aba está presa (aba antiga continua sendo do
+  // usuário anterior mesmo depois de outro entrar no mesmo navegador).
+  const owner = boundUserId ?? (store ? currentDraftOwner(store) : null);
   const envelope: DraftEnvelope<T> = {
     data,
-    updated_at: new Date(options.now ?? Date.now()).toISOString()
+    updated_at: new Date(options.now ?? Date.now()).toISOString(),
+    ...(owner ? { owner } : {})
   };
   if (store) {
     try {
@@ -140,6 +156,8 @@ export function bindDraftsToUser(userId: string): void {
   try {
     if (store.getItem(DRAFT_OWNER_KEY) === userId) return;
     clearAllDrafts();
+    // clearAllDrafts zera o vínculo: restaura depois de limpar.
+    boundUserId = userId;
     store.setItem(DRAFT_OWNER_KEY, userId);
   } catch {
     // storage indisponível: drafts também não persistem

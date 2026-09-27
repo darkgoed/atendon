@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   bindDraftsToUser,
   clearAllDrafts,
+  DRAFT_OWNER_KEY,
   clearDraft,
   DEFAULT_DRAFT_TTL_MS,
   DRAFT_KEY_PREFIX,
@@ -128,5 +129,21 @@ describe("drafts por usuário (Ponytail #5)", () => {
     clearAllDrafts();
     expect(readDraft<string>("composer:conv-2")).toBeNull();
     expect(window.localStorage.getItem("outra-chave")).toBe("fica");
+  });
+});
+
+describe("aba antiga de outro usuário (Ponytail-2)", () => {
+  it("draft gravado pela aba do usuário anterior não aparece para o novo dono", () => {
+    window.localStorage.clear();
+    clearAllDrafts();
+    bindDraftsToUser("user-a");
+    // Outra aba entrou como B: a chave de dono do navegador agora é B.
+    window.localStorage.setItem(DRAFT_OWNER_KEY, "user-b");
+    // A aba antiga (ainda presa a A) continua digitando.
+    writeDraft("composer:conv-9", "texto do A");
+    // Na aba do B (dono do navegador já é B: nada é limpo no bind).
+    bindDraftsToUser("user-b");
+    expect(window.localStorage.getItem(`${DRAFT_KEY_PREFIX}composer:conv-9`)).not.toBeNull();
+    expect(readDraft<string>("composer:conv-9")).toBeNull();
   });
 });
