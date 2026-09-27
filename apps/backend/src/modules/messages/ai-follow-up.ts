@@ -128,6 +128,7 @@ import {
   isRepetitiveFollowUp,
   startsAsReplyToUnansweredMessage, startsLikeCannedFollowUp, parseFollowUpDecision
 } from "./follow-up-policy.js";
+import { isWhatsAppSendRejectedError } from "../whatsapp/errors.js";
 export { AI_FOLLOW_UP_NOT_NEEDED_MARKER, followUpSystemPrompt, isSameFollowUpTopic,
   hasAlreadyRetriedSameTopic, followUpContinuityContext, isRepetitiveFollowUp,
   startsAsReplyToUnansweredMessage, startsLikeCannedFollowUp, parseFollowUpDecision } from "./follow-up-policy.js";
@@ -819,6 +820,22 @@ export class AiFollowUpProcessor {
       "follow_up",
       `${claim.conversationId}:${claim.sequenceVersion}:${claim.followUpCount}`
     );
+    // Mesma regra do inbound: depois que um envio ao contato começou, qualquer
+    // falha (exceto rejeição definitiva do PRIMEIRO envio) é entrega ambígua —
+    // repetir regeneraria e reenviaria o follow-up (inclusive após bolha parcial).
+    let deliveryStarted = false;
+    const deliveredBubbles: Array<{ text: string; externalId: string; sentAt: Date }> = [];
+    const toContact = async <T>(send: () => Promise<T>): Promise<T> => {
+      const firstSend = !deliveryStarted;
+      try {
+        const result = await send();
+        deliveryStarted = true;
+        return result;
+      } catch (error) {
+        if (!firstSend || !isWhatsAppSendRejectedError(error)) deliveryStarted = true;
+        throw error;
+      }
+    };
     try {
       const consumption = await consumeAiInteraction(claim.tenantId, "follow_up", billingTurnId, { conversationId: claim.conversationId });
       if (!consumption.allowed) {
@@ -920,10 +937,11 @@ export class AiFollowUpProcessor {
           if (!delivery.dataBase64 || !this.gateway.sendSticker) {
             throw new Error("Configured follow-up sticker is unavailable");
           }
-          sent = await this.gateway.sendSticker(claim.sessionId, destination, { dataBase64: delivery.dataBase64 });
+          sent = await toContact(() => this.gateway.sendSticker!(claim.sessionId, destination, { dataBase64: delivery.dataBase64! }));
         } else if (delivery.type === "image" || delivery.type === "audio" || delivery.type === "video") {
           if (!delivery.dataBase64 || !delivery.mimeType || !delivery.fileName || !this.gateway.sendMedia) throw new Error(`Configured follow-up ${delivery.type} is unavailable`);
-          sent = await this.gateway.sendMedia(claim.sessionId, destination, { mediaType: delivery.type, mimeType: delivery.mimeType, fileName: delivery.fileName, dataBase64: delivery.dataBase64, caption: parsed.text });
+          const media = { mediaType: delivery.type, mimeType: delivery.mimeType, fileName: delivery.fileName, dataBase64: delivery.dataBase64, caption: parsed.text };
+          sent = await toContact(() => this.gateway.sendMedia!(claim.sessionId, destination, media));
         } else {
           sentBubbles = [];
           for (const [index, bubble] of textBubbles.entries()) {
@@ -937,8 +955,9 @@ export class AiFollowUpProcessor {
               }
             }
             const bubbleSentAt = new Date();
-            const bubbleSent = await this.gateway.sendText(claim.sessionId, destination, bubble);
+            const bubbleSent = await toContact(() => this.gateway.sendText(claim.sessionId, destination, bubble));
             sentBubbles.push({ text: bubble, externalId: bubbleSent.externalId, sentAt: bubbleSentAt });
+            deliveredBubbles.push({ text: bubble, externalId: bubbleSent.externalId, sentAt: bubbleSentAt });
           }
           sent = { externalId: sentBubbles[0]!.externalId };
           sentAt = sentBubbles[0]!.sentAt;
@@ -974,7 +993,27 @@ export class AiFollowUpProcessor {
       // Falha antes de gerar uso devolve a reserva já (sem esperar o TTL); com
       // usage_logs a liberação não age e a reconciliação segue responsável.
       void releaseAiInteractionWithoutUsage(claim.tenantId, "follow_up", billingTurnId).catch(() => {});
-      if (isAmbiguousMessageDeliveryError(error)) {
+      if (deliveryStarted || isAmbiguousMessageDeliveryError(error)) {
+        // Bolhas que chegaram ao contato antes da falha viram o registro da
+        // etapa (o painel mostra o que foi enviado e a sequência segue). Se nem
+        // isso gravar, a etapa é cancelada como entrega ambígua.
+        if (deliveredBubbles.length) {
+          const recorded = await this.repository.completeSent(claim, {
+            text: deliveredBubbles.map((bubble) => bubble.text).join("\n\n"),
+            model: claim.model,
+            externalId: deliveredBubbles[0]!.externalId,
+            sentAt: deliveredBubbles[0]!.sentAt,
+            bubbles: deliveredBubbles
+          }).then(() => true, (recordError: unknown) => {
+            logger.error({ err: recordError, conversationId: claim.conversationId }, "Failed to record partially delivered follow-up");
+            return false;
+          });
+          if (recorded) {
+            void reconcileAiTurnFromUsageLogs(claim.tenantId, "follow_up", billingTurnId).catch(() => {});
+            logger.warn({ err: error, conversationId: claim.conversationId, delivered: deliveredBubbles.length }, "Follow-up partially delivered; recorded what reached the contact");
+            return "sent";
+          }
+        }
         await this.repository.recordAmbiguousDelivery(claim, error);
         return "cancelled";
       }

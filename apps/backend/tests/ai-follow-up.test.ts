@@ -12,6 +12,7 @@ import {
   startsAsReplyToUnansweredMessage,
   startsLikeCannedFollowUp
 } from "../src/modules/messages/ai-follow-up.js";
+import { WhatsAppSendRejectedError } from "../src/modules/whatsapp/errors.js";
 
 const acquireConversationLockMock = vi.hoisted(() => vi.fn());
 const releaseConversationLockMock = vi.hoisted(() => vi.fn());
@@ -207,6 +208,47 @@ describe("AI follow-ups", () => {
     expect(repository.completeSent).toHaveBeenCalledWith(claim, expect.objectContaining({
       externalId: "follow-up-sent-1"
     }));
+  });
+
+  it("never regenerates after a send that may have reached the contact (timeout or partial bubbles)", async () => {
+    const { processor, repository, gateway } = setup();
+    Object.assign(repository, { recordAmbiguousDelivery: vi.fn().mockResolvedValue(undefined) });
+    gateway.sendText.mockReset();
+    gateway.sendText.mockRejectedValueOnce(new Error("The operation was aborted due to timeout"));
+
+    await expect(processor.process(claim.conversationId)).resolves.toBe("cancelled");
+    expect((repository as unknown as { recordAmbiguousDelivery: ReturnType<typeof vi.fn> }).recordAmbiguousDelivery).toHaveBeenCalled();
+    expect(repository.recordFailure).not.toHaveBeenCalled();
+  });
+
+  it("treats a failure after the first bubble was accepted as ambiguous, whatever the error", async () => {
+    const { processor, repository, gateway, ai } = setup();
+    Object.assign(repository, { recordAmbiguousDelivery: vi.fn().mockResolvedValue(undefined) });
+    ai.complete.mockResolvedValueOnce({ text: "Primeira bolha\n\nSegunda bolha", inputTokens: 1, outputTokens: 1, costUsd: 0 });
+    gateway.sendText.mockReset();
+    gateway.sendText
+      .mockResolvedValueOnce({ externalId: "bubble-1" })
+      .mockRejectedValueOnce(new WhatsAppSendRejectedError("Connection Closed"));
+
+    // O que chegou ao contato vira o registro da etapa; nada é regenerado.
+    await expect(processor.process(claim.conversationId)).resolves.toBe("sent");
+    expect(repository.recordFailure).not.toHaveBeenCalled();
+    expect(repository.completeSent).toHaveBeenCalledWith(claim, expect.objectContaining({
+      externalId: "bubble-1",
+      bubbles: [expect.objectContaining({ externalId: "bubble-1", text: "Primeira bolha" })]
+    }));
+    expect(reconcileAiTurnFromUsageLogsMock).toHaveBeenCalled();
+  });
+
+  it("still retries when the provider definitively rejected the first send", async () => {
+    const { processor, repository, gateway } = setup();
+    Object.assign(repository, { recordAmbiguousDelivery: vi.fn().mockResolvedValue(undefined) });
+    gateway.sendText.mockReset();
+    const rejected = new WhatsAppSendRejectedError("Connection Closed");
+    gateway.sendText.mockRejectedValueOnce(rejected);
+
+    await expect(processor.process(claim.conversationId)).rejects.toBe(rejected);
+    expect(repository.recordFailure).toHaveBeenCalled();
   });
 
   it("sends a multi-paragraph follow-up as separate bubbles and records every provider id", async () => {
