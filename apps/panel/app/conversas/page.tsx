@@ -686,7 +686,8 @@ export default function Conversations() {
   // Refino local sobre o resultado do servidor (Conversas.dc.html: "Buscar por nome, telefone ou tag").
   const [listQuery, setListQuery] = useState("");
   useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedListQuery(listQuery.trim()), 300);
+    // Mesmo teto do servidor (q.max(120)): acima disso a API responde 400.
+    const timer = window.setTimeout(() => setDebouncedListQuery(listQuery.trim().slice(0, 120)), 300);
     return () => window.clearTimeout(timer);
   }, [listQuery]);
   const items = useMemo(() => {
@@ -1459,6 +1460,7 @@ export default function Conversations() {
                 <input
                   type="search"
                   value={listQuery}
+                  maxLength={120}
                   onChange={(event) => setListQuery(event.target.value)}
                   placeholder="Buscar por nome, telefone ou tag"
                   autoComplete="off"
