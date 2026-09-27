@@ -113,6 +113,19 @@ describe("same-turn retake detects an already delivered reply (Ponytail #2)", ()
     await pool.query("INSERT INTO messages(conversation_id,sender,content,created_at) VALUES($1,'agent','bolha 1',now()+interval '1 second')", [conversationId]);
     expect(await repository.hasAgentReplyAfterInbound(conversationId, inbound)).toBe(true);
   });
+
+  it("flags only the retake of a lease this turn still holds, not a replay after release (Ponytail-2 P1)", async () => {
+    const repository = new MessageRepository(pool, config, { followUp: vi.fn().mockResolvedValue(undefined) });
+    const contact = `5511${randomUUID().replace(/\D/g, "").padEnd(9, "5").slice(0, 9)}`;
+    const message = { tenantId, sessionId, contactPhone: contact, text: "oi", externalId: `resume-${randomUUID()}` };
+    const turn = randomUUID();
+    expect((await repository.recordInboundAndLoadContext(message, { turnId: turn }))?.turnResumed).toBe(false);
+    // Crash no meio do turno: a lease continua deste turno.
+    expect((await repository.recordInboundAndLoadContext(message, { turnId: turn }))?.turnResumed).toBe(true);
+    // Conversa ocupada: a lease é liberada antes de adiar o job.
+    await repository.releaseInboundProcessing(message);
+    expect((await repository.recordInboundAndLoadContext(message, { turnId: turn }))?.turnResumed).toBe(false);
+  });
 });
 
 describe("handoff notification of an Instagram conversation (auditoria runtime #3)", () => {

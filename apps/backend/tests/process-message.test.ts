@@ -2879,6 +2879,8 @@ Full name: Renan de Carvalho`;
     it("hands off without generating when a bubble of this turn was already delivered and persisted", async () => {
       const { processor, repository, gateway, ai } = setup();
       Object.assign(repository, { hasAgentReplyAfterInbound: vi.fn().mockResolvedValue(true) });
+      const context = await repository.recordInboundAndLoadContext(message);
+      repository.recordInboundAndLoadContext.mockResolvedValueOnce({ ...context, turnResumed: true });
 
       await expect(processor.process(message)).resolves.toBe("handoff");
 
@@ -2887,6 +2889,18 @@ Full name: Renan de Carvalho`;
       expect(repository.pauseForHandoff).toHaveBeenCalledWith(expect.objectContaining({ errorCode: "delivery_ambiguous" }));
       expect(repository.markInboundProcessed).toHaveBeenCalledWith(message, ["wamid-1"]);
     });
+  });
+
+  it("a busy-deferred replay (lease released, not resumed) answers normally even after a neighbouring turn replied (Ponytail-2 P1)", async () => {
+    const { processor, repository, ai } = setup();
+    const hasReply = vi.fn().mockResolvedValue(true);
+    Object.assign(repository, { hasAgentReplyAfterInbound: hasReply });
+
+    await expect(processor.process(message)).resolves.toBe("answered");
+
+    expect(hasReply).not.toHaveBeenCalled();
+    expect(ai.complete).toHaveBeenCalled();
+    expect(repository.pauseForHandoff).not.toHaveBeenCalled();
   });
 
   describe("an operator pause during the AI turn stops the reply", () => {

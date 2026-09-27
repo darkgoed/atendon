@@ -1040,7 +1040,10 @@ export class MessageProcessor {
     if (!initialContext) return "duplicate";
     // Retomada do mesmo turno após crash: bolha já entregue e gravada → a
     // entrega é ambígua; nunca gerar/enviar de novo (mesma regra do retry).
-    if (await this.repository.hasAgentReplyAfterInbound?.(initialContext.conversationId, message.externalId)) {
+    // Só quando o turno retomou a PRÓPRIA lease: job adiado por conversa
+    // ocupada (lease liberada) veria a resposta do turno vizinho e iria para
+    // humano à toa (Ponytail-2 P1).
+    if (initialContext.turnResumed && await this.repository.hasAgentReplyAfterInbound?.(initialContext.conversationId, message.externalId)) {
       return this.handOffAmbiguousDelivery(message, initialContext.conversationId, [message.externalId], new Error("AI reply already delivered by a previous attempt of this turn"));
     }
     const turnBudget = await this.repository.getAiUsageTotals({

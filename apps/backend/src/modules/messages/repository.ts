@@ -58,6 +58,8 @@ function conflict(message: string): Error {
 }
 
 export interface ConversationContext {
+  /** O turno retomou a própria lease ainda ativa (crash no meio do turno). */
+  turnResumed?: boolean;
   conversationId: string;
   messageId: string;
   agentConfigVersionId: string;
@@ -447,17 +449,22 @@ export class MessageRepository {
       );
       let messageId = inserted.rows[0]?.id;
       let acquired = Boolean(messageId);
+      let turnResumed = false;
       if (!messageId) {
-        const existing = await client.query<{ id: string; processed_at: Date | null }>(
+        const existing = await client.query<{ id: string; processed_at: Date | null; resumed: boolean }>(
           `UPDATE messages SET processing_started_at=now(),processing_turn_id=$3
-           WHERE provider_message_key=$1 AND $2::boolean AND processed_at IS NULL
+           FROM (SELECT id prior_id,processing_started_at prior_started,processing_turn_id prior_turn
+                 FROM messages WHERE provider_message_key=$1) prior
+           WHERE messages.id=prior.prior_id AND provider_message_key=$1 AND $2::boolean AND processed_at IS NULL
              AND (processing_started_at IS NULL OR processing_started_at<now()-interval '10 minutes'
                   OR processing_turn_id=$3)
-           RETURNING id,processed_at`,
+           RETURNING messages.id,messages.processed_at,
+             (prior.prior_started IS NOT NULL AND prior.prior_turn=$3) resumed`,
           [this.messageKey(message), input.shouldClaim, input.turnId]
         );
         messageId = existing.rows[0]?.id;
         acquired = Boolean(messageId);
+        turnResumed = existing.rows[0]?.resumed === true;
         if (!messageId && !input.shouldClaim) {
           messageId = (await client.query<{ id: string }>(
             "SELECT id FROM messages WHERE provider_message_key=$1",
@@ -498,7 +505,7 @@ export class MessageRepository {
           forceRotation: current.status === "closed"
         });
       }
-      return { conversationId: current.id, messageId, acquired };
+      return { conversationId: current.id, messageId, acquired, turnResumed };
     });
     if (input.shouldClaim && !transaction.acquired) return null;
     if (!transaction.messageId) throw new Error("Instagram inbound message could not be resolved");
@@ -576,6 +583,7 @@ export class MessageRepository {
     const contactIdentifier = row.instagram_username ? `@${row.instagram_username}` : `ig:${message.instagramContactId}`;
     return {
       conversationId: transaction.conversationId,
+      turnResumed: transaction.turnResumed,
       messageId: transaction.messageId,
       agentConfigVersionId: row.agent_config_version_id ?? "",
       aiActive: Boolean(row.ai_active && row.agent_is_active && row.agent_config_version_id),
@@ -657,6 +665,7 @@ export class MessageRepository {
       agent_is_active: boolean;
       message_inserted: boolean;
       message_new: boolean;
+      turn_resumed: boolean;
       processed_at: Date | null;
       agent_config_version_id: string | null;
       system_prompt: string;
@@ -761,11 +770,18 @@ export class MessageRepository {
       ),
       claimed AS (
         UPDATE messages SET processing_started_at = now(), processing_turn_id = $19::text
-        WHERE provider_message_key = $9 AND $12
+        FROM (
+          SELECT id AS prior_id, processing_started_at AS prior_started, processing_turn_id AS prior_turn
+          FROM messages WHERE provider_message_key = $9
+        ) prior
+        WHERE messages.id = prior.prior_id AND provider_message_key = $9 AND $12
           AND processed_at IS NULL
           AND (processing_started_at IS NULL OR processing_started_at < now() - interval '10 minutes'
                OR processing_turn_id = $19::text)
-        RETURNING id, processed_at
+        -- resumed: este turno ainda segurava a lease (crash no meio do turno).
+        -- Lease liberada (falha tratada, conversa ocupada) não conta.
+        RETURNING messages.id, messages.processed_at,
+          (prior.prior_started IS NOT NULL AND prior.prior_turn = $19::text) AS resumed
       ),
       agent AS (
         SELECT v.id agent_config_version_id,v.system_prompt,v.ai_model,v.model_params,v.enabled_tools,
@@ -843,6 +859,7 @@ export class MessageRepository {
         agent.agent_config_version_id,
         COALESCE(msg.id IS NOT NULL OR claimed.id IS NOT NULL, FALSE) as message_inserted,
         msg.id IS NOT NULL as message_new,
+        COALESCE(claimed.resumed, FALSE) as turn_resumed,
         COALESCE(msg.processed_at, claimed.processed_at) AS processed_at,
         agent.system_prompt,
         agent.ai_model,
@@ -973,6 +990,7 @@ export class MessageRepository {
       return {
         conversationId: row.conversation_id,
         messageId: row.message_id,
+        turnResumed: row.turn_resumed,
         agentConfigVersionId: "",
         aiActive: false,
         aiActiveColumn: row.ai_active,
@@ -1020,6 +1038,7 @@ export class MessageRepository {
     return {
       conversationId: row.conversation_id,
       messageId: row.message_id,
+      turnResumed: row.turn_resumed,
       agentConfigVersionId: settings.agent_config_version_id,
       // The global agent switch and the conversation switch are independent.
       // Keep the global state out of the settings cache so disabling the agent
