@@ -99,6 +99,7 @@ describe("MAX_USERS enforcement", () => {
   afterAll(async () => {
     await pool.query("DELETE FROM tenants WHERE id=$1", [limited]);
     await pool.query("DELETE FROM plans WHERE id=$1", [plan]);
+    await pool.query("DELETE FROM audit_logs WHERE actor_user_id IN (SELECT id FROM users WHERE email LIKE $1)", [`max-users-%${suffix}@test.local`]);
     await pool.query("DELETE FROM users WHERE email LIKE $1", [`max-users-%${suffix}@test.local`]);
   });
 

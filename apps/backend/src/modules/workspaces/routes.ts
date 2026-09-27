@@ -1,3 +1,4 @@
+import { assertLimitWithinTransaction } from "../../billing/limits.js";
 import { compare, hash } from "bcryptjs";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { createHash } from "node:crypto";
@@ -664,6 +665,7 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
         [session.tenantId, body.email]
       );
       if (existingMember.rows[0]) throw httpError(409, "Usuário já pertence a este workspace");
+      await assertLimitWithinTransaction(client, session.tenantId, "MAX_USERS");
       await client.query(
         "UPDATE workspace_invitations SET status='revoked' WHERE workspace_id=$1 AND lower(email)=lower($2) AND status='pending'",
         [session.tenantId, body.email]
@@ -788,6 +790,8 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
         [invite.workspace_id, user.id]
       );
       if (existingMember.rows[0]) throw httpError(409, "Usuário já pertence a este workspace");
+      // Revalida no aceite: o convite pode ter sido criado antes de o plano encolher.
+      await assertLimitWithinTransaction(client, invite.workspace_id, "MAX_USERS");
       await client.query(
         "INSERT INTO workspace_members(workspace_id,user_id,role_id,status,joined_at) VALUES($1,$2,$3,'active',now())",
         [invite.workspace_id, user.id, invite.role_id]
