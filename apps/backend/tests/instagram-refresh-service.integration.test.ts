@@ -5,6 +5,13 @@ import { config } from "../src/config.js";
 import { InstagramRepository } from "../src/modules/instagram/repository.js";
 import { InstagramService } from "../src/modules/instagram/service.js";
 import type { InstagramProvider } from "../src/modules/instagram/types.js";
+import { acquireSharedProviderLock, INSTAGRAM_GLOBAL_LOCK_KEY, SHARED_PROVIDER_LOCK_TIMEOUT_MS } from "./helpers/shared-provider-lock.js";
+
+// Varre tokens vencidos/tenants ativos do banco inteiro: serializa com as outras suítes do Instagram.
+let releaseInstagramLock: (() => Promise<void>) | undefined;
+beforeAll(async () => { releaseInstagramLock = await acquireSharedProviderLock(INSTAGRAM_GLOBAL_LOCK_KEY); }, SHARED_PROVIDER_LOCK_TIMEOUT_MS);
+afterAll(async () => { await releaseInstagramLock?.(); });
+
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const key = "instagram-refresh-service-key-00000000000000";
