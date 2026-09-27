@@ -1373,9 +1373,11 @@ export class QualificationService {
   ): Promise<QualificationOutcome> {
     try {
       const queued = await client.query<{ id: string }>(
+        // clock_timestamp(): várias entradas na mesma transação precisam de
+        // created_at crescente — a ordem de envio é (created_at,id) (Ponytail-2).
         `INSERT INTO qualification_message_outbox
-           (tenant_id,qualification_id,session_id,contact_phone,contact_jid,step_id,inbound_external_id,message_kind,message)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           (tenant_id,qualification_id,session_id,contact_phone,contact_jid,step_id,inbound_external_id,message_kind,message,created_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,clock_timestamp())
          ON CONFLICT (qualification_id,step_id,inbound_external_id,message_kind) DO UPDATE SET message=EXCLUDED.message
          RETURNING id`,
         [input.tenantId, qualificationId, input.sessionId, input.contactPhone, input.contactJid ?? null, stepId, input.externalId, kind, message]
