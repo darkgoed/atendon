@@ -641,6 +641,17 @@ export function validateDefinition(def: FlowDefinition): ValidationIssue[] {
     for (const target of new Set(stepTargets(step))) {
       if (!steps[target]) issues.push({ stepId: id, message: `Etapa "${id}" aponta para etapa inexistente "${target}"` });
     }
+    /* Rótulos são editados crus; o backend apara o value (flow.ts:19) mas não
+       as chaves de transitions — vazio, bordas ou repetição quebrariam o roteamento. */
+    const optionValues = (step.options ?? []).map((option) => option.value);
+    if (optionValues.some((value) => !value.trim())) {
+      issues.push({ stepId: id, message: `Etapa "${id}" tem opção vazia` });
+    } else if (optionValues.some((value) => value !== value.trim())) {
+      issues.push({ stepId: id, message: `Etapa "${id}" tem opção com espaços nas bordas` });
+    }
+    if (new Set(optionValues.map((value) => value.trim())).size !== optionValues.length) {
+      issues.push({ stepId: id, message: `Etapa "${id}" tem opção repetida` });
+    }
     const kind = step.kind;
     if (kind === "final") {
       if (!step.message?.trim()) issues.push({ stepId: id, message: `Etapa final "${id}" precisa de mensagem` });

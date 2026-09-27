@@ -141,6 +141,13 @@ export default function LeadDetail() {
   const [savingFollowUp, setSavingFollowUp] = useState(false);
   const hadAccessRef = useRef(false);
   const accessEpochRef = useRef(0);
+  // Só a recarga em segundo plano limpa o erro que ela mesma causou; erros de
+  // ações (status, transferência…) ficam visíveis até a próxima ação.
+  const loadErrorRef = useRef("");
+  // Últimos valores do servidor usados para semear os formulários: um campo só é
+  // re-semeado quando o valor do servidor muda E o usuário não o editou.
+  const seededStatusRef = useRef<{ key: string; value: LeadStatus | "" } | null>(null);
+  const seededFollowUpRef = useRef<{ responsible: string; action: string; local: string } | null>(null);
   // R18 — rascunho da identidade do contato (form principal): salvo a cada
   // alteração, limpo ao salvar/cancelar; sobrevive ao reload (strip).
   const identityDraft = useDraft<{ nome: string; telefone: string }>(`lead-identity:${id}`);
@@ -162,7 +169,9 @@ export default function LeadDetail() {
         return;
       }
     }
-    setError(loadError instanceof Error ? loadError.message : fallback);
+    const message = loadError instanceof Error ? loadError.message : fallback;
+    loadErrorRef.current = message;
+    setError(message);
   }, [router]);
 
   const load = useCallback(async () => {
@@ -172,7 +181,7 @@ export default function LeadDetail() {
       if (requestEpoch !== accessEpochRef.current) return;
       hadAccessRef.current = true;
       setData(response);
-      setError("");
+      setError((current) => (current && current === loadErrorRef.current ? "" : current));
     } catch (loadError) {
       handleLoadError(loadError, "Falha ao carregar o lead");
     }
@@ -228,16 +237,35 @@ export default function LeadDetail() {
     }
   });
 
+  const leadStatus = data?.lead.status;
+  const allowedStatusKey = data ? data.status_permitidos.join(",") : undefined;
   useEffect(() => {
-    setNextStatus(data?.status_permitidos[0] ?? "");
-  }, [data?.lead.status, data?.status_permitidos]);
+    if (allowedStatusKey === undefined) return;
+    const allowed = allowedStatusKey ? allowedStatusKey.split(",") as LeadStatus[] : [];
+    const key = `${leadStatus}|${allowedStatusKey}`;
+    const previous = seededStatusRef.current;
+    if (previous?.key === key) return;
+    const seed = allowed[0] ?? "";
+    seededStatusRef.current = { key, value: seed };
+    setNextStatus((current) => (!previous || current === previous.value || !allowed.includes(current as LeadStatus) ? seed : current));
+  }, [leadStatus, allowedStatusKey]);
 
+  const serverResponsible = followUpData?.follow_up.responsavel?.member_id ?? "";
+  const serverAction = followUpData?.follow_up.proxima_acao ?? "";
+  const serverActionLocal = followUpData
+    ? localDateTimeInput(followUpData.follow_up.proxima_acao_em, followUpData.follow_up.timezone)
+    : "";
+  const hasFollowUpData = Boolean(followUpData);
   useEffect(() => {
-    if (!followUpData) return;
-    setResponsibleMemberId(followUpData.follow_up.responsavel?.member_id ?? "");
-    setNextAction(followUpData.follow_up.proxima_acao ?? "");
-    setNextActionLocal(localDateTimeInput(followUpData.follow_up.proxima_acao_em, followUpData.follow_up.timezone));
-  }, [followUpData]);
+    if (!hasFollowUpData) return;
+    const previous = seededFollowUpRef.current;
+    const next = { responsible: serverResponsible, action: serverAction, local: serverActionLocal };
+    seededFollowUpRef.current = next;
+    const reseed = (current: string, before: string | undefined, value: string) => (before === undefined || current === before ? value : current);
+    setResponsibleMemberId((current) => reseed(current, previous?.responsible, next.responsible));
+    setNextAction((current) => reseed(current, previous?.action, next.action));
+    setNextActionLocal((current) => reseed(current, previous?.local, next.local));
+  }, [hasFollowUpData, serverResponsible, serverAction, serverActionLocal]);
 
   async function refreshAfterFollowUpMutation(successMessage: string) {
     const [leadResult, followUpResult] = await Promise.allSettled([
@@ -272,6 +300,7 @@ export default function LeadDetail() {
     setFeedback("");
     try {
       await updateLeadStatus(id, nextStatus);
+      seededStatusRef.current = null;
       await load();
       setFeedback(`Status atualizado para ${statusLabel(nextStatus)}.`);
       statusSave.markDone();
@@ -432,6 +461,9 @@ export default function LeadDetail() {
         return;
       }
       setFeedback("Acompanhamento interno atualizado.");
+      setResponsibleMemberId(persisted.follow_up.responsavel?.member_id ?? "");
+      setNextAction(persisted.follow_up.proxima_acao ?? "");
+      setNextActionLocal(localDateTimeInput(persisted.follow_up.proxima_acao_em, persisted.follow_up.timezone));
       setFollowUpData((current) => current ? { ...current, follow_up: persisted.follow_up } : current);
       await refreshAfterFollowUpMutation("Acompanhamento interno atualizado.");
       followUpSave.markDone();

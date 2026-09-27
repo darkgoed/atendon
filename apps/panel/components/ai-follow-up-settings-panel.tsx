@@ -40,6 +40,10 @@ export function AiFollowUpSettingsPanel() {
   const [uploadName, setUploadName] = useState("");
   const [uploadDescription, setUploadDescription] = useState("");
   const [error, setError] = useState("");
+  // Falha ao carregar: o form mostra padrões, não a cadência real do workspace;
+  // salvar nesse estado sobrescreveria a configuração (PUT substitui tudo).
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const save = useSaveFeedback();
   const uploadSave = useSaveFeedback();
 
@@ -59,18 +63,23 @@ export function AiFollowUpSettingsPanel() {
           )
         });
         setMedia(mediaResponse.media);
+        setLoadFailed(false);
+        setError("");
       })
       .catch((loadError: unknown) => {
-        if (active) setError(loadError instanceof Error ? loadError.message : "Falha ao carregar os follow-ups da IA");
+        if (!active) return;
+        setLoadFailed(true);
+        setError(loadError instanceof Error ? loadError.message : "Falha ao carregar os follow-ups da IA");
       })
       .finally(() => {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, []);
+  }, [loadAttempt]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (loadFailed) return;
     setError("");
     if (!isValidFollowUpDelays(settings.delaysMinutes)) {
       setError("Os atrasos devem ser crescentes, entre 1 minuto e 30 dias.");
@@ -159,7 +168,12 @@ export function AiFollowUpSettingsPanel() {
           </label>
         </div>
 
-        {error ? <p className="error mb-5" role="alert">{error}</p> : null}
+        {error ? (
+          <div className="mb-5 flex flex-wrap items-center gap-3">
+            <p className="error" role="alert">{error}</p>
+            {loadFailed ? <Button type="button" onClick={() => { setLoading(true); setLoadAttempt((attempt) => attempt + 1); }}>Tentar novamente</Button> : null}
+          </div>
+        ) : null}
 
         <div className="grid gap-3">
           <div className="flex items-end justify-between gap-4">
@@ -261,6 +275,7 @@ export function AiFollowUpSettingsPanel() {
                     <label className="field">
                       <span>Figurinha para descontrair</span>
                       <select className="input" value={delivery.assetId} onChange={(event) => changeDelivery(index, { type: "sticker", assetId: event.target.value })}>
+                        {stickerData && !selectedSticker ? <option value={delivery.assetId} disabled>Figurinha indisponível — escolha outra</option> : null}
                         {stickers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                       </select>
                     </label>
@@ -292,7 +307,7 @@ export function AiFollowUpSettingsPanel() {
 
         <div className="mt-5 flex items-center justify-between gap-4 border-t border-[var(--border)] pt-5">
           <span className="sub text-xs">Alterações também atualizam sequências que ainda estão aguardando.</span>
-          <SaveButton type="submit" className="channels-ai-touch" state={saving ? "busy" : save.state} icon={<FloppyDisk aria-hidden="true" />}>
+          <SaveButton type="submit" className="channels-ai-touch" state={saving ? "busy" : save.state} icon={<FloppyDisk aria-hidden="true" />} disabled={loadFailed}>
             Salvar cadência
           </SaveButton>
           <SaveToast show={save.done}>Cadência salva</SaveToast>

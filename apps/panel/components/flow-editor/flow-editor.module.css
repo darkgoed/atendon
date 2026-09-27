@@ -493,8 +493,6 @@
 .propertyCheck { display: flex; align-items: flex-start; gap: 8px; font-size: var(--text-label); color: var(--text-secondary); }
 
 .optionList { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
-.optionTarget { font-size: 10px; color: var(--text-disabled); white-space: nowrap; }
-.optionTarget[data-set="true"] { color: var(--success-text); }
 .optionAdd {
   margin-top: 6px;
   padding: 5px 10px;
@@ -565,6 +563,7 @@
 
 .optionRow { display: flex; align-items: center; gap: 6px; }
 .optionRow .input { flex: 1; min-width: 0; }
+.optionRow .buttonRemove { align-self: center; flex: none; }
 
 /* Posiciona o IconButton "Remover etapa" ao pé do painel de propriedades. */
 .removeStepRow { margin-top: 4px; display: flex; }

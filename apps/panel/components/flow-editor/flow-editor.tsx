@@ -246,6 +246,15 @@ function assignField(step: FlowStep, key: string, value: string): FlowStep {
   return next as FlowStep;
 }
 
+/** Texto livre: guarda o que foi digitado (espaços inclusive) — o zod do
+    backend faz trim nesses campos; aparar a cada tecla engolia os espaços. */
+function assignText(step: FlowStep, key: string, value: string): FlowStep {
+  const next = { ...step } as Record<string, unknown>;
+  if (value.trim()) next[key] = value;
+  else delete next[key];
+  return next as FlowStep;
+}
+
 function assignNumberField(step: FlowStep, key: string, value: string): FlowStep {
   const next = { ...step } as Record<string, unknown>;
   const parsed = Math.max(0, Math.round(Number(value)));
@@ -264,14 +273,14 @@ function assignTagIds(step: FlowStep, value: string): FlowStep {
 }
 
 /** Renome por ÍNDICE: o backend aceita value repetido (payload legado), então
-    renomear por value mudaria TODAS as linhas gêmeas. Muda exatamente a linha
-    do índice, copia o destino da transição antiga para o novo valor e só apaga
-    a transição antiga se nenhuma linha continuar com o valor. Recusa renomear
-    para um valor que já existe em OUTRA linha (não cria duplicata nova). */
-function renameOption(step: FlowStep, index: number, newValue: string): FlowStep {
-  const value = newValue.trim();
+    renomear por value mudaria TODAS as linhas gêmeas. Guarda o texto cru
+    (espaços/vazio durante a digitação; bordas aparadas no blur, vazio/repetido
+    barrado por validateDefinition). Copia o destino da transição antiga para o
+    novo valor e só apaga a antiga se nenhuma linha continuar com o valor.
+    Recusa renomear para um valor que já existe em OUTRA linha. */
+function renameOption(step: FlowStep, index: number, value: string): FlowStep {
   const oldValue = (step.options ?? [])[index]?.value;
-  if (!value || oldValue === undefined) return step;
+  if (oldValue === undefined || value === oldValue) return step;
   if ((step.options ?? []).some((option, i) => i !== index && option.value === value)) return step;
   const options = (step.options ?? []).map((option, i) => (i === index ? { ...option, value } : option));
   const transitions = { ...(step.transitions ?? {}) };
@@ -451,9 +460,9 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
                 value={definition.intro ?? ""}
                 disabled={!canManage}
                 onChange={(event) => {
-                  const value = event.target.value.trim();
+                  const value = event.target.value;
                   const next = { ...definition } as Record<string, unknown>;
-                  if (value) next.intro = value;
+                  if (value.trim()) next.intro = value;
                   else delete next.intro;
                   onDefinition(next as FlowDefinition);
                 }}
@@ -490,7 +499,7 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
                   rows={2}
                   value={step.question ?? ""}
                   disabled={!canManage}
-                  onChange={(event) => setStep(assignField(step, "question", event.target.value))}
+                  onChange={(event) => setStep(assignText(step, "question", event.target.value))}
                 />
               </Field>
             ) : null}
@@ -502,7 +511,7 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
                   rows={4}
                   value={step.message ?? ""}
                   disabled={!canManage}
-                  onChange={(event) => setStep(assignField(step, "message", event.target.value))}
+                  onChange={(event) => setStep(assignText(step, "message", event.target.value))}
                 />
                 <small className={styles.propertiesHint}>{(step.message ?? "").length}/4000 caracteres</small>
               </Field>
@@ -514,7 +523,7 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
                   className="input"
                   value={step.classificacao ?? ""}
                   disabled={!canManage}
-                  onChange={(event) => setStep(assignField(step, "classificacao", event.target.value))}
+                  onChange={(event) => setStep(assignText(step, "classificacao", event.target.value))}
                 />
               </Field>
             ) : null}
@@ -526,18 +535,39 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
                   {stepOptions(step).map((value, index) => {
                     /* value repetido (payload legado): gêmeas ganham índice no rótulo. */
                     const duplicated = stepOptions(step).some((candidate, i) => candidate === value && i !== index);
+                    const suffix = duplicated ? ` (linha ${index + 1})` : "";
                     return (
-                      <div key={`${value}-${index}`} className={styles.optionRow}>
+                      /* key estável por linha: key com o value remontaria o input a cada tecla (perde o foco). */
+                      <div key={index} className={styles.optionRow}>
                         <input
                           className="input"
                           value={value}
                           disabled={!canManage || step.kind === "years" || step.kind === "revenue" || step.kind === "boolean"}
                           onChange={(event) => setStep(renameOption(step, index, event.target.value))}
-                          aria-label={`Opção ${optionLabel(value)}${duplicated ? ` (linha ${index + 1})` : ""}`}
+                          onBlur={() => { if (value !== value.trim()) setStep(renameOption(step, index, value.trim())); }}
+                          aria-label={`Opção ${optionLabel(value)}${suffix}`}
                         />
-                        <span className={styles.optionTarget} data-set={Boolean(step.transitions?.[value] ?? step.next)}>
-                          {step.transitions?.[value] || step.next ? "→" : "sem destino"}
-                        </span>
+                        <select
+                          className="input"
+                          aria-label={`Destino da opção ${optionLabel(value)}${suffix}`}
+                          value={step.transitions?.[value] ?? ""}
+                          disabled={!canManage}
+                          onChange={(event) => setHandle(value, event.target.value)}
+                        >
+                          <option value="">{step.next ? "— destino padrão —" : "— sem destino —"}</option>
+                          {otherSteps.map((id) => <option key={id} value={id}>{id}</option>)}
+                        </select>
+                        {step.kind === "options" && (step.options?.length ?? 0) > 1 ? (
+                          <button
+                            type="button"
+                            className={styles.buttonRemove}
+                            aria-label={`Remover opção ${value}${suffix}`}
+                            disabled={!canManage}
+                            onClick={() => setStep(removeInteractiveButton(step, index))}
+                          >
+                            ×
+                          </button>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -670,7 +700,7 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
                       value={step.value ?? ""}
                       maxLength={200}
                       disabled={!canManage}
-                      onChange={(event) => setStep(assignField(step, "value", event.target.value))}
+                      onChange={(event) => setStep(assignText(step, "value", event.target.value))}
                     />
                   </Field>
                 ) : null}
@@ -706,7 +736,7 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
                   value={step.end_reason ?? ""}
                   maxLength={200}
                   disabled={!canManage}
-                  onChange={(event) => setStep(assignField(step, "end_reason", event.target.value))}
+                  onChange={(event) => setStep(assignText(step, "end_reason", event.target.value))}
                 />
               </Field>
             ) : null}
@@ -719,7 +749,7 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
                     rows={3}
                     value={step.message ?? ""}
                     disabled={!canManage}
-                    onChange={(event) => setStep(assignField(step, "message", event.target.value))}
+                    onChange={(event) => setStep(assignText(step, "message", event.target.value))}
                   />
                 </Field>
                 <Field label="Texto do botão" hint="Rótulo curto do botão de resposta (1-60 caracteres).">
@@ -728,7 +758,7 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
                     value={step.interactive_button_text ?? ""}
                     maxLength={60}
                     disabled={!canManage}
-                    onChange={(event) => setStep(assignField(step, "interactive_button_text", event.target.value))}
+                    onChange={(event) => setStep(assignText(step, "interactive_button_text", event.target.value))}
                   />
                 </Field>
                 <div>
@@ -741,7 +771,7 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
                       const duplicated = (step.options ?? []).some((candidate, i) => candidate.value === option.value && i !== index);
                       const rowLabel = (prefix: string) => `${prefix} ${option.value}${duplicated ? ` (linha ${index + 1})` : ""}`;
                       return (
-                        <div key={`${option.value}-${index}`} className={styles.buttonRow}>
+                        <div key={index} className={styles.buttonRow}>
                           <input
                             className="input"
                             value={option.value}
@@ -749,6 +779,7 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
                             aria-label={rowLabel("Texto do botão")}
                             disabled={!canManage}
                             onChange={(event) => setStep(renameOption(step, index, event.target.value))}
+                            onBlur={() => { if (option.value !== option.value.trim()) setStep(renameOption(step, index, option.value.trim())); }}
                           />
                           <input
                             className="input"
@@ -853,7 +884,21 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
               </>
             ) : null}
 
-            <p className={styles.propertiesHint}>Destinos definidos pelas arestas no canvas. Duplo clique numa aresta remove.</p>
+            {step.kind !== "final" && step.kind !== "finalize" && step.kind !== "branch" && step.kind !== "condition" && step.kind !== "interactive" ? (
+              <Field label="Destino padrão (next)" hint="Etapa seguinte; opções sem destino próprio também seguem por aqui.">
+                <select
+                  className="input"
+                  value={step.next ?? ""}
+                  disabled={!canManage}
+                  onChange={(event) => setHandle("out", event.target.value)}
+                >
+                  <option value="">— nenhum —</option>
+                  {otherSteps.map((id) => <option key={id} value={id}>{id}</option>)}
+                </select>
+              </Field>
+            ) : null}
+
+            <p className={styles.propertiesHint}>Destinos também podem ser ligados pelas arestas no canvas (duplo clique numa aresta remove).</p>
 
             <div className={styles.removeStepRow}>
               <IconButton
@@ -1056,8 +1101,11 @@ function FlowEditorInner(props: FlowEditorProps) {
     onDefinition(setEdgeTarget(definition, edge.source, edge.sourceHandle ?? "out", null));
   }, [canManage, definition, onDefinition]);
 
+  /* A seleção (clique ou Enter/Espaço num nó focado) chega como change
+     "select" em handleNodesChange; o clique só fecha o nó que JÁ estava
+     selecionado (node.selected reflete o estado anterior ao clique). */
   const handleNodeClick = useCallback((_event: ReactMouseEvent, node: Node) => {
-    setSelectedId((current) => (current === node.id ? null : node.id));
+    setSelectedId(node.selected ? null : node.id);
   }, []);
 
   const handlePaneClick = useCallback(() => setSelectedId(null), []);
@@ -1072,6 +1120,9 @@ function FlowEditorInner(props: FlowEditorProps) {
           const id = change.id;
           setDraggingId((current) => (change.dragging ? id : current === id ? null : current));
         }
+      } else if (change.type === "select") {
+        const { id, selected } = change;
+        setSelectedId((current) => (selected ? id : current === id ? null : current));
       } else if (change.type === "dimensions" && change.dimensions) {
         sizes.push({ id: change.id, width: change.dimensions.width, height: change.dimensions.height });
       }
