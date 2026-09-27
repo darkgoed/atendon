@@ -25,8 +25,7 @@ import {
   readTotpChallenge,
   matchTotpCounter,
   TOTP_REPLAY_TTL_MS,
-  totpAuthUrl,
-  verifyTotp
+  totpAuthUrl
 } from "./totp.js";
 
 /**
@@ -120,9 +119,14 @@ export async function registerSecurityRoutes(app: FastifyInstance) {
     if (state.enabled) {
       throw httpError(409, "Verificação em duas etapas já está ativa");
     }
-    if (!verifyTotp(state.secretBase32, body.code)) {
+    const counter = matchTotpCounter(state.secretBase32, body.code);
+    if (counter === null) {
       throw Object.assign(new Error("Código inválido"), { statusCode: 400 });
     }
+    // O código da ativação fica gasto: não abre uma sessão no login logo depois (Ponytail-2).
+    await claimOnceRedis(`totp-used:${session.userId}:${counter}`, TOTP_REPLAY_TTL_MS).catch((error: unknown) => {
+      request.log.warn({ err: error }, "Could not mark the TOTP activation code as used");
+    });
     await withTransaction(async (client) => {
       const activated = await client.query<{ id: string }>(
         "UPDATE users SET totp_enabled_at=now(),updated_at=now() WHERE id=$1 AND totp_secret_encrypted IS NOT NULL AND totp_enabled_at IS NULL RETURNING id",

@@ -998,6 +998,31 @@ describe("TOTP verify brute force", () => {
     }
   }, 30_000);
 
+  it("the code used to activate 2FA cannot open a session right after (Ponytail-2)", async () => {
+    const email = `totp-activate-${randomUUID()}@test.local`;
+    const user = await pool.query<{ id: string }>("INSERT INTO users(email,password_hash,status) VALUES($1,$2,'active') RETURNING id", [email, await hash(password, 4)]);
+    try {
+      await pool.query(
+        `INSERT INTO workspace_members(workspace_id,user_id,role_id,status,joined_at)
+         SELECT $1,$2,id,'active',now() FROM workspace_roles WHERE workspace_id=$1 AND name='OPERADOR'`,
+        [tenantA, user.rows[0].id]
+      );
+      const cookie = await login(email);
+      const setup = await app.inject({ method: "POST", url: "/me/totp/setup", headers: { cookie }, payload: { current_password: password } });
+      const secret = setup.json().secret as string;
+      const code = totpCode(secret);
+      expect((await app.inject({ method: "POST", url: "/me/totp/activate", headers: { cookie }, payload: { code } })).statusCode).toBe(200);
+      const second = await app.inject({ method: "POST", url: "/auth/login", remoteAddress: "10.54.0.1", payload: { email, password } });
+      const header = second.headers["set-cookie"];
+      const challenge = (Array.isArray(header) ? header : [header!]).find((item) => item.startsWith("atendon_totp_challenge="))!.split(";")[0];
+      const verify = await app.inject({ method: "POST", url: "/auth/totp/verify", remoteAddress: "10.55.0.1", headers: { cookie: challenge }, payload: { code } });
+      expect(verify.statusCode).toBe(401);
+    } finally {
+      await pool.query("DELETE FROM audit_logs WHERE actor_user_id=$1", [user.rows[0].id]);
+      await pool.query("DELETE FROM users WHERE id=$1", [user.rows[0].id]);
+    }
+  }, 30_000);
+
   it("requires the current password to set up 2FA (seg. S5)", async () => {
     const cookie = await login(operatorEmail);
     expect((await app.inject({ method: "POST", url: "/me/totp/setup", headers: { cookie }, payload: {} })).statusCode).toBe(400);
