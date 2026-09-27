@@ -17,8 +17,8 @@ import {
 import { SchedulingNotificationRepository } from "./modules/scheduling/notification-repository.js";
 import {
   CRITICAL_WORKER_HEARTBEAT_KEYS,
-  WORKER_HEARTBEAT_KEY,
-  WORKER_HEARTBEAT_TTL_MS
+  recordWorkerHeartbeats,
+  WORKER_HEARTBEAT_KEY
 } from "./readiness.js";
 import { AI_FOLLOW_UP_QUEUE, enqueueAiFollowUp, type AiFollowUpJob } from "./queue/ai-follow-up-queue.js";
 import {
@@ -750,13 +750,11 @@ const changelogPublishTimer = setInterval(() => {
 }, Number(process.env.CHANGELOG_PUBLISH_INTERVAL_MS ?? 60_000));
 changelogPublishTimer.unref();
 const recordHeartbeat = async (): Promise<void> => {
-  const redis = await worker.client;
-  const value = String(Date.now());
-  await Promise.all([
-    redis.set(WORKER_HEARTBEAT_KEY, value, { PX: WORKER_HEARTBEAT_TTL_MS }),
-    ...Object.values(CRITICAL_WORKER_HEARTBEAT_KEYS)
-      .map((key) => redis.set(key, value, { PX: WORKER_HEARTBEAT_TTL_MS }))
-  ]);
+  await recordWorkerHeartbeats(await worker.client, {
+    inbound: worker,
+    meeting_provisioning: meetingProvisioningWorker,
+    meeting_contact_delivery: meetingContactDeliveryWorker
+  });
 };
 const heartbeatTimer = setInterval(() => {
   void recordHeartbeat().catch((error) => logger.error({ error }, "Worker heartbeat failed"));

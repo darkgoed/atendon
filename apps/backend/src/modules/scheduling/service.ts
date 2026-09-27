@@ -2392,7 +2392,7 @@ export async function rescheduleAppointment(
     ) {
       throw httpError(404, "Agendamento não encontrado");
     }
-    assertExpectedAppointmentSnapshot(current.rows[0], options.expectedSnapshot);
+    await assertExpectedAppointmentSnapshot(client, tenantId, current.rows[0], options.expectedSnapshot);
     if (current.rows[0].status === "cancelado") throw httpError(409, "Agendamento cancelado não pode ser reagendado");
     const unit = await loadUnit(client, tenantId, input.unidade_id ?? current.rows[0].unit_id);
     const start = new Date(input.start);

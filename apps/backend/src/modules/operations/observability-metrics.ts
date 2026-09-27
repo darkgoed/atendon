@@ -214,13 +214,21 @@ export function inMemoryOperationalMetrics(pool: pg.Pool) {
         return { labels: { component, event }, value };
       })
     },
-    reconcilers: RECONCILER_WORKFLOWS.map((workflow) => ({
-      labels: { workflow },
-      oldest_age_ms: reconcilerOldestAgeMs.get(workflow) ?? 0,
-      counters: RECONCILER_EVENTS.map((event) => ({
-        event,
-        value: counters.get(`reconciler|${workflow}|${event}`) ?? 0
-      }))
-    }))
+    reconcilers: reconcilerMetrics()
   };
+}
+
+// Os reconciliadores rodam no worker; o snapshot é servido pela API. O worker
+// publica estes valores no Redis a cada heartbeat (WORKER_RECONCILER_METRICS_KEY).
+export const WORKER_RECONCILER_METRICS_KEY = "atendon:worker:reconciler-metrics";
+
+export function reconcilerMetrics() {
+  return RECONCILER_WORKFLOWS.map((workflow) => ({
+    labels: { workflow },
+    oldest_age_ms: reconcilerOldestAgeMs.get(workflow) ?? 0,
+    counters: RECONCILER_EVENTS.map((event) => ({
+      event,
+      value: counters.get(`reconciler|${workflow}|${event}`) ?? 0
+    }))
+  }));
 }

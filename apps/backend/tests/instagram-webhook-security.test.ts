@@ -256,4 +256,46 @@ describe("handleInstagramWebhook", () => {
     expect(response.statusCode).toBe(500);
     await app.close();
   });
+
+  it("skips an unknown/disconnected account without dropping the rest of the Meta batch", async () => {
+    const receivedAt = Date.now() - 1_000;
+    const entry = (id: string, mid: string) => ({
+      id,
+      messaging: [{
+        sender: { id: "igsid-1" },
+        recipient: { id },
+        timestamp: receivedAt,
+        message: { mid, text: "hello" }
+      }]
+    });
+    const raw = Buffer.from(JSON.stringify({
+      object: "instagram",
+      entry: [entry("disconnected-account", "mid-a"), entry("account-1", "mid-b")]
+    }));
+    const persistEvent = vi.fn().mockResolvedValue({ duplicate: false });
+    const app = Fastify();
+    app.addContentTypeParser("application/json", { parseAs: "buffer" }, (_request, body, done) => {
+      done(null, body);
+    });
+    app.post("/webhook", async (request, reply) => handleInstagramWebhook(request, reply, {
+      repository: { persistEvent },
+      appSecret: "app-secret",
+      resolveAccount: async (accountId: string) => accountId === "account-1"
+        ? { tenantId: "tenant-1", sessionId: "connection-uuid" }
+        : null,
+      rawBody: request.body as Buffer
+    }));
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/webhook",
+      headers: { "content-type": "application/json", "x-hub-signature-256": signature(raw) },
+      payload: raw
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(persistEvent).toHaveBeenCalledTimes(1);
+    expect(persistEvent.mock.calls[0]?.[0]).toBe("tenant-1");
+    await app.close();
+  });
 });

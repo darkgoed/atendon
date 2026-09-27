@@ -54,7 +54,12 @@ export async function handleInstagramWebhook(
   const events = normalizeInstagramWebhook(payload);
   for (const event of events) {
     const owner = await options.resolveAccount(event.accountId);
-    if (!owner) return reply.code(404).send({ error: "unknown account" });
+    // Meta agrupa entries de várias contas num POST: conta desconhecida ou
+    // desconectada é ignorada (ack), sem derrubar as demais do lote.
+    if (!owner) {
+      request.log.debug({ accountId: event.accountId }, "Instagram webhook event for unknown account skipped");
+      continue;
+    }
     await options.repository.persistEvent(
       owner.tenantId,
       owner.sessionId,

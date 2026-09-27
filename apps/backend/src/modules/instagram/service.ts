@@ -12,11 +12,17 @@ function hasProviderRejection(error: unknown): boolean {
     && (error as Error & { providerRejected?: boolean }).providerRejected === true) {
     return true;
   }
-  if ("status" in error) {
-    const status = (error as Error & { status?: unknown }).status;
-    return typeof status === "number" && status >= 400 && status < 500;
+  // Só 401 ou token inválido (OAuthException code 190) revogam. Throttling da
+  // Meta também é 4xx (429; 400/403 com code 4/17/32/613) e não pode apagar a
+  // credencial: fica ambíguo e o próximo ciclo tenta de novo.
+  const { status, detail } = error as Error & { status?: unknown; detail?: unknown };
+  if (status === 401) return true;
+  if (typeof status !== "number" || status < 400 || status >= 500 || typeof detail !== "string") return false;
+  try {
+    return (JSON.parse(detail) as { error?: { code?: unknown } }).error?.code === 190;
+  } catch {
+    return false;
   }
-  return false;
 }
 
 function refreshStaleError(): Error {

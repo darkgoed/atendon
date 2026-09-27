@@ -108,6 +108,31 @@ describe("Instagram due token refresh service", () => {
     )).rows[0]).toEqual({ status: "disconnected", reconnect_required: true, credentials_encrypted: null });
   });
 
+  it("keeps the credential on Meta throttling 4xx and revokes only on invalid-token errors", async () => {
+    const tenantId = await tenant();
+    const repository = new InstagramRepository(pool, key);
+    const connection = await repository.saveConnection({
+      tenantId,
+      label: "Throttled",
+      accountId: `account-${randomUUID()}`,
+      accessToken: "throttled-token",
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    const metaError = (status: number, code: number) => Object.assign(new Error("Meta request rejected"), {
+      status,
+      detail: JSON.stringify({ error: { message: "x", type: "OAuthException", code } })
+    });
+    for (const error of [metaError(400, 4), metaError(403, 32), metaError(429, 613)]) {
+      const service = new InstagramService(repository, provider(vi.fn(async () => { throw error; })));
+      await expect(service.refresh(tenantId, connection.id))
+        .rejects.toMatchObject({ code: "INSTAGRAM_REFRESH_AMBIGUOUS" });
+      await expect(repository.getToken(tenantId, connection.id)).resolves.toBe("throttled-token");
+    }
+    const invalid = new InstagramService(repository, provider(vi.fn(async () => { throw metaError(400, 190); })));
+    await expect(invalid.refresh(tenantId, connection.id))
+      .rejects.toMatchObject({ code: "INSTAGRAM_REAUTH_REQUIRED" });
+  });
+
   it("does not overwrite a reauthorized token with a stale refresh result", async () => {
     const tenantId = await tenant();
     const repository = new InstagramRepository(pool, key);

@@ -61,6 +61,10 @@ export type ExpectedAppointmentSnapshot = {
   status?: AppointmentTechnicalStatus;
   start_at?: string | Date;
   end_at?: string | Date;
+  // Stamp do vínculo Google lido no claim da reconciliação: o pump
+  // (scheduling_calendar_sync_outbox) mexeu no agendamento/vínculo desde então
+  // → o evento lido do Google é velho e não pode ser adotado.
+  calendar_link_claimed_at?: Date;
 };
 
 /**
@@ -70,12 +74,24 @@ export type ExpectedAppointmentSnapshot = {
  * leitura e a escrita — o chamador Google deve reler e reaplicar, nunca
  * sobrescrever a edição concorrente. Nenhum UPDATE roda quando falha.
  */
-export function assertExpectedAppointmentSnapshot(
-  appointment: { status: string; start_at: Date | string; end_at: Date | string },
+export async function assertExpectedAppointmentSnapshot(
+  client: PoolClient,
+  tenantId: string,
+  appointment: { id: string; status: string; start_at: Date | string; end_at: Date | string },
   expected?: ExpectedAppointmentSnapshot
-): void {
+): Promise<void> {
   if (!expected) return;
   const changed: string[] = [];
+  if (expected.calendar_link_claimed_at !== undefined) {
+    const untouched = (await client.query<{ ok: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM scheduling_appointment_calendar_events
+                      WHERE appointment_id=$1 AND tenant_id=$2 AND last_synced_at=$3)
+          AND NOT EXISTS (SELECT 1 FROM scheduling_calendar_sync_outbox
+                          WHERE appointment_id=$1 AND tenant_id=$2) ok`,
+      [appointment.id, tenantId, expected.calendar_link_claimed_at]
+    )).rows[0].ok;
+    if (!untouched) changed.push("sincronização do Google Calendar");
+  }
   if (expected.status !== undefined && appointment.status !== expected.status) changed.push("status");
   if (expected.start_at !== undefined && new Date(appointment.start_at).getTime() !== new Date(expected.start_at).getTime()) changed.push("start_at");
   if (expected.end_at !== undefined && new Date(appointment.end_at).getTime() !== new Date(expected.end_at).getTime()) changed.push("end_at");
@@ -500,7 +516,7 @@ export async function cancelAppointmentJourney(
 ): Promise<JourneyResult> {
   return transaction(async (client) => {
     const { appointment,lead } = await lockAppointmentAndLead(client,tenantId,appointmentId,expectedAssignedMemberId);
-    assertExpectedAppointmentSnapshot(appointment,options?.expectedSnapshot);
+    await assertExpectedAppointmentSnapshot(client,tenantId,appointment,options?.expectedSnapshot);
     if (!['confirmado','reagendado'].includes(appointment.status)) throw httpError(409,`Transição de agendamento não permitida: ${appointment.status} -> cancelado`);
     const recovering = input.disposition === "recover";
     const targetStatus: LeadTechnicalStatus = recovering ? "follow_up" : "perdido";

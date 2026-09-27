@@ -194,3 +194,43 @@ describe("markSent", () => {
     expect(count.rows[0]!.count).toBe("0");
   });
 });
+
+describe("findAppointmentsNeedingConfirmation", () => {
+  // Candidato que o enqueue nunca consegue atender (lead na lixeira, ou já
+  // dentro dos 15 min) ficava na frente do ORDER BY start_at LIMIT global e
+  // matava de fome os lembretes dos demais tenants.
+  async function candidate(minutesAhead: number, deletedLead = false): Promise<string> {
+    const sessionId = randomUUID();
+    const phone = `5511${randomUUID().replace(/\D/g, "").slice(0, 9)}`;
+    const lead = await pool.query<{ id: string }>(
+      "INSERT INTO scheduling_leads(tenant_id, phone, name, source) VALUES($1,$2,'Lead','whatsapp') RETURNING id",
+      [tenantId, phone]
+    );
+    await pool.query("INSERT INTO whatsapp_sessions(id, tenant_id, status) VALUES($1,$2,'connected')", [sessionId, tenantId]);
+    await pool.query(
+      "INSERT INTO conversations(tenant_id, session_id, contact_phone, lead_id) VALUES($1,$2,$3,$4)",
+      [tenantId, sessionId, phone, lead.rows[0]!.id]
+    );
+    const start = new Date(Date.now() + minutesAhead * 60_000);
+    const appointment = await pool.query<{ id: string }>(
+      `INSERT INTO scheduling_appointments(
+         lead_id, tenant_id, unit_id, start_at, end_at, status, meeting_provisioning_status
+       ) VALUES($1,$2,$3,$4,$5,'confirmado','not_required') RETURNING id`,
+      [lead.rows[0]!.id, tenantId, unitId, start, new Date(start.getTime() + 40 * 60_000)]
+    );
+    if (deletedLead) await pool.query("UPDATE scheduling_leads SET deleted_at=now() WHERE id=$1", [lead.rows[0]!.id]);
+    return appointment.rows[0]!.id;
+  }
+
+  it("só devolve agendamentos que o enqueue ainda consegue planejar", async () => {
+    const trashed = await candidate(60, true);
+    const tooLate = await candidate(10);
+    const normal = await candidate(48 * 60);
+
+    const ids = await repository.findAppointmentsNeedingConfirmation(10_000);
+
+    expect(ids).toContain(normal);
+    expect(ids).not.toContain(trashed);
+    expect(ids).not.toContain(tooLate);
+  });
+});

@@ -2,6 +2,7 @@ import { db } from "./db/client.js";
 import { meetingContactDeliveryQueue } from "./queue/meeting-contact-delivery-queue.js";
 import { meetingProvisioningQueue } from "./queue/meeting-provisioning-queue.js";
 import { inboundQueue } from "./queue/message-queue.js";
+import { reconcilerMetrics, WORKER_RECONCILER_METRICS_KEY } from "./modules/operations/observability-metrics.js";
 
 export const WORKER_HEARTBEAT_KEY = "atendon:worker:heartbeat";
 export const WORKER_HEARTBEAT_TTL_MS = 30_000;
@@ -11,6 +12,26 @@ export const CRITICAL_WORKER_HEARTBEAT_KEYS = {
   meeting_contact_delivery: "atendon:worker:heartbeat:meeting_contact_delivery"
 } as const;
 const READINESS_TIMEOUT_MS = 2_000;
+
+type HeartbeatWorker = { isRunning(): boolean; closing?: Promise<void> };
+
+// Heartbeat do processo worker: a chave crítica de cada fila só é renovada
+// enquanto o Worker BullMQ dela está rodando (fechado/parado → expira e o
+// /ready acusa). Publica junto as métricas dos reconciliadores do processo.
+export async function recordWorkerHeartbeats(
+  redis: { set(key: string, value: string, options: { PX: number }): Promise<unknown> },
+  workers: Record<keyof typeof CRITICAL_WORKER_HEARTBEAT_KEYS, HeartbeatWorker>,
+  now = Date.now()
+): Promise<void> {
+  const value = String(now);
+  const running = (Object.keys(CRITICAL_WORKER_HEARTBEAT_KEYS) as Array<keyof typeof CRITICAL_WORKER_HEARTBEAT_KEYS>)
+    .filter((name) => workers[name].isRunning() && !workers[name].closing)
+    .map((name) => CRITICAL_WORKER_HEARTBEAT_KEYS[name]);
+  await Promise.all([
+    ...[WORKER_HEARTBEAT_KEY, ...running].map((key) => redis.set(key, value, { PX: WORKER_HEARTBEAT_TTL_MS })),
+    redis.set(WORKER_RECONCILER_METRICS_KEY, JSON.stringify(reconcilerMetrics()), { PX: WORKER_HEARTBEAT_TTL_MS })
+  ]);
+}
 
 export interface ReadinessResult {
   ready: boolean;

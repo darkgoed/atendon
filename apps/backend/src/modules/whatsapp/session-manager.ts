@@ -413,6 +413,14 @@ export class WhatsAppSessionManager implements MessageGateway {
 
   private schedulePresenceRefresh(sessionId: string, delayMs: number): void {
     const timer = setTimeout(async () => {
+      // O ticker de horário comercial só existe no worker: fora do horário o
+      // próprio refresh (API ou worker) se encerra em vez de republicar online.
+      if (await this.outsideBusinessHours(sessionId)) {
+        if (this.presenceRefreshTimers.get(sessionId) !== timer) return;
+        this.stopPresenceRefresh(sessionId);
+        await this.trySetPresence(sessionId, "unavailable", 1);
+        return;
+      }
       const refreshed = await this.trySetPresence(sessionId, "available", 1);
       // stopPresenceRefresh may have run while the provider request was pending.
       if (this.presenceRefreshTimers.get(sessionId) !== timer) return;
@@ -427,6 +435,15 @@ export class WhatsAppSessionManager implements MessageGateway {
     }, delayMs);
     timer.unref();
     this.presenceRefreshTimers.set(sessionId, timer);
+  }
+
+  private async outsideBusinessHours(sessionId: string): Promise<boolean> {
+    try {
+      const hours = await loadBusinessHoursConfig(this.db, await this.sessions.tenantId(sessionId));
+      return !isWithinBusinessHours(new Date(), hours);
+    } catch {
+      return false; // sem leitura do horário: mantém o refresh (comportamento anterior)
+    }
   }
 
   private stopPresenceRefresh(sessionId: string): void {
