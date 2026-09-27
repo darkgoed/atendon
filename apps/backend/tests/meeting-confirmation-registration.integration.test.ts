@@ -234,3 +234,43 @@ describe("findAppointmentsNeedingConfirmation", () => {
     expect(ids).not.toContain(tooLate);
   });
 });
+
+describe("lead do Instagram (sem telefone) não trava os lembretes de todos (auditoria runtime #1)", () => {
+  it("o agendamento sem telefone é pulado e os demais recebem lembrete", async () => {
+    const tenant = (await pool.query<{ id: string }>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id", [`IG lembrete ${randomUUID()}`])).rows[0].id;
+    try {
+      const unit = (await pool.query<{ id: string }>(`INSERT INTO scheduling_units(id,tenant_id,name,opening_time,closing_time,operating_days)
+        VALUES($1,$2,'U','08:00','18:00','{1,2,3,4,5}') RETURNING id`, [randomUUID(), tenant])).rows[0].id;
+      const ig = (await pool.query<{ id: string }>(`INSERT INTO whatsapp_sessions(tenant_id,label,channel,is_primary,status,phone_number)
+         VALUES($1,'IG','instagram',false,'connected',NULL) RETURNING id`, [tenant])).rows[0].id;
+      const wa = (await pool.query<{ id: string }>("INSERT INTO whatsapp_sessions(tenant_id,channel,status) VALUES($1,'whatsapp','connected') RETURNING id", [tenant])).rows[0].id;
+      const igLead = (await pool.query<{ id: string }>(
+        "INSERT INTO scheduling_leads(tenant_id,phone,name,source,instagram_contact_id,instagram_session_id) VALUES($1,NULL,'IG','instagram',$2,$3) RETURNING id", [tenant, `igsid-${randomUUID()}`, ig]
+      )).rows[0].id;
+      await pool.query("INSERT INTO conversations(tenant_id,session_id,contact_phone,instagram_contact_id,lead_id) VALUES($1,$2,NULL,$3,$4)", [tenant, ig, `igsid-${randomUUID()}`, igLead]);
+      const phone = `5511${Date.now().toString().slice(-8)}`;
+      await pool.query("INSERT INTO conversations(tenant_id,session_id,contact_phone) VALUES($1,$2,$3)", [tenant, wa, phone]);
+      const waLead = (await pool.query<{ lead_id: string }>("SELECT lead_id FROM conversations WHERE tenant_id=$1 AND session_id=$2", [tenant, wa])).rows[0].lead_id;
+      const appointment = async (leadId: string, hours: number) => {
+        const start = new Date(Date.now() + hours * 3600_000);
+        return (await pool.query<{ id: string }>(`INSERT INTO scheduling_appointments(lead_id,tenant_id,unit_id,start_at,end_at,status,meeting_provisioning_status)
+          VALUES($1,$2,$3,$4,$5,'confirmado','not_required') RETURNING id`, [leadId, tenant, unit, start, new Date(start.getTime() + 1_800_000)])).rows[0].id;
+      };
+      const igAppointment = await appointment(igLead, 24);
+      const waAppointment = await appointment(waLead, 48);
+      const confirmations = new MeetingConfirmationRepository(pool);
+      // Mesmo laço do worker (reconcileMeetingConfirmations).
+      const candidates = await confirmations.findAppointmentsNeedingConfirmation(100_000);
+      expect(candidates).not.toContain(igAppointment);
+      for (const id of candidates.filter((id) => id === igAppointment || id === waAppointment)) {
+        await confirmations.enqueueForAppointment(id);
+      }
+      await expect(confirmations.enqueueForAppointment(igAppointment)).resolves.toEqual([]);
+      const rows = await pool.query<{ appointment_id: string }>("SELECT appointment_id FROM scheduling_meeting_confirmation_outbox WHERE tenant_id=$1", [tenant]);
+      expect(rows.rows.map((row) => row.appointment_id)).toContain(waAppointment);
+    } finally {
+      await pool.query("DELETE FROM scheduling_meeting_confirmation_outbox WHERE tenant_id=$1", [tenant]);
+      await pool.query("DELETE FROM tenants WHERE id=$1", [tenant]);
+    }
+  });
+});

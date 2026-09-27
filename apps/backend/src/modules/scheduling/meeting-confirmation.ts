@@ -260,6 +260,7 @@ export class MeetingConfirmationRepository {
                 tenant.timezone
          FROM scheduling_appointments a
          JOIN scheduling_leads lead ON lead.id = a.lead_id AND lead.tenant_id = a.tenant_id AND lead.deleted_at IS NULL
+           AND lead.phone IS NOT NULL
          JOIN tenants tenant ON tenant.id = a.tenant_id
          JOIN conversations conversation
            ON conversation.lead_id = a.lead_id AND conversation.tenant_id = a.tenant_id
@@ -551,6 +552,9 @@ export class MeetingConfirmationRepository {
          AND EXISTS (
            SELECT 1 FROM scheduling_leads lead
            WHERE lead.id = a.lead_id AND lead.tenant_id = a.tenant_id AND lead.deleted_at IS NULL
+             -- Lembrete sai por WhatsApp (contact_phone NOT NULL na outbox): lead
+             -- do Instagram não tem telefone e o INSERT falhava para todos.
+             AND lead.phone IS NOT NULL
          )
          AND EXISTS (
            SELECT 1 FROM conversations c

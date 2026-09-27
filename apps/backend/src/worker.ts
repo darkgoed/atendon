@@ -630,7 +630,10 @@ const reconcileMeetingConfirmations = async (): Promise<void> => {
   // despacha as que já venceram. A ordem importa: sem o primeiro passo a
   // outbox nunca receberia nada.
   for (const appointmentId of await meetingConfirmationRepository.findAppointmentsNeedingConfirmation(100)) {
-    await meetingConfirmationRepository.enqueueForAppointment(appointmentId);
+    // Isolado por agendamento: uma falha não pode impedir os lembretes vencidos
+    // (passo seguinte) de todos os tenants.
+    await meetingConfirmationRepository.enqueueForAppointment(appointmentId)
+      .catch((error) => logger.error({ error, appointmentId }, "Meeting confirmation enqueue failed"));
   }
   let cursor: string | undefined;
   do {
