@@ -14,6 +14,7 @@ import { SavedViewsControl } from "@/components/saved-views-control";
 import { TagCatalogSettings } from "@/components/tag-catalog-settings";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
+import { localDay } from "@/lib/timezone";
 import { buildLeadFilterQuery, type LeadFilters } from "@/lib/lead-filters";
 import { leadStatusLabel } from "@/lib/labels";
 import { applyLeadSavedViewFilters, leadFiltersForSavedView, useCaseOrganizationEnabled } from "@/lib/organization";
@@ -191,7 +192,7 @@ export default function LeadsPage() {
       const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `contatos-${new Date().toISOString().slice(0, 10)}.csv`;
+      anchor.download = `contatos-${localDay(new Date(), session?.activeWorkspace?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)}.csv`;
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
     } catch (exportError) {

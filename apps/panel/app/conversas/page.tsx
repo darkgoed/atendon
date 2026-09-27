@@ -201,7 +201,7 @@ function contactIsOnline(conversation: Conversation): boolean {
   return Date.now() - new Date(conversation.contact_presence_updated_at).getTime() < 3 * 60 * 1_000;
 }
 
-function contactPresenceLabel(conversation: Conversation): string {
+function contactPresenceLabel(conversation: Conversation, timezone?: string): string {
   if (contactIsOnline(conversation)) {
     if (conversation.contact_presence === "composing") return "digitando…";
     if (conversation.contact_presence === "recording") return "gravando áudio…";
@@ -212,7 +212,7 @@ function contactPresenceLabel(conversation: Conversation): string {
   const today = new Date();
   const sameDay = seen.toDateString() === today.toDateString();
   return sameDay
-    ? `visto por último às ${seen.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+    ? `visto por último às ${seen.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", ...(timezone ? { timeZone: timezone } : {}) })}`
     : `visto por último em ${seen.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`;
 }
 
@@ -1613,7 +1613,7 @@ export default function Conversations() {
                     <span className="mono" dir="ltr">{thread.conversation.channel === "instagram" ? instagramDisplayIdentity(thread.conversation.instagram_username, thread.conversation.contact_identifier) : thread.conversation.contact_phone ?? "telefone indisponível"}</span>
                     {thread.conversation.channel !== "instagram" ? <span className={`inline-flex items-center gap-1.5 ${contactIsOnline(thread.conversation) ? "text-[var(--primary-text)]" : "text-[var(--text-muted)]"}`}>
                       <span className={`h-1.5 w-1.5 rounded-full ${contactIsOnline(thread.conversation) ? "animate-pulse bg-[var(--primary)]" : "bg-[var(--text-muted)]"}`} aria-hidden="true" />
-                      {contactPresenceLabel(thread.conversation)}
+                      {contactPresenceLabel(thread.conversation, timezone)}
                     </span> : null}
                     <ConversationBadge item={thread.conversation} />
                     {leadsEnabled ? <LeadTagChips tags={thread.conversation.tags} compact /> : null}

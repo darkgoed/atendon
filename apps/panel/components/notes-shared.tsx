@@ -9,6 +9,7 @@
 import { type FormEvent, type KeyboardEvent as ReactKeyboardEvent, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
+import type { PanelSession } from "@/lib/session";
 import { Button } from "@/components/ui";
 import styles from "./conversation-notes.module.css";
 
@@ -46,10 +47,11 @@ export function mentionDisplayName(member: MentionMember): string {
   return member.name?.trim() || member.email;
 }
 
-function formatDate(value: string): string {
+function formatDate(value: string, timezone?: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  // Mesmo fuso do fio da conversa (workspace), não o do navegador.
+  return parsed.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", ...(timezone ? { timeZone: timezone } : {}) });
 }
 
 /** Token @vigente: `@` + texto sem espaço imediatamente antes do cursor. */
@@ -265,6 +267,8 @@ export function NoteComposer({
 }
 
 export function NoteList({ items, emptyLabel }: { items: InternalNote[]; emptyLabel: string }) {
+  const { data: session } = useSWR<PanelSession>("/me", fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
+  const timezone = session?.activeWorkspace?.timezone;
   if (!items.length) return <p className={styles.hint} role="status">{emptyLabel}</p>;
   return (
     <ul className={styles.list}>
@@ -273,7 +277,7 @@ export function NoteList({ items, emptyLabel }: { items: InternalNote[]; emptyLa
           <p className={styles.noteBody}>{note.body}</p>
           <div className={styles.noteFooter}>
             <span>{note.author_name?.trim() || "Autor removido"}</span>
-            <time dateTime={note.created_at}>{formatDate(note.created_at)}</time>
+            <time dateTime={note.created_at}>{formatDate(note.created_at, timezone)}</time>
             {note.mentions.map((mention) => (
               <span key={mention.id} className={styles.mentionChip}>@{mention.name?.trim() || "membro"}</span>
             ))}
