@@ -1153,7 +1153,9 @@ export class MessageProcessor {
     // that turn, producing two independent, contradictory replies. Serialize
     // everything from here on per conversation so only one reply is generated
     // and sent at a time.
-    const conversationLock = await acquireConversationLock(conversationKey);
+    // Espera curta: com a conversa ocupada o worker adia o job (sem segurar o
+    // slot nem gastar tentativa — ver deferBusyInboundJob).
+    const conversationLock = await acquireConversationLock(conversationKey, { waitMs: 2_000 });
     if (!conversationLock) {
       await markContactMessagesRead([message.externalId]);
       logger.warn({ externalId: message.externalId, conversationId: context.conversationId, reason: "conversation_locked" }, "Inbound message will be retried");

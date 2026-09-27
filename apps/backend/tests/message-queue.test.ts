@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { UnrecoverableError } from "bullmq";
-import { adjustDelayedInboundJobList, createInboundJobData, ensureInboundAiTurn, INBOUND_JOB_ATTEMPTS, inboundTerminalFailureAlert } from "../src/queue/message-queue.js";
+import { DelayedError, UnrecoverableError } from "bullmq";
+import { adjustDelayedInboundJobList, createInboundJobData, deferBusyInboundJob, ensureInboundAiTurn, INBOUND_BUSY_DEFER_MS, INBOUND_BUSY_MAX_DEFERRALS, INBOUND_JOB_ATTEMPTS, inboundTerminalFailureAlert, type InboundJobData } from "../src/queue/message-queue.js";
 
 function delayedJob(tenantId = "tenant-1") {
   return {
@@ -71,5 +71,30 @@ describe("logical AI turn identity", () => {
     expect(automaticRetry.aiTurnId).toBe(first.aiTurnId);
     expect(manualRetry.aiTurnId).not.toBe(first.aiTurnId);
     expect(first.aiTurnId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+});
+
+describe("deferBusyInboundJob (auditoria runtime S1)", () => {
+  function fakeJob(busyDeferrals?: number) {
+    const job = {
+      data: { externalId: "wamid-1", tenantId: "t", sessionId: "s", contactPhone: "5511", text: "oi", ...(busyDeferrals === undefined ? {} : { busyDeferrals }) } as InboundJobData,
+      updateData: vi.fn(async (data: InboundJobData) => { job.data = data; }),
+      moveToDelayed: vi.fn(async () => undefined)
+    };
+    return job;
+  }
+
+  it("adia o job sem gastar tentativa e conta o adiamento", async () => {
+    const job = fakeJob();
+    const delayed = await deferBusyInboundJob(job, "token-1", 1_000);
+    expect(delayed).toBeInstanceOf(DelayedError);
+    expect(job.moveToDelayed).toHaveBeenCalledWith(1_000 + INBOUND_BUSY_DEFER_MS, "token-1");
+    expect(job.data.busyDeferrals).toBe(1);
+  });
+
+  it("no teto devolve null e o erro segue para as tentativas normais", async () => {
+    const job = fakeJob(INBOUND_BUSY_MAX_DEFERRALS);
+    await expect(deferBusyInboundJob(job, "token-1")).resolves.toBeNull();
+    expect(job.moveToDelayed).not.toHaveBeenCalled();
   });
 });

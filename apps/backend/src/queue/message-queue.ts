@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { Queue, UnrecoverableError } from "bullmq";
+import { DelayedError, Queue, UnrecoverableError } from "bullmq";
 import { redisConnection } from "./connection.js";
 import type { SessionMessage } from "../modules/messages/types.js";
 import { isWithinBusinessHours, nextBusinessHoursStart, type BusinessHoursConfig } from "../modules/whatsapp/business-hours.js";
@@ -12,7 +12,31 @@ export const INBOUND_JOB_ATTEMPTS = 8;
 export type InboundJobData = SessionMessage & {
   aiTurnId?: string;
   automaticRecoveryAttempt?: number;
+  /** Adiamentos por conversa ocupada (não consomem tentativas). */
+  busyDeferrals?: number;
 };
+
+// Conversa ocupada (turno humanizado em andamento): o job sai do slot do
+// worker e volta depois, sem gastar tentativa (auditoria runtime S1). Antes
+// esperava até 45 s segurando um dos 5 slots, travando outros tenants.
+// 90 × 5 s ≈ 7,5 min de turno; passado isso cai nas tentativas normais.
+export const INBOUND_BUSY_DEFER_MS = 5_000;
+export const INBOUND_BUSY_MAX_DEFERRALS = 90;
+
+type DeferrableInboundJob = {
+  data: InboundJobData;
+  updateData(data: InboundJobData): Promise<void>;
+  moveToDelayed(timestamp: number, token?: string): Promise<void>;
+};
+
+/** Reagenda o job sem consumir tentativa; null quando o teto já foi atingido. */
+export async function deferBusyInboundJob(job: DeferrableInboundJob, token: string | undefined, now = Date.now()): Promise<DelayedError | null> {
+  const deferrals = job.data.busyDeferrals ?? 0;
+  if (deferrals >= INBOUND_BUSY_MAX_DEFERRALS) return null;
+  await job.updateData({ ...job.data, busyDeferrals: deferrals + 1 });
+  await job.moveToDelayed(now + INBOUND_BUSY_DEFER_MS, token);
+  return new DelayedError();
+}
 
 export const inboundQueue = new Queue<InboundJobData>(INBOUND_QUEUE, { connection: redisConnection });
 

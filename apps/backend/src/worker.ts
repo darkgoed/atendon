@@ -2,7 +2,7 @@ import { Worker } from "bullmq";
 import { logger } from "./logger.js";
 import { createWhatsAppRuntime } from "./runtime.js";
 import { redisConnection } from "./queue/connection.js";
-import { enqueueInbound, ensureInboundAiTurn, INBOUND_QUEUE, inboundTerminalFailureAlert, type InboundJobData } from "./queue/message-queue.js";
+import { deferBusyInboundJob, enqueueInbound, ensureInboundAiTurn, INBOUND_QUEUE, inboundTerminalFailureAlert, type InboundJobData } from "./queue/message-queue.js";
 import { HUMAN_OUTBOUND_QUEUE, type HumanOutboundJob } from "./queue/human-message-queue.js";
 import { db } from "./db/client.js";
 import { publishScheduledChangelogPosts } from "./modules/changelog/repository.js";
@@ -131,7 +131,7 @@ const instagramScheduler = new InstagramWorkerScheduler({
     operation === "drain" ? "Instagram inbox drain failed" : "Instagram token refresh scheduler failed"
   )
 });
-const worker = new Worker<InboundJobData>(INBOUND_QUEUE, async (job) => {
+const worker = new Worker<InboundJobData>(INBOUND_QUEUE, async (job, token) => {
   let data = job.data;
   if (!data.aiTurnId) {
     data = ensureInboundAiTurn(data);
@@ -144,6 +144,10 @@ const worker = new Worker<InboundJobData>(INBOUND_QUEUE, async (job) => {
       automaticRecoveryAttempt: data.automaticRecoveryAttempt ?? 0
     });
   } catch (error) {
+    if (error instanceof ConversationBusyRetryError) {
+      const delayed = await deferBusyInboundJob(job, token);
+      if (delayed) throw delayed;
+    }
     if (isAutomaticAiRecoveryError(error) && (data.automaticRecoveryAttempt ?? 0) < 1) {
       await job.updateData({ ...data, automaticRecoveryAttempt: 1 });
     }
