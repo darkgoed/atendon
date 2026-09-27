@@ -512,15 +512,10 @@ function PipelinePageContent() {
       status: persistenceStage.technical_status
     }));
     try {
-      let expectedUpdatedAt = lead.atualizado_em;
-      if (commercial && "responsavel_member_id" in commercial && commercial.responsavel_member_id) {
-        await api(`/scheduling/leads/${lead.id}/follow-up`, {
-          method: "PATCH",
-          body: JSON.stringify({ responsavel_member_id: commercial.responsavel_member_id })
-        });
-        const refreshed = await api<{ lead?: { atualizado_em?: string } }>(`/scheduling/leads/${lead.id}`);
-        expectedUpdatedAt = refreshed.lead?.atualizado_em ?? expectedUpdatedAt;
-      }
+      // O responsável do fechamento vai no próprio payload: o backend troca o
+      // dono do caso na MESMA transação. O PATCH /follow-up prévio trocava o
+      // dono mesmo quando o fechamento falhava (auditoria F11).
+      const expectedUpdatedAt = lead.atualizado_em;
       if (stage.id.startsWith("fallback:")) {
         await updateLeadStatus(lead.id, persistenceStage.technical_status);
       } else {

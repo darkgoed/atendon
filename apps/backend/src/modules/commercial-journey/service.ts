@@ -12,6 +12,7 @@ import type {
 } from "./schemas.js";
 import type { LeadTechnicalStatus } from "../organization/domain.js";
 import { captureClosedSalePostSaleClient } from "../post-sales/service.js";
+import { transferCaseAssignment } from "../assignments/service.js";
 
 export type JourneyActor = {
   userId: string | null;
@@ -373,6 +374,27 @@ export async function applyStructuredStageEffects(
     );
     if (!responsible.rows[0]) throw httpError(400,"Responsável deve ser um membro ativo do workspace");
     outcome="fechado"; saleValue=payload.sale_value;
+    // Troca de responsável no fechamento move o CASO inteiro (conversas,
+    // histórico) na mesma transação do fechamento. Antes o painel fazia um
+    // PATCH /follow-up separado ANTES: fechamento que falhava deixava o dono
+    // trocado sem o lead fechar (auditoria F11).
+    const current = await client.query<{ assigned_member_id: string | null }>(
+      "SELECT assigned_member_id FROM scheduling_leads WHERE tenant_id=$1 AND id=$2",
+      [input.tenantId,input.lead.id]
+    );
+    const inPool = await client.query(
+      "SELECT 1 FROM scheduling_google_meet_closers WHERE tenant_id=$1 AND member_id=$2",
+      [input.tenantId,payload.responsavel_member_id]
+    );
+    if (input.actor.userId && inPool.rows[0] && current.rows[0]?.assigned_member_id !== payload.responsavel_member_id) {
+      await transferCaseAssignment(client,{
+        tenantId: input.tenantId,
+        selector: { leadId: input.lead.id },
+        targetMemberId: payload.responsavel_member_id,
+        actor: { ...input.actor, userId: input.actor.userId },
+        manager: true
+      });
+    }
   } else if (targetStatus === "perdido") {
     if (!payload?.loss_reason || payload.sale_value || hasSaleMetadata || payload.responsavel_member_id || payload.next_action || payload.next_action_at) throw httpError(400,"Informe somente o motivo da perda");
     const resolved = await resolveLossReason(client,input.tenantId,payload.loss_reason,payload.loss_reason_note);

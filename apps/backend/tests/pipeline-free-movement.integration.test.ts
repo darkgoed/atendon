@@ -220,6 +220,26 @@ describe("pipeline free movement integration", () => {
     expect(responses.filter((response) => response.statusCode === 409)).toHaveLength(1);
   });
 
+  it("closing with a new responsible moves the whole case (conversations too) in the same transaction (FLOW F11)", async () => {
+    // Antes o painel fazia um PATCH /follow-up separado ANTES do fechamento: se o
+    // fechamento falhasse (409/CAS), o dono já tinha mudado sem o lead fechar.
+    await pool.query(
+      "INSERT INTO scheduling_google_meet_closers(tenant_id,member_id,availability_status) VALUES($1,$2,'available') ON CONFLICT DO NOTHING",
+      [tenantId, operatorMemberId]
+    );
+    const leadId = await insertLead(pool, tenantId, "Venda com troca de dono", ownerMemberId);
+    const phone = (await pool.query<{ phone: string }>("SELECT phone FROM scheduling_leads WHERE id=$1", [leadId])).rows[0].phone;
+    const session = (await pool.query<{ id: string }>("INSERT INTO whatsapp_sessions(tenant_id,status) VALUES($1,'connected') RETURNING id", [tenantId])).rows[0].id;
+    const conversation = (await pool.query<{ id: string }>(
+      "INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name,lead_id,assigned_user_id,status) VALUES($1,$2,$3,'Venda',$4,$5,'open') RETURNING id",
+      [tenantId, session, phone, leadId, ownerUserId]
+    )).rows[0].id;
+    const sale = await app.inject({ method: "PATCH", url: `/organization/leads/${leadId}/stage`, headers: { cookie: ownerCookie }, payload: { stage_id: await stageId(tenantId, "fechado"), commercial: { sale_value: 99, sale_product: "Plano", sale_channel: "whatsapp", sale_source: "indicacao", responsavel_member_id: operatorMemberId } } });
+    expect(sale.statusCode).toBe(200);
+    expect((await pool.query("SELECT assigned_member_id,status FROM scheduling_leads WHERE id=$1", [leadId])).rows[0]).toMatchObject({ assigned_member_id: operatorMemberId, status: "fechado" });
+    expect((await pool.query("SELECT assigned_user_id FROM conversations WHERE id=$1", [conversation])).rows[0].assigned_user_id).toBe(operatorUserId);
+  });
+
   it("rejects incomplete commercial transitions and persists sale metadata atomically", async () => {
     const closedWithoutValue = await app.inject({ method: "PATCH", url: `/organization/leads/${saleLeadId}/stage`, headers: { cookie: ownerCookie }, payload: { stage_id: await stageId(tenantId, "fechado"), commercial: {} } });
     expect(closedWithoutValue.statusCode).toBe(400);
