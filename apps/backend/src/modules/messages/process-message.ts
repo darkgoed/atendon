@@ -854,9 +854,9 @@ export class ConversationBusyRetryError extends Error {
 
 /** Contabilização de IA indisponível (erro transitório): o job reprocessa o turno; nada é enviado. */
 export class BillingUnavailableRetryError extends Error {
-  constructor(readonly externalId: string) {
+  override name = "BillingUnavailableRetryError";
+  constructor() {
     super("AI billing is unavailable; retry inbound message later");
-    this.name = "BillingUnavailableRetryError";
   }
 }
 
@@ -1204,7 +1204,7 @@ export class MessageProcessor {
           return consumption;
         });
       const consumption = await aiReservation;
-      if (consumption.reason === "BILLING_UNAVAILABLE") throw new BillingUnavailableRetryError(message.externalId);
+      if (consumption.reason === "BILLING_UNAVAILABLE") throw new BillingUnavailableRetryError();
       return consumption.allowed;
     };
     const reconcileAiTurn = () => {
@@ -2826,7 +2826,12 @@ export class MessageProcessor {
       // Turno que reservou e não chegou a reconciliar (falha/saída antecipada):
       // devolve a reserva já — sem esperar o TTL. Só age sem usage_logs;
       // retentativa com a mesma chave reabre a reserva.
-      if (aiReservation && !aiTurnReconciled) void releaseAiInteractionWithoutUsage(message.tenantId, "inbound_reply", requestId).catch(() => {});
+      // Reserva recusada (cota/assinatura) não tem o que devolver: evita um FOR UPDATE por mensagem.
+      if (aiReservation && !aiTurnReconciled) {
+        void aiReservation
+          .then((reservation) => reservation.allowed ? releaseAiInteractionWithoutUsage(message.tenantId, "inbound_reply", requestId) : undefined)
+          .catch(() => undefined);
+      }
       clearInterval(lockHeartbeat);
       await releaseConversationLock(conversationLock);
     }

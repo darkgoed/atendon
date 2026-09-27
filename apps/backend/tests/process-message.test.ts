@@ -4131,6 +4131,14 @@ Full name: Renan de Carvalho`;
     expect(reconcileAiTurnFromUsageLogsMock).not.toHaveBeenCalled();
   });
 
+  it("does not open a release transaction when the reservation was refused", async () => {
+    consumeAiInteractionMock.mockResolvedValueOnce({ allowed: false, reason: "QUOTA_EXCEEDED" });
+    const { processor } = setup();
+    await expect(processor.process(message)).resolves.toBe("fallback");
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(releaseAiInteractionWithoutUsageMock).not.toHaveBeenCalled();
+  });
+
   it("does not release the reservation of an answered turn", async () => {
     const { processor } = setup();
     await expect(processor.process(message)).resolves.toBe("answered");
