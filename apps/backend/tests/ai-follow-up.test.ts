@@ -60,6 +60,7 @@ function setup() {
     releaseClaim: vi.fn().mockResolvedValue(undefined),
     isClaimCurrent: vi.fn().mockResolvedValue(true),
     recordAiUsage: vi.fn().mockResolvedValue(undefined),
+    recordDeliveredBubble: vi.fn().mockResolvedValue(undefined),
     completeSent: vi.fn().mockResolvedValue(undefined),
     cancelClaim: vi.fn().mockResolvedValue(undefined),
     recordFailure: vi.fn().mockResolvedValue(false),
@@ -265,6 +266,10 @@ describe("AI follow-ups", () => {
     await expect(processor.process(claim.conversationId)).resolves.toBe("sent");
 
     expect(gateway.sendText).toHaveBeenCalledTimes(4);
+    // Cada bolha é gravada logo após o envio, antes da próxima (eco do Instagram — runtime S2).
+    expect(repository.recordDeliveredBubble).toHaveBeenCalledTimes(4);
+    expect(repository.recordDeliveredBubble.mock.invocationCallOrder[0]).toBeLessThan(gateway.sendText.mock.invocationCallOrder[1]);
+    expect(repository.recordDeliveredBubble).toHaveBeenNthCalledWith(1, claim, claim.model, expect.objectContaining({ externalId: "follow-up-bubble-1", text: "Claro Renan" }));
     expect(gateway.sendText).toHaveBeenNthCalledWith(1, claim.sessionId, claim.contactJid, "Claro Renan");
     expect(gateway.sendText).toHaveBeenNthCalledWith(
       4,

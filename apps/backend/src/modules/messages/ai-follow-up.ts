@@ -236,6 +236,42 @@ export async function scheduleAiFollowUpsAfterAgentReply(
   } : null;
 }
 
+type FollowUpDeliveryRow = {
+  text: string; externalId: string; sentAt: Date;
+  mediaType: string | null; mediaMimeType: string | null; mediaFileName: string | null;
+  mediaSizeBytes: number | null; mediaIsSticker: boolean;
+};
+
+/** Grava (idempotente por provider_message_key) uma mensagem do follow-up. */
+async function insertFollowUpAgentMessage(
+  client: Pick<PoolClient, "query">,
+  claim: AiFollowUpClaim,
+  model: string,
+  delivery: FollowUpDeliveryRow
+): Promise<string> {
+  const inserted = await client.query<{ id: string }>(
+    `INSERT INTO messages(
+       conversation_id,sender,content,ai_model_used,agent_config_version_id,external_message_id,
+       provider_message_key,created_at,media_type,media_mime_type,media_file_name,media_size_bytes,media_is_sticker
+     )
+     SELECT c.id,'agent',$3,$4,$5,$6,$7,$8,$10,$11,$12,$13,$14 FROM conversations c
+     WHERE c.id=$1 AND c.tenant_id=$2 AND c.session_id=$9
+     ON CONFLICT(provider_message_key) DO UPDATE SET
+       sender='agent',content=EXCLUDED.content,ai_model_used=EXCLUDED.ai_model_used,
+       agent_config_version_id=EXCLUDED.agent_config_version_id,
+       media_type=EXCLUDED.media_type,media_mime_type=EXCLUDED.media_mime_type,
+       media_file_name=EXCLUDED.media_file_name,media_size_bytes=EXCLUDED.media_size_bytes,
+       media_is_sticker=EXCLUDED.media_is_sticker
+     RETURNING id`,
+    [claim.conversationId, claim.tenantId, delivery.text, model, claim.agentConfigVersionId,
+      delivery.externalId, `${claim.tenantId}:${claim.sessionId}:${delivery.externalId}`, delivery.sentAt, claim.sessionId,
+      delivery.mediaType, delivery.mediaMimeType, delivery.mediaFileName,
+      delivery.mediaSizeBytes, delivery.mediaIsSticker]
+  );
+  if (!inserted.rows[0]) throw new Error("Conversation disappeared before follow-up could be recorded");
+  return inserted.rows[0].id;
+}
+
 export class AiFollowUpRepository {
   constructor(private readonly db: Pool, private readonly config?: AppConfig) {}
 
@@ -627,6 +663,17 @@ export class AiFollowUpRepository {
     );
   }
 
+  /**
+   * Bolha de texto gravada logo após o envio (auditoria runtime S2): no
+   * Instagram o eco chega pelo inbox e, sem a linha, após 20 s vira "humano"
+   * e pausa a IA. completeSent regrava a mesma chave (ON CONFLICT).
+   */
+  async recordDeliveredBubble(claim: AiFollowUpClaim, model: string, bubble: { text: string; externalId: string; sentAt: Date }): Promise<void> {
+    await insertFollowUpAgentMessage(this.db, claim, model, {
+      ...bubble, mediaType: null, mediaMimeType: null, mediaFileName: null, mediaSizeBytes: null, mediaIsSticker: false
+    });
+  }
+
   async completeSent(
     claim: AiFollowUpClaim,
     input: {
@@ -659,27 +706,7 @@ export class AiFollowUpRepository {
           }];
       let lastMessageId: string | undefined;
       for (const delivery of deliveries) {
-        const inserted = await client.query<{ id: string }>(
-          `INSERT INTO messages(
-             conversation_id,sender,content,ai_model_used,agent_config_version_id,external_message_id,
-             provider_message_key,created_at,media_type,media_mime_type,media_file_name,media_size_bytes,media_is_sticker
-           )
-           SELECT c.id,'agent',$3,$4,$5,$6,$7,$8,$10,$11,$12,$13,$14 FROM conversations c
-           WHERE c.id=$1 AND c.tenant_id=$2 AND c.session_id=$9
-           ON CONFLICT(provider_message_key) DO UPDATE SET
-             sender='agent',content=EXCLUDED.content,ai_model_used=EXCLUDED.ai_model_used,
-             agent_config_version_id=EXCLUDED.agent_config_version_id,
-             media_type=EXCLUDED.media_type,media_mime_type=EXCLUDED.media_mime_type,
-             media_file_name=EXCLUDED.media_file_name,media_size_bytes=EXCLUDED.media_size_bytes,
-             media_is_sticker=EXCLUDED.media_is_sticker
-           RETURNING id`,
-          [claim.conversationId, claim.tenantId, delivery.text, input.model, claim.agentConfigVersionId,
-            delivery.externalId, `${claim.tenantId}:${claim.sessionId}:${delivery.externalId}`, delivery.sentAt, claim.sessionId,
-            delivery.mediaType, delivery.mediaMimeType, delivery.mediaFileName,
-            delivery.mediaSizeBytes, delivery.mediaIsSticker]
-        );
-        if (!inserted.rows[0]) throw new Error("Conversation disappeared before follow-up could be recorded");
-        lastMessageId = inserted.rows[0].id;
+        lastMessageId = await insertFollowUpAgentMessage(client, claim, input.model, delivery);
       }
       if (!lastMessageId) throw new Error("Follow-up delivery did not contain a message");
       const lastSentAt = deliveries.at(-1)!.sentAt;
@@ -966,8 +993,13 @@ export class AiFollowUpProcessor {
             }
             const bubbleSentAt = new Date();
             const bubbleSent = await toContact(() => this.gateway.sendText(claim.sessionId, destination, bubble));
-            sentBubbles.push({ text: bubble, externalId: bubbleSent.externalId, sentAt: bubbleSentAt });
-            deliveredBubbles.push({ text: bubble, externalId: bubbleSent.externalId, sentAt: bubbleSentAt });
+            const delivered = { text: bubble, externalId: bubbleSent.externalId, sentAt: bubbleSentAt };
+            sentBubbles.push(delivered);
+            deliveredBubbles.push(delivered);
+            // Falha aqui não é fatal: completeSent grava tudo no fim.
+            await this.repository.recordDeliveredBubble(claim, claim.model, delivered).catch((error: unknown) => {
+              logger.warn({ err: error, conversationId: claim.conversationId }, "Could not persist follow-up bubble right after sending");
+            });
           }
           sent = { externalId: sentBubbles[0]!.externalId };
           sentAt = sentBubbles[0]!.sentAt;

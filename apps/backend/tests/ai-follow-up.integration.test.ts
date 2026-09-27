@@ -100,6 +100,8 @@ describe("AI follow-up persistence", () => {
     const followUpSecondId = `follow-up-bubble-two-${randomUUID()}`;
     const followUpFirstSentAt = new Date();
     const followUpSecondSentAt = new Date(followUpFirstSentAt.getTime() + 1);
+    // A 1ª bolha já foi gravada logo após o envio (runtime S2); completeSent não duplica.
+    await followUps.recordDeliveredBubble(followUpClaim!, "test/model", { text: "Primeiro balão", externalId: followUpFirstId, sentAt: followUpFirstSentAt });
     await followUps.completeSent(followUpClaim!, {
       text: "Primeiro balão\n\nSegundo balão",
       model: "test/model",

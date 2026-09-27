@@ -185,6 +185,7 @@ describe("AI follow-up billing: usage_logs.request_id", () => {
       releaseClaim: vi.fn().mockResolvedValue(undefined),
       isClaimCurrent: vi.fn().mockResolvedValue(true),
       recordAiUsage: (input: Parameters<AiFollowUpRepository["recordAiUsage"]>[0]) => followUps.recordAiUsage(input),
+      recordDeliveredBubble: vi.fn().mockResolvedValue(undefined),
       completeSent: vi.fn().mockResolvedValue(undefined),
       cancelClaim: vi.fn().mockResolvedValue(undefined),
       recordFailure: vi.fn().mockResolvedValue(false),
