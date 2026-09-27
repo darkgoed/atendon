@@ -765,15 +765,26 @@ export class QualificationService {
       return sent.externalId;
     } catch (error) {
       if (interactive) await this.logInteractiveDelivery(current, "failed", { erro: error instanceof Error ? error.message : String(error) });
-      await db.query(
+      const failed = await db.query<{ status: string }>(
         // Rejeição definitiva volta com backoff, mas com teto (20 tentativas ou
         // 24h): sem ele um número desconectado reenviava para sempre e, dias
         // depois, despejava mensagens velhas de uma vez ao reconectar.
         `UPDATE qualification_message_outbox SET attempts=attempts+1,last_error=$2,claimed_at=NULL,
          status=CASE WHEN $3::boolean AND attempts+1<20 AND created_at>now()-interval '24 hours' THEN 'pending' ELSE 'failed' END,
          next_attempt_at=CASE WHEN $3::boolean THEN now() + make_interval(secs => LEAST(300, power(2,LEAST(attempts,8))::int)) ELSE next_attempt_at END
-         WHERE id=$1 AND status='pending'`, [current.id, error instanceof Error ? error.message : String(error), isWhatsAppSendRejectedError(error)]
+         WHERE id=$1 AND status='pending' RETURNING status`, [current.id, error instanceof Error ? error.message : String(error), isWhatsAppSendRejectedError(error)]
       );
+      // Envio que terminou em 'failed' (ambíguo ou sem mais tentativas): o fluxo
+      // fica esperando resposta de uma pergunta que o contato talvez não viu.
+      // Avisa o workspace em vez de só somar erro na estatística (runtime S6).
+      if (failed.rows[0]?.status === "failed") {
+        await db.query(
+          `INSERT INTO system_alerts(tenant_id,message)
+           SELECT $1,$2
+           WHERE NOT EXISTS (SELECT 1 FROM system_alerts WHERE tenant_id=$1 AND message=$2 AND created_at>=now()-interval '1 hour')`,
+          [current.tenant_id, `O robô de qualificação não conseguiu confirmar o envio para ${current.contact_phone}. Confira a conversa antes de seguir o fluxo.`]
+        ).catch(() => undefined);
+      }
       throw error;
     }
   }

@@ -159,6 +159,8 @@ describe("auditoria P1 — fluxos de robô", () => {
     const rejecting = { sendText: vi.fn(async () => { throw new WhatsAppSendRejectedError("connection closed"); }) };
     await expect(service.deliverOutboxById(stale, rejecting as never)).rejects.toThrow();
     expect((await pool.query<{ status: string }>("SELECT status FROM qualification_message_outbox WHERE id=$1", [stale])).rows[0].status).toBe("failed");
+    // Falha final avisa o workspace (runtime S6).
+    expect((await pool.query("SELECT 1 FROM system_alerts WHERE tenant_id=$1 AND message LIKE $2", [tenantId, `%${phone}%`])).rowCount).toBe(1);
   });
 });
 
