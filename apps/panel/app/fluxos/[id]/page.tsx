@@ -62,7 +62,7 @@ export default function FluxoEditorPage() {
   const flowId = typeof params.id === "string" ? params.id : "";
   const canManage = usePermission("agent.manage");
   const canRead = usePermission("agent.read");
-  const { data, isLoading, mutate } = useSWR(canRead ? `/qualification/flows/${flowId}` : null, flowFetcher);
+  const { data, error, isLoading, mutate } = useSWR(canRead ? `/qualification/flows/${flowId}` : null, flowFetcher);
 
   const [nome, setNome] = useState<string | null>(null);
   const [ativo] = useState<boolean | null>(null);
@@ -93,8 +93,19 @@ export default function FluxoEditorPage() {
      resposta tardia, compara — trocar de rota no meio do save nunca aplica
      o resultado (nem o erro) no fluxo que ficou na tela (R5). */
   const flowIdRef = useRef(flowId);
+  /* Época da tela: incrementa em TODA troca de rota (A→B→A conta duas) e
+     quando uma recarga adota o servidor (restauro durante save em voo).
+     Resposta do save que atravessou uma virada está morta: o documento na
+     tela (cache do SWR ou unidade recarregada) não é o que a requisição
+     salvou — marcar "Salvo"/limpar dirty mentiria e adotar a revisão dela
+     pode mascarar alteração alheia (o token velho força o 409 seguro). */
+  const screenEpochRef = useRef(0);
+  /* Dono da trava síncrona: quem setou por ÚLTIMO é quem libera. Sem isso o
+     finally do save reabilita o botão no meio da recarga pendente. */
+  const lockRef = useRef<object | null>(null);
   useEffect(() => {
     flowIdRef.current = flowId;
+    screenEpochRef.current += 1;
   }, [flowId]);
 
   /* Troca de fluxo (param id muda sem remontar a página): zera o estado local
@@ -169,7 +180,10 @@ export default function FluxoEditorPage() {
     const targetId = flowId; // capturado no closure (R5)
     const baseRevisao = revisao; // token CAS vivo no momento do clique
     const nonceNoClique = editNonceRef.current; // rascunho do clique: edições em voo não são desta resposta
+    const epochNoClique = screenEpochRef.current; // virada de rota/recarga depois do clique mata a resposta
+    const lockToken = {};
     savingRef.current = true;
+    lockRef.current = lockToken;
     setSaving(true);
     setSaved(false);
     try {
@@ -182,7 +196,7 @@ export default function FluxoEditorPage() {
           revisao_base: baseRevisao,
         }),
       });
-      if (flowIdRef.current !== targetId) return; // resposta tardia: outro fluxo na tela
+      if (screenEpochRef.current !== epochNoClique || flowIdRef.current !== targetId) return; // resposta tardia: outra rota/recarga no meio
       /* A resposta é autoridade do token CAS: a revisão nova é adotada MESMO
          com edições em voo — mas só marca salvo/limpa dirty se o rascunho não
          mudou desde o clique (a edição B ainda é rascunho real). */
@@ -193,7 +207,7 @@ export default function FluxoEditorPage() {
         setDirty(false);
       }
     } catch (cause) {
-      if (flowIdRef.current !== targetId) return;
+      if (screenEpochRef.current !== epochNoClique || flowIdRef.current !== targetId) return;
       resetSaveFeedback(); // em erro o botão volta a "Salvar"
       const conflictRevisao = cause instanceof ApiError ? flowConflictRevisao(cause.body) : null;
       if (cause instanceof ApiError && cause.status === 409 && conflictRevisao !== null) {
@@ -202,9 +216,10 @@ export default function FluxoEditorPage() {
       }
       setServerError(cause instanceof ApiError ? cause.message : "Falha ao salvar o fluxo");
     } finally {
-      if (flowIdRef.current === targetId) {
+      if (flowIdRef.current === targetId && lockRef.current === lockToken) {
         savingRef.current = false;
         setSaving(false);
+        lockRef.current = null;
       }
     }
   }, [canManage, currentAtivo, currentDefinition, currentNome, flowId, revisao, markSaveDone, resetSaveFeedback]);
@@ -219,10 +234,13 @@ export default function FluxoEditorPage() {
   const reloadFromServer = useCallback(async () => {
     const targetId = flowIdRef.current;
     const nonceNaRecarga = editNonceRef.current; // rascunho do clique em Recarregar
+    screenEpochRef.current += 1; // a tela vira unidade da recarga: resposta de save em voo morre
     setConflict(null);
     setSaved(false);
     setServerError(null);
+    const lockToken = {};
     savingRef.current = true; // trava síncrona + visual (botão busy)
+    lockRef.current = lockToken;
     setSaving(true);
     try {
       /* mutate FUNCIONAL (revalidate: false): o fetch é o próprio updater —
@@ -250,9 +268,10 @@ export default function FluxoEditorPage() {
     } catch {
       if (flowIdRef.current === targetId) setServerError("Não foi possível recarregar o fluxo — tente novamente.");
     } finally {
-      if (flowIdRef.current === targetId) {
+      if (flowIdRef.current === targetId && lockRef.current === lockToken) {
         savingRef.current = false;
         setSaving(false);
+        lockRef.current = null;
       }
     }
   }, [mutate]);
@@ -292,6 +311,12 @@ export default function FluxoEditorPage() {
     <Shell flush>
       {isLoading ? (
         <div className="grid gap-3 p-4"><div className="skeleton h-10 w-72" aria-hidden="true" /><div className="skeleton h-80 w-full" aria-hidden="true" /></div>
+      ) : error && !loaded ? (
+        /* Falha de carregamento ≠ fluxo inexistente: só 404 afirma que o fluxo
+           não existe; erro de rede/servidor orienta tentar de novo (a SWR
+           revalida ao focar a aba). Com dados em cache a falha de revalidação
+           em background NÃO troca a tela — o rascunho permanece. */
+        <div className="p-4"><p className="error" role="alert">{error instanceof ApiError && error.status === 404 ? "Fluxo não encontrado." : "Não foi possível carregar o fluxo."}</p></div>
       ) : !loaded ? (
         <div className="p-4"><p className="error" role="alert">Fluxo não encontrado.</p></div>
       ) : currentDefinition ? (
