@@ -134,8 +134,23 @@ export async function ensureOpenPeriod(client: PoolClient, tenantId: string): Pr
     await client.query("SAVEPOINT sp_open_period");
     try {
       const inserted = await client.query<UsagePeriodRow>(
-        `INSERT INTO usage_periods (tenant_id, subscription_id, sequence, start_at, end_at, included_limit, usage_unit, status)
-         VALUES ($1,$2,$3,$4::timestamptz,$4::timestamptz + interval '1 month',$5,$6,'OPEN') RETURNING ${periodColumns}`,
+        // Fim = mesmo dia do início no mês seguinte (limitado ao último dia). Quando
+        // o início caiu no último dia do mês por esse limite (28/fev de um contrato
+        // do dia 31), recupera o dia do contrato: 31/jan → 28/fev → 31/mar.
+        `WITH anchor AS (
+           SELECT COALESCE((SELECT start_at FROM usage_periods WHERE tenant_id=$1 ORDER BY sequence, start_at LIMIT 1), $4::timestamptz) AS a,
+                  $4::timestamptz AS s
+         ), day AS (
+           SELECT s, CASE WHEN date_trunc('month', s + interval '1 day') <> date_trunc('month', s) AND extract(day FROM a) > extract(day FROM s)
+                          THEN extract(day FROM a) ELSE extract(day FROM s) END AS d
+             FROM anchor
+         )
+         INSERT INTO usage_periods (tenant_id, subscription_id, sequence, start_at, end_at, included_limit, usage_unit, status)
+         SELECT $1,$2,$3,s,
+                LEAST(date_trunc('month', s + interval '1 month') + (d - 1) * interval '1 day' + (s - date_trunc('day', s)),
+                      date_trunc('month', s + interval '2 month') - interval '1 day' + (s - date_trunc('day', s))),
+                $5,$6,'OPEN'
+           FROM day RETURNING ${periodColumns}`,
         [tenantId, sub.id, prior ? prior.sequence + 1 : 1, prior?.end_at ?? sub.current_period_start, limit, useCredits ? "CREDIT" : "INTERACTION"]
       );
       await client.query("RELEASE SAVEPOINT sp_open_period");
