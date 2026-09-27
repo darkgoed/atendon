@@ -266,6 +266,8 @@ export type ImportResult = {
   skipped: number;
   duplicates_flagged: number;
   errors?: ImportResultError[];
+  /** Colunas ignoradas pelo backend (ex.: campos sem permissão fields.manage). */
+  warnings?: string[];
 };
 
 export type ImportResultLine = {

@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowLeft, Eye, EyeSlash } from "@/components/icons";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { BrandMark } from "@/components/brand-mark";
 import { Button, Field, Input } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -12,6 +12,10 @@ export default function Login() {
   const [error, setError] = useState("");
   // 2FA: /auth/login só emite o desafio; a sessão vem de /auth/totp/verify.
   const [totpStep, setTotpStep] = useState(false);
+  // ?totp=1: desafio já emitido por outro fluxo (ex.: aceite de convite com 2FA).
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("totp") === "1") setTotpStep(true);
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

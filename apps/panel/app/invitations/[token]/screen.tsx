@@ -63,7 +63,7 @@ export default function InvitationAcceptPage({ token }: { token: string }) {
     }
     setSubmitting(true);
     try {
-      await api("/auth/accept-invitation", {
+      const accepted = await api<{ totp_required?: boolean }>("/auth/accept-invitation", {
         method: "POST",
         body: JSON.stringify({
           token,
@@ -72,6 +72,11 @@ export default function InvitationAcceptPage({ token }: { token: string }) {
             : { newPassword, passwordConfirmation })
         })
       });
+      // Conta com 2FA: o convite foi aceito, mas a sessão só nasce no passo do código.
+      if (accepted?.totp_required) {
+        router.push("/login?totp=1");
+        return;
+      }
       router.push("/?welcome=invite");
       router.refresh();
     } catch (err) {
