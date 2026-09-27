@@ -7,7 +7,7 @@ import {
   drainInstagramInboxTenant,
   instagramInboundExternalId
 } from "../src/modules/instagram/index.js";
-import { InstagramRepository } from "../src/modules/instagram/repository.js";
+import { INBOX_ABANDONED_ALERT, InstagramRepository } from "../src/modules/instagram/repository.js";
 import { InstagramService } from "../src/modules/instagram/service.js";
 import type { InstagramProvider, NormalizedInstagramEvent } from "../src/modules/instagram/types.js";
 import { MessageRepository } from "../src/modules/messages/repository.js";
@@ -630,5 +630,14 @@ describe("Instagram inbox claim", () => {
     expect(first.map((row) => row.provider_event_id)).toEqual(["fresh"]);
     const rest = await repository.claimInbox(claimTenantId, 10);
     expect(rest.map((row) => row.provider_event_id)).toEqual(["poison"]);
+  });
+
+  it("alerts the workspace when the last attempt of an inbox event fails", async () => {
+    const repository = new InstagramRepository(pool, key);
+    await insertInbox("last-try", 719, new Date(Date.now() - 180_000));
+    const [row] = (await repository.claimInbox(claimTenantId, 10)).filter((item) => item.provider_event_id === "last-try");
+    await repository.markProcessed(claimTenantId, String(row.id), "still failing");
+    const alerts = await pool.query("SELECT 1 FROM system_alerts WHERE tenant_id=$1 AND message=$2", [claimTenantId, INBOX_ABANDONED_ALERT]);
+    expect(alerts.rowCount).toBe(1);
   });
 });

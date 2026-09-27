@@ -92,6 +92,7 @@ function isUniqueViolation(error: unknown): error is DatabaseError {
 // The inbox drains about every 5 seconds per tenant.
 const INBOX_DEPRIORITIZE_AFTER_ATTEMPTS = 5;
 const INBOX_MAX_ATTEMPTS = 720;
+export const INBOX_ABANDONED_ALERT = "Um evento do Instagram falhou repetidamente e deixou de ser processado. Confira as conversas do Instagram e a conexão da conta.";
 
 export class InstagramRepository {
   private readonly keyring: SecretKeyring;
@@ -524,14 +525,27 @@ export class InstagramRepository {
 
   async markProcessed(tenantId: string, id: string, error?: string): Promise<void> {
     await withTenantTransaction(this.db, tenantId, async (client) => {
-      await client.query(
+      const updated = await client.query<{ attempts: number }>(
         `UPDATE instagram_webhook_inbox
          SET processed_at=CASE WHEN $3::text IS NULL THEN now() ELSE processed_at END,
              claimed_at=CASE WHEN $3::text IS NULL THEN claimed_at ELSE NULL END,
              last_error=$3::text
-         WHERE tenant_id=$1 AND id=$2`,
+         WHERE tenant_id=$1 AND id=$2
+         RETURNING attempts`,
         [tenantId, id, error ?? null]
       );
+      // Última tentativa falhou: o evento não será mais reprocessado. Antes
+      // ficava abandonado em silêncio (Ponytail: inbox Instagram).
+      if (error && (updated.rows[0]?.attempts ?? 0) >= INBOX_MAX_ATTEMPTS) {
+        await client.query(
+          `INSERT INTO system_alerts(tenant_id,message)
+           SELECT $1,$2
+           WHERE NOT EXISTS (
+             SELECT 1 FROM system_alerts WHERE tenant_id=$1 AND message=$2 AND created_at>=now()-interval '1 hour'
+           )`,
+          [tenantId, INBOX_ABANDONED_ALERT]
+        );
+      }
     });
   }
 
