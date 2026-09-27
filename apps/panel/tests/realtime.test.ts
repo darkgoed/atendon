@@ -103,4 +103,57 @@ describe("realtime invalidation signals", () => {
     unsubscribe();
     expect(close).toHaveBeenCalledTimes(1);
   });
+
+  it("recria o EventSource com backoff quando a conexão é fechada de vez (ORG C9: 502/503 no deploy)", () => {
+    vi.useFakeTimers();
+    try {
+      type Fake = { listeners: Map<string, (event: MessageEvent<string>) => void>; readyState: number; close: ReturnType<typeof vi.fn> };
+      const sources: Fake[] = [];
+      const factory = vi.fn(() => {
+        const source: Fake = { listeners: new Map(), readyState: 0, close: vi.fn() };
+        sources.push(source);
+        return {
+          get readyState() { return source.readyState; },
+          addEventListener(type: string, listener: (event: MessageEvent<string>) => void) { source.listeners.set(type, listener); },
+          close: source.close
+        };
+      });
+      const onCatchUp = vi.fn();
+      const unsubscribe = createRealtimeSubscription({ tenantId: "t", onCatchUp, onSignal: vi.fn(), factory });
+
+      // Erro transitório (o navegador reconecta sozinho): não recria.
+      sources[0].listeners.get("error")?.({} as MessageEvent<string>);
+      vi.advanceTimersByTime(60_000);
+      expect(factory).toHaveBeenCalledTimes(1);
+
+      // Resposta não-200: o EventSource fecha de vez (readyState 2) e só volta se recriado.
+      sources[0].readyState = 2;
+      sources[0].listeners.get("error")?.({} as MessageEvent<string>);
+      expect(sources[0].close).toHaveBeenCalled();
+      vi.advanceTimersByTime(999);
+      expect(factory).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1);
+      expect(factory).toHaveBeenCalledTimes(2);
+
+      // Nova falha dobra a espera; o catchup da reabertura zera o backoff e recupera os dados.
+      sources[1].readyState = 2;
+      sources[1].listeners.get("error")?.({} as MessageEvent<string>);
+      vi.advanceTimersByTime(1_999);
+      expect(factory).toHaveBeenCalledTimes(2);
+      vi.advanceTimersByTime(1);
+      expect(factory).toHaveBeenCalledTimes(3);
+      sources[2].listeners.get("catchup")?.({ data: "", lastEventId: "c" } as MessageEvent<string>);
+      expect(onCatchUp).toHaveBeenCalledTimes(1);
+
+      // Cancelar a assinatura durante a espera não recria nada depois.
+      sources[2].readyState = 2;
+      sources[2].listeners.get("error")?.({} as MessageEvent<string>);
+      unsubscribe();
+      vi.advanceTimersByTime(60_000);
+      expect(factory).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
+

@@ -18,7 +18,12 @@ export type RealtimeSignal =
 type EventSourceLike = {
   addEventListener(type: string, listener: (event: MessageEvent<string>) => void): void;
   close(): void;
+  readonly readyState?: number;
 };
+
+const EVENT_SOURCE_CLOSED = 2;
+const RECONNECT_BASE_MS = 1_000;
+const RECONNECT_MAX_MS = 30_000;
 
 type EventSourceFactory = (url: string, init: EventSourceInit) => EventSourceLike;
 
@@ -77,24 +82,49 @@ export function createRealtimeSubscription(input: {
   factory?: EventSourceFactory;
 }): () => void {
   const factory = input.factory ?? ((url, init) => new EventSource(url, init));
-  const source = factory(realtimeUrl(input.tenantId), { withCredentials: true });
   const seenEventIds = new Set<string>();
-  source.addEventListener("catchup", () => {
-    input.onCatchUp();
-  });
-  source.addEventListener("change", (event) => {
-    if (event.lastEventId) {
-      if (seenEventIds.has(event.lastEventId)) return;
-      seenEventIds.add(event.lastEventId);
-      if (seenEventIds.size > 1_000) {
-        const oldest = seenEventIds.values().next().value;
-        if (oldest) seenEventIds.delete(oldest);
+  let source: EventSourceLike | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let retryDelay = RECONNECT_BASE_MS;
+  let closed = false;
+  const open = () => {
+    retryTimer = null;
+    if (closed) return;
+    const current = factory(realtimeUrl(input.tenantId), { withCredentials: true });
+    source = current;
+    current.addEventListener("catchup", () => {
+      retryDelay = RECONNECT_BASE_MS;
+      input.onCatchUp();
+    });
+    current.addEventListener("change", (event) => {
+      if (event.lastEventId) {
+        if (seenEventIds.has(event.lastEventId)) return;
+        seenEventIds.add(event.lastEventId);
+        if (seenEventIds.size > 1_000) {
+          const oldest = seenEventIds.values().next().value;
+          if (oldest) seenEventIds.delete(oldest);
+        }
       }
-    }
-    const signal = parseRealtimeSignal(event.data);
-    if (signal) input.onSignal(signal);
-  });
-  return () => source.close();
+      const signal = parseRealtimeSignal(event.data);
+      if (signal) input.onSignal(signal);
+    });
+    // Resposta não-200 (502/503 do proxy durante deploy) fecha o EventSource DE
+    // VEZ (spec WHATWG): sem recriar, o tempo real morria até recarregar a página.
+    // Erros transitórios o próprio navegador reconecta (readyState CONNECTING).
+    current.addEventListener("error", () => {
+      if (closed || source !== current || current.readyState !== EVENT_SOURCE_CLOSED || retryTimer) return;
+      current.close();
+      retryTimer = setTimeout(open, retryDelay);
+      retryDelay = Math.min(retryDelay * 2, RECONNECT_MAX_MS);
+    });
+  };
+  open();
+  return () => {
+    closed = true;
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = null;
+    source?.close();
+  };
 }
 
 type RealtimeListener = { onCatchUp: () => void; onSignal: (signal: RealtimeSignal) => void };
