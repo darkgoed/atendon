@@ -17,6 +17,8 @@ FROM dependencies AS build
 COPY apps/proposal-renderer/tsconfig.json apps/proposal-renderer/tsconfig.json
 COPY apps/proposal-renderer/scripts apps/proposal-renderer/scripts
 COPY apps/proposal-renderer/src apps/proposal-renderer/src
+# copy-assets.mjs exige assets/fonts (fontes OFL) no stage de build.
+COPY apps/proposal-renderer/assets apps/proposal-renderer/assets
 RUN npm run build -w @atendon/proposal-renderer \
     && npm run build -w @atendon/backend \
     && npm prune --omit=dev --workspace @atendon/backend --include-workspace-root
