@@ -10,7 +10,7 @@ import {
   type GoogleCalendarClient
 } from "./google-calendar.js";
 import { httpError } from "./service.js";
-import { localDateTimeToUtc } from "../../timezone.js";
+import { localDateTimeToUtcLenient } from "../../timezone.js";
 
 // Rota da etapa do lead (specs/active/google-calendar-team-sync.md):
 // conexão fixa → responsável é o dono da conexão; equipe → pool restrito aos
@@ -163,7 +163,7 @@ export async function assertGoogleCalendarAvailability(
       const edge = (value?: { dateTime?: string; date?: string; timeZone?: string }) => {
         if (value?.dateTime || !value?.date) return Date.parse(value?.dateTime ?? "");
         try {
-          return localDateTimeToUtc(value.date, "00:00", value.timeZone ?? allDayZone).getTime();
+          return localDateTimeToUtcLenient(value.date, "00:00", value.timeZone ?? allDayZone).getTime();
         } catch {
           return Number.NaN;
         }

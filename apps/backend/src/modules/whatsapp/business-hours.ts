@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { localDateKey, localDateTimeToUtc, zonedParts } from "../../timezone.js";
+import { localDateKey, localDateTimeToUtcLenient, zonedParts } from "../../timezone.js";
 
 export interface BusinessHoursConfig {
   timezone: string;
@@ -30,10 +30,10 @@ export function isWithinBusinessHours(now: Date, config: BusinessHoursConfig): b
 
 export function nextBusinessHoursStart(now: Date, config: BusinessHoursConfig): Date {
   const todayKey = localDateKey(now, config.timezone);
-  const today = localDateTimeToUtc(todayKey, config.start, config.timezone);
+  const today = localDateTimeToUtcLenient(todayKey, config.start, config.timezone);
   if (today.getTime() > now.getTime()) return today;
   // Aritmética na data local (não no instante): dia de 23h no DST não pula D+1.
   const [year, month, day] = todayKey.split("-").map(Number);
   const tomorrowKey = new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
-  return localDateTimeToUtc(tomorrowKey, config.start, config.timezone);
+  return localDateTimeToUtcLenient(tomorrowKey, config.start, config.timezone);
 }

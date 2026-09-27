@@ -78,6 +78,30 @@ export function localDateTimeToUtc(date: string, time: string, timeZone: string)
   return candidates[0];
 }
 
+/**
+ * Igual a localDateTimeToUtc, mas um horário que cai no buraco do horário de
+ * verão (ex.: 00:00 em America/Santiago no dia da virada) avança para o
+ * primeiro instante válido depois dele, em vez de lançar. Para limites
+ * calculados pelo sistema (início do dia, expediente, bloqueios recorrentes);
+ * horário escolhido pelo usuário continua usando a versão estrita.
+ */
+export function localDateTimeToUtcLenient(date: string, time: string, timeZone: string) {
+  try {
+    return localDateTimeToUtc(date, time, timeZone);
+  } catch (error) {
+    if (!(error instanceof RangeError) || !isValidIanaTimeZone(timeZone)) throw error;
+    const [year, month, day] = date.split("-").map(Number);
+    const [hour, minute] = time.split(":").map(Number);
+    const localEpoch = Date.UTC(year, month - 1, day, hour, minute, 0);
+    const wall = new Date(localEpoch);
+    // Só o buraco do DST é tolerado; data/hora impossível (2026-13-99) segue lançando.
+    if (wall.getUTCFullYear() !== year || wall.getUTCMonth() !== month - 1 || wall.getUTCDate() !== day
+      || wall.getUTCHours() !== hour || wall.getUTCMinutes() !== minute) throw error;
+    // Offset de antes da virada: o instante resultante fica logo após o buraco.
+    return new Date(localEpoch - offsetAt(new Date(localEpoch - 86_400_000), timeZone));
+  }
+}
+
 export function localDateKey(value: Date, timeZone: string) {
   const parts = zonedParts(value, timeZone);
   return `${parts.year.toString().padStart(4, "0")}-${parts.month.toString().padStart(2, "0")}-${parts.day.toString().padStart(2, "0")}`;

@@ -20,7 +20,7 @@ import type { PoolClient } from "pg";
 import { db } from "../../db/client.js";
 import { withTenantTransaction } from "../../db/tenant-transaction.js";
 import { requirePermission } from "../../auth/session.js";
-import { localDateTimeToUtc } from "../../timezone.js";
+import { localDateTimeToUtcLenient } from "../../timezone.js";
 import { shiftDateKey } from "../reporting.js";
 import { httpError } from "../scheduling/service.js";
 
@@ -546,7 +546,7 @@ function decodeStorageMediaCursor(raw: string): { at: string; type: StorageMedia
 /** 00:00 local → UTC; data impossível (ex. 2026-13-99) é 400, não 500. */
 function localDateToUtcOr400(date: string, timezone: string): Date {
   try {
-    return localDateTimeToUtc(date, "00:00", timezone);
+    return localDateTimeToUtcLenient(date, "00:00", timezone);
   } catch {
     throw httpError(400, `Data inválida: ${date}`);
   }

@@ -1,4 +1,4 @@
-import { localDateKey, localDateTimeToUtc, localWeekday } from "../timezone.js";
+import { localDateKey, localDateTimeToUtcLenient, localWeekday } from "../timezone.js";
 
 export type ReportingPeriod = "today" | "week" | "month" | "custom";
 export type ReportingInput = { period: ReportingPeriod; start?: string; end?: string; now?: Date };
@@ -31,7 +31,7 @@ export function resolveReportingRange(timezone: string, input: ReportingInput): 
     startKey = input.start;
     endKey = shiftDateKey(input.end, 1);
   }
-  return { startKey, endKey, start: localDateTimeToUtc(startKey, "00:00", timezone), end: localDateTimeToUtc(endKey, "00:00", timezone), todayStart: localDateTimeToUtc(today, "00:00", timezone), todayEnd: localDateTimeToUtc(shiftDateKey(today, 1), "00:00", timezone) };
+  return { startKey, endKey, start: localDateTimeToUtcLenient(startKey, "00:00", timezone), end: localDateTimeToUtcLenient(endKey, "00:00", timezone), todayStart: localDateTimeToUtcLenient(today, "00:00", timezone), todayEnd: localDateTimeToUtcLenient(shiftDateKey(today, 1), "00:00", timezone) };
 }
 
 export type ReportingCaseScope = { type: "mine"; memberId: string } | { type: "workspace" };

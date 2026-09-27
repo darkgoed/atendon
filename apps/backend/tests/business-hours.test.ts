@@ -63,3 +63,10 @@ describe("WhatsApp presence refresh", () => {
     await manager.stopAll();
   });
 });
+
+describe("expediente em fuso com horário de verão (auditoria runtime #7)", () => {
+  it("início às 00:00 no dia da virada em Santiago não lança", () => {
+    const next = nextBusinessHoursStart(new Date("2026-09-06T02:00:00Z"), { timezone: "America/Santiago", start: "00:00", end: "23:00" });
+    expect(next.toISOString()).toBe("2026-09-06T04:00:00.000Z");
+  });
+});

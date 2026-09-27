@@ -17,7 +17,7 @@ import { Readable } from "node:stream";
 import type { CaseScope } from "../../auth/case-scope.js";
 import { conversationScopeCondition, leadScopeCondition } from "../../auth/case-scope.js";
 import { db } from "../../db/client.js";
-import { localDateKey, localDateTimeToUtc } from "../../timezone.js";
+import { localDateKey, localDateTimeToUtcLenient } from "../../timezone.js";
 import { LEAD_TECHNICAL_STATUSES } from "../organization/domain.js";
 import { httpError } from "../scheduling/service.js";
 import { listAwaitingReply } from "../contact-ops/service.js";
@@ -45,8 +45,8 @@ export function resolveReportRange(from: string | undefined, to: string | undefi
   return {
     from: start,
     to: end,
-    start: localDateTimeToUtc(start, "00:00", timezone),
-    end: localDateTimeToUtc(shiftDateKey(end, 1), "00:00", timezone)
+    start: localDateTimeToUtcLenient(start, "00:00", timezone),
+    end: localDateTimeToUtcLenient(shiftDateKey(end, 1), "00:00", timezone)
   };
 }
 

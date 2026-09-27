@@ -16,7 +16,7 @@ import {
 } from "./notification-repository.js";
 import { APPOINTMENT_STATUS_REACTIONS } from "./status-reaction.js";
 import { encryptSecret } from "../ai-router/secret-box.js";
-import { isValidIanaTimeZone, localDateKey, localDateTimeToUtc, localWeekday, zonedParts } from "../../timezone.js";
+import { isValidIanaTimeZone, localDateKey, localDateTimeToUtc, localDateTimeToUtcLenient, localWeekday, zonedParts } from "../../timezone.js";
 import {
   ensureCaseAssignment,
   listAvailableAppointmentAttendants,
@@ -3539,7 +3539,7 @@ export function recurringOccurrences(row: RecurringTimeBlockRow, start: Date, en
     const key = day.toISOString().slice(0, 10); if (key > last) break;
     const weekday = ((day.getUTCDay() + 6) % 7) + 1;
     if (key < startsOn || (endsOn && key > endsOn) || !row.weekdays.includes(weekday)) continue;
-    const s = localDateTimeToUtc(key, row.start_local_time, row.timezone); const e = localDateTimeToUtc(key, row.end_local_time, row.timezone);
+    const s = localDateTimeToUtcLenient(key, row.start_local_time, row.timezone); const e = localDateTimeToUtcLenient(key, row.end_local_time, row.timezone);
     if (s < end && e > start) out.push({ ...mapRecurring(row), start: s.toISOString(), end: e.toISOString(), origin: "recorrente", rule_id: row.id });
   } return out;
 }
