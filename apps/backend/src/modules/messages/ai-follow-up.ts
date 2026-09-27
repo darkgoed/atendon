@@ -810,10 +810,12 @@ export class AiFollowUpProcessor {
       if (!consumption.allowed) {
         const unavailable = consumption.reason === "BILLING_UNAVAILABLE";
         logger.warn({ event: "ai_interaction_blocked", tenantId: claim.tenantId, conversationId: claim.conversationId, purpose: "follow_up", reason: consumption.reason }, unavailable ? "AI follow-up delayed because billing is unavailable" : "AI follow-up skipped because the billing quota was reached");
-        // Falha transitória da contabilização não é cota esgotada: devolve a
-        // etapa à fila (fail closed, sem IA) em vez de cancelar a sequência.
+        // Falha da contabilização não é cota esgotada: conta como falha da etapa
+        // (retentativa limitada por MAX_FAILURES, depois alerta) em vez de
+        // cancelar a sequência — nem reenfileirar para sempre.
         if (unavailable) {
-          await this.repository.releaseClaim(claim, 60);
+          const terminal = await this.repository.recordFailure(claim, new Error("BILLING_UNAVAILABLE"));
+          if (terminal) await this.repository.createFailureAlert(claim.tenantId);
           return "busy";
         }
         await this.repository.cancelClaim(claim, "ai_quota_reached");

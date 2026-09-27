@@ -138,13 +138,22 @@ describe("AI follow-ups", () => {
     expect(second.ai.complete.mock.calls[0]![0].trace.requestId).toBe(stepTwo);
   });
 
-  it("requeues the step instead of cancelling the sequence when billing is unavailable", async () => {
+  it("counts billing unavailability as a bounded step failure instead of cancelling the sequence", async () => {
     const { processor, repository, ai } = setup();
     consumeAiInteractionMock.mockResolvedValueOnce({ allowed: false, reason: "BILLING_UNAVAILABLE" });
     await expect(processor.process(claim.conversationId)).resolves.toBe("busy");
     expect(repository.cancelClaim).not.toHaveBeenCalled();
-    expect(repository.releaseClaim).toHaveBeenCalledWith(claim, 60);
+    expect(repository.recordFailure).toHaveBeenCalledWith(claim, expect.objectContaining({ message: "BILLING_UNAVAILABLE" }));
+    expect(repository.createFailureAlert).not.toHaveBeenCalled();
     expect(ai.complete).not.toHaveBeenCalled();
+  });
+
+  it("alerts once billing unavailability exhausts the step retries", async () => {
+    const { processor, repository } = setup();
+    consumeAiInteractionMock.mockResolvedValueOnce({ allowed: false, reason: "BILLING_UNAVAILABLE" });
+    repository.recordFailure.mockResolvedValueOnce(true);
+    await expect(processor.process(claim.conversationId)).resolves.toBe("busy");
+    expect(repository.createFailureAlert).toHaveBeenCalledWith(claim.tenantId);
   });
 
   it("cancels quota-refused claims without provider or reconciliation", async () => {
