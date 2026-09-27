@@ -140,6 +140,22 @@ describe("AtendON Meet integration", () => {
     const foreign = await app.inject({ method: "GET", url: `/meet/rooms/${room.id}/token`, headers: { cookie: otherCookie } });
     expect(foreign.statusCode).toBe(404);
 
+    // Papel sem agenda não cria sala avulsa nem pega token de moderador (seg. S7).
+    const noAgendaRole = (await pool.query<{ name: string }>(
+      "INSERT INTO workspace_roles(workspace_id,name) VALUES($1,$2) RETURNING name", [tenantId, `SEM AGENDA ${randomUUID()}`]
+    )).rows[0].name;
+    const noAgendaEmail = `no-agenda-meet-${randomUUID()}@test.local`;
+    const noAgendaUserId = await createWorkspaceUser(tenantId, noAgendaEmail, noAgendaRole);
+    try {
+      const noAgendaCookie = await login(noAgendaEmail);
+      expect((await app.inject({ method: "POST", url: "/meet/rooms", headers: { cookie: noAgendaCookie }, payload: {} })).statusCode).toBe(403);
+      expect((await app.inject({ method: "GET", url: `/meet/rooms/${room.id}/token`, headers: { cookie: noAgendaCookie } })).statusCode).toBe(403);
+    } finally {
+      await pool.query("DELETE FROM audit_logs WHERE actor_user_id=$1", [noAgendaUserId]);
+      await pool.query("DELETE FROM workspace_members WHERE user_id=$1", [noAgendaUserId]);
+      await pool.query("DELETE FROM users WHERE id=$1", [noAgendaUserId]);
+    }
+
     const participant = await app.inject({ method: "GET", url: `/meet/join/${room.code}` });
     expect(participant.statusCode).toBe(200);
     const participantJwt = await jwtVerify(participant.json().token, new TextEncoder().encode(config.MEET_JWT_SECRET));

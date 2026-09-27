@@ -3,7 +3,7 @@ import { lstat, realpath } from "node:fs/promises";
 import { basename, extname, relative, resolve } from "node:path";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { requirePermission, requireWorkspace } from "../../auth/session.js";
+import { requirePermission } from "../../auth/session.js";
 import { appointmentScopeCondition, resolveCaseScope } from "../../auth/case-scope.js";
 import { config } from "../../config.js";
 import { db } from "../../db/client.js";
@@ -116,7 +116,8 @@ export async function registerMeetRoutes(app: FastifyInstance) {
   app.post("/meet/rooms", {
     config: { rateLimit: HTTP_RATE_LIMITS.sensitiveWrite }
   }, async (request, reply) => {
-    const session = await requireWorkspace(request);
+    // Sala avulsa gera token de moderador com gravação: só quem agenda (seg. S7).
+    const session = await requirePermission(request, "appointments.create");
     const body = createRoomBody.parse(request.body ?? {});
     if (body.appointment_id && !await canAccessAppointment(request, body.appointment_id)) {
       throw notFound("Agendamento não encontrado");
@@ -136,7 +137,7 @@ export async function registerMeetRoutes(app: FastifyInstance) {
   });
 
   app.get("/meet/rooms/:id/token", async (request) => {
-    const session = await requireWorkspace(request);
+    const session = await requirePermission(request, "appointments.read");
     const { id } = roomParams.parse(request.params);
     const room = await findTenantRoom(session.tenantId, id);
     if (!room) throw notFound("Sala não encontrada");
