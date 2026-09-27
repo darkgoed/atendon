@@ -1,3 +1,4 @@
+import { ensureOpenPeriod } from "../../billing/usage-period.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { PoolClient } from "pg";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -299,11 +300,32 @@ export async function registerRootRoutes(app: FastifyInstance) {
         ? await copyWorkspacePreset(client, workspace.rows[0].id, body.preset_source_tenant_id, body.preset ?? {})
         : null;
       await client.query(
-        `INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,current_period_start,current_period_end,trial_ends_at)
-         VALUES($1,$2,CASE WHEN $3 > 0 THEN 'TRIALING' ELSE 'ACTIVE' END,now(),now() + make_interval(months => $4),CASE WHEN $3 > 0 THEN now() + make_interval(days => $3) ELSE NULL END)
+        // Preço congelado no contrato (plan_prices ativo do ciclo; senão a mensalidade
+        // do plano): sem ele as renovações saíam só com excedente de IA. O ciclo
+        // contratado começa quando o trial termina.
+        `WITH cycle AS (
+           SELECT CASE WHEN $4 >= 12 THEN 'YEARLY' WHEN $4 >= 3 THEN 'QUARTERLY' ELSE 'MONTHLY' END AS billing_cycle,
+                  CASE WHEN $3 > 0 THEN now() + make_interval(days => $3) ELSE now() END AS starts_at
+         ), price AS (
+           SELECT c.billing_cycle, c.starts_at, pp.base_price_cents, pp.discount_type, pp.discount_value, pp.final_price_cents, pp.currency
+             FROM cycle c
+             LEFT JOIN plan_prices pp ON pp.plan_id=$2 AND pp.billing_cycle=c.billing_cycle AND pp.active
+         )
+         INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,current_period_start,current_period_end,trial_ends_at,
+                                          billing_cycle,base_price_cents,snapshot_discount_type,snapshot_discount_value,final_price_cents,snapshot_currency,contracted_at)
+         SELECT $1,$2,CASE WHEN $3 > 0 THEN 'TRIALING' ELSE 'ACTIVE' END,price.starts_at,price.starts_at + make_interval(months => $4),
+                CASE WHEN $3 > 0 THEN price.starts_at ELSE NULL END,
+                price.billing_cycle,
+                COALESCE(price.base_price_cents, p.monthly_price_cents * $4),
+                price.discount_type, price.discount_value,
+                COALESCE(price.final_price_cents, p.monthly_price_cents * $4),
+                COALESCE(price.currency, 'BRL'), now()
+           FROM price, plans p WHERE p.id=$2
          RETURNING id`,
         [workspace.rows[0].id, plan.rows[0].id, plan.rows[0].trial_days, plan.rows[0].billing_period_months]
       );
+      // Período de uso aberto desde o início: é o fechamento dele que dispara a fatura.
+      await ensureOpenPeriod(client, workspace.rows[0].id);
       await ensureWorkspaceDefaultRoles(client, workspace.rows[0].id);
       const ownerRole = await client.query<{ id: string }>(
         "SELECT id FROM workspace_roles WHERE workspace_id=$1 AND is_owner_role=true",
