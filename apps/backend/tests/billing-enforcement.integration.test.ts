@@ -59,6 +59,25 @@ describe("HTTP entitlement enforcement", () => {
     expect(response.json()).toMatchObject({ code: "FEATURE_NOT_AVAILABLE", feature: "CALENDAR", details: { requiredPlans: expect.arrayContaining(["MEDIUM", "PRO"]) } });
   });
 
+  it("gates /meet/* by the MEET feature (the /me prefix used to exempt it) but keeps the public join link (seg. C3)", async () => {
+    await pool.query("DELETE FROM tenant_subscriptions WHERE tenant_id=$1", [tenant]); await subscribe("MEDIUM");
+    const cookie = await login(email);
+    const meetConfig = config as { MEET_ENABLED: boolean };
+    const meetEnabled = meetConfig.MEET_ENABLED;
+    meetConfig.MEET_ENABLED = true;
+    try {
+      const rooms = await app.inject({ method: "POST", url: "/meet/rooms", headers: { cookie }, payload: {} });
+      expect(rooms.statusCode).toBe(403);
+      expect(rooms.json()).toMatchObject({ code: "FEATURE_NOT_AVAILABLE", feature: "MEET" });
+      // Link público de convidado: sem sessão continua sem exigir login (404 do código inexistente).
+      expect((await app.inject({ method: "GET", url: "/meet/join/codigo-inexistente-123" })).statusCode).not.toBe(401);
+    } finally {
+      meetConfig.MEET_ENABLED = meetEnabled;
+    }
+    // /me e subrotas seguem isentas.
+    expect((await app.inject({ method: "GET", url: "/me", headers: { cookie } })).json().code).not.toBe("FEATURE_NOT_AVAILABLE");
+  });
+
   it("does not block MEDIUM before normal validation", async () => {
     await pool.query("DELETE FROM tenant_subscriptions WHERE tenant_id=$1", [tenant]); await subscribe("MEDIUM");
     const response = await app.inject({ method: "POST", url: "/agendamentos", headers: { cookie: await login(email) }, payload: {} });

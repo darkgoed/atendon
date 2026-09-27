@@ -6,8 +6,16 @@ type FeatureKey = "CALENDAR" | "AI" | "AI_FOLLOWUP" | "PIPELINE" | "POST_SALES" 
 
 const EXEMPT_PREFIXES = [
   "/root", "/auth", "/health", "/ready", "/me", "/workspaces/current", "/events",
-  "/webhooks", "/billing/my-plan"
+  "/webhooks", "/billing/my-plan",
+  // Link público de convidado da reunião: sem sessão; o anfitrião já tem o plano.
+  "/meet/join"
 ];
+
+// Fronteira de segmento: "/meet/rooms".startsWith("/me") isentava o gate MEET
+// inteiro (e qualquer rota futura começando com "/me…").
+function isExempt(path: string): boolean {
+  return EXEMPT_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+}
 
 const API_FEATURE_GATES = new Map<string, FeatureKey>([
   ["POST /agendamentos", "CALENDAR"],
@@ -34,7 +42,7 @@ function featureForRoute(path: string, method: string): FeatureKey | undefined {
 
 export async function enforceRequestEntitlement(request: FastifyRequest): Promise<void> {
   const path = request.routeOptions.url;
-  if (!path || EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix))) return;
+  if (!path || isExempt(path)) return;
   const feature = featureForRoute(path, request.method);
   if (!feature) return;
   const session = await requireWorkspace(request);
