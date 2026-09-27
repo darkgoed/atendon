@@ -8,6 +8,8 @@ import { resolveCaseScope } from "../../auth/case-scope.js";
 import { db } from "../../db/client.js";
 import { HTTP_RATE_LIMITS } from "../../security/http-rate-limit.js";
 import { importContacts, exportLeadsCsv, listAwaitingReply, onboardingStatus, type ExportQuery } from "./service.js";
+import { loadImportFile } from "./import-csv.js";
+import { LEAD_TECHNICAL_STATUSES } from "../organization/domain.js";
 
 const columnRef = z.string().trim().min(1).max(200);
 const importBody = z.object({
@@ -28,13 +30,18 @@ const importBody = z.object({
   }).strict().default({})
 }).strict();
 
-const leadStatusValues = ["em_qualificacao", "aguardando_proposta", "aprovado", "recusado", "agendado", "cancelado", "transferido"] as const;
+const previewBody = z.object({
+  csv_base64: z.string().min(1).optional(),
+  xlsx_base64: z.string().min(1).optional()
+}).strict();
+const PREVIEW_ROWS = 20;
+
 const appointmentStatusValues = ["confirmado", "reagendado", "cancelado", "concluido", "no_show"] as const;
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 // Mesmos filtros aceitos por GET /scheduling/leads, sem limit/cursor.
 const exportQuery = z.object({
   ids: z.string().optional(),
-  status: z.enum(leadStatusValues).optional(),
+  status: z.enum(LEAD_TECHNICAL_STATUSES).optional(),
   unidade_id: z.string().trim().min(1).max(120).optional(),
   categoria_id: z.string().trim().min(1).max(120).optional(),
   parceiro_id: z.string().trim().min(1).max(120).optional(),
@@ -79,6 +86,34 @@ export async function registerContactOpsRoutes(app: FastifyInstance) {
     const session = await requirePermission(request, "leads.create");
     const body = importBody.parse(request.body);
     return importContacts(session.tenantId, actor(request, session), body);
+  });
+
+  // Prévia do wizard do painel: XLSX só é legível no servidor. Não grava nada.
+  app.post("/contact-ops/import/preview", {
+    bodyLimit: 30 * 1024 * 1024,
+    config: { rateLimit: HTTP_RATE_LIMITS.upload }
+  }, async (request) => {
+    await requirePermission(request, "leads.create");
+    const [headers = [], ...rows] = loadImportFile(previewBody.parse(request.body)).rows;
+    return { headers: headers.map((header) => header.trim()), rows: rows.slice(0, PREVIEW_ROWS) };
+  });
+
+  // Histórico = auditoria 'contact_import' gravada por importContacts.
+  app.get("/contact-ops/import/history", async (request) => {
+    const session = await requirePermission(request, "leads.create");
+    const result = await db.query(
+      `SELECT a.id,a.metadata->>'filename' filename,a.created_at,
+              COALESCE((a.metadata->>'imported')::int,0) imported,
+              COALESCE((a.metadata->>'updated')::int,0) updated,
+              COALESCE((a.metadata->>'skipped')::int,0) skipped,
+              COALESCE((a.metadata->>'duplicates_flagged')::int,0) duplicates_flagged,
+              u.email actor_email
+       FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_user_id
+       WHERE a.workspace_id=$1 AND a.action='contact_import'
+       ORDER BY a.created_at DESC LIMIT 20`,
+      [session.tenantId]
+    );
+    return { imports: result.rows };
   });
 
   app.get("/contact-ops/export.csv", { config: { rateLimit: HTTP_RATE_LIMITS.export } }, async (request, reply) => {

@@ -10,6 +10,7 @@ import Fastify from "fastify";
 import cookie from "@fastify/cookie";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { utils as xlsxUtils, write as writeXlsx } from "xlsx";
 import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { createSessionToken } from "../src/auth/session.js";
 import { registerContactOpsRoutes } from "../src/modules/contact-ops/routes.js";
@@ -233,6 +234,14 @@ describe("R15 — exportação CSV", () => {
   });
 });
 
+describe("R15 — export aceita os mesmos filtros de GET /scheduling/leads", () => {
+  it("filtro de status técnico do painel (novo) exporta em vez de 400", async () => {
+    const response = await app.inject({ url: "/contact-ops/export.csv?status=novo", headers: { cookie: await loginAs(ownerA) } });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("text/csv");
+  });
+});
+
 describe("R17 — fila aguardando resposta", () => {
   it("cliente manda msg → aparece na fila; atendente responde → some", async () => {
     const phone = `5521${Math.floor(Math.random() * 90_000_000 + 10_000_000)}`;
@@ -299,5 +308,43 @@ describe("R20 — onboarding-status", () => {
     const afterBody = after.json();
     expect(afterBody.items.every((item: { done: boolean }) => item.done)).toBe(true);
     expect(afterBody.all_done).toBe(true);
+  });
+});
+
+describe("R14 — prévia XLSX e histórico (contrato do painel /contatos/importar)", () => {
+  it("POST /contact-ops/import/preview devolve cabeçalho e primeiras linhas do XLSX", async () => {
+    const workbook = xlsxUtils.book_new();
+    xlsxUtils.book_append_sheet(workbook, xlsxUtils.aoa_to_sheet([["Nome", "Telefone"], ["Ana XLSX", "11988887777"], ["Bruno XLSX", "21977776666"]]), "Contatos");
+    const xlsx = writeXlsx(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+    const response = await app.inject({
+      method: "POST",
+      url: "/contact-ops/import/preview",
+      headers: { cookie: await loginAs(ownerA) },
+      payload: { xlsx_base64: xlsx.toString("base64") }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      headers: ["Nome", "Telefone"],
+      rows: [["Ana XLSX", "11988887777"], ["Bruno XLSX", "21977776666"]]
+    });
+    // Prévia não grava nada.
+    const leads = await pool.query("SELECT 1 FROM scheduling_leads WHERE tenant_id=$1 AND name='Ana XLSX'", [tenantA]);
+    expect(leads.rowCount).toBe(0);
+    expect((await app.inject({ method: "POST", url: "/contact-ops/import/preview", payload: {} })).statusCode).toBe(401);
+  });
+
+  it("GET /contact-ops/import/history lista as importações do próprio tenant, mais recentes primeiro", async () => {
+    await importCsv(ownerB, "Nome,Telefone\nHistórico B,21912345678\n", { nome: "Nome", telefone: "Telefone" }, undefined, "historico-b.csv");
+    const response = await app.inject({ url: "/contact-ops/import/history", headers: { cookie: await loginAs(ownerB) } });
+    expect(response.statusCode).toBe(200);
+    const { imports } = response.json();
+    expect(imports[0]).toMatchObject({ filename: "historico-b.csv", imported: 1, updated: 0, skipped: 0, duplicates_flagged: 0, actor_email: emails.get(ownerB) });
+    expect(typeof imports[0].id).toBe("string");
+    expect(typeof imports[0].created_at).toBe("string");
+    // Tenancy: a importação de B não aparece no histórico de A.
+    const historyA = (await app.inject({ url: "/contact-ops/import/history", headers: { cookie: await loginAs(ownerA) } })).json().imports;
+    expect(historyA.length).toBeGreaterThan(0);
+    expect(historyA.every((item: { filename: string; actor_email: string }) => item.filename !== "historico-b.csv" && item.actor_email === emails.get(ownerA))).toBe(true);
+    expect((await app.inject({ url: "/contact-ops/import/history" })).statusCode).toBe(401);
   });
 });

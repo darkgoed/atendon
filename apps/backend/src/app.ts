@@ -7,6 +7,7 @@ import { errors, jwtVerify } from "jose";
 import Fastify from "fastify";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
+import { zodErrorMessage } from "./zod-error-message.js";
 import { createSessionToken, requireIdentity, requirePermission, requireRootWorkspace, requireSession, requireWorkspace } from "./auth/session.js";
 import { buildMePayload, listWorkspacesForUser } from "./auth/workspace-service.js";
 import { issueTotpChallenge } from "./auth/totp.js";
@@ -486,7 +487,7 @@ export function buildApp(options: {
       });
     }
     return reply.status(status).send({
-      error: status === 500 ? "Erro interno" : typed.message,
+      error: status === 500 ? "Erro interno" : error instanceof z.ZodError ? zodErrorMessage(error) : typed.message,
       ...(status < 500 && typed.code ? { code: typed.code } : {}),
       ...(status < 500 && typed.feature ? { feature: typed.feature } : {}),
       ...(status < 500 && typed.existingId ? { existing_id: typed.existingId } : {}),
@@ -711,7 +712,8 @@ export function buildApp(options: {
     const user = current.rows[0];
     const changingCredentials = Boolean(body.email || body.newPassword);
     if (changingCredentials && (!user?.password_hash || !(await compare(body.currentPassword ?? "", user.password_hash)))) {
-      return reply.status(401).send({ error: "Senha atual inválida" });
+      // 400, não 401: senha errada não é sessão expirada (401 desloga o painel).
+      return reply.status(400).send({ error: "Senha atual inválida" });
     }
 
     const nextEmail = body.email?.toLocaleLowerCase("en-US") ?? user.email;
