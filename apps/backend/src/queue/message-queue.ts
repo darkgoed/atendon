@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { Queue } from "bullmq";
+import { Queue, UnrecoverableError } from "bullmq";
 import { redisConnection } from "./connection.js";
 import type { SessionMessage } from "../modules/messages/types.js";
 import { isWithinBusinessHours, nextBusinessHoursStart, type BusinessHoursConfig } from "../modules/whatsapp/business-hours.js";
@@ -15,6 +15,22 @@ export type InboundJobData = SessionMessage & {
 };
 
 export const inboundQueue = new Queue<InboundJobData>(INBOUND_QUEUE, { connection: redisConnection });
+
+/**
+ * A job is terminal when retries are exhausted or when the processor threw
+ * UnrecoverableError (an AI reply may have reached the contact and must not
+ * be regenerated). Returns the operator alert for a terminal failure.
+ */
+export function inboundTerminalFailureAlert(
+  job: { attemptsMade: number; opts: { attempts?: number } } | undefined,
+  error: unknown
+): string | null {
+  if (error instanceof UnrecoverableError) {
+    return "A IA pode ter enviado só parte de uma resposta e o atendimento não foi registrado. Confira a conversa antes de responder.";
+  }
+  if ((job?.attemptsMade ?? 0) < (job?.opts.attempts ?? 1)) return null;
+  return "A mensagem da IA não foi enviada. Verifique a conexão e tente novamente.";
+}
 
 export function createInboundJobData(message: SessionMessage): InboundJobData {
   return { ...message, aiTurnId: randomUUID(), automaticRecoveryAttempt: 0 };

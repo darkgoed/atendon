@@ -30,6 +30,11 @@ export async function enqueueFollowUpOnce(
     await db.query(`UPDATE outbound_message_requests SET status='sent',external_message_id=$3,error_message=NULL,completed_at=now() WHERE tenant_id=$1 AND idempotency_key=$2 AND status='pending'`, [input.tenantId, key, result.externalId]);
   }).catch(async (error) => {
     await db.query(`UPDATE outbound_message_requests SET status='failed',error_message=$3,completed_at=now() WHERE tenant_id=$1 AND idempotency_key=$2 AND status='pending'`, [input.tenantId, key, error instanceof Error ? error.message : String(error)]);
+  }).catch((error: unknown) => {
+    // Detached from the HTTP request: a rejection here would be unhandled
+    // and terminate the API process on Node >= 22. The request row stays
+    // 'pending' and its stale reservation is the durable failure signal.
+    console.error("Manual follow-up could not record its outcome", { requestId, error });
   }));
   return { requestId, duplicate: false, status: "pending" };
 }

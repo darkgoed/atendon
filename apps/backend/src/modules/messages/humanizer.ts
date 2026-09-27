@@ -310,7 +310,10 @@ export async function isConversationLocked(key: string): Promise<boolean> {
 
 export async function withComposingRefresh<T>(intervalMs: number, refresh: () => Promise<void>, operation: () => Promise<T>): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
-  if (intervalMs > 0) timer = setInterval(() => void refresh(), intervalMs);
+  // "Digitando…" is cosmetic: a failed refresh (e.g. the connection was
+  // archived mid-turn) must never become an unhandled rejection, which
+  // terminates the worker process on Node >= 22.
+  if (intervalMs > 0) timer = setInterval(() => { refresh().catch(() => undefined); }, intervalMs);
   try { return await operation(); }
   finally { if (timer) clearInterval(timer); }
 }

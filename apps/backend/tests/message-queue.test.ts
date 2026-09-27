@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { adjustDelayedInboundJobList, createInboundJobData, ensureInboundAiTurn, INBOUND_JOB_ATTEMPTS } from "../src/queue/message-queue.js";
+import { UnrecoverableError } from "bullmq";
+import { adjustDelayedInboundJobList, createInboundJobData, ensureInboundAiTurn, INBOUND_JOB_ATTEMPTS, inboundTerminalFailureAlert } from "../src/queue/message-queue.js";
 
 function delayedJob(tenantId = "tenant-1") {
   return {
@@ -15,6 +16,19 @@ function delayedJob(tenantId = "tenant-1") {
     changeDelay: vi.fn().mockResolvedValue(undefined)
   };
 }
+
+describe("inbound terminal failure", () => {
+  it("treats UnrecoverableError as terminal and alerts about a possibly partial reply", () => {
+    const alert = inboundTerminalFailureAlert({ attemptsMade: 1, opts: { attempts: INBOUND_JOB_ATTEMPTS } }, new UnrecoverableError("ambiguous"));
+    expect(alert).toContain("parte de uma resposta");
+  });
+
+  it("stays silent while retries remain and alerts once they are exhausted", () => {
+    expect(inboundTerminalFailureAlert({ attemptsMade: 1, opts: { attempts: INBOUND_JOB_ATTEMPTS } }, new Error("x"))).toBeNull();
+    expect(inboundTerminalFailureAlert({ attemptsMade: INBOUND_JOB_ATTEMPTS, opts: { attempts: INBOUND_JOB_ATTEMPTS } }, new Error("x")))
+      .toBe("A mensagem da IA não foi enviada. Verifique a conexão e tente novamente.");
+  });
+});
 
 describe("delayed inbound queue adjustment", () => {
   const hours = { timezone: "UTC", start: "07:00", end: "23:00" };

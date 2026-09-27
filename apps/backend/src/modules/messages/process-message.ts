@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
+import { UnrecoverableError } from "bullmq";
 import type { AiRouter, FinalTextCorrection } from "../ai-router/openrouter.js";
+import { isWhatsAppSendRejectedError } from "../whatsapp/errors.js";
 import { isNonRetryableAiError, NonRetryableAiError } from "../ai-router/openrouter.js";
 import { createSchedulingToolExecutor, normalizeModelSearchResult } from "../ai-router/tool-executor.js";
 import { DEFAULT_ENABLED_TOOL_NAMES } from "../ai-router/tools.js";
@@ -1063,6 +1065,12 @@ export class MessageProcessor {
     }, "AI message processing started");
     void this.gateway.refreshContactAvatar?.(message.sessionId, message.contactPhone).catch(() => undefined);
     let context = initialContext;
+    // Set once the provider may have delivered something to the contact in this
+    // attempt. From then on a failure is an ambiguous delivery (the same rule as
+    // manual sends and follow-ups): never hand it back to BullMQ, whose retry
+    // would regenerate and resend the reply.
+    let contactDeliveryStarted = false;
+    let deliveredInboundExternalIds = [message.externalId];
     try {
     if (!context.aiActive) {
       logger.info({ externalId: message.externalId, conversationId: context.conversationId, reason: "ai_inactive" }, "Inbound message ignored");
@@ -1346,6 +1354,26 @@ export class MessageProcessor {
     const receiptIds = [...processingExternalIds, ...unreadIds.filter(id => !processingExternalIds.includes(id))];
     await markContactMessagesRead(receiptIds);
     const receipts = allReceipts;
+    // The channel router always exposes sendReaction but throws for channels
+    // without reactions (Instagram); ask the session's capabilities first.
+    const reactionsSupported = async (): Promise<boolean> =>
+      (await this.gateway.sessionMessagingCapabilities?.(message.sessionId))?.reactions ?? true;
+    const sendToContact = async (text: string): Promise<{ externalId: string }> => {
+      deliveredInboundExternalIds = [...processingExternalIds];
+      try {
+        const sent = await this.gateway.sendText(message.sessionId, destination, text);
+        contactDeliveryStarted = true;
+        return sent;
+      } catch (error) {
+        // Only a definitive provider rejection proves nothing was delivered.
+        if (!isWhatsAppSendRejectedError(error)) contactDeliveryStarted = true;
+        throw error;
+      }
+    };
+    // Re-read before each customer-visible send: an operator may pause the AI
+    // or take over while this (humanized, possibly minute-long) turn runs.
+    const aiStillActive = async (): Promise<boolean> =>
+      (await this.repository.isAiActive?.(message.tenantId, context.conversationId)) ?? true;
     const capabilityEnabled = async (key: CapabilityKey): Promise<boolean> => {
       try {
         // Lightweight unit doubles created before the capability catalog do not
@@ -1417,7 +1445,11 @@ export class MessageProcessor {
       const acknowledgementExternalId = processingExternalIds.at(-1) ?? message.externalId;
       const acknowledgementReceipt = receipts.find((receipt) => receipt.id === acknowledgementExternalId) ?? receipts.at(-1);
       if (acknowledgementReceipt) {
-        await this.gateway.sendReaction(message.sessionId, destination, acknowledgementReceipt, "👍");
+        // Without reactions (Instagram) the acknowledgement stays silent: a
+        // text reply to "ok" is exactly what this branch exists to prevent.
+        if (await reactionsSupported()) {
+          await this.gateway.sendReaction(message.sessionId, destination, acknowledgementReceipt, "👍");
+        }
         await this.repository.markInboundProcessed(message, processingExternalIds);
         logger.info({
           externalId: message.externalId,
@@ -1462,7 +1494,7 @@ export class MessageProcessor {
     const tripzOwnerRequested = tripzZuluAgent
       && tripzZuluRequestsOwnerHandoff(effectiveMessage.text);
     if (freshTripzOwnerReferral || tripzOwnerRequested) {
-      const sent = await this.gateway.sendText(message.sessionId, destination, TRIPZ_ZULU_OWNER_REFERRAL_REPLY);
+      const sent = await sendToContact(TRIPZ_ZULU_OWNER_REFERRAL_REPLY);
       await this.repository.recordAgentReply({
         tenantId: message.tenantId, sessionId: message.sessionId, conversationId: context.conversationId,
         agentConfigVersionId: context.agentConfigVersionId, text: TRIPZ_ZULU_OWNER_REFERRAL_REPLY,
@@ -1512,7 +1544,7 @@ export class MessageProcessor {
         return "fallback";
       }
       const text = context.mediaFallback?.[message.mediaType] ?? mediaFallback(message.mediaType);
-      const sent = await this.gateway.sendText(message.sessionId, destination, text);
+      const sent = await sendToContact(text);
       await this.repository.recordFallback({ tenantId: message.tenantId, sessionId: message.sessionId,
         conversationId: context.conversationId, agentConfigVersionId: context.agentConfigVersionId,
         mediaType: message.mediaType, text, externalId: sent.externalId });
@@ -1521,7 +1553,7 @@ export class MessageProcessor {
     }
 
     if (isPromptInjection(effectiveMessage.text)) {
-      const sent = await this.gateway.sendText(message.sessionId, destination, PROMPT_INJECTION_REPLY);
+      const sent = await sendToContact(PROMPT_INJECTION_REPLY);
       await this.repository.recordAgentReply({ tenantId: message.tenantId, sessionId: message.sessionId,
         conversationId: context.conversationId, agentConfigVersionId: context.agentConfigVersionId,
         text: PROMPT_INJECTION_REPLY, model: "security-guard",
@@ -1637,7 +1669,7 @@ export class MessageProcessor {
       const sent = await withCustomerComposing(async () => {
         await sleep(previewDelay(text));
         await publishSending();
-        return this.gateway.sendText(message.sessionId, destination, text);
+        return sendToContact(text);
       });
       await this.repository.recordAgentReply({
         tenantId: message.tenantId,
@@ -1709,7 +1741,10 @@ export class MessageProcessor {
     // intenção/confirmação de agendamento só produziria instruções de prompt
     // apontando para ferramentas inexistentes (caso do Zulu/Tripz).
     const schedulingToolsConfigured = configuredToolNames.some((name) => PROACTIVE_SCHEDULING_TOOL_NAMES.has(name));
-    const stickerCatalog = await this.repository.listAiStickerCatalog?.(message.tenantId, context.conversationId) ?? [];
+    // channelCapabilities(): Instagram has no stickers, so never offer them.
+    const stickerCatalog = message.channel === "instagram"
+      ? []
+      : await this.repository.listAiStickerCatalog?.(message.tenantId, context.conversationId) ?? [];
     const allowedStickerIds = new Set(stickerCatalog.map((sticker) => sticker.id.toLocaleLowerCase("en-US")));
     let selectedStickerId: string | undefined;
     const leadReadyForScheduling = leadsCapabilityEnabled && (context.leadQualificationStars !== undefined
@@ -2271,7 +2306,7 @@ export class MessageProcessor {
         const sent = await withCustomerComposing(async () => {
           await sleep(previewDelay(text));
           await publishSending();
-          return this.gateway.sendText(message.sessionId, destination, text);
+          return sendToContact(text);
         });
         await this.repository.recordAgentReply({
           tenantId: message.tenantId,
@@ -2311,7 +2346,7 @@ export class MessageProcessor {
             if (aiProgress) await sleep(1_500);
           }
           await publishSending();
-          return this.gateway.sendText(message.sessionId, destination, safeAvailability);
+          return sendToContact(safeAvailability);
         });
         await this.repository.recordAgentReply({
           tenantId: message.tenantId,
@@ -2392,7 +2427,7 @@ export class MessageProcessor {
       const sent = await withCustomerComposing(async () => {
         await sleep(previewDelay(text));
         await publishSending();
-        return this.gateway.sendText(message.sessionId, destination, text);
+        return sendToContact(text);
       });
       await this.repository.recordAgentReply({
         tenantId: message.tenantId,
@@ -2529,16 +2564,21 @@ export class MessageProcessor {
           }
 
           const replyInboundExternalIds = [...processingExternalIds];
-          if (config && this.gateway.sendReaction && config.reaction.probability > 0) {
-            const emoji = selectContextualReaction(effectiveMessage.text, config.reaction.emojis);
-            if (emoji) await this.gateway.sendReaction(message.sessionId, destination, receipts[0], emoji);
-          }
           // Each WhatsApp bubble keeps its own provider ID so delivery receipts and
           // the panel history mirror what the contact actually received.
           let sent: { externalId: string } | undefined;
           let sentAt: Date | undefined;
           const sentBubbles: Array<{ text: string; externalId: string; createdAt: Date }> = [];
           for (const [index, bubble] of bubbles.entries()) {
+            if (index === 0) {
+              if (!await aiStillActive()) {
+                return { restartReply: false as const, aiPaused: true as const, sent, sentAt, sentBubbles, replyInboundExternalIds };
+              }
+              if (config && this.gateway.sendReaction && config.reaction.probability > 0) {
+                const emoji = selectContextualReaction(effectiveMessage.text, config.reaction.emojis);
+                if (emoji && await reactionsSupported()) await this.gateway.sendReaction(message.sessionId, destination, receipts[0], emoji);
+              }
+            }
             if (index > 0 && config) {
               await refreshComposing();
               await sleep(humanizedDelay(randomBetween(config.messageSplit.pauseBetweenBubblesMs), config) + composingDuration(bubble, config));
@@ -2572,6 +2612,9 @@ export class MessageProcessor {
                 });
                 return { restartReply: true as const };
               }
+              if (!await aiStillActive()) {
+                return { restartReply: false as const, aiPaused: true as const, sent, sentAt, sentBubbles, replyInboundExternalIds };
+              }
             }
             let safeBubble = bubble;
             for (let availabilityRevision = 0; availabilityRevision < 4; availabilityRevision += 1) {
@@ -2592,11 +2635,34 @@ export class MessageProcessor {
             }
             if (!sent) await publishSending();
             const bubbleSentAt = new Date();
-            const bubbleSent = await this.gateway.sendText(message.sessionId, destination, safeBubble);
+            const bubbleSent = await sendToContact(safeBubble);
             sent ??= bubbleSent;
             sentAt ??= bubbleSentAt;
-            sentBubbles.push({ text: safeBubble, externalId: bubbleSent.externalId, createdAt: bubbleSentAt });
+            const sentBubble = { text: safeBubble, externalId: bubbleSent.externalId, createdAt: bubbleSentAt };
+            sentBubbles.push(sentBubble);
             bubblesSentThisTurn.push(safeBubble);
+            // Durable per bubble: the panel shows what the contact actually
+            // received, and an Instagram echo of this bubble is recognized as
+            // the AI's own message instead of a human takeover. Best effort:
+            // the final record below upserts every bubble again.
+            await this.repository.recordAgentReply({
+              tenantId: message.tenantId,
+              sessionId: message.sessionId,
+              conversationId: context.conversationId,
+              agentConfigVersionId: context.agentConfigVersionId,
+              text: safeBubble,
+              model: context.model,
+              externalId: sentBubble.externalId,
+              createdAt: bubbleSentAt,
+              bubbles: [sentBubble],
+              inboundExternalId: message.externalId,
+              inboundExternalIds: replyInboundExternalIds,
+              intermediate: true
+            }).catch((error) => logger.warn({
+              err: error,
+              conversationId: context.conversationId,
+              externalId: sentBubble.externalId
+            }, "Failed to persist a delivered AI bubble; the final reply record will retry"));
             // A refreshed availability response is complete by itself. Do not
             // append later bubbles generated against the now-stale snapshot.
             if (safeBubble !== bubble) break;
@@ -2631,7 +2697,8 @@ export class MessageProcessor {
           sentAt: sendAttempt.sentAt,
           sentBubbles: sendAttempt.sentBubbles,
           replyInboundExternalIds: sendAttempt.replyInboundExternalIds,
-          transactionClaims: replyClaims
+          transactionClaims: replyClaims,
+          aiPaused: sendAttempt.aiPaused
         };
       }
     };
@@ -2669,7 +2736,7 @@ export class MessageProcessor {
             if (externalId) sent = { externalId };
           }
           if (!sent && !robotOutcome.outboxId) {
-            sent = await this.gateway.sendText(message.sessionId, destination, robotOutcome.reply);
+            sent = await sendToContact(robotOutcome.reply);
           }
           if (sent) {
             await this.repository.recordAgentReply({
@@ -2790,6 +2857,13 @@ export class MessageProcessor {
       replyInboundExternalIds,
       transactionClaims
     } = result;
+    if (result.aiPaused) {
+      // Bubbles already delivered were persisted one by one; the operator owns
+      // the conversation now, so no final record, follow-up or further bubble.
+      logger.info({ externalId: message.externalId, conversationId: context.conversationId, reason: "ai_paused_mid_turn", replyBubblesSent: sentBubbles?.length ?? 0 }, "AI reply stopped because the AI was paused during the turn");
+      await this.repository.markInboundProcessed(message, replyInboundExternalIds);
+      return "ignored";
+    }
     if (!sent) {
       logger.warn({ externalId: message.externalId, conversationId: context.conversationId, reason: "no_reply_bubble_sent" }, "Inbound message ignored");
       await this.repository.markInboundProcessed(message, processingExternalIds);
@@ -2836,10 +2910,43 @@ export class MessageProcessor {
       await releaseConversationLock(conversationLock);
     }
     } catch (error) {
+      if (contactDeliveryStarted) return this.handOffAmbiguousDelivery(message, context.conversationId, deliveredInboundExternalIds, error);
       await this.repository.releaseInboundProcessing(message).catch((releaseError) => {
         logger.error({ err: releaseError, externalId: message.externalId }, "Failed to release inbound processing lease");
       });
       throw error;
+    }
+  }
+
+  /**
+   * The provider may already have delivered (part of) this reply. Like manual
+   * sends and follow-ups, classify it as ambiguous and hand the conversation to
+   * a human; a BullMQ retry would regenerate and resend what the contact has.
+   */
+  private async handOffAmbiguousDelivery(
+    message: SessionMessage,
+    conversationId: string,
+    inboundExternalIds: string[],
+    cause: unknown
+  ): Promise<"handoff"> {
+    logger.error({ err: cause, externalId: message.externalId, conversationId, reason: "delivery_ambiguous" }, "AI reply failed after the contact may have received it; handing off without retry");
+    try {
+      const notification = await this.repository.pauseForHandoff({
+        tenantId: message.tenantId,
+        conversationId,
+        sessionId: message.sessionId,
+        reason: "technical_failure",
+        errorCode: "delivery_ambiguous",
+        idempotencyKey: `${message.sessionId}:${message.externalId}:ai_failure:delivery_ambiguous`,
+        notificationText: "AtendON: a IA pode ter enviado só parte da resposta. Confira o histórico e continue este atendimento manualmente."
+      });
+      await this.repository.markInboundProcessed(message, inboundExternalIds);
+      if (notification) {
+        await this.dispatchHandoff(notification).catch((dispatchError) => logger.error({ err: dispatchError, conversationId }, "Failed to dispatch ambiguous-delivery handoff notification"));
+      }
+      return "handoff";
+    } catch (handoffError) {
+      throw new UnrecoverableError(`AI reply delivery is ambiguous and the handoff could not be recorded: ${handoffError instanceof Error ? handoffError.message : String(handoffError)}`);
     }
   }
 }
