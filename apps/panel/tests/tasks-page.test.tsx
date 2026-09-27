@@ -200,6 +200,24 @@ describe("página Tarefas (R6)", () => {
     expect(calls.some((call) => call.method === "DELETE" && call.path === "/tasks/task-a")).toBe(true);
   });
 
+  it("sem tasks.assign: só mostra Excluir nas tarefas que o próprio usuário criou (auditoria painel P3-2)", async () => {
+    apiMock.mockImplementation((path: string) => {
+      if (path === "/me") return jsonResponse({ ...SESSION, permissions: ["tasks.read"] });
+      if (path.startsWith("/tasks?")) return jsonResponse({
+        items: [
+          makeTask({ id: "own", title: "Minha tarefa" }),
+          makeTask({ id: "assigned", title: "Tarefa do gestor", author: { id: "manager-9", name: "Gestor" } })
+        ],
+        page: { limit: 30, has_more: false, next_cursor: null }
+      });
+      return jsonResponse({});
+    });
+    renderPage();
+    await screen.findByText("Tarefa do gestor");
+    expect(screen.getByRole("button", { name: "Excluir tarefa: Minha tarefa" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Excluir tarefa: Tarefa do gestor" })).not.toBeInTheDocument();
+  });
+
   it("sem tasks.assign: escopo travado em Minhas e tarefa criada para si", async () => {
     const user = userEvent.setup();
     apiMock.mockImplementation((path: string, init?: RequestInit) => {

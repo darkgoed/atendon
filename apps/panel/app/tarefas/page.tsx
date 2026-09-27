@@ -339,7 +339,8 @@ function TaskCard({
   timezone?: string;
   onToggle: (task: Task) => void;
   onEdit: (task: Task) => void;
-  onRemove: (task: Task) => void;
+  /** Ausente: só autor ou quem tem tasks.assign exclui (tasks/service.ts). */
+  onRemove?: (task: Task) => void;
 }) {
   return (
     <article className={`${styles.task}${task.status === "concluida" ? ` ${styles.taskDone}` : ""}`} data-task-id={task.id}>
@@ -373,7 +374,7 @@ function TaskCard({
             <Check size={14} aria-hidden="true" />
           </IconButton>
           <IconButton size="sm" label={`Editar tarefa: ${task.title}`} onClick={() => onEdit(task)}><PencilSimple size={14} aria-hidden="true" /></IconButton>
-          <IconButton size="sm" tone="danger" label={`Excluir tarefa: ${task.title}`} onClick={() => onRemove(task)}><Trash size={14} aria-hidden="true" /></IconButton>
+          {onRemove ? <IconButton size="sm" tone="danger" label={`Excluir tarefa: ${task.title}`} onClick={() => onRemove(task)}><Trash size={14} aria-hidden="true" /></IconButton> : null}
         </div>
       </div>
     </article>
@@ -575,7 +576,7 @@ export default function TasksPage() {
                 <section key={group.key} className={styles.agendaDay}>
                   <h2 className={styles.agendaDayTitle}>{group.label}</h2>
                   {group.tasks.map((task) => (
-                    <TaskCard key={task.id} task={task} timezone={timezone} onToggle={toggleDone} onEdit={openEditor} onRemove={removeTask} />
+                    <TaskCard key={task.id} task={task} timezone={timezone} onToggle={toggleDone} onEdit={openEditor} onRemove={canAssign || task.author.id === currentUserId ? removeTask : undefined} />
                   ))}
                 </section>
               ))}
@@ -584,7 +585,7 @@ export default function TasksPage() {
           ) : (
             <div className={styles.list}>
               {tasks.map((task) => (
-                <TaskCard key={task.id} task={task} timezone={timezone} onToggle={toggleDone} onEdit={openEditor} onRemove={removeTask} />
+                <TaskCard key={task.id} task={task} timezone={timezone} onToggle={toggleDone} onEdit={openEditor} onRemove={canAssign || task.author.id === currentUserId ? removeTask : undefined} />
               ))}
               {loadMoreControl}
             </div>

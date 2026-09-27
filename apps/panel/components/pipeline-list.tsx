@@ -6,8 +6,10 @@ import { Button, HelpHint, TableScroll } from "@/components/ui";
 import { pipelineStageAutomationLabel } from "@/components/pipeline-board";
 import { currentPipelineStageId, formatPipelineAge, pipelineStatusLabel, type PipelineLead, type PipelineMember, type PipelineStage } from "@/lib/pipeline";
 
-export function PipelineList({ leads, stages, members, legacy, loading, canMove, canSelect, selectedIds, pendingLeadIds, onToggleSelected, onMoveRequest }: {
+export function PipelineList({ leads, stages, members, legacy, loading, canMove, canSelect, selectedIds, pendingLeadIds, onToggleSelected, onMoveRequest, timezone }: {
   leads: PipelineLead[];
+  /** Fuso do workspace: a próxima ação é digitada nele (auditoria painel P3-4). */
+  timezone?: string;
   stages: PipelineStage[];
   members: PipelineMember[];
   legacy: boolean;
@@ -33,7 +35,7 @@ export function PipelineList({ leads, stages, members, legacy, loading, canMove,
           <td data-label="Estágio atual">{stage?.name ?? pipelineStatusLabel(lead.status)}{stage ? <>{" "}<span className="rounded bg-[var(--surface-active)] px-1.5 py-0.5 type-caption leading-none text-[var(--text-secondary)]" data-stage-kind={stage.operational_kind ?? "manual"}>{pipelineStageAutomationLabel(stage)}</span></> : null}</td>
           <td data-label="Responsável">{memberName(lead)}</td>
           <td data-label="Idade no estágio">{formatPipelineAge(lead.atualizado_em)}</td>
-          <td data-label="Próximo follow-up">{lead.proxima_acao_em ? new Date(lead.proxima_acao_em).toLocaleString("pt-BR") : lead.proxima_acao ?? "—"}</td>
+          <td data-label="Próximo follow-up">{lead.proxima_acao_em ? new Date(lead.proxima_acao_em).toLocaleString("pt-BR", timezone ? { timeZone: timezone } : undefined) : lead.proxima_acao ?? "—"}</td>
           {canMove ? <td data-label="Ações">
             <div className="flex items-center gap-1.5">
               <ContactChatLink conversationId={lead.conversation_id} name={lead.nome} />

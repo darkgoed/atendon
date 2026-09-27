@@ -4,6 +4,7 @@ import { ArrowRight } from "@/components/icons";
 import Link from "next/link";
 import { useState, type CSSProperties } from "react";
 import useSWR from "swr";
+import { useWorkspaceCustomRange } from "@/lib/use-workspace-today";
 import { ContactAvatar } from "@/components/contact-avatar";
 import { Empty, LoadingCards } from "@/components/page-state";
 import { Shell } from "@/components/shell";
@@ -57,10 +58,8 @@ function waitingLabel(minutes = 0) {
 export default function Overview() {
   const { isEnabled } = useCapabilities();
   const appointmentsEnabled = isEnabled("appointments_v1");
-  const today = new Date().toISOString().slice(0, 10);
+  const { customStart, setCustomStart, customEnd, setCustomEnd } = useWorkspaceCustomRange();
   const [period, setPeriod] = useState<CommercialDashboardData["period"]["key"]>("today");
-  const [customStart, setCustomStart] = useState(today);
-  const [customEnd, setCustomEnd] = useState(today);
   const { data: session } = useSWR<PanelSession>("/me", fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 10_000

@@ -237,7 +237,7 @@ function ConversationBadge({ item }: { item: Conversation }) {
   );
 }
 
-function ConversationItem({ item, selected, showLeadTags, onClick }: { item: Conversation; selected: string; showLeadTags: boolean; onClick: (id: string) => void }) {
+function ConversationItem({ item, selected, showLeadTags, onClick, timezone }: { item: Conversation; selected: string; showLeadTags: boolean; onClick: (id: string) => void; timezone?: string }) {
   const isSelected = selected === item.id;
   const title = item.channel === "instagram"
     ? instagramDisplayName(item.contact_name, item.instagram_username, item.contact_identifier, item.contact_phone)
@@ -303,7 +303,7 @@ function ConversationItem({ item, selected, showLeadTags, onClick }: { item: Con
             ) : null}
             {item.next_action ? (
               <span className={`conversation-list__info-chunk ${item.next_action_due || (item.next_action_at && new Date(item.next_action_at).getTime() <= Date.now()) ? "conversation-list__info-due" : ""}`}>
-                Próxima ação: {item.next_action}{item.next_action_at ? ` · ${new Date(item.next_action_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}
+                Próxima ação: {item.next_action}{item.next_action_at ? ` · ${new Date(item.next_action_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", ...(timezone ? { timeZone: timezone } : {}) })}` : ""}
               </span>
             ) : null}
           </span>
@@ -482,6 +482,8 @@ export default function Conversations() {
 
   const canChangeAi = usePermission("conversations.reactivate");
   const canClearHistory = usePermission("leads.delete");
+  // Próxima ação grava em /scheduling/leads/:id/follow-up (leads.follow_up.manage).
+  const canManageFollowUp = usePermission("leads.follow_up.manage");
   const canCreateAppointment = usePermission("appointments.create");
   const canReadAvailability = usePermission("availability.read");
   const canReadUnits = usePermission("units.read");
@@ -1527,7 +1529,7 @@ export default function Conversations() {
             ) : (
               <div className="space-y-1.5">
                 {items.map((item: Conversation) => (
-                  <ConversationItem key={item.id} item={item} selected={selected} showLeadTags={leadsEnabled} onClick={selectConversation} />
+                  <ConversationItem key={item.id} item={item} selected={selected} showLeadTags={leadsEnabled} onClick={selectConversation} timezone={timezone} />
                 ))}
                 {listPageState.hasMore ? (
                   <div className="pt-1.5 text-center">
@@ -1771,7 +1773,7 @@ export default function Conversations() {
                 </div>
               ) : null}
 
-              {thread.conversation.lead_id ? <div className="grid shrink-0 gap-2 border-b border-[var(--border)] p-3 lg:grid-cols-2"><ConversationPreBriefing source={thread.conversation.lead_source ?? null} campaign={thread.conversation.lead_campaign ?? null} interest={thread.conversation.interest ?? null} facebookAttribution={thread.conversation.facebook_attribution} /><ConversationNextAction leadId={thread.conversation.lead_id} nextAction={thread.conversation.next_action ?? null} nextActionAt={thread.conversation.next_action_at ?? null} assignedUserEmail={thread.conversation.assigned_user_email ?? null} timezone={timezone} canManage={canReply} onSaved={async () => { await Promise.all([mutateList(), mutateThread()]); }} /></div> : null}
+              {thread.conversation.lead_id ? <div className="grid shrink-0 gap-2 border-b border-[var(--border)] p-3 lg:grid-cols-2"><ConversationPreBriefing source={thread.conversation.lead_source ?? null} campaign={thread.conversation.lead_campaign ?? null} interest={thread.conversation.interest ?? null} facebookAttribution={thread.conversation.facebook_attribution} /><ConversationNextAction leadId={thread.conversation.lead_id} nextAction={thread.conversation.next_action ?? null} nextActionAt={thread.conversation.next_action_at ?? null} assignedUserEmail={thread.conversation.assigned_user_email ?? null} timezone={timezone} canManage={canManageFollowUp} onSaved={async () => { await Promise.all([mutateList(), mutateThread()]); }} /></div> : null}
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div className="relative min-h-0 flex-1">
                   <div

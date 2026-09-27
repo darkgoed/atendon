@@ -17,6 +17,7 @@ import {
 } from "@/components/icons";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import useSWR, { useSWRConfig } from "swr";
+import { useWorkspaceCustomRange } from "@/lib/use-workspace-today";
 import { Sparkline } from "@/components/commercial-dashboard-charts";
 import { DashboardMetricWidget, DashboardTeamWidget, type DashboardMetricData, type DashboardTeamData } from "@/components/dashboard-metric-widget";
 import { Shell } from "@/components/shell";
@@ -432,11 +433,9 @@ export function DashboardWidgets() {
   const leadsEnabled = isEnabled("leads_v1");
   const pipelineEnabled = isEnabled("pipeline_v1");
   const appointmentsEnabled = isEnabled("appointments_v1");
-  const today = new Date().toISOString().slice(0, 10);
+  const { customStart, setCustomStart, customEnd, setCustomEnd } = useWorkspaceCustomRange();
   const [editing, setEditing] = useState(false);
   const [period, setPeriod] = useState("today");
-  const [customStart, setCustomStart] = useState(today);
-  const [customEnd, setCustomEnd] = useState(today);
   const [draft, setDraft] = useState<LayoutItem[]>([]);
   const [saving, setSaving] = useState(false);
   const layoutSave = useSaveFeedback();

@@ -616,6 +616,7 @@ function PipelinePageContent() {
           pendingLeadIds={pendingLeadIds}
           onToggleSelected={toggleSelected}
           onMoveRequest={requestMove}
+          timezone={data?.timezone ?? session?.activeWorkspace?.timezone}
         /> : <PipelineBoard
           stages={boardStages}
           leads={visibleLeads}
