@@ -17,6 +17,7 @@ import { api } from "@/lib/api";
 import { canAccessWithSession, type PanelSession } from "@/lib/session";
 import { groupTasksByDay, type AgendaGroup } from "./tasks-agenda";
 import styles from "./tarefas.module.css";
+import { instantFromLocalMinute, localMinute } from "@/lib/timezone";
 
 type TaskStatus = "aberta" | "em_andamento" | "concluida";
 type TaskPriority = "baixa" | "media" | "alta";
@@ -87,11 +88,13 @@ function formatDue(value: string, timezone?: string): string {
   }
 }
 
-/** ISO do backend → valor de <input type="datetime-local"> no fuso local. */
-function toLocalInput(iso: string | null): string {
+/** ISO do backend → valor de <input type="datetime-local"> no fuso do WORKSPACE
+    (o mesmo de formatDue); sem fuso conhecido, o do navegador. */
+function toLocalInput(iso: string | null, timezone?: string): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
+  if (timezone) return localMinute(date.toISOString(), timezone);
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
@@ -111,6 +114,7 @@ function TaskDialog({
   task,
   canAssign,
   currentUserId,
+  timezone,
   onClose,
   onSaved
 }: {
@@ -118,6 +122,7 @@ function TaskDialog({
   task: Task | null;
   canAssign: boolean;
   currentUserId: string;
+  timezone?: string;
   onClose: () => void;
   onSaved: (task: Task, created: boolean) => void;
 }) {
@@ -163,12 +168,12 @@ function TaskDialog({
     setDescription(task?.description ?? "");
     setAssigneeId(task?.assignee?.id ?? (!canAssign && task ? currentUserId : ""));
     setPriority(task?.priority ?? "media");
-    setDueLocal(toLocalInput(task?.due_at ?? null));
+    setDueLocal(toLocalInput(task?.due_at ?? null, timezone));
     setRelatedLead(task?.lead ?? null);
     setLeadQuery("");
     setDebouncedLeadQuery("");
     setError("");
-  }, [open, task, canAssign, currentUserId]);
+  }, [open, task, canAssign, currentUserId, timezone]);
 
   // Na edição, prazo/prioridade são de gestão (tasks.assign).
   const lockedSchedule = Boolean(task) && !canAssign;
@@ -180,8 +185,10 @@ function TaskDialog({
     setSaving(true);
     setError("");
     try {
-      const dueIso = dueLocal ? new Date(dueLocal).toISOString() : null;
-      if (Number.isNaN(new Date(dueLocal).getTime()) && dueLocal) throw new Error("Prazo inválido");
+      const dueIso = !dueLocal ? null
+        : timezone ? instantFromLocalMinute(dueLocal, timezone) || null
+          : Number.isNaN(new Date(dueLocal).getTime()) ? null : new Date(dueLocal).toISOString();
+      if (dueLocal && !dueIso) throw new Error("Prazo inválido");
       let saved: Task;
       if (task) {
         const response = await api<{ task: Task }>(`/tasks/${task.id}`, {
@@ -589,6 +596,7 @@ export default function TasksPage() {
           task={dialog.task}
           canAssign={canAssign}
           currentUserId={currentUserId}
+          timezone={timezone}
           onClose={() => setDialog({ open: false, task: null })}
           onSaved={(saved, created) => {
             if (created) void mutate();

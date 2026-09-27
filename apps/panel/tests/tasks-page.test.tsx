@@ -249,4 +249,25 @@ describe("página Tarefas (R6)", () => {
     const patch = calls.find((call) => call.method === "PATCH");
     expect(patch?.body).toEqual({ title: "Enviar proposta final", description: "Ajustar preço e reenviar" });
   });
+
+  it("prazo é editado e salvo no fuso do WORKSPACE, o mesmo da listagem (PAINEL C15)", async () => {
+    // Navegador em outro fuso (o container de teste roda em UTC); workspace em São Paulo.
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("Enviar proposta revisada");
+    await user.click(screen.getByRole("button", { name: "Editar tarefa: Enviar proposta revisada" }));
+    const edit = await screen.findByRole("dialog", { name: /Editar tarefa/ });
+    // due_at 2026-12-01T12:00Z = 09:00 em São Paulo (a lista mostra 09:00).
+    expect((within(edit).getByLabelText("Prazo") as HTMLInputElement).value).toBe("2026-12-01T09:00");
+    await user.click(within(edit).getByRole("button", { name: /Cancelar/ }));
+
+    await user.click(screen.getByRole("button", { name: "Nova tarefa" }));
+    const dialog = await screen.findByRole("dialog", { name: /Nova tarefa/ });
+    await user.type(within(dialog).getByLabelText("Título"), "Ligar às 14h30");
+    fireEvent.change(within(dialog).getByLabelText("Prazo"), { target: { value: "2026-09-20T14:30" } });
+    await user.click(within(dialog).getByRole("button", { name: "Criar tarefa" }));
+    await waitFor(() => expect(calls.some((call) => call.path === "/tasks" && call.method === "POST")).toBe(true));
+    expect(calls.find((call) => call.path === "/tasks" && call.method === "POST")?.body?.due_at).toBe("2026-09-20T17:30:00.000Z");
+  });
 });
+
