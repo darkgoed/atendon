@@ -102,6 +102,8 @@ export function TripzConversationView({
   error,
   onOpenHistory,
   onOpenReview,
+  onOpenEditor,
+  onOpenBrand,
   onRetry,
   onRetryTurn,
   onSent
@@ -113,6 +115,8 @@ export function TripzConversationView({
   error?: string;
   onOpenHistory: (event: React.MouseEvent<HTMLElement>) => void;
   onOpenReview: () => void;
+  onOpenEditor: () => void;
+  onOpenBrand: () => void;
   onRetry: () => void;
   onRetryTurn: (messageId: string) => Promise<void>;
   onSent: () => void | Promise<void>;
@@ -142,11 +146,20 @@ export function TripzConversationView({
             </span>
           </div>
         </div>
-        <button type="button" className="btn shrink-0" onClick={onOpenReview} aria-label="Abrir resumo e revisão da proposta">
-          <SidebarSimple size={15} aria-hidden="true" />
-          <span className="hidden sm:inline">Revisar proposta</span>
-          <span className="sm:hidden">Revisar</span>
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button type="button" className="btn shrink-0" onClick={onOpenEditor} aria-label="Abrir editor da proposta">
+            <SidebarSimple size={15} aria-hidden="true" />
+            <span className="hidden sm:inline">Editor</span>
+          </button>
+          <button type="button" className="btn shrink-0" onClick={onOpenBrand} aria-label="Identidade da proposta">
+            <span className="hidden sm:inline">Identidade</span>
+          </button>
+          <button type="button" className="btn shrink-0" onClick={onOpenReview} aria-label="Abrir resumo e revisão da proposta">
+            <SidebarSimple size={15} aria-hidden="true" />
+            <span className="hidden sm:inline">Revisar proposta</span>
+            <span className="sm:hidden">Revisar</span>
+          </button>
+        </div>
       </header>
 
       <div ref={scrollRef} className={`${styles.scrollRegion} min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-4`} aria-busy={loading}>

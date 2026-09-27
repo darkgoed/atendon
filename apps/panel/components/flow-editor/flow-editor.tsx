@@ -43,7 +43,10 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   TRIGGER_ID,
+  TRIGGER_H,
   PALETTE_GROUPS,
+  choiceHandle,
+  estimateNodeHeight,
   graphFromDefinition,
   layoutDefinition,
   newStepFor,
@@ -51,6 +54,7 @@ import {
   paletteItemForStep,
   removeStep,
   setEdgeTarget,
+  stepHandles,
   stepId,
   stepOptions,
   validateDefinition,
@@ -59,6 +63,7 @@ import {
   type GraphNode,
   type PaletteItem,
   type Position as XYPos,
+  type StepHandle,
 } from "./flow-model";
 import { FlowConflictModal, type FlowConflict } from "./FlowConflictModal";
 import { HelpHint, IconButton, SaveButton, SaveToast, type SaveState } from "@/components/ui";
@@ -151,8 +156,13 @@ function NodeIcon({ nodeType }: { nodeType: string }) {
 
 /* ─── nós do canvas ─── */
 
+type StepNodeData = GraphNode & { handles?: StepHandle[] };
+
 function StepNode({ data, selected }: NodeProps) {
-  const node = data as unknown as GraphNode;
+  const node = data as unknown as StepNodeData;
+  /* Handles vêm da etapa VIVA (stepHandles injetado no rfNodes): escolhas,
+     timeout/invalid e "out"; terminadores (final/finalize) ficam sem saída. */
+  const handles = node.handles ?? [];
   return (
     <div
       className={styles.node}
@@ -172,31 +182,24 @@ function StepNode({ data, selected }: NodeProps) {
       </div>
       {node.options.length > 0 ? (
         <div className={styles.nodeChips}>
-          {node.options.map((option) => (
-            <span key={option} className={styles.nodeChip}>{optionLabel(option)}</span>
+          {node.options.map((option, index) => (
+            /* key value+index: legado pode ter value repetido (dedupe só no
+               handle) — key só-value daria duplicate-key no React. */
+            <span key={`${option}-${index}`} className={styles.nodeChip}>{optionLabel(option)}</span>
           ))}
         </div>
       ) : null}
-      {node.options.length > 1
-        ? node.options.map((option, index) => (
-            <Handle
-              key={option}
-              id={option}
-              type="source"
-              position={Position.Bottom}
-              style={{ left: `${((index + 1) / (node.options.length + 1)) * 100}%` }}
-            />
-          ))
-        : node.options.length === 1
-          /* Etapa com 1 opção: além do "out" (next), renderiza o handle da
-             opção — antes a aresta transitions[opção] ficava invisível. */
-          ? (
-            <>
-              <Handle id={node.options[0]} type="source" position={Position.Bottom} style={{ left: "25%" }} />
-              <Handle id="out" type="source" position={Position.Bottom} />
-            </>
-          )
-          : <Handle id="out" type="source" position={Position.Bottom} />}
+      {/* Fórmula única: para 1 handle dá 50% — o mesmo left do default .react-flow__handle-bottom. */}
+      {handles.map((handle, index) => (
+        <Handle
+          key={handle.id}
+          id={handle.id}
+          type="source"
+          position={Position.Bottom}
+          style={{ left: `${((index + 1) / (handles.length + 1)) * 100}%` }}
+          title={handle.label}
+        />
+      ))}
     </div>
   );
 }
@@ -260,17 +263,25 @@ function assignTagIds(step: FlowStep, value: string): FlowStep {
   return next as FlowStep;
 }
 
-function renameOption(step: FlowStep, oldValue: string, newValue: string): FlowStep {
+/** Renome por ÍNDICE: o backend aceita value repetido (payload legado), então
+    renomear por value mudaria TODAS as linhas gêmeas. Muda exatamente a linha
+    do índice, copia o destino da transição antiga para o novo valor e só apaga
+    a transição antiga se nenhuma linha continuar com o valor. Recusa renomear
+    para um valor que já existe em OUTRA linha (não cria duplicata nova). */
+function renameOption(step: FlowStep, index: number, newValue: string): FlowStep {
   const value = newValue.trim();
-  if (!value || step.options?.some((option) => option.value === value)) return step;
-  const options = (step.options ?? []).map((option) => (option.value === oldValue ? { ...option, value } : option));
+  const oldValue = (step.options ?? [])[index]?.value;
+  if (!value || oldValue === undefined) return step;
+  if ((step.options ?? []).some((option, i) => i !== index && option.value === value)) return step;
+  const options = (step.options ?? []).map((option, i) => (i === index ? { ...option, value } : option));
   const transitions = { ...(step.transitions ?? {}) };
   if (oldValue in transitions) {
     transitions[value] = transitions[oldValue];
-    delete transitions[oldValue];
+    if (!options.some((option) => option.value === oldValue)) delete transitions[oldValue];
   }
-  const next = { ...step, options, transitions: Object.keys(transitions).length ? transitions : undefined } as FlowStep;
-  if (!Object.keys(transitions).length) delete next.transitions;
+  const next = { ...step, options } as FlowStep;
+  if (Object.keys(transitions).length) next.transitions = transitions;
+  else delete next.transitions;
   return next;
 }
 
@@ -302,24 +313,37 @@ function setBranchOperator(step: FlowStep, operator: string): FlowStep {
   return next;
 }
 
-function addInteractiveButton(step: FlowStep): FlowStep {
-  const total = step.options?.length ?? 0;
-  return { ...step, options: [...(step.options ?? []), { value: `Opção ${total + 1}` }] } as FlowStep;
+/** Próximo "Opção N" LIVRE: incrementa até não existir value igual (o usuário
+    pode ter renomeado "Opção 1" p/ "Opção 2" — o comprimento não é o número). */
+function nextOptionValue(step: FlowStep): string {
+  const taken = new Set((step.options ?? []).map((option) => option.value));
+  let n = (step.options?.length ?? 0) + 1;
+  while (taken.has(`Opção ${n}`)) n += 1;
+  return `Opção ${n}`;
 }
 
-function removeInteractiveButton(step: FlowStep, value: string): FlowStep {
-  const options = (step.options ?? []).filter((option) => option.value !== value);
+function addInteractiveButton(step: FlowStep): FlowStep {
+  return { ...step, options: [...(step.options ?? []), { value: nextOptionValue(step) }] } as FlowStep;
+}
+
+/** Remoção por ÍNDICE: tira UMA linha; a transição do valor sai somente quando
+    nenhuma linha restante continua com o value (gêmeas dividem a transição). */
+function removeInteractiveButton(step: FlowStep, index: number): FlowStep {
+  const removed = (step.options ?? [])[index];
+  const options = (step.options ?? []).filter((_, i) => i !== index);
   const transitions = { ...(step.transitions ?? {}) };
-  delete transitions[value];
-  const next = { ...step, options, transitions: Object.keys(transitions).length ? transitions : undefined } as FlowStep;
-  if (!Object.keys(transitions).length) delete next.transitions;
+  if (removed && !options.some((option) => option.value === removed.value)) delete transitions[removed.value];
+  const next = { ...step, options } as FlowStep;
+  if (Object.keys(transitions).length) next.transitions = transitions;
+  else delete next.transitions;
   return next;
 }
 
-function setOptionUrl(step: FlowStep, value: string, url: string): FlowStep {
+/** URL por ÍNDICE: atualiza só a linha do índice (gêmeas têm urls próprias). */
+function setOptionUrl(step: FlowStep, index: number, url: string): FlowStep {
   const trimmed = url.trim();
-  const options = (step.options ?? []).map((option) => {
-    if (option.value !== value) return option;
+  const options = (step.options ?? []).map((option, i) => {
+    if (i !== index) return option;
     const nextOption = { ...option };
     if (trimmed) nextOption.url = trimmed;
     else delete nextOption.url;
@@ -391,7 +415,8 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
       handle — MESMA semântica das arestas do canvas (setEdgeTarget). */
   const otherSteps = Object.keys(definition.steps).filter((id) => id !== node.id);
   function setHandle(handle: string, target: string) {
-    onDefinition(setEdgeTarget(definition, node.id, handle, target || null));
+    const next = setEdgeTarget(definition, node.id, handle, target || null);
+    if (next !== definition) onDefinition(next);
   }
 
   return (
@@ -498,27 +523,31 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
               <div>
                 <span className="label">Opções</span>
                 <div className={styles.optionList}>
-                  {stepOptions(step).map((value) => (
-                    <div key={value} className={styles.optionRow}>
-                      <input
-                        className="input"
-                        value={value}
-                        disabled={!canManage || step.kind === "years" || step.kind === "revenue" || step.kind === "boolean"}
-                        onChange={(event) => setStep(renameOption(step, value, event.target.value))}
-                        aria-label={`Opção ${optionLabel(value)}`}
-                      />
-                      <span className={styles.optionTarget} data-set={Boolean(step.transitions?.[value] ?? step.next)}>
-                        {step.transitions?.[value] || step.next ? "→" : "sem destino"}
-                      </span>
-                    </div>
-                  ))}
+                  {stepOptions(step).map((value, index) => {
+                    /* value repetido (payload legado): gêmeas ganham índice no rótulo. */
+                    const duplicated = stepOptions(step).some((candidate, i) => candidate === value && i !== index);
+                    return (
+                      <div key={`${value}-${index}`} className={styles.optionRow}>
+                        <input
+                          className="input"
+                          value={value}
+                          disabled={!canManage || step.kind === "years" || step.kind === "revenue" || step.kind === "boolean"}
+                          onChange={(event) => setStep(renameOption(step, index, event.target.value))}
+                          aria-label={`Opção ${optionLabel(value)}${duplicated ? ` (linha ${index + 1})` : ""}`}
+                        />
+                        <span className={styles.optionTarget} data-set={Boolean(step.transitions?.[value] ?? step.next)}>
+                          {step.transitions?.[value] || step.next ? "→" : "sem destino"}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
                 {step.kind === "options" && (step.options?.length ?? 0) < 20 ? (
                   <button
                     type="button"
                     className={styles.optionAdd}
                     disabled={!canManage}
-                    onClick={() => setStep({ ...step, options: [...(step.options ?? []), { value: `Opção ${(step.options?.length ?? 0) + 1}` }] })}
+                    onClick={() => setStep({ ...step, options: [...(step.options ?? []), { value: nextOptionValue(step) }] })}
                   >
                     + opção
                   </button>
@@ -705,34 +734,39 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
                 <div>
                   <span className="label">Botões (1-3)</span>
                   <div className={styles.optionList}>
-                    {(step.options ?? []).map((option) => {
+                    {(step.options ?? []).map((option, index) => {
                       const urlIssue = optionUrlIssue(option.url);
+                      /* value repetido (payload legado): gêmeas ganham índice no rótulo
+                         para editar UMA linha; caso único mantém o rótulo puro. */
+                      const duplicated = (step.options ?? []).some((candidate, i) => candidate.value === option.value && i !== index);
+                      const rowLabel = (prefix: string) => `${prefix} ${option.value}${duplicated ? ` (linha ${index + 1})` : ""}`;
                       return (
-                        <div key={option.value} className={styles.buttonRow}>
+                        <div key={`${option.value}-${index}`} className={styles.buttonRow}>
                           <input
                             className="input"
                             value={option.value}
                             maxLength={200}
-                            aria-label={`Texto do botão ${option.value}`}
+                            aria-label={rowLabel("Texto do botão")}
                             disabled={!canManage}
-                            onChange={(event) => setStep(renameOption(step, option.value, event.target.value))}
+                            onChange={(event) => setStep(renameOption(step, index, event.target.value))}
                           />
                           <input
                             className="input"
                             value={option.url ?? ""}
                             maxLength={500}
                             placeholder="https:// (opcional)"
-                            aria-label={`URL do botão ${option.value}`}
+                            aria-label={rowLabel("URL do botão")}
                             disabled={!canManage}
-                            onChange={(event) => setStep(setOptionUrl(step, option.value, event.target.value))}
+                            onChange={(event) => setStep(setOptionUrl(step, index, event.target.value))}
                           />
                           {urlIssue ? <p className={styles.fieldError}>{urlIssue}</p> : null}
                           <select
                             className="input"
-                            aria-label={`Destino do botão ${option.value}`}
+                            aria-label={rowLabel("Destino do botão")}
                             value={step.transitions?.[option.value] ?? step.next ?? ""}
                             disabled={!canManage}
-                            onChange={(event) => setHandle(option.value, event.target.value)}
+                            /* choiceHandle: reservados (out/timeout/invalid, mesmo já prefixados) ganham "opt:". */
+                            onChange={(event) => setHandle(choiceHandle(option.value), event.target.value)}
                           >
                             <option value="">— destino padrão —</option>
                             {otherSteps.map((id) => <option key={id} value={id}>{id}</option>)}
@@ -741,9 +775,9 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
                             <button
                               type="button"
                               className={styles.buttonRemove}
-                              aria-label={`Remover botão ${option.value}`}
+                              aria-label={rowLabel("Remover botão")}
                               disabled={!canManage}
-                              onClick={() => setStep(removeInteractiveButton(step, option.value))}
+                              onClick={() => setStep(removeInteractiveButton(step, index))}
                             >
                               ×
                             </button>
@@ -841,6 +875,17 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
 
 /* ─── editor ─── */
 
+/** Fundo (y + altura) do nó conhecido mais baixo — base para empilhar nó novo. */
+function bottomOf(nodes: GraphNode[], positions: Map<string, XYPos>): number {
+  let bottom = 0;
+  for (const node of nodes) {
+    const position = positions.get(node.id);
+    if (!position) continue;
+    bottom = Math.max(bottom, position.y + (node.id === TRIGGER_ID ? TRIGGER_H : estimateNodeHeight(node)));
+  }
+  return bottom;
+}
+
 function FlowEditorInner(props: FlowEditorProps) {
   const { definition, onDefinition, canManage } = props;
   const reactFlow = useReactFlow();
@@ -861,22 +906,49 @@ function FlowEditorInner(props: FlowEditorProps) {
   const [measured, setMeasured] = useState<Map<string, { width: number; height: number }>>(() => new Map());
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const nodeCacheRef = useRef(new Map<string, Node>());
+  const dataCacheRef = useRef(new Map<string, { node: GraphNode; step: FlowStep | undefined; data: Record<string, unknown> }>());
 
   const rfNodes: Node[] = useMemo(() => {
-    let fallbackY = 0;
-    for (const position of positions.values()) fallbackY = Math.max(fallbackY, position.y);
+    /* Fallback p/ id ainda sem posição no Map (definition mudou por outro
+       caminho que não o handleAddNode): cada id pendente empilha abaixo do
+       nó conhecido mais baixo, em ordem determinística por id, com cursor
+       acumulando NODE_GAP_Y + a ALTURA do pending anterior — coordenada
+       DISTINTA por id e bounds sem sobreposição mesmo com pendentes altos,
+       sem mover nós conhecidos. */
+    const fallbackBottom = bottomOf(graph.nodes, positions);
+    const pendingY = new Map<string, number>();
+    let pendingCursor = fallbackBottom;
+    graph.nodes
+      .filter((node) => !positions.has(node.id))
+      .sort((a, b) => (a.id < b.id ? -1 : 1))
+      .forEach((node) => {
+        pendingY.set(node.id, pendingCursor + NODE_GAP_Y);
+        pendingCursor += NODE_GAP_Y + estimateNodeHeight(node);
+      });
     const cache = nodeCacheRef.current;
+    const dataCache = dataCacheRef.current;
     const nextCache = new Map<string, Node>();
+    const nextDataCache = new Map<string, { node: GraphNode; step: FlowStep | undefined; data: Record<string, unknown> }>();
     const nodes = graph.nodes.map((node) => {
-      const position = positions.get(node.id) ?? { x: 40, y: fallbackY + NODE_GAP_Y };
+      const position = positions.get(node.id) ?? { x: 40, y: pendingY.get(node.id) ?? fallbackBottom + NODE_GAP_Y };
       const size = measured.get(node.id);
       const selected = node.id === selectedId;
       const dragging = node.id === draggingId;
+      /* Handles vêm da etapa VIVA (stepHandles injetado aqui). O objeto data é
+         reaproveitado por referência (node+step): handles novos a cada rodada
+         quebrariam a igualdade do cache e o React Flow reprocessaria todos os
+         nós a cada measured/dragging. */
+      const step = node.id === TRIGGER_ID ? undefined : definition.steps[node.id];
+      const prevData = dataCache.get(node.id);
+      const data = prevData && prevData.node === node && prevData.step === step
+        ? prevData.data
+        : { ...node, handles: step ? stepHandles(step) : undefined } as unknown as Record<string, unknown>;
+      nextDataCache.set(node.id, { node, step, data });
       const prev = cache.get(node.id);
       /* Reaproveita o objeto quando nada mudou: o React Flow compara por
          identidade e só reprocessa os nós realmente alterados. */
       const rfNode: Node = prev
-        && prev.data === (node as unknown as Record<string, unknown>)
+        && prev.data === data
         && prev.position.x === position.x
         && prev.position.y === position.y
         && prev.selected === selected
@@ -887,18 +959,20 @@ function FlowEditorInner(props: FlowEditorProps) {
             id: node.id,
             type: node.id === TRIGGER_ID ? "trigger" : "step",
             position,
-            data: node as unknown as Record<string, unknown>,
+            data,
             selected,
             dragging,
             measured: size,
             deletable: false,
+            dragHandle: undefined,
           };
       nextCache.set(node.id, rfNode);
       return rfNode;
     });
     nodeCacheRef.current = nextCache;
+    dataCacheRef.current = nextDataCache;
     return nodes;
-  }, [graph.nodes, positions, selectedId, measured, draggingId]);
+  }, [graph.nodes, positions, selectedId, measured, draggingId, definition]);
 
   const rfEdges: Edge[] = useMemo(
     () => graph.edges
@@ -929,11 +1003,52 @@ function FlowEditorInner(props: FlowEditorProps) {
     setConflictDismissed(false);
   }, [props.conflict]);
 
+  /* Troca de fluxo (mesma rota, novo flowId): layout/seleção/fitView voltam
+     ao estado do fluxo aberto. definition atual via ref — deps só flowId. */
+  const definitionRef = useRef(definition);
+  definitionRef.current = definition;
+  useEffect(() => {
+    setPositions(layoutDefinition(definitionRef.current));
+    setSelectedId(null);
+    const timer = window.setTimeout(() => reactFlow.fitView({ padding: 0.25, duration: 300 }), 30);
+    return () => window.clearTimeout(timer);
+  }, [props.flowId, reactFlow]);
+
   const selectedNode = selectedId ? graph.nodes.find((node) => node.id === selectedId) ?? null : null;
 
   const handleConnect = useCallback((connection: Connection) => {
     if (!canManage || !connection.source || !connection.target || connection.source === connection.target) return;
-    onDefinition(setEdgeTarget(definition, connection.source, connection.sourceHandle ?? "out", connection.target));
+    /* setEdgeTarget devolve a MESMA definition em no-op/entrada inválida —
+       propaga só quando muda, sem marcar o fluxo como editado à toa. */
+    const next = setEdgeTarget(definition, connection.source, connection.sourceHandle ?? "out", connection.target);
+    if (next !== definition) onDefinition(next);
+  }, [canManage, definition, onDefinition]);
+
+  /* Reconexão ATÔMICA: arrastar o destino é um único setEdgeTarget; arrastar
+     origem/handle remove a aresta antiga e liga a nova NUMA única mutação.
+     Ligação nova inválida (ou drop sem destino) NÃO commita — a aresta
+     original nunca é apagada por um reconect mal-sucedido. */
+  const handleReconnect = useCallback((oldEdge: Edge, connection: Connection) => {
+    if (!canManage || !oldEdge.source) return;
+    const oldHandle = oldEdge.sourceHandle ?? "out";
+    const newSource = connection.source ?? oldEdge.source;
+    const newHandle = connection.sourceHandle ?? oldHandle;
+    const newTarget = connection.target ?? oldEdge.target;
+    if (!newTarget) return;
+    /* A aresta do gatilho É definition.start: setEdgeTarget não sabe removê-la
+       (start obrigatório), então mover a ORIGEM para outro passo deixaria a
+       aresta antiga + uma nova (duas arestas no canvas). Bloqueia sem
+       mutação; mudar só o DESTINO segue reescrevendo start no ramo abaixo. */
+    if (oldEdge.source === TRIGGER_ID && newSource !== oldEdge.source) return;
+    if (newSource === oldEdge.source && newHandle === oldHandle) {
+      const moved = setEdgeTarget(definition, newSource, newHandle, newTarget);
+      if (moved !== definition) onDefinition(moved);
+      return;
+    }
+    const withoutOld = setEdgeTarget(definition, oldEdge.source, oldHandle, null);
+    const rewired = setEdgeTarget(withoutOld, newSource, newHandle, newTarget);
+    if (rewired === definition || (rewired === withoutOld && withoutOld !== definition)) return;
+    onDefinition(rewired);
   }, [canManage, definition, onDefinition]);
 
   const handleEdgeDoubleClick = useCallback((_event: unknown, edge: Edge) => {
@@ -996,9 +1111,17 @@ function FlowEditorInner(props: FlowEditorProps) {
       start: definition.start && definition.steps[definition.start] ? definition.start : id,
       steps: { ...definition.steps, [id]: newStepFor(item) },
     };
+    /* O nó novo ganha posição PRÓPRIA no Map (base do nó conhecido mais
+       baixo + NODE_GAP_Y): dois adds seguidos nunca nascem empilhados na
+       mesma coordenada; posições manuais/dagre dos existentes preservadas. */
+    setPositions((current) => {
+      const pos = new Map(current);
+      pos.set(id, { x: 40, y: bottomOf(graph.nodes, pos) + NODE_GAP_Y });
+      return pos;
+    });
     onDefinition(next);
     setSelectedId(id);
-  }, [canManage, definition, onDefinition]);
+  }, [canManage, definition, onDefinition, graph.nodes]);
 
   const handleDeleteStep = useCallback((id: string) => {
     const next = removeStep(definition, id);
@@ -1140,6 +1263,8 @@ function FlowEditorInner(props: FlowEditorProps) {
             edges={rfEdges}
             onNodesChange={handleNodesChange}
             onConnect={handleConnect}
+            onReconnect={handleReconnect}
+            edgesReconnectable={canManage}
             onEdgeDoubleClick={handleEdgeDoubleClick}
             onNodeClick={handleNodeClick}
             onPaneClick={handlePaneClick}

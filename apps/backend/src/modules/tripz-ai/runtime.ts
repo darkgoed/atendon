@@ -1,5 +1,6 @@
 import { logger } from "../../logger.js";
 import type { TripzAiTurnJob } from "../../queue/tripz-ai-queue.js";
+import { getBrandSettings, tripzBrandDatabase } from "./document/brand-settings.js";
 import { TripzAiError, type TripzAttachmentProcessingStatus } from "./domain.js";
 import {
   parseTripzOpenRouterConfig,
@@ -129,10 +130,18 @@ export class TripzAiTurnProcessor {
       });
     }
 
+    let brandStyleNotes: string | undefined;
+    try {
+      const brand = await getBrandSettings(tripzBrandDatabase(this.repository as unknown as object), scope.tenantId);
+      brandStyleNotes = brand.styleNotes;
+    } catch {
+      brandStyleNotes = undefined;
+    }
     const result = await this.getOrchestrator().processTurn({
       conversationId: job.conversationId,
       userMessage: userMessage.content,
       proposal: detail.proposal.state,
+      brandStyleNotes,
       sessionSummary: detail.conversation.summary,
       recentMessages: detail.messages
         .filter((message) => message.id !== userMessage.id && message.content.trim())

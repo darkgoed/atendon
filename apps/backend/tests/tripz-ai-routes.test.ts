@@ -16,6 +16,7 @@ import {
 import type {
   TripzAttachmentBinary,
   TripzDocumentContent,
+  TripzProposalVersion,
   TripzRepositoryPort
 } from "../src/modules/tripz-ai/repository.js";
 import { registerTripzAiRoutes } from "../src/modules/tripz-ai/routes.js";
@@ -118,6 +119,9 @@ class FakeRepository implements TripzRepositoryPort {
     return saved;
   }
   async getDocumentContent(): Promise<TripzDocumentContent | null> { return { document, data: "<p>preview</p>" }; }
+  async listProposalVersions(): Promise<Array<TripzProposalVersion>> { return []; }
+  async saveProposalVersion(): Promise<TripzProposalVersion> { throw new Error("not implemented in fake"); }
+  async getLatestProposalVersion(): Promise<TripzProposalVersion | null> { return null; }
   async markTurnTerminalFailure() { return true; }
 }
 

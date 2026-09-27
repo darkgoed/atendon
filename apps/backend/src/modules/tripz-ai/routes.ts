@@ -1,8 +1,17 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import { createHash } from "node:crypto";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { db } from "../../db/client.js";
 import { HTTP_RATE_LIMITS } from "../../security/http-rate-limit.js";
 import { createTripzFeatureGate, requireTripzAiPermission, type TripzAuthorizer, type TripzFeatureGate } from "./authorization.js";
-import { TripzAiError, tripzNotFound, type TripzAccessScope, type TripzMessage, type TripzProposal } from "./domain.js";
+import { validateTripzProposal } from "./ai/proposal-validator.js";
+import { getBrandSettings, tripzBrandDatabase, upsertTripzBrandSettings } from "./document/brand-settings.js";
+import {
+  tripzBrandSettingsPutSchema,
+  tripzFinalizeSchema,
+  tripzMediaFromUrlSchema,
+  tripzProposalVersionRevertSchema
+} from "./document/payload-schemas.js";
+import { TripzAiError, tripzNotFound, type TripzAccessScope, type TripzMessage, type TripzProposal, type TripzProposalPatch } from "./domain.js";
 import { TripzAiRepository, type TripzRepositoryPort } from "./repository.js";
 import {
   tripzAttachmentParamsSchema,
@@ -369,4 +378,193 @@ export async function registerTripzAiRoutes(app: FastifyInstance, dependencies: 
       .header("x-content-type-options", "nosniff")
       .send(content.data);
   });
+
+  /* ---- editorial: brand settings por tenant (0196) ---- */
+
+  app.get("/tripz-ai/brand-settings", async (request) => {
+    const scope = await access(request);
+    const config = await getBrandSettings(tripzBrandDatabase(repository), scope.tenantId);
+    return { config };
+  });
+
+  app.put("/tripz-ai/brand-settings", {
+    config: { rateLimit: HTTP_RATE_LIMITS.tripzWrite }
+  }, async (request) => {
+    const scope = await access(request);
+    tripzBrandSettingsPutSchema.parse(request.body);
+    const config = await upsertTripzBrandSettings(tripzBrandDatabase(repository), scope.tenantId, (request.body as { config?: unknown }).config);
+    request.log.info({ component: "TripzAI", action: "brand_settings_saved", tenantId: scope.tenantId }, "[TripzAI] brand settings saved");
+    return { config };
+  });
+
+  /* ---- editorial: validação, finalize e versionamento ---- */
+
+  app.post("/tripz-ai/conversations/:id/validate", async (request) => {
+    const scope = await access(request);
+    const { id } = tripzConversationParamsSchema.parse(request.params);
+    const proposal = await repository.getProposal(scope, id);
+    if (!proposal) throw tripzNotFound("Proposta não encontrada");
+    const validation = validateTripzProposal(proposal.state);
+    const critical = validation.issues.filter((issue) => issue.severity === "critical");
+    return {
+      missingInformation: validation.missingInformation,
+      issues: validation.issues,
+      canFinalize: critical.length === 0 && proposal.state.status === "ready_for_pdf"
+    };
+  });
+
+  app.post("/tripz-ai/conversations/:id/finalize", {
+    config: { rateLimit: HTTP_RATE_LIMITS.tripzWrite }
+  }, async (request) => {
+    const scope = await access(request);
+    const { id } = tripzConversationParamsSchema.parse(request.params);
+    const body = tripzFinalizeSchema.parse(request.body ?? {});
+    const proposal = await repository.getProposal(scope, id);
+    if (!proposal) throw tripzNotFound("Proposta não encontrada");
+    if (proposal.state.finalized) {
+      throw responseError(409, "TRIPZ_ALREADY_FINALIZED", "A proposta já está finalizada; reverta ou crie uma nova versão");
+    }
+    const validation = validateTripzProposal(proposal.state);
+    if (validation.issues.some((issue) => issue.severity === "critical")) {
+      throw responseError(409, "TRIPZ_CRITICAL_ISSUES", "Resolva as inconsistências críticas antes de finalizar");
+    }
+    const version = await repository.saveProposalVersion(scope, {
+      conversationId: id,
+      ...(body.label ? { label: body.label } : {}),
+      ...(body.notes ? { notes: body.notes } : {}),
+      state: proposal.state,
+      documentRevision: proposal.revision,
+      approvedByUserId: scope.userId
+    });
+    const updated = await repository.patchProposal(scope, {
+      conversationId: id,
+      expectedRevision: proposal.revision,
+      patch: { finalized: true }
+    });
+    request.log.info({ component: "TripzAI", action: "proposal_finalized", tenantId: scope.tenantId,
+      conversationId: id, versionNumber: version.versionNumber }, "[TripzAI] proposal finalized");
+    return { version, proposal: updated };
+  });
+
+  app.get("/tripz-ai/conversations/:id/versions", async (request) => {
+    const scope = await access(request);
+    const { id } = tripzConversationParamsSchema.parse(request.params);
+    const versions = await repository.listProposalVersions(scope, id);
+    return { versions };
+  });
+
+  /** Reverter = criar NOVA versão com o estado antigo (nunca sobrescreve a aprovada). */
+  app.post("/tripz-ai/conversations/:id/versions", {
+    config: { rateLimit: HTTP_RATE_LIMITS.tripzWrite }
+  }, async (request) => {
+    const scope = await access(request);
+    const { id } = tripzConversationParamsSchema.parse(request.params);
+    const body = tripzProposalVersionRevertSchema.parse(request.body ?? {});
+    const proposal = await repository.getProposal(scope, id);
+    if (!proposal) throw tripzNotFound("Proposta não encontrada");
+    const versions = await repository.listProposalVersions(scope, id);
+    const target = versions.find((version) => version.id === body.versionId);
+    if (!target) throw tripzNotFound("Versão não encontrada");
+    const reverted = await repository.saveProposalVersion(scope, {
+      conversationId: id,
+      label: `Reversão da V${target.versionNumber}`,
+      notes: target.label ? `Estado restaurado de "${target.label}"` : `Estado restaurado da versão V${target.versionNumber}`,
+      state: target.state,
+      documentRevision: proposal.revision,
+      approvedByUserId: scope.userId
+    });
+    const updated = await repository.patchProposal(scope, {
+      conversationId: id,
+      expectedRevision: proposal.revision,
+      patch: { ...target.state, finalized: target.state.finalized ?? false } as TripzProposalPatch
+    });
+    request.log.info({ component: "TripzAI", action: "proposal_version_reverted", tenantId: scope.tenantId,
+      conversationId: id, fromVersion: target.versionNumber }, "[TripzAI] proposal version reverted");
+    return { version: reverted, proposal: updated };
+  });
+
+  /* ---- editorial: media-from-url com guard de SSRF ---- */
+
+  app.post("/tripz-ai/conversations/:id/media/from-url", {
+    config: { rateLimit: HTTP_RATE_LIMITS.tripzWrite }
+  }, async (request, reply) => {
+    const scope = await access(request);
+    const { id } = tripzConversationParamsSchema.parse(request.params);
+    const body = tripzMediaFromUrlSchema.parse(request.body);
+    const parsedUrl = new URL(body.url);
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      throw responseError(400, "TRIPZ_MEDIA_URL_PROTOCOL", "Somente URLs http(s) são aceitas");
+    }
+    const host = parsedUrl.hostname.toLowerCase();
+    if (isPrivateHost(host, parsedUrl)) {
+      throw responseError(400, "TRIPZ_MEDIA_URL_PRIVATE", "URL aponta para um host não permitido");
+    }
+    const response = await fetch(parsedUrl, {
+      headers: { "user-agent": "AtendON-TripzMedia/1.0" },
+      signal: AbortSignal.timeout(15_000)
+    });
+    if (!response.ok) {
+      throw responseError(400, "TRIPZ_MEDIA_URL_FETCH", `Download falhou com status ${response.status}`);
+    }
+    const mimeType = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+      throw responseError(400, "TRIPZ_MEDIA_URL_TYPE", "A URL deve apontar para uma imagem jpeg/png/webp");
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length === 0 || buffer.length > 8 * 1024 * 1024) {
+      throw responseError(413, "TRIPZ_MEDIA_URL_SIZE", "A imagem excede o limite de 8 MB");
+    }
+    const fileName = body.label
+      ? `${body.label.replace(/[^\p{L}\p{N}]+/gu, "-").slice(0, 80)}${extensionForMime(mimeType)}`
+      : `imagem${extensionForMime(mimeType)}`;
+    const { attachment } = await repository.createAttachment(scope, {
+      conversationId: id,
+      fileName,
+      mimeType,
+      extension: extensionForMime(mimeType).replace(".", ""),
+      data: buffer,
+      contentHash: createHash("sha256").update(buffer).digest("hex"),
+      metadata: {
+        source: { kind: "url", url: body.url },
+        category: body.category,
+        ...(body.label ? { label: body.label } : {})
+      }
+    });
+    return reply.status(201).send({
+      mediaId: attachment.id,
+      attachmentId: attachment.id,
+      mimeType,
+      sizeBytes: buffer.length,
+      category: body.category,
+      ...(body.label ? { label: body.label } : {})
+    });
+  });
+}
+
+/** Hosts que uma URL de mídia externa NUNCA pode alcançar (SSRF). */
+export function isPrivateHost(hostname: string, url: URL): boolean {
+  const host = hostname.toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return true;
+  if (host === "0.0.0.0" || host === "::1" || host === "[::1]") return true;
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const octets = ipv4.slice(1).map(Number);
+    const [a, b] = octets;
+    if (a === 10 || a === 127 || a === 0) return true;
+    if (a === 169 && b === 254) return true; // link-local (metadata clouds)
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a >= 224) return true; // multicast/reservado
+  }
+  if (host.startsWith("[")) return true; // literais IPv6 → bloquear por padrão
+  // Credenciais embutidas e portas não HTTP
+  if (url.username || url.password) return true;
+  if (url.port && !["80", "443", ""].includes(url.port)) return true;
+  return false;
+}
+
+function extensionForMime(mimeType: string): string {
+  if (mimeType === "image/png") return ".png";
+  if (mimeType === "image/webp") return ".webp";
+  return ".jpg";
 }

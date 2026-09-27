@@ -22,6 +22,8 @@ import {
 } from "../../lib/tripz-ai";
 import { TripzConversationView } from "./conversation-view";
 import { TripzHistorySidebar } from "./history-sidebar";
+import { TripzBrandSettings } from "./brand-settings";
+import { TripzProposalEditor } from "./proposal-editor";
 import styles from "./tripz-ai.module.css";
 import { TripzProposalReview } from "./proposal-review";
 
@@ -65,6 +67,8 @@ export function TripzWorkspace() {
   const [deleting, setDeleting] = useState(false);
   const [renamingId, setRenamingId] = useState<string>();
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [brandOpen, setBrandOpen] = useState(false);
   const [preview, setPreview] = useState<TripzDocument>();
   const [pdf, setPdf] = useState<TripzDocument>();
   const [generatingPreview, setGeneratingPreview] = useState(false);
@@ -335,6 +339,8 @@ export function TripzWorkspace() {
           error={detailError ? readableError(detailError, "Falha ao carregar a conversa.") : undefined}
           onOpenHistory={openHistory}
           onOpenReview={() => setReviewOpen(true)}
+          onOpenEditor={() => setEditorOpen(true)}
+          onOpenBrand={() => setBrandOpen(true)}
           onRetry={() => void refreshConversation()}
           onRetryTurn={retryTurn}
           onSent={refreshConversation}
@@ -361,6 +367,26 @@ export function TripzWorkspace() {
             requestAnimationFrame(() => document.getElementById("tripz-message")?.focus());
           }}
         />
+      ) : null}
+
+      {editorOpen && selectedId && proposal ? (
+        <TripzProposalEditor
+          conversationId={selectedId}
+          proposal={proposal}
+          onClose={() => setEditorOpen(false)}
+          onProposalChange={() => {
+            mutateProposal();
+            setPreview(undefined);
+          }}
+        />
+      ) : null}
+
+      {brandOpen ? (
+        <ModalDialog labelledBy="tripz-brand-title" describedBy="tripz-brand-description" onClose={() => setBrandOpen(false)}>
+          <h2 id="tripz-brand-title">Identidade da proposta</h2>
+          <p id="tripz-brand-description" className="mb-3 text-xs text-[var(--text-secondary)]">Cores, estilo textual e dados padrão usados em todas as propostas — informados uma vez, reaproveitados sempre.</p>
+          <TripzBrandSettings onClose={() => setBrandOpen(false)} />
+        </ModalDialog>
       ) : null}
 
       {deleteTarget ? (

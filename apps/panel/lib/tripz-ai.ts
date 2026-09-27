@@ -589,3 +589,132 @@ export async function generateTripzPdf(conversationId: string, expectedRevision:
 export async function fetchTripzDocumentHtml(conversationId: string, documentId: string): Promise<string> {
   return api<string>(tripzDocumentContentPath(conversationId, documentId));
 }
+
+/* ---- editorial (Wave D): brand settings, validação, finalize, versões, media ---- */
+
+export type TripzProposalBrandConfig = {
+  name?: string;
+  version?: string;
+  tokens?: Record<string, string>;
+  fonts?: Record<string, unknown>;
+  footer?: Record<string, unknown>;
+  commercial?: Record<string, unknown>;
+  styleNotes?: string;
+  templateId?: string;
+  [key: string]: unknown;
+};
+
+export type TripzProposalVersion = {
+  id: string;
+  versionNumber: number;
+  label?: string;
+  notes?: string;
+  documentRevision: number;
+  createdAt: string;
+  approvedByUserId?: string;
+};
+
+export type TripzProposalValidation = {
+  missingInformation: Array<{ code: string; label?: string; required?: boolean; reason?: string }>;
+  issues: Array<{ code: string; message: string; severity: string; requiresConfirmation?: boolean }>;
+  canFinalize: boolean;
+};
+
+export type TripzMediaFromUrlResult = {
+  mediaId: string;
+  attachmentId: string;
+  mimeType: string;
+  sizeBytes: number;
+  category: string;
+  label?: string;
+};
+
+function normalizeTripzProposalVersion(payload: unknown): TripzProposalVersion {
+  const source = isRecord(payload) ? payload : {};
+  return {
+    id: stringValue(source, "id") ?? "",
+    versionNumber: numberValue(source, "versionNumber") ?? 0,
+    label: stringValue(source, "label"),
+    notes: stringValue(source, "notes"),
+    documentRevision: numberValue(source, "documentRevision") ?? 0,
+    createdAt: stringValue(source, "createdAt") ?? "",
+    approvedByUserId: stringValue(source, "approvedByUserId")
+  };
+}
+
+export async function getTripzBrandSettings(): Promise<TripzProposalBrandConfig> {
+  const payload = await api<unknown>(`${TRIPZ_AI_BASE_PATH}/brand-settings`);
+  const source = isRecord(payload) ? payload : {};
+  return (source.config ?? {}) as TripzProposalBrandConfig;
+}
+
+export async function updateTripzBrandSettings(config: TripzProposalBrandConfig): Promise<TripzProposalBrandConfig> {
+  const payload = await api<unknown>(`${TRIPZ_AI_BASE_PATH}/brand-settings`, {
+    method: "PUT",
+    body: JSON.stringify({ config })
+  });
+  const source = isRecord(payload) ? payload : {};
+  return (source.config ?? {}) as TripzProposalBrandConfig;
+}
+
+export async function validateTripzProposalState(conversationId: string): Promise<TripzProposalValidation> {
+  const payload = await api<unknown>(
+    `${TRIPZ_AI_BASE_PATH}/conversations/${encodeURIComponent(conversationId)}/validate`,
+    { method: "POST", body: JSON.stringify({}) }
+  );
+  const source = isRecord(payload) ? payload : {};
+  return {
+    missingInformation: Array.isArray(source.missingInformation) ? source.missingInformation as TripzProposalValidation["missingInformation"] : [],
+    issues: Array.isArray(source.issues) ? source.issues as TripzProposalValidation["issues"] : [],
+    canFinalize: source.canFinalize === true
+  };
+}
+
+export async function finalizeTripzProposal(
+  conversationId: string,
+  input: { label?: string; notes?: string } = {}
+): Promise<{ version: TripzProposalVersion }> {
+  const payload = await api<unknown>(
+    `${TRIPZ_AI_BASE_PATH}/conversations/${encodeURIComponent(conversationId)}/finalize`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
+  const source = isRecord(payload) ? payload : {};
+  return { version: normalizeTripzProposalVersion(source.version) };
+}
+
+export async function listTripzProposalVersions(conversationId: string): Promise<TripzProposalVersion[]> {
+  const payload = await api<unknown>(
+    `${TRIPZ_AI_BASE_PATH}/conversations/${encodeURIComponent(conversationId)}/versions`
+  );
+  const source = isRecord(payload) ? payload : {};
+  const versions = Array.isArray(source.versions) ? source.versions : [];
+  return versions.map(normalizeTripzProposalVersion);
+}
+
+export async function revertTripzProposalVersion(conversationId: string, versionId: string): Promise<TripzProposal> {
+  const payload = await api<unknown>(
+    `${TRIPZ_AI_BASE_PATH}/conversations/${encodeURIComponent(conversationId)}/versions`,
+    { method: "POST", body: JSON.stringify({ versionId }) }
+  );
+  const source = isRecord(payload) ? payload : {};
+  return normalizeTripzProposal(source.proposal);
+}
+
+export async function tripzMediaFromUrl(
+  conversationId: string,
+  input: { url: string; category?: string; label?: string }
+): Promise<TripzMediaFromUrlResult> {
+  const payload = await api<unknown>(
+    `${TRIPZ_AI_BASE_PATH}/conversations/${encodeURIComponent(conversationId)}/media/from-url`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
+  const source = isRecord(payload) ? payload : {};
+  return {
+    mediaId: stringValue(source, "mediaId") ?? "",
+    attachmentId: stringValue(source, "attachmentId") ?? "",
+    mimeType: stringValue(source, "mimeType") ?? "image/jpeg",
+    sizeBytes: numberValue(source, "sizeBytes") ?? 0,
+    category: stringValue(source, "category") ?? "other",
+    label: stringValue(source, "label")
+  };
+}

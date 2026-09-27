@@ -10,6 +10,8 @@ ENV NPM_CONFIG_ALLOW_REMOTE=root
 COPY package.json package-lock.json ./
 COPY apps/backend/package.json apps/backend/package.json
 COPY apps/panel/package.json apps/panel/package.json
+# O painel depende de @atendon/proposal-renderer (link de workspace no lock).
+COPY apps/proposal-renderer/package.json apps/proposal-renderer/package.json
 RUN npm ci --workspace @atendon/panel --include-workspace-root
 
 FROM dependencies AS build
@@ -17,6 +19,12 @@ ARG BACKEND_URL=http://atendon-api:3110
 ARG NEXT_PUBLIC_API_BASE_URL=/api
 ENV BACKEND_URL=${BACKEND_URL}
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+COPY apps/proposal-renderer/tsconfig.json apps/proposal-renderer/tsconfig.json
+COPY apps/proposal-renderer/scripts apps/proposal-renderer/scripts
+COPY apps/proposal-renderer/src apps/proposal-renderer/src
+COPY apps/proposal-renderer/assets apps/proposal-renderer/assets
+# O next build importa o renderer (main = dist): constrói o pacote antes do painel.
+RUN npm run build -w @atendon/proposal-renderer
 COPY apps/panel apps/panel
 RUN npm run build:ci -w @atendon/panel
 

@@ -9,6 +9,7 @@ import {
   graphFromDefinition,
   newStepFor,
   paletteItemForStep,
+  transitionKeyForHandle,
   validateDefinition,
   type FlowDefinition,
   type FlowStep,
@@ -79,7 +80,8 @@ function project(graph: { nodes: GraphNode[]; edges: GraphEdge[] }) {
 }
 
 /** definition → grafo → definition: nós dão os steps (payload = defaults da
-    paleta + escolhas do grafo), arestas dão a topologia (next/transitions). */
+    paleta + escolhas do grafo), arestas dão a topologia (next/on_timeout/
+    on_invalid_reply/transitions — mesmo roteamento do targetFieldFor). */
 function definitionFromGraph(nodes: GraphNode[], edges: GraphEdge[]): FlowDefinition {
   const steps: Record<string, FlowStep> = {};
   for (const node of nodes) {
@@ -94,7 +96,9 @@ function definitionFromGraph(nodes: GraphNode[], edges: GraphEdge[]): FlowDefini
     }
     for (const edge of edges.filter((candidate) => candidate.source === node.id)) {
       if (edge.sourceHandle === "out") step.next = edge.target;
-      else step.transitions = { ...step.transitions, [edge.sourceHandle]: edge.target };
+      else if (item.kind === "wait_for_reply" && edge.sourceHandle === "timeout") step.on_timeout = edge.target;
+      else if (item.kind === "wait_for_reply" && edge.sourceHandle === "invalid") step.on_invalid_reply = edge.target;
+      else step.transitions = { ...step.transitions, [transitionKeyForHandle(edge.sourceHandle)]: edge.target };
     }
     steps[node.id] = step;
   }

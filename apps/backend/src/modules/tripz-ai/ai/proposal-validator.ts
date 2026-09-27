@@ -135,6 +135,7 @@ export function validateTripzProposal(
   const missingInformation: TripzMissingField[] = [];
   const issues: TripzProposalIssue[] = [];
   const proposalFingerprint = tripzProposalContentFingerprint(proposal);
+  const editorial = proposal.editorial ?? {};
   const issueAcknowledgements = proposal.issueAcknowledgements.filter(
     (acknowledgement) => acknowledgement.proposalFingerprint === proposalFingerprint
   );
@@ -303,6 +304,86 @@ export function validateTripzProposal(
         code: "PRICING_TOTAL_CONFLICT",
         path: "pricing.totalPrice",
         message: "O valor total não é coerente com o preço por pessoa e a quantidade de passageiros.",
+        severity: "critical",
+        requiresConfirmation: true
+      });
+    }
+  }
+
+  // ---- Bloco editorial (schemaVersion 2): checklist crítico e coesão ----
+  const templateResidual = /(?:\{\{?[\w .-]+\}?\}|\[(?:TEMPLATE|PLACEHOLDER|FILL)\]|lorem ipsum|TODO:)/i;
+  const editorialStrings: Array<{ path: string; value: string }> = [];
+  for (const [key, section] of Object.entries(editorial.narrative?.destinationCopy ?? {})) {
+    for (const [field, value] of Object.entries(section)) {
+      for (const entry of Array.isArray(value) ? value : [value]) {
+        if (typeof entry === "string") editorialStrings.push({ path: `editorial.narrative.destinationCopy.${key}.${field}`, value: entry });
+      }
+    }
+  }
+  for (const section of [editorial.narrative?.concept, editorial.narrative?.closing]) {
+    if (!section) continue;
+    for (const [field, value] of Object.entries(section)) {
+      for (const entry of Array.isArray(value) ? value : [value]) {
+        if (typeof entry === "string") editorialStrings.push({ path: `editorial.narrative.${field}`, value: entry });
+      }
+    }
+  }
+  for (const item of editorialStrings) {
+    if (templateResidual.test(item.value)) {
+      pushUniqueIssue(issues, {
+        code: "EDITORIAL_TEMPLATE_PLACEHOLDER",
+        path: item.path,
+        message: "Texto do documento contém placeholder ou resíduo de template.",
+        severity: "critical",
+        requiresConfirmation: true
+      });
+    }
+  }
+
+  if (typeof editorial.commercial?.total === "number" && (editorial.commercial.paymentEntries ?? []).length === 0 && !editorial.commercial.paymentSummary) {
+    addMissing({
+      code: "EDITORIAL_PAYMENT_REQUIRED",
+      path: "editorial.commercial.paymentEntries",
+      label: "condições de pagamento",
+      required: true,
+      reason: "Proposta com investimento definido precisa das condições de pagamento."
+    });
+  }
+  if (
+    typeof editorial.commercial?.total === "number"
+    && proposal.pricing?.totalPrice !== undefined
+    && Math.abs(editorial.commercial.total - proposal.pricing.totalPrice) > 0.01
+  ) {
+    pushUniqueIssue(issues, {
+      code: "EDITORIAL_PRICING_CONFLICT",
+      path: "editorial.commercial.total",
+      message: "O investimento editorial difere do preço calculado no estado operacional.",
+      severity: "critical",
+      requiresConfirmation: true
+    });
+  }
+  if (editorial.destinations?.length && !nonBlank(proposal.client?.name)) {
+    addMissing({
+      code: "TRAVELLER_NAME_REQUIRED",
+      path: "client.name",
+      label: "nome dos viajantes",
+      required: true,
+      reason: "A proposta editorial precisa dos nomes dos viajantes."
+    });
+  }
+  const specNights = editorial.destinations?.length
+    ? editorial.destinations.reduce((sum, destination) => sum + (destination.nights ?? 0), 0)
+    : undefined;
+  if (
+    proposal.startDate && proposal.endDate && validDate(proposal.startDate) && validDate(proposal.endDate)
+    && typeof specNights === "number"
+  ) {
+    const dateNights = Math.max(0, Math.round((Date.parse(`${proposal.endDate}T00:00:00Z`) - Date.parse(`${proposal.startDate}T00:00:00Z`)) / 86_400_000));
+    if (specNights > 0 && specNights !== dateNights) {
+      pushUniqueIssue(issues, {
+        code: "EDITORIAL_NIGHTS_CONFLICT",
+        path: "editorial.destinations",
+        message: `A soma de noites por destino (${specNights}) não corresponde ao período da viagem (${dateNights} noites).`,
         severity: "critical",
         requiresConfirmation: true
       });

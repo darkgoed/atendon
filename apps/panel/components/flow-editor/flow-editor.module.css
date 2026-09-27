@@ -208,8 +208,17 @@
   background: var(--surface-hover);
   border: 1px solid var(--border-strong);
 }
+/* Hit-area do handle ampliada por pseudo-elemento (círculo invisível): os
+   8px visuais são difíceis de acertar; ::after não muda a estética nem o
+   bounding box usado nas arestas. */
+.canvasWrap :global(.react-flow__handle)::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: 999px;
+}
 .canvasWrap :global(.react-flow__handle-connecting) { border-color: var(--primary); }
-.canvasWrap :global(.react-flow__edge-path) { stroke: color-mix(in srgb, var(--text) 18%, transparent); stroke-width: 1; }
+.canvasWrap :global(.react-flow__edge-path) { stroke: color-mix(in srgb, var(--text) 45%, transparent); stroke-width: 1.5px; }
 .canvasWrap[data-flowing="true"] :global(.react-flow__edge-path) {
   stroke: var(--primary);
   stroke-width: 2;
@@ -303,9 +312,8 @@
   background: var(--surface-elevated);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
   text-align: left;
-  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
 }
-.node:hover { transform: translateY(-2px); }
 
 .node[data-selected="true"] {
   border-color: color-mix(in srgb, var(--primary) 60%, transparent);
@@ -414,9 +422,7 @@
   background: var(--surface-elevated);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
   text-align: left;
-  transition: transform var(--duration-fast) var(--ease-out);
 }
-.trigger:hover { transform: translateY(-2px); }
 
 .trigger[data-selected="true"] {
   border-style: solid;

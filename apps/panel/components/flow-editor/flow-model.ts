@@ -82,9 +82,35 @@ export type FlowRecord = FlowSummary & { id: string };
 /** Nó virtual do gatilho (representa definition.start + triggers). */
 export const TRIGGER_ID = "__trigger__";
 
-export const NODE_W = 280;
-export const NODE_H = 112;
+export const NODE_W = 320; /* CSS .node/.trigger: width 320px */
+export const NODE_H = 66;  /* base: padding 28 + borda 2 + head 36 */
 export const TRIGGER_H = 68;
+
+/* Altura estimada do nó renderizado: base + chips de opção (quebram linha
+   conforme o texto) + linha de erro. O dagre usa isso para espaçar ranks;
+   a aresta sai do DOM real (React Flow), mas nó subestimado colide com o
+   vizinho de baixo. */
+const CHIP_HEIGHT = 18;
+const CHIPS_MARGIN_TOP = 8;
+const CHIP_FIXED_W = 18; /* padding 2+8 + borda 1+1 */
+const CHIP_CHAR_W = 5.6; /* fonte 10px */
+const CHIP_GAP = 4;
+const NODE_INNER_W = 288; /* 320 - padding 28 - borda 2 - respiro */
+const ERROR_HEIGHT = 17;
+
+export function estimateNodeHeight(node: { options: string[]; error?: string }): number {
+  let height = NODE_H;
+  if (node.options.length) {
+    const total = node.options.reduce(
+      (sum, option) => sum + option.length * CHIP_CHAR_W + CHIP_FIXED_W + CHIP_GAP,
+      -CHIP_GAP,
+    );
+    const rows = Math.max(1, Math.ceil(total / NODE_INNER_W));
+    height += CHIPS_MARGIN_TOP + rows * CHIP_HEIGHT;
+  }
+  if (node.error) height += ERROR_HEIGHT;
+  return height;
+}
 
 export type FlowNodeType =
   | "trigger"
@@ -216,6 +242,40 @@ export function optionLabel(value: string): string {
   return value;
 }
 
+/* "out" é reservado ao next e, em wait_for_reply, "timeout"/"invalid" são os
+   handles dedicados de on_timeout/on_invalid_reply. Escolha (key de
+   transitions) que colida com esses nomes — inclusive já prefixada (opt:out,
+   opt:timeout, opt:opt:out, …) — ganha handle com UM prefixo "opt:" a mais;
+   a key gravada em transitions não muda. O par choiceHandle/
+   transitionKeyForHandle é injetivo: keys distintas nunca dividem o mesmo
+   handle do canvas (o backend legado admite on_timeout e transitions.timeout
+   com destinos diferentes). */
+const RESERVED_HANDLE_RE = /^(?:opt:)*(?:out|timeout|invalid)$/;
+
+export function choiceHandle(value: string): string {
+  return RESERVED_HANDLE_RE.test(value) ? `opt:${value}` : value;
+}
+
+export function transitionKeyForHandle(handle: string): string {
+  /* Remove EXATAMENTE UM prefixo (opt:out → out, opt:opt:out → opt:out);
+     handles sem prefixo (raw A/B/yes/no) passam intocados. */
+  return RESERVED_HANDLE_RE.test(handle) && handle.startsWith("opt:")
+    ? handle.slice("opt:".length)
+    : handle;
+}
+
+/* Label da aresta. Em wait_for_reply, choices vindas de transitions com chave
+   "timeout"/"invalid" (roundtrip reconstrói on_timeout como transitions) e a
+   aresta direta de on_timeout/on_invalid_reply compartilham o rótulo legível —
+   sem isso definition→grafo→definition mudava o label. */
+function edgeLabel(step: FlowStep, value: string): string {
+  if (step.kind === "wait_for_reply") {
+    if (value === "timeout") return "Tempo esgotado";
+    if (value === "invalid") return "Resposta inválida";
+  }
+  return optionLabel(value);
+}
+
 /** Rótulo legível dos operadores de condição (branch/condition). */
 export function operatorLabel(operator: FlowStep["operator"]): string {
   switch (operator) {
@@ -246,6 +306,48 @@ export function stepOptions(step: FlowStep): string[] {
   if (step.kind === "interactive") return interactiveChoices(step);
   if (!OPTION_KINDS.includes(step.kind)) return [];
   return (step.options ?? []).map((option) => option.value).filter(Boolean);
+}
+
+export type StepHandle = { id: string; label: string };
+
+/** Handles de SAÍDA que a UI deve renderizar para a etapa, de cima para baixo:
+    escolhas, timeout/inválida (wait_for_reply), keys de transitions legadas
+    (sem opção correspondente) e fallback "out". Terminadores (final/finalize)
+    não originam conexões. "out" é reservado ao next; key que colide com os
+    reservados (out/timeout/invalid, mesmo já prefixada) vira handle
+    "opt:"-prefixado — ver choiceHandle. */
+export function stepHandles(step: FlowStep): StepHandle[] {
+  if (step.kind === "final" || step.kind === "finalize") return [];
+  /* Um handle por VALOR único: o backend legado guarda fluxos com options
+     repetidas (ex. "Opção 2" ×2) e handles gêmeos dividem o mesmo id no
+     React Flow. O payload (options/transitions) segue íntegro; só a
+     renderização dedupe. */
+  const handles: StepHandle[] = [];
+  const seen = new Set<string>();
+  for (const value of stepOptions(step)) {
+    const id = choiceHandle(value);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    handles.push({ id, label: optionLabel(value) });
+  }
+  if (step.kind === "wait_for_reply") {
+    handles.push({ id: "timeout", label: "Tempo esgotado" }, { id: "invalid", label: "Resposta inválida" });
+  }
+  /* Link legado (transitions sem opção correspondente) também ganha handle —
+     graphFromDefinition emite edge para TODA key; sem handle, a aresta fica
+     sem ponto de origem no DOM. choiceHandle é injetivo: key reservada
+     (timeout/invalid colidindo com os dedicados do wait_for_reply, "out" com
+     o next) vira "opt:"-prefixada — um handle por destino, sem fundir keys. */
+  for (const value of Object.keys(step.transitions ?? {})) {
+    const id = choiceHandle(value);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    handles.push({ id, label: optionLabel(value) });
+  }
+  if (step.kind !== "branch" && step.kind !== "condition") {
+    handles.push({ id: "out", label: "Próxima" });
+  }
+  return handles;
 }
 
 export function nodePreview(step: FlowStep): string {
@@ -299,9 +401,15 @@ export function graphFromDefinition(def: FlowDefinition): { nodes: GraphNode[]; 
     if (step.next) {
       edges.push({ id: `${id}:out`, source: id, target: step.next, sourceHandle: "out" });
     }
+    if (step.on_timeout) {
+      edges.push({ id: `${id}:timeout`, source: id, target: step.on_timeout, sourceHandle: "timeout", label: edgeLabel(step, "timeout") });
+    }
+    if (step.on_invalid_reply) {
+      edges.push({ id: `${id}:invalid`, source: id, target: step.on_invalid_reply, sourceHandle: "invalid", label: edgeLabel(step, "invalid") });
+    }
     for (const [value, target] of Object.entries(step.transitions ?? {})) {
       if (!target) continue;
-      edges.push({ id: `${id}:opt:${value}`, source: id, target, sourceHandle: value, label: optionLabel(value) });
+      edges.push({ id: `${id}:opt:${value}`, source: id, target, sourceHandle: choiceHandle(value), label: edgeLabel(step, value) });
     }
   }
 
@@ -340,25 +448,65 @@ export function triggerSummary(def: FlowDefinition): string {
 
 /* ─── mutations ───────────────────────────────────────────────────────── */
 
+/** Campo da etapa que o handle escreve: "out" é o next reservado; em
+    wait_for_reply os handles timeout/invalid escrevem on_timeout/
+    on_invalid_reply; todo outro handle é uma escolha (transitions). */
+function targetFieldFor(step: FlowStep, handle: string): "next" | "on_timeout" | "on_invalid_reply" | "transitions" {
+  if (handle === "out") return "next";
+  if (step.kind === "wait_for_reply" && handle === "timeout") return "on_timeout";
+  if (step.kind === "wait_for_reply" && handle === "invalid") return "on_invalid_reply";
+  return "transitions";
+}
+
+/** Aplica destino a um handle do grafo. Entrada inválida (origem ou destino
+    inexistente, handle que a etapa não expõe, terminador como origem, self-loop
+    NOVO) devolve a definition SEM alteração. TRIGGER_ID + "out" reescreve
+    definition.start. Ciclos legados existentes não são tocados — só a criação
+    de self-loop direto é impedida. */
 export function setEdgeTarget(
   def: FlowDefinition,
   sourceId: string,
   sourceHandle: string,
   target: string | null,
 ): FlowDefinition {
+  if (sourceId === TRIGGER_ID) {
+    if (sourceHandle !== "out" || !target) return def;
+    if (!def.steps[target]) return def;
+    return def.start === target ? def : { ...def, start: target };
+  }
   const step = def.steps[sourceId];
   if (!step) return def;
-  if (sourceHandle === "out") {
-    const next = { ...step };
+  const valid = new Set(stepHandles(step).map((handle) => handle.id));
+  /* Link legado (transitions sem opção correspondente) continua endereçável. */
+  for (const value of Object.keys(step.transitions ?? {})) valid.add(choiceHandle(value));
+  if (!valid.has(sourceHandle)) return def;
+  if (target) {
+    if (target === sourceId) return def;
+    if (!def.steps[target]) return def;
+  }
+  const field = targetFieldFor(step, sourceHandle);
+  const next = { ...step } as FlowStep;
+  if (field === "next") {
     if (target) next.next = target;
     else delete next.next;
     return withStep(def, sourceId, next);
   }
+  if (field === "on_timeout") {
+    if (target) next.on_timeout = target;
+    else delete next.on_timeout;
+    return withStep(def, sourceId, next);
+  }
+  if (field === "on_invalid_reply") {
+    if (target) next.on_invalid_reply = target;
+    else delete next.on_invalid_reply;
+    return withStep(def, sourceId, next);
+  }
   const transitions: Record<string, string> = { ...(step.transitions ?? {}) };
-  if (target) transitions[sourceHandle] = target;
-  else delete transitions[sourceHandle];
-  const next = { ...step, transitions: Object.keys(transitions).length ? transitions : undefined };
-  if (!Object.keys(transitions).length) delete next.transitions;
+  const key = transitionKeyForHandle(sourceHandle);
+  if (target) transitions[key] = target;
+  else delete transitions[key];
+  if (Object.keys(transitions).length) next.transitions = transitions;
+  else delete next.transitions;
   return withStep(def, sourceId, next);
 }
 
@@ -401,14 +549,14 @@ export function layoutDefinition(def: FlowDefinition): Map<string, Position> {
   graph.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 80 });
   graph.setDefaultEdgeLabel(() => ({}));
   for (const node of nodes) {
-    graph.setNode(node.id, { width: NODE_W, height: node.id === TRIGGER_ID ? TRIGGER_H : NODE_H });
+    graph.setNode(node.id, { width: NODE_W, height: node.id === TRIGGER_ID ? TRIGGER_H : estimateNodeHeight(node) });
   }
   for (const edge of edges) graph.setEdge(edge.source, edge.target);
   Dagre.layout(graph);
   const positions = new Map<string, Position>();
   for (const node of nodes) {
     const raw = graph.node(node.id) as { x: number; y: number } | undefined;
-    const height = node.id === TRIGGER_ID ? TRIGGER_H : NODE_H;
+    const height = node.id === TRIGGER_ID ? TRIGGER_H : estimateNodeHeight(node);
     positions.set(node.id, raw
       ? { x: raw.x - NODE_W / 2, y: raw.y - height / 2 }
       : { x: 40, y: 40 });

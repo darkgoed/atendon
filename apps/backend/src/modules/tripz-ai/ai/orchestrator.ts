@@ -1,5 +1,6 @@
 import { TRIPZ_MAX_SELECTED_MEDIA } from "../domain.js";
 import type {
+  TripzEditorialBlock,
   TripzFlightSegment,
   TripzGenerationRequirement,
   TripzIncludedItem,
@@ -8,6 +9,7 @@ import type {
   TripzProposalMedia,
   TripzProposalState
 } from "../domain.js";
+import type { Destination, Experience, Hotel } from "@atendon/proposal-renderer";
 import {
   TRIPZ_AI_ATTACHMENT_BOUNDARY_NOTICE,
   TRIPZ_AI_SYSTEM_PROMPT
@@ -29,6 +31,7 @@ import {
   tripzExplicitCorrectionPathSchema,
   type TripzAiProposalPatch,
   type TripzAiStructuredOutput,
+  type TripzEditorialPatch,
   type TripzExplicitCorrectionPath
 } from "./schemas.js";
 
@@ -49,6 +52,8 @@ export interface TripzAiTurnInput {
   recentMessages?: Array<{ role: "user" | "assistant"; content: string }>;
   attachments?: TripzAiAttachmentContent[];
   requiredFields?: Array<{ path: string; label?: string; reason?: string }>;
+  /** styleNotes do Proposal Brand do tenant (voz editorial configurada). */
+  brandStyleNotes?: string;
   budget?: TripzAiTurnBudget;
   onUsage?: (usage: TripzOpenRouterUsage) => Promise<void>;
 }
@@ -129,6 +134,156 @@ export function applyAllowlistedTripzPatch(
   if (patch.includedItems) next.includedItems = patch.includedItems.map((item) => stripNulls(item) as TripzIncludedItem);
   if (patch.itinerary) next.itinerary = patch.itinerary.map((day) => stripNulls(day) as TripzItineraryDay);
   if (patch.notes) next.notes = [...patch.notes];
+  if (patch.editorial) return applyEditorialBlock(next, patch.editorial);
+  return next;
+}
+
+/**
+ * Aplica o bloco editorial (ProposalSpec) sobre o estado:
+ * - listas com id (destinations/hotels/experiences) e inclusions/paymentEntries:
+ *   upsert; campos não enviados preservam o valor atual.
+ * - narrative/commercial: merge raso por chave (null apaga scalar).
+ * - imageAssignments, sources, exclusions, baggage, cancellationPolicies:
+ *   substituição total quando o campo vem no patch.
+ * - pageOverrides: upsert por page.
+ * Marca schemaVersion 2.
+ */
+export function applyEditorialBlock(
+  current: TripzProposalState,
+  editorialPatch: TripzEditorialPatch
+): TripzProposalState {
+  const next = structuredClone(current) as TripzProposalState & { editorial?: TripzEditorialBlock };
+  const e = editorialPatch;
+
+  if (e.tripTitle !== undefined) {
+    if (e.tripTitle === null) delete next.title;
+    else next.title = e.tripTitle;
+  }
+  if (e.origin !== undefined) {
+    if (e.origin === null) delete next.destination;
+    else if (next.destination === undefined) next.destination = e.origin;
+  }
+  if (e.consultant !== undefined) {
+    if (e.consultant === null) {
+      // consultant vive apenas no spec; não há campo de estado a apagar.
+    }
+  }
+
+  const upsertById = <T extends { id: string }>(currentItems: T[] | undefined, incoming: Array<Partial<T> & { id: string }>): T[] => {
+    const merged = [...(currentItems ?? [])];
+    for (const incomingItem of incoming) {
+      const index = merged.findIndex((item) => item.id === incomingItem.id);
+      if (index >= 0) merged[index] = { ...merged[index], ...stripNulls(incomingItem) } as T;
+      else merged.push(stripNulls(incomingItem) as T);
+    }
+    return merged;
+  };
+
+  const editorial: TripzEditorialBlock = { ...(next.editorial ?? {}) };
+  if (e.tripTitle !== undefined && e.tripTitle !== null) editorial.tripTitle = e.tripTitle;
+  if (e.origin !== undefined && e.origin !== null) editorial.origin = e.origin;
+  if (e.consultant !== undefined && e.consultant !== null) editorial.consultant = { ...editorial.consultant, ...e.consultant };
+  if (e.narrative !== undefined) {
+    if (e.narrative === null) {
+      delete editorial.narrative;
+    } else {
+      const narrative = { ...(editorial.narrative ?? {}) } as NonNullable<TripzEditorialBlock["narrative"]>;
+      for (const key of ["coverEyebrow", "coverQuote"] as const) {
+        const value = e.narrative[key];
+        if (value === undefined) continue;
+        if (value === null) delete narrative[key];
+        else narrative[key] = value;
+      }
+      for (const key of ["concept", "closing"] as const) {
+        const value = e.narrative[key];
+        if (value === undefined) continue;
+        if (value === null) delete narrative[key];
+        else narrative[key] = { ...(narrative[key] ?? {}), ...stripNulls(value) } as NonNullable<NonNullable<TripzEditorialBlock["narrative"]>["concept"]>;
+      }
+      if (e.narrative.destinationCopy !== undefined) {
+        const copy = { ...(narrative.destinationCopy ?? {}) };
+        for (const [destinationId, section] of Object.entries(e.narrative.destinationCopy)) {
+          if (section === null) delete copy[destinationId];
+          else copy[destinationId] = { ...(copy[destinationId] ?? {}), ...stripNulls(section) } as typeof copy[string];
+        }
+        narrative.destinationCopy = copy;
+      }
+      editorial.narrative = narrative;
+    }
+  }
+  if (e.destinations !== undefined) editorial.destinations = upsertById(editorial.destinations, e.destinations.filter((d): d is typeof d & { id: string } => Boolean(d?.id)) as Array<Partial<Destination> & { id: string }>);
+  if (e.hotels !== undefined) editorial.hotels = upsertById(editorial.hotels, e.hotels.filter((h): h is typeof h & { id: string } => Boolean(h?.id)) as Array<Partial<Hotel> & { id: string }>);
+  if (e.experiences !== undefined) editorial.experiences = upsertById(editorial.experiences, e.experiences.filter((x): x is typeof x & { id: string } => Boolean(x?.id)) as Array<Partial<Experience> & { id: string }>);
+  if (e.inclusions !== undefined) {
+    const mergedGroups = [...(editorial.inclusions ?? [])];
+    for (const group of e.inclusions) {
+      const index = mergedGroups.findIndex((current_0) => current_0.section === group.section);
+      if (index >= 0) mergedGroups[index] = { ...mergedGroups[index], section: group.section, items: group.items ?? mergedGroups[index].items };
+      else mergedGroups.push({ section: group.section, items: group.items ?? [] });
+    }
+    editorial.inclusions = mergedGroups;
+  }
+  if (e.exclusions !== undefined) editorial.exclusions = e.exclusions ? [...e.exclusions] : [];
+  if (e.baggage !== undefined) editorial.baggage = e.baggage ? [...e.baggage] : [];
+  if (e.cancellationPolicies !== undefined) editorial.cancellationPolicies = e.cancellationPolicies ? [...e.cancellationPolicies] : [];
+  if (e.transfers !== undefined) {
+    const validTransfers = (e.transfers as Array<{ label?: string; description?: string; direction?: string }> | null | undefined)
+      ?.filter((transfer) => typeof transfer?.description === "string" || typeof transfer?.label === "string")
+      ?? [];
+    editorial.transfers = validTransfers as NonNullable<TripzEditorialBlock["transfers"]>;
+  }
+  if (e.commercial !== undefined) {
+    if (e.commercial === null) {
+      delete editorial.commercial;
+    } else {
+      const commercial = { ...(editorial.commercial ?? {}) } as NonNullable<TripzEditorialBlock["commercial"]>;
+      for (const key of ["total", "perPerson", "boardingTax"] as const) {
+        const value = e.commercial[key];
+        if (value === undefined) continue;
+        if (value === null) delete commercial[key];
+        else commercial[key] = value;
+      }
+      for (const key of ["currency", "paymentSummary"] as const) {
+        const value = e.commercial[key];
+        if (value === undefined) continue;
+        if (value === null) delete commercial[key];
+        else commercial[key] = value;
+      }
+      for (const key of ["priceNotes", "differentials"] as const) {
+        const value = e.commercial[key];
+        if (value !== undefined) commercial[key] = value ? [...value] : [];
+      }
+      if (e.commercial.paymentEntries !== undefined) {
+        const entries = [...(commercial.paymentEntries ?? [])];
+        for (const entry of e.commercial.paymentEntries) {
+          const index = entries.findIndex((current_1) => current_1.label === entry.label);
+          if (index >= 0) entries[index] = { ...entries[index], ...entry };
+          else entries.push(entry);
+        }
+        commercial.paymentEntries = entries;
+      }
+      editorial.commercial = commercial;
+    }
+  }
+  if (e.imageAssignments !== undefined) {
+    editorial.imageAssignments = (e.imageAssignments ?? []).filter(
+      (assignment): assignment is { mediaId: string; role: NonNullable<TripzEditorialBlock["imageAssignments"]>[number]["role"]; targetId?: string; caption?: string } =>
+        typeof assignment?.mediaId === "string" && typeof assignment?.role === "string"
+    );
+  }
+  if (e.sources !== undefined) editorial.sources = e.sources ? [...e.sources] : [];
+  if (e.pageOverrides !== undefined) {
+    const overrides = [...(editorial.pageOverrides ?? [])];
+    for (const override of e.pageOverrides) {
+      const index = overrides.findIndex((current_2) => current_2.page === override.page);
+      if (index >= 0) overrides[index] = { ...overrides[index], ...override };
+      else overrides.push(override);
+    }
+    editorial.pageOverrides = overrides;
+  }
+
+  next.editorial = editorial;
+  next.schemaVersion = 2;
   return next;
 }
 
@@ -354,6 +509,9 @@ function buildUserContext(input: TripzAiTurnInput, maxCharacters: number): strin
   }));
   const fixedParts = [
     TRIPZ_AI_ATTACHMENT_BOUNDARY_NOTICE,
+    ...(input.brandStyleNotes?.trim()
+      ? [`<tripz_brand_style_notes>${input.brandStyleNotes.trim().slice(0, 2_000)}</tripz_brand_style_notes>`]
+      : []),
     `<tripz_proposal_state>${proposalJson}</tripz_proposal_state>`,
     `<tripz_attachment_manifest>${JSON.stringify(attachmentManifest)}</tripz_attachment_manifest>`,
     `<tripz_current_user_message>${input.userMessage}</tripz_current_user_message>`
