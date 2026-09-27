@@ -78,6 +78,8 @@ export function TripzProposalReview({
   const itineraryCount = listLength(state, "itinerary");
   const flightCount = listLength(state, "flights");
   const includedCount = listLength(state, "includedItems", "included_items");
+  // Mesmo critério do backend (rendererReady): PDF só após o resumo confirmado.
+  const pdfAllowed = proposal?.status === "ready_for_pdf" || proposal?.status === "pdf_generated";
   const pdfHref = pdf?.id ? tripzApiContentUrl(tripzDocumentContentPath(conversationId, pdf.id)) : undefined;
   const dateRange = [proposal?.startDate, proposal?.endDate].filter(Boolean).join(" — ");
   const passengerSummary = [
@@ -169,8 +171,10 @@ export function TripzProposalReview({
               <button
                 type="button"
                 className="btn primary"
-                disabled={!proposal || processing || generatingPdf || !preview?.html || preview.proposalRevision !== proposal.revision}
-                title={!preview?.html || preview.proposalRevision !== proposal?.revision ? "Gere e revise a prévia desta versão primeiro" : undefined}
+                disabled={!proposal || processing || generatingPdf || !pdfAllowed || !preview?.html || preview.proposalRevision !== proposal.revision}
+                title={!pdfAllowed
+                  ? "Peça o resumo final ao assistente e confirme-o na conversa antes de gerar o PDF"
+                  : !preview?.html || preview.proposalRevision !== proposal?.revision ? "Gere e revise a prévia desta versão primeiro" : undefined}
                 onClick={onGeneratePdf}
               >
                 {generatingPdf ? <SpinnerGap size={14} className="animate-spin" aria-hidden="true" /> : <FilePdf size={14} aria-hidden="true" />}

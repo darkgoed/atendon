@@ -13,7 +13,9 @@ const LISTENING_BREAKDOWN = /\b(?:ja\s+(?:te\s+)?(?:falei|disse|respondi)|(?:per
 const REQUESTS_USEFUL_EXPLANATION = /\b(?:me\s+mostra|mostra\s+(?:ai|entao|pra\s+mim)|me\s+explica|explica\s+(?:ai|entao|pra\s+mim)|quero\s+(?:ver|entender)|como\s+isso\s+funciona)\b/u;
 const QUALIFICATION_TOPIC = /\b(?:faturamento|instagram|ramo|nicho|segmento|tempo\s+(?:de|no)\s+mercado|quanto\s+tempo|ano\s+de\s+abertura|cnpj|ticket\s+medio|volume\s+de\s+vendas)\b/u;
 const DIRECT_IDENTITY_QUESTION = /\b(?:(?:voce|vc)\s+(?:e|eh|seria)\s+(?:(?:um|uma)\s+)?(?:bot|robo|ia|inteligencia\s+artificial|automacao|assistente\s+virtual)|(?:estou|to)\s+falando\s+com\s+(?:(?:um|uma)\s+)?(?:bot|robo|ia|inteligencia\s+artificial|automacao))\b/u;
-const BOT_OR_HUMAN = /\b(?:bot|robo|inteligencia\s+artificial|\bia\b|automacao|automatizado|assistente\s+digital|humano)\b/u;
+const BOT_OR_HUMAN = /\b(?:bot|robo|inteligencia\s+artificial|automacao|automatizado|assistente\s+digital|humano)\b/u;
+// Sigla só em maiúsculas no texto original: "ia" minúsculo é o verbo ir ("eu ia te explicar").
+const AI_ACRONYM = /\bIA\b/u;
 const SCHEDULING_INVITATION = /\b(?:agend|marc|reserv|horario|agenda|google\s+meet|reuniao)\w*/u;
 const ACKNOWLEDGES_BREAKDOWN = /\b(?:voce\s+tem\s+razao|tem\s+razao|desculp|foi\s+repetitivo|repetimos|perguntamos\s+de\s+novo|atendimento\s+ficou|entendo\s+(?:o\s+)?(?:incomodo|desgaste|cansaco)|nao\s+te\s+ouvimos)\b/u;
 const PROVIDES_USEFUL_EXPLANATION = /\b(?:funciona|solucao|servico|produto|processo|ajud|atend|oferta)\w*/u;
@@ -108,6 +110,7 @@ export function objectionRecoveryCorrection(text: string, history: ChatHistory):
 
   if (
     BOT_OR_HUMAN.test(normalized)
+    || AI_ACRONYM.test(text)
     || SCHEDULING_INVITATION.test(normalized)
     || asksQualificationQuestion
   ) {

@@ -112,6 +112,17 @@ describe("humanizer", () => {
     expect(sanitizeOutbound("Acesse https://meet.google.com/abc-defg-hij"))
       .toBe("Acesse https://meet.google.com/abc-defg-hij");
   });
+  it.each([
+    "Chave Pix: 123e4567-e89b-12d3-a456-426614174000",
+    "Me manda em vendas@loja-x.com.br",
+    "CEP 01310-100, telefone (11) 99999-9999",
+    "Vencimento em 2026-10-01"
+  ])("keeps hyphens that are part of copyable data: %s", (text) => {
+    expect(sanitizeOutbound(text)).toBe(text);
+  });
+  it("keeps an hour range in one bubble without an ASCII hyphen", () => {
+    expect(sanitizeOutbound("Atendemos das 9h - 18h, e sábado das 9:00 - 12:00.")).toBe("Atendemos das 9h às 18h, e sábado das 9:00 às 12:00.");
+  });
   it("removes internal tool calls without discarding useful customer-facing prose", () => {
     expect(sanitizeOutbound('Qual unidade você prefere? registrar_lead(user_number, tenant, dados:{nome: "Arthur"}) enviar_formulario_payjoy(user_number, tenant)'))
       .toBe("Qual unidade você prefere?");

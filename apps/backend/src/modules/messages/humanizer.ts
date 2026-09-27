@@ -207,10 +207,15 @@ export function splitResponse(text: string, maxWords: number): string[] {
   return bubbles.filter(Boolean);
 }
 
+// Hífen que faz parte de dado copiável (URL, e-mail, chave Pix aleatória,
+// CEP/telefone/data) é preservado; o resto da prosa segue sem hífen.
 function replaceDashesOutsideUrls(text: string): string {
-  return text.split(/(https?:\/\/[^\s]+)/giu).map((part, index) => {
+  return text.split(
+    /(https?:\/\/[^\s]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|\d+(?:-\d+)+)/giu
+  ).map((part, index) => {
     if (index % 2 === 1) return part;
     return part
+      .replace(/(\d{1,2}(?:h\d{0,2}|:\d{2}))[\t ]+-[\t ]+(?=\d{1,2}(?:h|:\d{2}))/g, "$1 às ")
       // A list marker becomes a real bubble boundary instead of looking like
       // generated Markdown or being glued to the preceding sentence.
       .replace(/(^|\n)[\t ]*-[\t ]+/g, "$1\n")

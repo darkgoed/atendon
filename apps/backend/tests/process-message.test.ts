@@ -3386,6 +3386,15 @@ Full name: Renan de Carvalho`;
       "Você tem razão, o atendimento ficou cansativo, desculpa por isso\n\nA Newave oferece financiamento sujeito à análise de crédito para criar outra forma de concluir a venda",
       history
     )).toBeUndefined();
+    // "ia" (verbo ir) não é a sigla IA: não pode forçar correção.
+    expect(objectionRecoveryCorrection(
+      "Você tem razão, o atendimento ficou cansativo, desculpa por isso\n\nEu ia te explicar agora: a Newave oferece financiamento sujeito à análise de crédito",
+      history
+    )).toBeUndefined();
+    expect(objectionRecoveryCorrection(
+      "Você tem razão, desculpa por isso\n\nSou uma IA e a Newave oferece financiamento sujeito à análise de crédito",
+      history
+    )).toMatch(/não revele espontaneamente/i);
   });
 
   it("answers a direct identity question without autonomous handoff", async () => {
