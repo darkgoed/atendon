@@ -5,6 +5,19 @@ type Json = Record<string, unknown>;
 function object(value: unknown): Json { return value && typeof value === "object" ? value as Json : {}; }
 function phone(jid: string): string { return jid.split("@")[0].split(":")[0]; }
 
+/**
+ * Telefone do contato. Com endereçamento LID o remoteJid é `<id>@lid` (não é
+ * telefone) e o Evolution/Baileys manda o JID de telefone em `remoteJidAlt`
+ * (novo) ou `senderPn` (antigo). Sem ele, usar os dígitos do LID quebrava a
+ * dedupe de lead, lembretes e ferramentas por telefone (auditoria runtime S3).
+ */
+function contactPhoneFor(remoteJid: string, key: Json, data: Json): string {
+  if (!remoteJid.endsWith("@lid")) return phone(remoteJid);
+  const alt = [key.remoteJidAlt, key.senderPn, data.senderPn]
+    .find((value): value is string => typeof value === "string" && value.endsWith("@s.whatsapp.net"));
+  return phone(alt ?? remoteJid);
+}
+
 function clean(value: unknown, max = 500): string | undefined {
   if (typeof value !== "string") return undefined;
   const result = value.trim().slice(0, max);
@@ -192,7 +205,7 @@ export function evolutionStickerMessage(data: Json): EvolutionStickerMessage | n
   if (!remoteJid || !externalId || remoteJid === "status@broadcast" || remoteJid.endsWith("@g.us") || !content.stickerMessage) return null;
   return {
     externalId,
-    contactPhone: phone(remoteJid),
+    contactPhone: contactPhoneFor(remoteJid, key, data),
     contactJid: remoteJid,
     fromMe: Boolean(key.fromMe ?? data.fromMe)
   };
@@ -339,7 +352,7 @@ export function evolutionMessage(data: Json, identity: { tenantId: string; sessi
   const referral = !fromMe ? evolutionReferral(content, data.contextInfo) : undefined;
   return {
     kind: fromMe ? "human" : "contact", externalId, ...identity,
-    contactPhone: phone(remoteJid), contactJid: remoteJid,
+    contactPhone: contactPhoneFor(remoteJid, key, data), contactJid: remoteJid,
     ...(!fromMe && data.pushName ? { contactName: String(data.pushName) } : {}),
     text, ...(mediaType ? { mediaType } : {}),
     ...(mediaMimeType ? { mediaMimeType } : {}),

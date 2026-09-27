@@ -506,3 +506,19 @@ describe("off-hours reply jitter (MSG C7)", () => {
     }
   });
 });
+
+describe("endereçamento LID (auditoria runtime S3)", () => {
+  const identity = { tenantId: "tenant-a", sessionId: "session-a" };
+  it("usa o telefone de remoteJidAlt/senderPn e mantém o LID como JID de resposta", () => {
+    expect(evolutionMessage({ key: { id: "m1", remoteJid: "123456789@lid", remoteJidAlt: "5511999998888@s.whatsapp.net", fromMe: false }, message: { conversation: "oi" } }, identity))
+      .toMatchObject({ contactPhone: "5511999998888", contactJid: "123456789@lid" });
+    expect(evolutionMessage({ key: { id: "m2", remoteJid: "123456789@lid", senderPn: "5511999997777@s.whatsapp.net", fromMe: false }, message: { conversation: "oi" } }, identity))
+      .toMatchObject({ contactPhone: "5511999997777", contactJid: "123456789@lid" });
+  });
+  it("sem campo alternativo mantém o comportamento anterior", () => {
+    expect(evolutionMessage({ key: { id: "m3", remoteJid: "123456789@lid", fromMe: false }, message: { conversation: "oi" } }, identity))
+      .toMatchObject({ contactPhone: "123456789", contactJid: "123456789@lid" });
+    expect(evolutionMessage({ key: { id: "m4", remoteJid: "5511999996666@s.whatsapp.net", remoteJidAlt: "999@lid", fromMe: false }, message: { conversation: "oi" } }, identity))
+      .toMatchObject({ contactPhone: "5511999996666" });
+  });
+});
