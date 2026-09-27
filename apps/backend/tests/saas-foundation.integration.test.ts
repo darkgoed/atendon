@@ -948,13 +948,64 @@ describe("TOTP verify brute force", () => {
        SELECT $1,$2,id,'active',now() FROM workspace_roles WHERE workspace_id=$1 AND name='OPERADOR'`,
       [tenantA, user.rows[0].id]
     );
-    for (let index = 0; index < 7; index++) {
+    async function verify(index: number, code: string) {
       const login = await app.inject({ method: "POST", url: "/auth/login", remoteAddress: `10.48.${index}.1`, payload: { email, password } });
       const header = login.headers["set-cookie"];
       const challenge = (Array.isArray(header) ? header : [header!]).find((cookie) => cookie.startsWith("atendon_totp_challenge="))!.split(";")[0];
-      const verified = await app.inject({ method: "POST", url: "/auth/totp/verify", remoteAddress: `10.49.${index}.1`, headers: { cookie: challenge }, payload: { code: totpCode(secret) } });
-      expect(verified.statusCode, `login ${index + 1}`).toBe(200);
+      return app.inject({ method: "POST", url: "/auth/totp/verify", remoteAddress: `10.49.${index}.1`, headers: { cookie: challenge }, payload: { code } });
     }
+    const wrongFor = () => {
+      const valid = new Set([-30_000, 0, 30_000].map((offset) => totpCode(secret, new Date(Date.now() + offset))));
+      return ["000000", "111111", "222222", "333333"].find((code) => !valid.has(code))!;
+    };
+    // 4 erros + 1 acerto, duas vezes: sem o reset no acerto a 10ª tentativa seria 429.
+    // Cada acerto usa um passo diferente (código é de uso único).
+    let index = 0;
+    for (const offset of [-30_000, 0]) {
+      for (let wrong = 0; wrong < 4; wrong++) expect((await verify(index++, wrongFor())).statusCode).toBe(401);
+      const verified = await verify(index++, totpCode(secret, new Date(Date.now() + offset)));
+      expect(verified.statusCode, `acerto com offset ${offset}`).toBe(200);
+    }
+  }, 30_000);
+
+  it("refuses to reuse a second-factor code that already opened a session (seg. S5)", async () => {
+    const email = `totp-replay-${randomUUID()}@test.local`;
+    const secret = generateTotpSecret();
+    const user = await pool.query<{ id: string }>(
+      "INSERT INTO users(email,password_hash,status,totp_secret_encrypted,totp_enabled_at) VALUES($1,$2,'active',$3,now()) RETURNING id",
+      [email, await hash(password, 4), encryptTotpSecret(secret)]
+    );
+    try {
+      await pool.query(
+        `INSERT INTO workspace_members(workspace_id,user_id,role_id,status,joined_at)
+         SELECT $1,$2,id,'active',now() FROM workspace_roles WHERE workspace_id=$1 AND name='OPERADOR'`,
+        [tenantA, user.rows[0].id]
+      );
+      const code = totpCode(secret);
+      const attempt = async (index: number) => {
+        const login = await app.inject({ method: "POST", url: "/auth/login", remoteAddress: `10.52.${index}.1`, payload: { email, password } });
+        const header = login.headers["set-cookie"];
+        const challenge = (Array.isArray(header) ? header : [header!]).find((cookie) => cookie.startsWith("atendon_totp_challenge="))!.split(";")[0];
+        return app.inject({ method: "POST", url: "/auth/totp/verify", remoteAddress: `10.53.${index}.1`, headers: { cookie: challenge }, payload: { code } });
+      };
+      expect((await attempt(0)).statusCode).toBe(200);
+      const replay = await attempt(1);
+      expect(replay.statusCode).toBe(401);
+      expect(replay.headers["set-cookie"] ?? "").not.toContain("atendon_session=");
+    } finally {
+      await pool.query("DELETE FROM audit_logs WHERE actor_user_id=$1", [user.rows[0].id]);
+      await pool.query("DELETE FROM users WHERE id=$1", [user.rows[0].id]);
+    }
+  }, 30_000);
+
+  it("requires the current password to set up 2FA (seg. S5)", async () => {
+    const cookie = await login(operatorEmail);
+    expect((await app.inject({ method: "POST", url: "/me/totp/setup", headers: { cookie }, payload: {} })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: "/me/totp/setup", headers: { cookie }, payload: { current_password: "senha-errada" } })).statusCode).toBe(400);
+    const ok = await app.inject({ method: "POST", url: "/me/totp/setup", headers: { cookie }, payload: { current_password: password } });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({ secret: expect.any(String) });
+    await pool.query("UPDATE users SET totp_secret_encrypted=NULL,totp_enabled_at=NULL WHERE email=$1", [operatorEmail]);
   }, 30_000);
 });
 

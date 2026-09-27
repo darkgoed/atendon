@@ -33,6 +33,12 @@ export async function consumeRateLimitRedis(key: string, maximum: number, window
   return accepted === 1;
 }
 
+/** true só para o primeiro que marcar a chave dentro do TTL (uso único). */
+export async function claimOnceRedis(key: string, ttlMs: number): Promise<boolean> {
+  const client = await getRedisClient();
+  return (await client.set(`once:${key}`, "1", { NX: true, PX: ttlMs })) === "OK";
+}
+
 export async function resetRateLimitRedis(key: string): Promise<void> {
   const client = await getRedisClient();
   await client.del(`ratelimit:${key}`);

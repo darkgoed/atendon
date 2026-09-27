@@ -5,7 +5,7 @@ import { config } from "../config.js";
 import { db } from "../db/client.js";
 import { httpError, withTransaction } from "../modules/scheduling/service.js";
 import { HTTP_RATE_LIMITS } from "../security/http-rate-limit.js";
-import { consumeRateLimitRedis, resetRateLimitRedis } from "../modules/messages/rate-limiter.js";
+import { claimOnceRedis, consumeRateLimitRedis, resetRateLimitRedis } from "../modules/messages/rate-limiter.js";
 import { openLoginSession } from "./workspace-service.js";
 import {
   createSessionToken,
@@ -23,6 +23,8 @@ import {
   generateTotpSecret,
   loadTotpState,
   readTotpChallenge,
+  matchTotpCounter,
+  TOTP_REPLAY_TTL_MS,
   totpAuthUrl,
   verifyTotp
 } from "./totp.js";
@@ -32,7 +34,7 @@ import {
  * 2FA TOTP por usuário e sessões ativas revogáveis.
  *
  * - Setup NÃO ativa: só grava o segredo (cifrado); ativação exige código
- *   válido; desativação exige re-autenticação por senha (padrão 400
+ *   válido; setup e desativação exigem re-autenticação por senha (padrão 400
  *   "Senha atual inválida" do PATCH /me/profile).
  * - /auth/totp/verify é o 2º passo do login: consome o cookie de desafio
  *   (totp.ts), replica o picking de workspace do /auth/login
@@ -50,6 +52,7 @@ const totpCodeSchema = z.object({
   code: z.string().trim().min(6).max(12)
 }).strict();
 
+// Re-autenticação por senha (setup e desativação do 2FA).
 const totpDeactivateSchema = z.object({
   current_password: z.string().min(1).max(200)
 }).strict();
@@ -71,9 +74,20 @@ const SESSION_COOKIE_OPTIONS = {
   maxAge: 43_200
 };
 
+async function assertCurrentPassword(userId: string, password: string) {
+  const current = await db.query<{ password_hash: string | null }>("SELECT password_hash FROM users WHERE id=$1", [userId]);
+  const hash = current.rows[0]?.password_hash;
+  if (!hash || !(await compare(password, hash))) {
+    throw Object.assign(new Error("Senha atual inválida"), { statusCode: 400 });
+  }
+}
+
 export async function registerSecurityRoutes(app: FastifyInstance) {
   app.post("/me/totp/setup", { config: { rateLimit: HTTP_RATE_LIMITS.sensitiveWrite } }, async (request) => {
     const session = await requireWorkspace(request);
+    // Re-autenticação: sessão roubada não cadastra o autenticador do atacante
+    // e tranca o dono fora da conta (seg. S5).
+    await assertCurrentPassword(session.userId, totpDeactivateSchema.parse(request.body ?? {}).current_password);
     const current = await loadTotpState(session.userId);
     if (current.enabled) {
       throw httpError(409, "Verificação em duas etapas já está ativa; desative antes de reconfigurar");
@@ -131,15 +145,7 @@ export async function registerSecurityRoutes(app: FastifyInstance) {
 
   app.post("/me/totp/deactivate", { config: { rateLimit: HTTP_RATE_LIMITS.sensitiveWrite } }, async (request) => {
     const session = await requireWorkspace(request);
-    const body = totpDeactivateSchema.parse(request.body);
-    const current = await db.query<{ password_hash: string | null }>(
-      "SELECT password_hash FROM users WHERE id=$1",
-      [session.userId]
-    );
-    const user = current.rows[0];
-    if (!user?.password_hash || !(await compare(body.current_password, user.password_hash))) {
-      throw Object.assign(new Error("Senha atual inválida"), { statusCode: 400 });
-    }
+    await assertCurrentPassword(session.userId, totpDeactivateSchema.parse(request.body).current_password);
     const state = await loadTotpState(session.userId);
     if (!state.enabled) {
       throw httpError(409, "Verificação em duas etapas não está ativa");
@@ -196,10 +202,18 @@ export async function registerSecurityRoutes(app: FastifyInstance) {
       clearTotpChallenge(reply);
       throw httpError(429, "Muitas tentativas de verificação; aguarde alguns minutos e faça login novamente");
     }
-    if (!verifyTotp(state.secretBase32, body.code)) {
+    const counter = matchTotpCounter(state.secretBase32, body.code);
+    if (counter === null) {
       // Desafio continua válido dentro do TTL — o usuário pode tentar de novo.
       throw httpError(401, "Código inválido");
     }
+    // Código de uso único (RFC 6238 §5.2): quem viu o código não entra de novo
+    // com ele dentro da janela de tolerância (seg. S5).
+    const firstUse = await claimOnceRedis(`totp-used:${userId}:${counter}`, TOTP_REPLAY_TTL_MS).catch((error: unknown) => {
+      request.log.error({ err: error }, "TOTP replay guard unavailable");
+      throw httpError(503, "Verificação em duas etapas temporariamente indisponível; tente novamente em instantes");
+    });
+    if (!firstUse) throw httpError(401, "Código já utilizado; aguarde o próximo código do aplicativo");
     // Código correto zera a janela: só erros acumulam (vários dispositivos não se bloqueiam).
     await resetRateLimitRedis(`totp-verify:${userId}`).catch(() => undefined);
 

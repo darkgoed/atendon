@@ -78,18 +78,26 @@ export function totpCode(secretBase32: string, at: Date = new Date()): string {
   return hotp(base32Decode(secretBase32), Math.floor(at.getTime() / 1000 / TOTP_PERIOD_SECONDS));
 }
 
-export function verifyTotp(secretBase32: string, code: string, at: Date = new Date()): boolean {
+/** Passo (contador) que o código válido representa, ou null. */
+export function matchTotpCounter(secretBase32: string, code: string, at: Date = new Date()): number | null {
   const normalized = code.replace(/\D/g, "");
-  if (normalized.length !== TOTP_DIGITS) return false;
+  if (normalized.length !== TOTP_DIGITS) return null;
   const secret = base32Decode(secretBase32);
   const counter = Math.floor(at.getTime() / 1000 / TOTP_PERIOD_SECONDS);
   const presented = Buffer.from(normalized);
   for (let drift = -TOTP_VERIFY_WINDOW; drift <= TOTP_VERIFY_WINDOW; drift++) {
     const candidate = Buffer.from(hotp(secret, counter + drift));
-    if (timingSafeEqual(presented, candidate)) return true;
+    if (timingSafeEqual(presented, candidate)) return counter + drift;
   }
-  return false;
+  return null;
 }
+
+export function verifyTotp(secretBase32: string, code: string, at: Date = new Date()): boolean {
+  return matchTotpCounter(secretBase32, code, at) !== null;
+}
+
+/** Tempo em que um passo ainda é aceito pela janela de tolerância (+ folga). */
+export const TOTP_REPLAY_TTL_MS = (2 * TOTP_VERIFY_WINDOW + 2) * TOTP_PERIOD_SECONDS * 1000;
 
 export function totpAuthUrl(secretBase32: string, email: string): string {
   const label = encodeURIComponent(`${TOTP_ISSUER}:${email}`);
