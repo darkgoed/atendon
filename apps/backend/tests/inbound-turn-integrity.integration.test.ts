@@ -114,3 +114,25 @@ describe("same-turn retake detects an already delivered reply (Ponytail #2)", ()
     expect(await repository.hasAgentReplyAfterInbound(conversationId, inbound)).toBe(true);
   });
 });
+
+describe("handoff notification of an Instagram conversation (auditoria runtime #3)", () => {
+  it("goes out through the tenant's WhatsApp connection, not the Instagram one", async () => {
+    const repository = new MessageRepository(pool, config, { followUp: vi.fn().mockResolvedValue(undefined) });
+    await pool.query("UPDATE tenants SET attendant_phone='5511988887777' WHERE id=$1", [tenantId]);
+    const ig = (await pool.query<{ id: string }>(
+      "INSERT INTO whatsapp_sessions(tenant_id,label,channel,is_primary,status,phone_number) VALUES($1,'IG','instagram',false,'connected',NULL) RETURNING id", [tenantId]
+    )).rows[0].id;
+    const igsid = `igsid-${randomUUID()}`;
+    const lead = (await pool.query<{ id: string }>(
+      "INSERT INTO scheduling_leads(tenant_id,phone,name,source,instagram_contact_id,instagram_session_id) VALUES($1,NULL,'IG','instagram',$2,$3) RETURNING id", [tenantId, igsid, ig]
+    )).rows[0].id;
+    const conversation = (await pool.query<{ id: string }>(
+      "INSERT INTO conversations(tenant_id,session_id,contact_phone,instagram_contact_id,lead_id) VALUES($1,$2,NULL,$3,$4) RETURNING id", [tenantId, ig, igsid, lead]
+    )).rows[0].id;
+    const notification = await repository.pauseForHandoff({
+      tenantId, conversationId: conversation, sessionId: ig, reason: "technical_failure", errorCode: "test",
+      idempotencyKey: `ig-handoff-${randomUUID()}`, notificationText: "Atenda a DM"
+    });
+    expect(notification?.sessionId).toBe(sessionId);
+  });
+});

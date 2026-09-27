@@ -1609,6 +1609,32 @@ export class MessageRepository {
         return null;
       }
 
+      // O aviso vai para o WhatsApp do atendente: conversa do Instagram usa a
+      // conexão WhatsApp principal do tenant (a do Instagram não envia pela Evolution).
+      const sender = (await client.query<{ id: string }>(
+        `SELECT CASE WHEN current.channel='whatsapp' THEN current.id ELSE (
+           SELECT primary_session.id FROM whatsapp_sessions primary_session
+           WHERE primary_session.tenant_id=$1 AND primary_session.channel='whatsapp' AND primary_session.archived_at IS NULL
+           ORDER BY primary_session.is_primary DESC, primary_session.created_at DESC LIMIT 1
+         ) END AS id
+         FROM whatsapp_sessions current WHERE current.tenant_id=$1 AND current.id=$2`,
+        [input.tenantId, input.sessionId]
+      )).rows[0]?.id;
+      if (!sender) {
+        const alertMessage = "A IA pausou uma conversa do Instagram para atendimento humano, mas o workspace não tem conexão WhatsApp para avisar o atendente.";
+        await client.query(
+          `INSERT INTO system_alerts(tenant_id,message)
+           SELECT $1,$2
+           WHERE NOT EXISTS (
+             SELECT 1 FROM system_alerts
+             WHERE tenant_id=$1 AND message=$2 AND created_at >= now()-interval '1 hour'
+           )`,
+          [input.tenantId, alertMessage]
+        );
+        await client.query("COMMIT");
+        return null;
+      }
+
       const notification = await client.query<{
         id: string;
         session_id: string;
@@ -1621,7 +1647,7 @@ export class MessageRepository {
          ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
            SET message = EXCLUDED.message
          RETURNING id, session_id, attendant_phone, message`,
-        [input.tenantId, input.conversationId, input.sessionId, input.idempotencyKey, phone, input.notificationText]
+        [input.tenantId, input.conversationId, sender, input.idempotencyKey, phone, input.notificationText]
       );
       await client.query("COMMIT");
       const row = notification.rows[0];
