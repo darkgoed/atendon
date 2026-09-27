@@ -175,6 +175,8 @@ describe("Tripz conversation states", () => {
         loading={false}
         onOpenHistory={() => undefined}
         onOpenReview={() => undefined}
+        onOpenEditor={() => undefined}
+        onOpenBrand={() => undefined}
         onRetry={() => undefined}
         onRetryTurn={async () => undefined}
         onSent={() => undefined}

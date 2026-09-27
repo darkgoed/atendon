@@ -10,6 +10,115 @@ const clockTime = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).nullable();
 const currency = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).nullable();
 const nonNegativeMoney = z.number().finite().nonnegative().max(1_000_000_000).nullable();
 
+/**
+ * Bloco editorial do patch — permissivo no formato, validado no destino:
+ * elementos de lista com id fazem upsert; scalars substituem; imageAssignments
+ * e sources substituem o array quando enviados.
+ */
+const editorialSectionSchema = z.object({
+  eyebrow: shortText.optional(),
+  headline: shortText.optional(),
+  body: z.array(z.string().trim().min(1).max(2_000)).max(6).optional(),
+  quote: shortText.optional(),
+  momentsLabel: shortText.optional(),
+  moments: z.array(z.string().trim().min(1).max(300)).max(10).optional()
+}).strict().partial();
+
+export const tripzEditorialPatchSchema = z.object({
+  tripTitle: z.string().trim().min(1).max(200).nullable().optional(),
+  origin: z.string().trim().min(1).max(200).nullable().optional(),
+  consultant: z.object({
+    name: shortText.optional(),
+    role: shortText.optional(),
+    email: z.string().trim().email().max(200).optional(),
+    phone: z.string().trim().min(1).max(60).optional()
+  }).strict().nullable().optional(),
+  narrative: z.object({
+    coverEyebrow: shortText.optional(),
+    coverQuote: shortText.optional(),
+    concept: editorialSectionSchema.optional(),
+    closing: editorialSectionSchema.optional(),
+    destinationCopy: z.record(z.string().trim().regex(/^[a-z0-9-]{1,60}$/), editorialSectionSchema).optional()
+  }).strict().nullable().optional(),
+  destinations: z.array(z.object({
+    id: z.string().trim().regex(/^[a-z0-9-]{1,60}$/),
+    name: shortText.optional(),
+    actLabel: shortText.optional(),
+    dateRangeLabel: shortText.optional(),
+    nights: z.number().int().min(0).max(365).optional(),
+    summary: z.string().trim().min(1).max(4_000).optional(),
+    highlights: z.array(shortText).max(12).optional()
+  }).strict()).max(20).optional(),
+  hotels: z.array(z.object({
+    id: z.string().trim().regex(/^[a-z0-9-]{1,60}$/),
+    destinationId: z.string().trim().regex(/^[a-z0-9-]{1,60}$/).optional(),
+    name: shortText.optional(),
+    pending: z.boolean().optional(),
+    category: shortText.optional(),
+    roomCategory: shortText.optional(),
+    mealPlan: shortText.optional(),
+    checkIn: isoDate.optional(),
+    checkOut: isoDate.optional(),
+    nights: z.number().int().min(0).max(365).optional(),
+    description: z.string().trim().min(1).max(4_000).optional(),
+    highlightNote: shortText.optional()
+  }).strict()).max(20).optional(),
+  experiences: z.array(z.object({
+    id: z.string().trim().regex(/^[a-z0-9-]{1,60}$/),
+    title: shortText.optional(),
+    description: z.string().trim().min(1).max(4_000).optional(),
+    destinationId: z.string().trim().regex(/^[a-z0-9-]{1,60}$/).optional(),
+    suggested: z.boolean().optional(),
+    dayNumber: z.number().int().min(1).max(365).optional()
+  }).strict()).max(60).optional(),
+  inclusions: z.array(z.object({
+    section: shortText,
+    items: z.array(z.object({
+      title: shortText,
+      detail: z.string().trim().min(1).max(2_000).optional()
+    }).strict()).max(30)
+  }).strict()).max(12).optional(),
+  exclusions: z.array(shortText).max(30).optional(),
+  baggage: z.array(shortText).max(20).optional(),
+  transfers: z.array(z.object({
+    label: shortText.optional(),
+    description: z.string().trim().min(1).max(4_000).optional(),
+    direction: z.enum(["arrival", "departure", "between", "other"]).optional()
+  }).strict()).max(30).optional(),
+  cancellationPolicies: z.array(z.object({
+    label: shortText,
+    text: z.string().trim().min(1).max(2_000)
+  }).strict()).max(10).optional(),
+  commercial: z.object({
+    currency: currency.optional(),
+    total: nonNegativeMoney.nullable().optional(),
+    perPerson: nonNegativeMoney.nullable().optional(),
+    boardingTax: nonNegativeMoney.nullable().optional(),
+    priceNotes: z.array(shortText).max(10).optional(),
+    paymentSummary: z.string().trim().min(1).max(2_000).nullable().optional(),
+    paymentEntries: z.array(z.object({
+      label: shortText,
+      value: z.string().trim().min(1).max(300)
+    }).strict()).max(12).optional(),
+    differentials: z.array(shortText).max(15).optional()
+  }).strict().nullable().optional(),
+  imageAssignments: z.array(z.object({
+    mediaId: z.string().trim().min(1).max(120).optional(),
+    role: z.enum(["cover", "concept", "closing", "flights", "destination", "hotel", "experience", "gallery"]).optional(),
+    targetId: z.string().trim().regex(/^[a-z0-9-]{1,60}$/).optional(),
+    caption: shortText.optional()
+  }).strict()).max(40).optional(),
+  pageOverrides: z.array(z.object({
+    page: z.enum(["cover", "concept", "overview", "destination", "hotel", "experiences", "services", "flights", "closing"]),
+    hidden: z.boolean().optional()
+  }).strict()).max(20).optional(),
+  sources: z.array(z.object({
+    label: shortText,
+    url: z.string().trim().url().max(2_000).optional(),
+    credit: shortText.optional()
+  }).strict()).max(30).optional()
+}).strict().nullable();
+
 export const tripzFlightPatchSchema = z.object({
   id: z.string().uuid().nullable().optional(),
   airline: nullableShortText.optional(),
@@ -92,8 +201,10 @@ export const tripzProposalPatchSchema = z.object({
     evening: z.string().trim().min(1).max(2_000).nullable().optional(),
     notes: z.array(shortText).max(20).optional()
   }).strict()).max(365).optional(),
-  notes: z.array(z.string().trim().min(1).max(2_000)).max(100).optional()
+  notes: z.array(z.string().trim().min(1).max(2_000)).max(100).optional(),
+  editorial: tripzEditorialPatchSchema.nullable().optional()
 }).strict();
+
 
 export const tripzExplicitCorrectionPathSchema = z.enum([
   "destination",
@@ -112,7 +223,17 @@ export const tripzExplicitCorrectionPathSchema = z.enum([
   "pricing.totalPrice",
   "pricing.currency",
   "itinerary",
-  "notes"
+  "notes",
+  "editorial.tripTitle",
+  "editorial.narrative",
+  "editorial.destinations",
+  "editorial.hotels",
+  "editorial.experiences",
+  "editorial.inclusions",
+  "editorial.commercial.total",
+  "editorial.commercial.paymentEntries",
+  "editorial.imageAssignments",
+  "editorial.sources"
 ]);
 
 export const tripzAiStructuredOutputSchema = z.object({
@@ -156,6 +277,7 @@ export const tripzAiProviderOutputSchema = tripzAiStructuredOutputSchema.extend(
 
 export type TripzAiStructuredOutput = z.infer<typeof tripzAiStructuredOutputSchema>;
 export type TripzAiProposalPatch = z.infer<typeof tripzProposalPatchSchema>;
+export type TripzEditorialPatch = NonNullable<z.infer<typeof tripzEditorialPatchSchema>>;
 export type TripzExplicitCorrectionPath = z.infer<typeof tripzExplicitCorrectionPathSchema>;
 
 const nullable = (schema: Record<string, unknown>): Record<string, unknown> => ({

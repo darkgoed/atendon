@@ -1,4 +1,5 @@
 export const TRIPZ_AI_FEATURE_FLAG = "tripz_ai_v1" as const;
+import type { ProposalSpec } from "@atendon/proposal-renderer";
 export const TRIPZ_AI_USE_PERMISSION = "tripz_ai.use" as const;
 export const TRIPZ_AI_MANAGE_PERMISSION = "tripz_ai.manage" as const;
 export const TRIPZ_MAX_SELECTED_MEDIA = 12;
@@ -154,7 +155,7 @@ export interface TripzIssueAcknowledgement {
 }
 
 export interface TripzProposalState {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   title?: string;
   client?: { name?: string };
   destination?: string;
@@ -172,7 +173,11 @@ export interface TripzProposalState {
   issueAcknowledgements: TripzIssueAcknowledgement[];
   missingInformation: TripzMissingField[];
   inconsistencies: TripzProposalIssue[];
+  /** Bloco editorial ProposalSpec (schemaVersion 2 quando presente). */
+  editorial?: TripzEditorialBlock;
   status: TripzConversationStatus;
+  /** Proposta aprovada/finalizada: impede sobrescrita silenciosa (reconfirm exigido). */
+  finalized?: boolean;
 }
 
 export type TripzProposalPatch = Partial<Omit<TripzProposalState, "schemaVersion">> & {
@@ -181,6 +186,35 @@ export type TripzProposalPatch = Partial<Omit<TripzProposalState, "schemaVersion
   hotel?: Partial<NonNullable<TripzProposalState["hotel"]>>;
   pricing?: Partial<NonNullable<TripzProposalState["pricing"]>>;
 };
+
+/**
+ * Bloco editorial (ProposalSpec) — a IA preenche; o renderer desenha.
+ * Tipos vindos do pacote @atendon/proposal-renderer (fonte única do contrato).
+ * Merge no orchestrator: listas com id são upsert; narrative/commercial é
+ * shallow merge por chave; imageAssignments e sources são replace total.
+ */
+export type TripzEditorialBlock = Partial<Pick<
+  ProposalSpec,
+  | "narrative"
+  | "destinations"
+  | "hotels"
+  | "experiences"
+  | "inclusions"
+  | "exclusions"
+  | "baggage"
+  | "cancellationPolicies"
+  | "transfers"
+  | "commercial"
+  | "imageAssignments"
+  | "pageOverrides"
+  | "sources"
+>> & {
+  tripTitle?: string;
+  origin?: string;
+  consultant?: { name?: string; role?: string; email?: string; phone?: string };
+};
+
+export type TripzProposalStateV2 = TripzProposalState & { editorial?: TripzEditorialBlock };
 
 export interface TripzAccessScope {
   tenantId: string;
@@ -287,7 +321,9 @@ export function mergeTripzProposalPatch(
   return {
     ...current,
     ...patch,
-    schemaVersion: 1,
+    ...(current.editorial || (patch as { editorial?: TripzEditorialBlock }).editorial
+      ? { schemaVersion: 2 as const }
+      : { schemaVersion: 1 as const }),
     ...(patch.client ? { client: { ...current.client, ...patch.client } } : {}),
     ...(patch.passengers ? { passengers: { ...current.passengers, ...patch.passengers } } : {}),
     ...(patch.hotel ? { hotel: { ...current.hotel, ...patch.hotel } } : {}),

@@ -291,9 +291,34 @@ export interface TripzAttachmentBinary {
   extractedText?: string;
 }
 
+interface ProposalVersionRow {
+  id: string;
+  conversation_id: string;
+  proposal_id: string;
+  version_number: number;
+  label: string | null;
+  notes: string | null;
+  state: unknown;
+  document_revision: number;
+  approved_by_user_id: string | null;
+  created_at: Date;
+}
+
 export interface TripzDocumentContent {
   document: TripzGeneratedDocument;
   data: Buffer | string;
+}
+export interface TripzProposalVersion {
+  id: string;
+  conversationId: string;
+  proposalId: string;
+  versionNumber: number;
+  label?: string;
+  notes?: string;
+  state: TripzProposalState;
+  documentRevision: number;
+  approvedByUserId?: string;
+  createdAt: string;
 }
 
 export interface TripzCreateMessageResult {
@@ -328,6 +353,16 @@ export interface TripzRepositoryPort {
   deleteAttachment(scope: TripzAccessScope, conversationId: string, attachmentId: string): Promise<boolean>;
   saveGeneratedDocument(scope: TripzAccessScope, input: { conversationId: string; expectedRevision: number; kind: TripzDocumentKind; rendererVersion: string; data: Buffer | string }): Promise<TripzGeneratedDocument>;
   getDocumentContent(scope: TripzAccessScope, conversationId: string, documentId: string): Promise<TripzDocumentContent | null>;
+  listProposalVersions(scope: TripzAccessScope, conversationId: string): Promise<Array<TripzProposalVersion>>;
+  saveProposalVersion(scope: TripzAccessScope, input: {
+    conversationId: string;
+    label?: string;
+    notes?: string;
+    state: TripzProposalState;
+    documentRevision: number;
+    approvedByUserId?: string;
+  }): Promise<TripzProposalVersion>;
+  getLatestProposalVersion(scope: TripzAccessScope, conversationId: string): Promise<TripzProposalVersion | null>;
   markTurnTerminalFailure(input: { tenantId: string; conversationId: string; messageId: string; errorCode: string }): Promise<boolean>;
 }
 
@@ -882,6 +917,85 @@ export class TripzAiRepository implements TripzRepositoryPort {
     const data = row.kind === "preview" ? row.html_data : row.pdf_data;
     if (data === null) throw new TripzAiError(500, "TRIPZ_DOCUMENT_INVALID", "Documento inválido");
     return { document: documentFromRow(row), data };
+  }
+
+/* ---- versionamento editorial (0196) ---- */
+
+  private proposalVersionFromRow(row: ProposalVersionRow): TripzProposalVersion {
+    return {
+      id: row.id,
+      conversationId: row.conversation_id,
+      proposalId: row.proposal_id,
+      versionNumber: row.version_number,
+      ...(row.label ? { label: row.label } : {}),
+      ...(row.notes ? { notes: row.notes } : {}),
+      state: row.state as TripzProposalState,
+      documentRevision: row.document_revision,
+      ...(row.approved_by_user_id ? { approvedByUserId: row.approved_by_user_id } : {}),
+      createdAt: row.created_at.toISOString()
+    };
+  }
+
+  async listProposalVersions(scope: TripzAccessScope, conversationId: string): Promise<Array<TripzProposalVersion>> {
+    const result = await this.database.query<ProposalVersionRow>(
+      `SELECT version.id,version.conversation_id,version.proposal_id,version.version_number,version.label,
+              version.notes,version.state,version.document_revision,version.approved_by_user_id,version.created_at
+       FROM tripz_ai_proposal_versions version
+       JOIN tripz_ai_conversations conversation
+         ON conversation.tenant_id=version.tenant_id AND conversation.id=version.conversation_id
+       WHERE version.tenant_id=$1 AND version.conversation_id=$2
+         AND (conversation.created_by_user_id=$3 OR $4::boolean)
+       ORDER BY version.version_number DESC`,
+      [scope.tenantId, conversationId, scope.userId, scope.canManage]
+    );
+    return result.rows.map((row) => this.proposalVersionFromRow(row));
+  }
+
+  async saveProposalVersion(scope: TripzAccessScope, input: {
+    conversationId: string;
+    label?: string;
+    notes?: string;
+    state: TripzProposalState;
+    documentRevision: number;
+    approvedByUserId?: string;
+  }): Promise<TripzProposalVersion> {
+    return transaction(this.database, async (client) => {
+      const conversation = await lockVisibleConversation(client, scope, input.conversationId);
+      const proposal = await client.query<{ id: string }>(
+        `SELECT id FROM tripz_ai_proposals WHERE tenant_id=$1 AND conversation_id=$2 FOR UPDATE`,
+        [scope.tenantId, input.conversationId]
+      );
+      if (!proposal.rows[0]) throw new TripzAiError(500, "TRIPZ_PROPOSAL_MISSING", "Proposta não encontrada");
+      const next = await client.query<{ next: number }>(
+        `SELECT coalesce(max(version_number),0)+1 next
+         FROM tripz_ai_proposal_versions
+         WHERE tenant_id=$1 AND conversation_id=$2`,
+        [scope.tenantId, input.conversationId]
+      );
+      const versionNumber = next.rows[0].next;
+      const stateJson = JSON.stringify(input.state);
+      if (stateJson.length > 1_048_576) {
+        throw new TripzAiError(413, "TRIPZ_VERSION_STATE_TOO_LARGE", "Estado da proposta excede o limite de versionamento");
+      }
+      const result = await client.query<ProposalVersionRow>(
+        `INSERT INTO tripz_ai_proposal_versions(
+           tenant_id,conversation_id,proposal_id,version_number,label,notes,state,
+           document_revision,approved_by_user_id
+         ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         RETURNING id,conversation_id,proposal_id,version_number,label,notes,state,
+                   document_revision,approved_by_user_id,created_at`,
+        [scope.tenantId, input.conversationId, proposal.rows[0].id, versionNumber,
+          input.label ?? null, input.notes ?? null, stateJson, input.documentRevision,
+          input.approvedByUserId ?? null]
+      );
+      void conversation;
+      return this.proposalVersionFromRow(result.rows[0]);
+    });
+  }
+
+  async getLatestProposalVersion(scope: TripzAccessScope, conversationId: string): Promise<TripzProposalVersion | null> {
+    const versions = await this.listProposalVersions(scope, conversationId);
+    return versions[0] ?? null;
   }
 
   async appendAssistantMessage(scope: TripzAccessScope, input: {
