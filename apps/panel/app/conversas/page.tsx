@@ -155,6 +155,10 @@ type ConversationThreadResponse = {
   messages: Message[];
   ai_turn?: AiTurnProgress | null;
   cursors?: { before: string | null; after: string | null };
+  /** Token do delta v2: enviado como `since` para receber `changes`. */
+  sync?: string;
+  /** Linhas inseridas/alteradas desde `since` (bolhas com created_at antigo, ticks, edições). */
+  changes?: Message[];
   page?: {
     direction: "initial" | "before" | "after";
     limit: number;
@@ -520,6 +524,7 @@ export default function Conversations() {
   const loadedConversationRef = useRef("");
   const messageModeRef = useRef<"legacy" | "delta">("legacy");
   const afterCursorRef = useRef<string | null>(null);
+  const syncRef = useRef<string | null>(null);
   const deltaInFlightRef = useRef(false);
   const pollingFailuresRef = useRef(0);
   const scrollFrameRef = useRef<number | null>(null);
@@ -724,6 +729,7 @@ export default function Conversations() {
     selectedRef.current = selected;
     loadedConversationRef.current = "";
     afterCursorRef.current = null;
+    syncRef.current = null;
     deltaInFlightRef.current = false;
     markedReadRef.current = "";
     setAiActionNotice("");
@@ -740,6 +746,7 @@ export default function Conversations() {
     messageModeRef.current = messageMode;
     const cleared = clearedConversationDeltaPagination();
     afterCursorRef.current = cleared.afterCursor;
+    syncRef.current = null;
     deltaInFlightRef.current = false;
     setBeforeCursor(cleared.beforeCursor);
     setHasMoreBefore(cleared.hasMoreBefore);
@@ -764,10 +771,12 @@ export default function Conversations() {
       setBeforeCursor(threadData.cursors.before);
       setHasMoreBefore(threadData.page.has_more_before);
       if (threadData.cursors.after) afterCursorRef.current = threadData.cursors.after;
+      if (threadData.sync) syncRef.current = threadData.sync;
     } else {
       setBeforeCursor(null);
       setHasMoreBefore(false);
       afterCursorRef.current = null;
+      syncRef.current = null;
     }
     if (markedReadRef.current !== selected) {
       markedReadRef.current = selected;
@@ -789,6 +798,7 @@ export default function Conversations() {
     deepLinkIdRef.current = null;
     loadedConversationRef.current = "";
     afterCursorRef.current = null;
+    syncRef.current = null;
     setSelected("");
     setThreadConversation(null);
     setMessages([]);
@@ -819,7 +829,7 @@ export default function Conversations() {
       let cursor = initialCursor;
       for (let pageNumber = 0; pageNumber < 20; pageNumber += 1) {
         const response = await api<ConversationDeltaResponse>(
-          conversationMessagesV2Path(conversationId, { limit: 100, after: cursor })
+          conversationMessagesV2Path(conversationId, { limit: 100, after: cursor, since: syncRef.current ?? undefined })
         );
         if (
           messageModeRef.current !== "delta"
@@ -827,7 +837,8 @@ export default function Conversations() {
           || response.conversation.id !== conversationId
         ) return;
         setThreadConversation(response.conversation);
-        setMessages((current) => mergeConversationMessages(current, response.messages));
+        setMessages((current) => mergeConversationMessages(current, [...(response.changes ?? []), ...response.messages]));
+        if (response.sync) syncRef.current = response.sync;
         const recoveredAiTurn = parseAiTurnProgress(response.ai_turn);
         if (recoveredAiTurn) {
           setAiTurn((current) => reconcileAiTurnProgress(current, recoveredAiTurn));

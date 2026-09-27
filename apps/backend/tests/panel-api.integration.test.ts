@@ -676,6 +676,45 @@ describe("panel API tenant isolation",()=>{
     await pool.query("UPDATE ai_follow_up_schedules SET status='completed',next_run_at=NULL WHERE conversation_id=$1",[conversation]);
     expect(await repository.bringScheduledForward(tenantA,conversation)).toBe(false);
   });
+  it("delta refresh returns backdated AI bubbles and updates of loaded rows through since/changes (MSG C10)",async()=>{
+    await pool.query(
+      `INSERT INTO tenant_feature_flag_overrides(tenant_id,flag_key,enabled) VALUES($1,'conversations_delta_v2',true)
+       ON CONFLICT(tenant_id,flag_key) DO UPDATE SET enabled=true,updated_at=now()`,[tenantA]
+    );
+    try{
+      const session=await pool.query<{session_id:string}>("SELECT session_id FROM conversations WHERE id=$1",[conversationA]);
+      const conversation=(await pool.query<{id:string}>(
+        "INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name) VALUES($1,$2,$3,'Delta') RETURNING id",
+        [tenantA,session.rows[0].session_id,nextPhone()]
+      )).rows[0].id;
+      const loaded=(await pool.query<{id:string}>(
+        "INSERT INTO messages(conversation_id,sender,content,status,created_at) VALUES($1,'agent','já na tela','sent',now()-interval '2 minutes') RETURNING id",[conversation]
+      )).rows[0].id;
+      const initial=await app.inject({url:`/conversations/${conversation}/messages/v2`,headers:{cookie:cookieA}});
+      expect(initial.statusCode).toBe(200);
+      const {cursors,sync}=initial.json() as {cursors:{after:string};sync:string};
+      expect(typeof sync).toBe("string");
+      // Contato fala; a bolha da IA enviada ANTES é gravada depois com created_at antigo.
+      await pool.query("INSERT INTO messages(conversation_id,sender,content) VALUES($1,'contact','oi')",[conversation]);
+      const afterContact=await app.inject({url:`/conversations/${conversation}/messages/v2?after=${encodeURIComponent(cursors.after)}`,headers:{cookie:cookieA}});
+      const cursorAfterContact=(afterContact.json() as {cursors:{after:string}}).cursors.after;
+      const backdated=(await pool.query<{id:string}>(
+        "INSERT INTO messages(conversation_id,sender,content,created_at) VALUES($1,'agent','bolha atrasada',now()-interval '1 minute') RETURNING id",[conversation]
+      )).rows[0].id;
+      await pool.query("UPDATE messages SET status='read' WHERE id=$1",[loaded]);
+
+      const refresh=await app.inject({
+        url:`/conversations/${conversation}/messages/v2?after=${encodeURIComponent(cursorAfterContact)}&since=${encodeURIComponent(sync)}`,
+        headers:{cookie:cookieA}
+      });
+      expect(refresh.statusCode).toBe(200);
+      const changes=(refresh.json() as {changes:Array<{id:string;status:string}>}).changes;
+      expect(changes.map((message)=>message.id)).toEqual(expect.arrayContaining([backdated,loaded]));
+      expect(changes.find((message)=>message.id===loaded)?.status).toBe("read");
+    }finally{
+      await pool.query("DELETE FROM tenant_feature_flag_overrides WHERE tenant_id=$1 AND flag_key='conversations_delta_v2'",[tenantA]);
+    }
+  });
   it("returns sanitized Meta attribution with the selected conversation",async()=>{
     const response=await app.inject({url:`/conversations/${conversationA}/messages`,headers:{cookie:cookieA}});
     expect(response.statusCode).toBe(200);

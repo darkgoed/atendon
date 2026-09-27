@@ -102,12 +102,13 @@ export function mergeConversationMessages<T extends CursorMessage>(
 
 export function conversationMessagesV2Path(
   conversationId: string,
-  query: { limit?: number; before?: string; after?: string } = {}
+  query: { limit?: number; before?: string; after?: string; since?: string } = {}
 ): string {
   const params = new URLSearchParams();
   if (query.limit !== undefined) params.set("limit", String(query.limit));
   if (query.before) params.set("before", query.before);
   if (query.after) params.set("after", query.after);
+  if (query.since) params.set("since", query.since);
   const suffix = params.toString();
   return `/conversations/${encodeURIComponent(conversationId)}/messages/v2${suffix ? `?${suffix}` : ""}`;
 }

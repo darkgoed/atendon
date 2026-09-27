@@ -218,7 +218,9 @@ const conversationAssetsQuerySchema = z.object({
 const conversationMessagesV2QuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   before: messageCursorSchema.optional(),
-  after: messageCursorSchema.optional()
+  after: messageCursorSchema.optional(),
+  // Token `sync` da resposta anterior: devolve em `changes` o que mudou desde então.
+  since: z.string().datetime({ offset: true }).optional()
 }).refine((value) => !(value.before && value.after), {
   message: "Use somente before ou after"
 });
@@ -2077,10 +2079,32 @@ export function buildApp(options: {
     const hasMore = result.rows.length > query.limit;
     const selectedRows = result.rows.slice(0, query.limit);
     const messages = ascending ? selectedRows : selectedRows.reverse();
+    // Linhas inseridas/alteradas desde `since` — inclusive com created_at ANTES
+    // do cursor (bolha da IA gravada após o envio) e ticks/edições/reações de
+    // linhas já carregadas. O token volta com margem: transação longa que
+    // commita depois ainda aparece; o painel mescla por id (idempotente).
+    const changes = query.since
+      ? (await db.query(
+          `SELECT m.id, m.sender, m.content, m.media_type, m.media_mime_type, m.media_file_name, m.media_size_bytes, m.media_is_sticker,
+                  m.ai_model_used, m.status, m.created_at, COALESCE(su.name, su.email) sender_name,
+                  m.reaction_emoji, m.edited_at, m.deleted_at, m.deleted_for_everyone_at,
+                  reply.id reply_to_message_id, reply.content reply_to_content, reply.sender reply_to_sender
+           FROM messages m LEFT JOIN users su ON su.id=m.sent_by_user_id
+                  LEFT JOIN messages reply
+                    ON reply.id=m.reply_to_message_id AND reply.conversation_id=m.conversation_id
+           WHERE m.conversation_id=$1 AND m.updated_at > $2::timestamptz
+           ORDER BY m.updated_at, m.id
+           LIMIT 200`,
+          [id, query.since]
+        )).rows
+      : undefined;
+    const sync = (await db.query<{ sync: Date }>("SELECT statement_timestamp() - interval '60 seconds' AS sync")).rows[0].sync.toISOString();
     const aiTurn = await aiTurnProgressStore.get(session.tenantId, id);
     return {
       conversation: conversation.rows[0],
       messages,
+      ...(changes ? { changes } : {}),
+      sync,
       ai_turn: aiTurn,
       cursors: {
         before: messages[0] ? encodeMessageCursor(messages[0]) : null,

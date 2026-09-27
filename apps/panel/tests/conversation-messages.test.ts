@@ -45,6 +45,23 @@ describe("conversation message deltas", () => {
       .toBe("/conversations/conversation/messages/v2?before=opaque%2B%2F%3D");
     expect(conversationMessagesV2Path("conversation", { after: "cursor_after" }))
       .toBe("/conversations/conversation/messages/v2?after=cursor_after");
+    expect(conversationMessagesV2Path("conversation", { after: "c", since: "2030-01-01T12:00:00.000Z" }))
+      .toBe("/conversations/conversation/messages/v2?after=c&since=2030-01-01T12%3A00%3A00.000Z");
+  });
+
+  it("merging delta `changes` refreshes loaded rows and places backdated bubbles in order (MSG C10)", () => {
+    type StatusMessage = TestMessage & { status: string };
+    const loaded: StatusMessage[] = [
+      { id: "a", created_at: "2030-01-01T12:00:00.000Z", content: "já na tela", status: "sent" },
+      { id: "c", created_at: "2030-01-01T12:02:00.000Z", content: "oi", status: "received" }
+    ];
+    const changes: StatusMessage[] = [
+      { id: "a", created_at: "2030-01-01T12:00:00.000Z", content: "já na tela", status: "read" },
+      { id: "b", created_at: "2030-01-01T12:01:00.000Z", content: "bolha atrasada", status: "sent" }
+    ];
+    const merged = mergeConversationMessages(loaded, changes);
+    expect(merged.map((message) => message.id)).toEqual(["a", "b", "c"]);
+    expect(merged[0].status).toBe("read");
   });
 
   it("switches between legacy and delta paths while preserving a deduplicated thread", () => {
