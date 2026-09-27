@@ -119,7 +119,8 @@ export function TripzConversationView({
   onOpenHistory: (event: React.MouseEvent<HTMLElement>) => void;
   onOpenReview: () => void;
   onOpenEditor: () => void;
-  onOpenBrand: () => void;
+  /** Ausente para quem não gerencia a Tripz IA (a marca vale para o tenant inteiro). */
+  onOpenBrand?: () => void;
   onRetry: () => void;
   onRetryTurn: (messageId: string) => Promise<void>;
   onSent: () => void | Promise<void>;
@@ -154,9 +155,11 @@ export function TripzConversationView({
             <SidebarSimple size={15} aria-hidden="true" />
             <span className="hidden sm:inline">Editor</span>
           </button>
-          <button type="button" className="btn shrink-0" onClick={onOpenBrand} aria-label="Identidade da proposta">
-            <span className="hidden sm:inline">Identidade</span>
-          </button>
+          {onOpenBrand ? (
+            <button type="button" className="btn shrink-0" onClick={onOpenBrand} aria-label="Identidade da proposta">
+              <span className="hidden sm:inline">Identidade</span>
+            </button>
+          ) : null}
           <button type="button" className="btn shrink-0" onClick={onOpenReview} aria-label="Abrir resumo e revisão da proposta">
             <SidebarSimple size={15} aria-hidden="true" />
             <span className="hidden sm:inline">Revisar proposta</span>

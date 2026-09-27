@@ -26,6 +26,7 @@ import { TripzBrandSettings } from "./brand-settings";
 import { TripzProposalEditor } from "./proposal-editor";
 import styles from "./tripz-ai.module.css";
 import { TripzProposalReview } from "./proposal-review";
+import { usePermission } from "@/lib/use-permission";
 
 function readableError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -69,6 +70,7 @@ export function TripzWorkspace() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [brandOpen, setBrandOpen] = useState(false);
+  const canManageBrand = usePermission("tripz_ai.manage");
   const [preview, setPreview] = useState<TripzDocument>();
   const [pdf, setPdf] = useState<TripzDocument>();
   const [generatingPreview, setGeneratingPreview] = useState(false);
@@ -340,7 +342,7 @@ export function TripzWorkspace() {
           onOpenHistory={openHistory}
           onOpenReview={() => setReviewOpen(true)}
           onOpenEditor={() => setEditorOpen(true)}
-          onOpenBrand={() => setBrandOpen(true)}
+          onOpenBrand={canManageBrand ? () => setBrandOpen(true) : undefined}
           onRetry={() => void refreshConversation()}
           onRetryTurn={retryTurn}
           onSent={refreshConversation}

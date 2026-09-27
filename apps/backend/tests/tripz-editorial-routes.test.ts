@@ -186,6 +186,19 @@ describe("brand settings", () => {
     expect(JSON.parse(response.body).error).toBe("TRIPZ_IDENTITY_LEAK");
     expect(repository.database.saved).toBeNull();
   });
+
+  it("PUT exige tripz_ai.manage: a marca vale para todo PDF do tenant (seg. C6)", async () => {
+    const repository = new FakeRepository();
+    const app = await buildApp(repository);
+    (scope as { canManage: boolean }).canManage = false;
+    try {
+      const response = await app.inject({ method: "PUT", url: "/tripz-ai/brand-settings", payload: { config: NEUTRAL_PROPOSAL_BRAND } });
+      expect(response.statusCode).toBe(403);
+      expect(repository.database.saved).toBeNull();
+    } finally {
+      (scope as { canManage: boolean }).canManage = true;
+    }
+  });
 });
 
 describe("validate + finalize + versions", () => {

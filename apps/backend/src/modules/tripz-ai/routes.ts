@@ -395,6 +395,8 @@ export async function registerTripzAiRoutes(app: FastifyInstance, dependencies: 
     config: { rateLimit: HTTP_RATE_LIMITS.tripzWrite }
   }, async (request) => {
     const scope = await access(request);
+    // A marca vale para o tenant inteiro (todo PDF enviado a clientes): só quem gerencia a Tripz IA.
+    if (!scope.canManage) throw new TripzAiError(403, "TRIPZ_PERMISSION_DENIED", "Somente quem gerencia a Tripz IA pode alterar a marca");
     tripzBrandSettingsPutSchema.parse(request.body);
     const config = await upsertTripzBrandSettings(tripzBrandDatabase(repository), scope.tenantId, (request.body as { config?: unknown }).config);
     request.log.info({ component: "TripzAI", action: "brand_settings_saved", tenantId: scope.tenantId }, "[TripzAI] brand settings saved");
