@@ -224,6 +224,16 @@ function flightChips(flights: FlightSegment[]): FlightsChips {
 
 /* ----------------------------------------------------------------- fontes */
 
+function safeHttpUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -239,7 +249,10 @@ function creditsHtml(sources: SourceReference[]): string | undefined {
     groups.set(credit, entry);
   }
   const parts = [...groups.values()].map((entry) => {
-    const credit = entry.url ? `<a href="${entry.url}">${escapeHtml(entry.credit)}</a>` : escapeHtml(entry.credit);
+    // URL vem do estado da proposta (preenchido pela IA a partir de PDFs e do
+    // usuário): escapada e só http(s) — sem isso virava HTML injetado no PDF.
+    const href = safeHttpUrl(entry.url);
+    const credit = href ? `<a href="${escapeHtml(href)}">${escapeHtml(entry.credit)}</a>` : escapeHtml(entry.credit);
     const label = entry.labels.filter(Boolean).join(", ");
     return label && label !== entry.credit ? `${credit} — ${escapeHtml(label)}` : credit;
   });

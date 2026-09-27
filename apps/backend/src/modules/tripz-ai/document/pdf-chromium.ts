@@ -34,6 +34,11 @@ export async function exportDocumentPdf(input: { spec: ProposalSpec; html: strin
   try {
     const context = await (browser as unknown as { newContext: (opts: unknown) => Promise<unknown> })
       .newContext({ viewport: { width: 900, height: 1300 } });
+    // Defesa em profundidade contra SSRF pelo HTML da proposta: no modo PDF
+    // fontes e imagens já vão inline (data:), então nenhuma requisição de rede
+    // é legítima — um <iframe>/<img> injetado não alcança a rede interna.
+    await (context as unknown as { route: (pattern: string, handler: (route: { request(): { url(): string }; continue(): Promise<void>; abort(): Promise<void> }) => Promise<void>) => Promise<void> })
+      .route("**/*", (route) => /^(data|about|blob):/.test(route.request().url()) ? route.continue() : route.abort());
     const page = await (context as unknown as { newPage: () => Promise<unknown> }).newPage();
     const typed = page as unknown as {
       setContent: (html: string, opts: unknown) => Promise<void>;

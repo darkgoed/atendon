@@ -247,3 +247,21 @@ describe("contrato", () => {
     `);
   });
 });
+
+describe("fontes com URL hostil (segurança C2)", () => {
+  it("escapa a URL e descarta esquemas não-http: nada de HTML injetado no PDF", () => {
+    const assets = placeholderAssets(ITALIA_SPEC.imageAssignments.map((assignment) => assignment.mediaId));
+    const spec: ProposalSpec = {
+      ...ITALIA_SPEC,
+      sources: [
+        { label: "Roma", credit: "Crédito A", url: 'https://x.test/"><iframe src="http://169.254.169.254/latest/meta-data/"></iframe><a href="' },
+        { label: "Nápoles", credit: "Crédito B", url: "javascript:alert(1)" }
+      ]
+    };
+    const html = renderProposalHtml({ spec, brand: TRIPZ_PROPOSAL_BRAND, assets });
+    expect(html).not.toContain("<iframe");
+    expect(html).not.toContain("javascript:");
+    expect(html).toContain("Crédito B");
+  });
+});
+
