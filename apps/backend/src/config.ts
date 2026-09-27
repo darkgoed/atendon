@@ -106,6 +106,23 @@ export function parseOpenRouterProviderOrder(value: unknown): string[] | undefin
   return providerOrderSchema.parse(trimmed.split(",").map((provider) => provider.trim()));
 }
 
+const TRUSTED_PROXY_KEYWORDS = new Set(["loopback", "linklocal", "uniquelocal"]);
+const IP_OR_CIDR = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9a-f:]+)(?:\/\d{1,3})?$/i;
+
+/**
+ * Saltos confiáveis para X-Forwarded-For (proxy do painel, Traefik/Nginx).
+ * Padrão: loopback + redes privadas. Numa rede Docker compartilhada (Coolify),
+ * outro container privado também seria "confiável" e escolheria o próprio IP
+ * nos limites por IP: restrinja aos IPs/CIDRs reais da borda.
+ */
+export function parseTrustedProxies(value: unknown): string[] {
+  const raw = typeof value === "string" && value.trim() ? value : "loopback,uniquelocal";
+  const entries = raw.split(",").map((entry) => entry.trim()).filter(Boolean);
+  const invalid = entries.filter((entry) => !TRUSTED_PROXY_KEYWORDS.has(entry) && !IP_OR_CIDR.test(entry));
+  if (!entries.length || invalid.length) throw new Error(`TRUSTED_PROXIES inválido: ${invalid.join(", ") || "(vazio)"}`);
+  return entries;
+}
+
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_VERSION: z.preprocess(
@@ -120,6 +137,7 @@ const schema = z.object({
   ),
   CONTAINER_RUNTIME: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   PORT: z.coerce.number().int().positive().default(3110),
+  TRUSTED_PROXIES: z.unknown().transform((value) => parseTrustedProxies(value)),
   HOST: z.string().ip().default("127.0.0.1"),
   DATABASE_URL: z.string().min(1),
   DATABASE_RUNTIME_ROLE: postgresRoleSchema.default("atendon_app"),

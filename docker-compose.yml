@@ -11,6 +11,9 @@ x-atendon-runtime-environment: &atendon-runtime-environment
   CONTAINER_RUNTIME: "true"
   HOST: 0.0.0.0
   PORT: "3110"
+  # Saltos confiáveis para X-Forwarded-For (padrão loopback,uniquelocal).
+  # Em rede Docker compartilhada, restrinja aos IPs/CIDRs da borda (Traefik/painel).
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
   DATABASE_RUNTIME_ROLE: ${ATENDON_RUNTIME_DB_USER:-atendon_app}
   DATABASE_URL: postgresql://${ATENDON_RUNTIME_DB_USER:-atendon_app}:${ATENDON_RUNTIME_DB_PASSWORD:?Configure ATENDON_RUNTIME_DB_PASSWORD URL-encoded}@postgres:5432/${POSTGRES_DB:-atendon}
   REDIS_URL: redis://redis:6379

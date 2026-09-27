@@ -399,7 +399,9 @@ export function buildApp(options: {
   // is still ignored.
   const app = Fastify({
     loggerInstance: logger,
-    trustProxy: ["loopback", "uniquelocal"],
+    // TRUSTED_PROXIES (padrão loopback,uniquelocal): restrinja aos IPs da borda
+    // quando o painel/API compartilham rede com outros containers.
+    trustProxy: config.TRUSTED_PROXIES,
     connectionTimeout: 15_000,
     requestTimeout: 75_000,
     keepAliveTimeout: 72_000,
