@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  changesWithinLoadedWindow,
   clearedConversationDeltaPagination,
   conversationFallbackPollingDelay,
   conversationLabelForSession,
@@ -187,5 +188,21 @@ describe("conversation message deltas", () => {
     expect(filterConversationsByConnection(conversations, "")).toEqual(conversations);
     expect(filterConversationsByConnection(conversations, "support")).toEqual([conversations[1]]);
     expect(conversationLabelForSession(conversations[1], connections)).toBe("Suporte");
+  });
+});
+
+describe("changesWithinLoadedWindow (Ponytail #4)", () => {
+  const message = (id: string, created_at: string) => ({ id, created_at });
+  it("descarta mudança de mensagem antiga fora da janela carregada e mantém o resto", () => {
+    const current = [message("b", "2026-09-10T10:00:00Z"), message("c", "2026-09-10T11:00:00Z")];
+    const changes = [
+      message("velha", "2026-01-01T00:00:00Z"),
+      message("b", "2026-09-10T10:00:00Z"),
+      message("atrasada", "2026-09-10T10:30:00Z")
+    ];
+    expect(changesWithinLoadedWindow(current, changes).map((item) => item.id)).toEqual(["b", "atrasada"]);
+  });
+  it("sem nada carregado aceita tudo", () => {
+    expect(changesWithinLoadedWindow([], [message("x", "2026-01-01T00:00:00Z")])).toHaveLength(1);
   });
 });

@@ -43,6 +43,7 @@ import {
   conversationMessageDateSeparator,
   conversationMessagesPath,
   conversationMessagesV2Path,
+  changesWithinLoadedWindow,
   mergeConversationMessages,
   scrollTopAfterPrepend,
   shouldShowConversationConnectionFilter
@@ -843,7 +844,7 @@ export default function Conversations() {
           || response.conversation.id !== conversationId
         ) return;
         setThreadConversation(response.conversation);
-        setMessages((current) => mergeConversationMessages(current, [...(response.changes ?? []), ...response.messages]));
+        setMessages((current) => mergeConversationMessages(current, [...changesWithinLoadedWindow(current, response.changes ?? []), ...response.messages]));
         if (response.sync) syncRef.current = response.sync;
         const recoveredAiTurn = parseAiTurnProgress(response.ai_turn);
         if (recoveredAiTurn) {

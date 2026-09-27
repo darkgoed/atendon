@@ -215,6 +215,7 @@ const conversationAssetsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   before: messageCursorSchema.optional()
 }).strict();
+const DELTA_CHANGES_LIMIT = 200;
 const conversationMessagesV2QuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   before: messageCursorSchema.optional(),
@@ -2095,22 +2096,27 @@ export function buildApp(options: {
           `SELECT m.id, m.sender, m.content, m.media_type, m.media_mime_type, m.media_file_name, m.media_size_bytes, m.media_is_sticker,
                   m.ai_model_used, m.status, m.created_at, COALESCE(su.name, su.email) sender_name,
                   m.reaction_emoji, m.edited_at, m.deleted_at, m.deleted_for_everyone_at,
-                  reply.id reply_to_message_id, reply.content reply_to_content, reply.sender reply_to_sender
+                  reply.id reply_to_message_id, reply.content reply_to_content, reply.sender reply_to_sender,
+                  to_char(m.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') change_token
            FROM messages m LEFT JOIN users su ON su.id=m.sent_by_user_id
                   LEFT JOIN messages reply
                     ON reply.id=m.reply_to_message_id AND reply.conversation_id=m.conversation_id
            WHERE m.conversation_id=$1 AND m.updated_at > $2::timestamptz
            ORDER BY m.updated_at, m.id
-           LIMIT 200`,
+           LIMIT ${DELTA_CHANGES_LIMIT}`,
           [id, query.since]
-        )).rows
+        )).rows.map(({ change_token: changeToken, ...message }) => ({ message, changeToken: changeToken as string }))
       : undefined;
-    const sync = (await db.query<{ sync: Date }>("SELECT statement_timestamp() - interval '60 seconds' AS sync")).rows[0].sync.toISOString();
+    // Lote cheio: o próximo `since` é o updated_at (µs) da última linha
+    // devolvida, senão o que passou do limite se perderia (Ponytail #4c).
+    const sync = changes && changes.length >= DELTA_CHANGES_LIMIT
+      ? changes.at(-1)!.changeToken
+      : (await db.query<{ sync: Date }>("SELECT statement_timestamp() - interval '60 seconds' AS sync")).rows[0].sync.toISOString();
     const aiTurn = await aiTurnProgressStore.get(session.tenantId, id);
     return {
       conversation: conversation.rows[0],
       messages,
-      ...(changes ? { changes } : {}),
+      ...(changes ? { changes: changes.map((change) => change.message) } : {}),
       sync,
       ai_turn: aiTurn,
       cursors: {

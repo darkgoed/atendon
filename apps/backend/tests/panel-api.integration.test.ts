@@ -715,6 +715,37 @@ describe("panel API tenant isolation",()=>{
       await pool.query("DELETE FROM tenant_feature_flag_overrides WHERE tenant_id=$1 AND flag_key='conversations_delta_v2'",[tenantA]);
     }
   });
+  it("delta with more than 200 changes delivers the rest on the next poll (Ponytail #4c)",async()=>{
+    await pool.query(
+      `INSERT INTO tenant_feature_flag_overrides(tenant_id,flag_key,enabled) VALUES($1,'conversations_delta_v2',true)
+       ON CONFLICT(tenant_id,flag_key) DO UPDATE SET enabled=true,updated_at=now()`,[tenantA]
+    );
+    try{
+      const session=await pool.query<{session_id:string}>("SELECT session_id FROM conversations WHERE id=$1",[conversationA]);
+      const conversation=(await pool.query<{id:string}>(
+        "INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name) VALUES($1,$2,$3,'Lote') RETURNING id",
+        [tenantA,session.rows[0].session_id,nextPhone()]
+      )).rows[0].id;
+      const initial=await app.inject({url:`/conversations/${conversation}/messages/v2`,headers:{cookie:cookieA}});
+      const {sync}=initial.json() as {sync:string};
+      const inserted=(await pool.query<{id:string}>(
+        "INSERT INTO messages(conversation_id,sender,content,created_at) SELECT $1,'contact','m'||n,now()-interval '1 hour'+n*interval '1 second' FROM generate_series(1,250) n RETURNING id",[conversation]
+      )).rows.map((row)=>row.id);
+      await pool.query("UPDATE messages SET status='read' WHERE conversation_id=$1",[conversation]);
+      const seen=new Set<string>();
+      let since=sync;
+      for(let poll=0;poll<2;poll+=1){
+        const response=await app.inject({url:`/conversations/${conversation}/messages/v2?since=${encodeURIComponent(since)}`,headers:{cookie:cookieA}});
+        expect(response.statusCode).toBe(200);
+        const body=response.json() as {changes:Array<{id:string}>;sync:string};
+        for(const change of body.changes) seen.add(change.id);
+        since=body.sync;
+      }
+      expect(inserted.every((id)=>seen.has(id))).toBe(true);
+    }finally{
+      await pool.query("DELETE FROM tenant_feature_flag_overrides WHERE tenant_id=$1 AND flag_key='conversations_delta_v2'",[tenantA]);
+    }
+  });
   it("conversation search runs on the server over every conversation and also matches tag names (PAINEL C2)",async()=>{
     const session=await pool.query<{session_id:string}>("SELECT session_id FROM conversations WHERE id=$1",[conversationA]);
     const marker=`Zé${randomUUID().slice(0,6)}`;

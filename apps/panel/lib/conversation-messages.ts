@@ -135,3 +135,25 @@ export function conversationFallbackPollingDelay(input: {
   const baseMs = input.deltaEnabled ? 5_000 : 15_000;
   return Math.min(15_000, baseMs * (2 ** Math.min(10, Math.max(0, input.failures))));
 }
+
+/**
+ * `changes` do delta v2 traz qualquer linha alterada desde o `since`, inclusive
+ * mensagens antigas ainda não carregadas (reação/tick/leitura em linha velha,
+ * backfill da 0248). Só entra o que já está na tela ou é mais novo que a
+ * mensagem mais antiga carregada; o resto chega ao rolar para cima (Ponytail #4).
+ */
+export function changesWithinLoadedWindow<T extends CursorMessage>(
+  current: readonly T[],
+  changes: readonly T[]
+): T[] {
+  if (current.length === 0) return [...changes];
+  const loaded = new Set(current.map((message) => message.id));
+  const oldest = current.reduce((min, message) => compareMessages(message, min) < 0 ? message : min);
+  return changes.filter((change) => loaded.has(change.id) || compareMessages(change, oldest) >= 0);
+}
+
+function compareMessages(left: CursorMessage, right: CursorMessage) {
+  const byTime = new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
+  return byTime || left.id.localeCompare(right.id);
+}
+
