@@ -210,9 +210,16 @@ test("a agenda escala em telas pequenas sem corte, overflow inalcançável ou so
       await page.waitForTimeout(350);
 
       const headerButtonDefects = await page.locator(".agenda-head__actions button").evaluateAll((buttons) => buttons.flatMap((button) => {
-        const range = document.createRange();
-        range.selectNodeContents(button);
-        const text = range.getBoundingClientRect();
+        // Só o texto VISÍVEL: rótulo sr-only de botão só-ícone não é texto vazando.
+        const walker = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+        let text = new DOMRect(button.getBoundingClientRect().x + 1, button.getBoundingClientRect().y + 1, 0, 0);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          if (!node.textContent?.trim() || node.parentElement?.closest(".sr-only")) continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const r = range.getBoundingClientRect();
+          text = text.width === 0 ? r : new DOMRect(Math.min(text.left, r.left), Math.min(text.top, r.top), Math.max(text.right, r.right) - Math.min(text.left, r.left), Math.max(text.bottom, r.bottom) - Math.min(text.top, r.top));
+        }
         const box = button.getBoundingClientRect();
         const actions = button.closest(".agenda-head__actions")?.getBoundingClientRect();
         const outsideButton = text.left < box.left - 1 || text.right > box.right + 1 || text.top < box.top - 1 || text.bottom > box.bottom + 1;
@@ -226,13 +233,23 @@ test("a agenda escala em telas pequenas sem corte, overflow inalcançável ou so
       const appointment = page.locator(".agenda-appointment__contact").first();
       if (mode !== "Mês") {
         expect(await appointment.count(), `${viewport.name} · ${mode} precisa de ao menos um agendamento da fixture`).toBeGreaterThan(0);
+        // A rolagem automática do Playwright ignora scroll-margin e pode parar o
+        // item sob o cabeçalho sticky de dias; um usuário centraliza ao rolar.
+        await appointment.evaluate((element) => element.scrollIntoView({ block: "center", inline: "center" }));
         await appointment.click();
         const detailActions = page.locator(".agenda-detail-actions");
         await expect(detailActions).toBeVisible();
         const buttonTextDefects = await detailActions.locator(".btn").evaluateAll((buttons) => buttons.flatMap((button) => {
-          const range = document.createRange();
-          range.selectNodeContents(button);
-          const text = range.getBoundingClientRect();
+          // Só o texto VISÍVEL: rótulo sr-only de botão só-ícone não é texto vazando.
+          const walker = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+          let text = new DOMRect(button.getBoundingClientRect().x + 1, button.getBoundingClientRect().y + 1, 0, 0);
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            if (!node.textContent?.trim() || node.parentElement?.closest(".sr-only")) continue;
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const r = range.getBoundingClientRect();
+            text = text.width === 0 ? r : new DOMRect(Math.min(text.left, r.left), Math.min(text.top, r.top), Math.max(text.right, r.right) - Math.min(text.left, r.left), Math.max(text.bottom, r.bottom) - Math.min(text.top, r.top));
+          }
           const box = button.getBoundingClientRect();
           const dialog = button.closest(".agenda-detail-dialog")?.getBoundingClientRect();
           const outsideButton = text.left < box.left - 1 || text.right > box.right + 1 || text.top < box.top - 1 || text.bottom > box.bottom + 1;

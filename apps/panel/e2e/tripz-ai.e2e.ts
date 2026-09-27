@@ -166,11 +166,12 @@ async function installTripzFixture(page: Page, unknownRoutes: string[]) {
     if (path.endsWith("/messages/tripz-e2e-user-message/retry") && method === "POST") {
       state.retryCount += 1;
       state.processingStatus = "queued";
-      state.conversationStatus = "ready_for_review";
+      // O backend só aceita PDF após o resumo confirmado na conversa (ready_for_pdf).
+      state.conversationStatus = "ready_for_pdf";
       state.proposalRevision = 2;
       state.messages = [
         { id: "tripz-e2e-user-message", role: "user", content: "Seguem os voos e o hotel.", createdAt: "2026-08-17T09:01:00.000Z", processingStatus: "completed", metadata: {}, attachments: state.attachment ? [{ ...state.attachment, processingStatus: "processed" }] : [] },
-        { id: "tripz-e2e-assistant-message", role: "assistant", content: "Encontrei os voos e a hospedagem. O resumo está pronto para revisão.", createdAt: "2026-08-17T09:03:00.000Z", processingStatus: "completed", metadata: {}, attachments: [] }
+        { id: "tripz-e2e-assistant-message", role: "assistant", content: "Encontrei os voos e a hospedagem. Resumo confirmado: já pode gerar a prévia e o PDF.", createdAt: "2026-08-17T09:03:00.000Z", processingStatus: "completed", metadata: {}, attachments: [] }
       ];
       return json(route, { message: state.messages[0] }, 202);
     }

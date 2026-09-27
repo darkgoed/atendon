@@ -494,6 +494,14 @@
   background: var(--surface);
 }
 
+/* Foco/scrollIntoView não pode deixar o item sob o cabeçalho de dias (sticky) nem
+   sob a coluna de horas (sticky na rolagem horizontal) — WCAG 2.4.11. */
+.agenda-cell,
+.agenda-appointment__contact {
+  scroll-margin-top: calc(var(--row-height-lg) + var(--space-1));
+  scroll-margin-left: var(--agenda-time-col, 0px);
+}
+
 .agenda-corner {
   left: 0;
   z-index: 2;
@@ -1256,9 +1264,19 @@
 }
 
 @media (max-width: 700px) {
+  /* No celular o cabeçalho (filtros em 2 colunas) e avisos (ex.: reuniões com
+     resultado pendente) consumiam quase toda a altura e a grade sobrava com
+     ~36px, menos que o próprio cabeçalho de dias. A página rola e a grade tem
+     altura útil garantida. */
   .shell--fit .content:has(> .agenda-head) {
     height: 100%;
     padding: 0;
+    overflow-y: auto;
+  }
+
+  .shell--fit .content:has(> .agenda-head) .agenda-scroll {
+    flex: 0 0 auto;
+    height: max(320px, 70dvh);
   }
 
   .agenda-head.pagehead {
