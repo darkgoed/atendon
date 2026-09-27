@@ -19,6 +19,8 @@ COPY apps/proposal-renderer/scripts apps/proposal-renderer/scripts
 COPY apps/proposal-renderer/src apps/proposal-renderer/src
 # copy-assets.mjs exige assets/fonts (fontes OFL) no stage de build.
 COPY apps/proposal-renderer/assets apps/proposal-renderer/assets
+COPY apps/backend/tsconfig.json apps/backend/tsconfig.build.json apps/backend/
+COPY apps/backend/src apps/backend/src
 RUN npm run build -w @atendon/proposal-renderer \
     && npm run build -w @atendon/backend \
     && npm prune --omit=dev --workspace @atendon/backend --include-workspace-root
