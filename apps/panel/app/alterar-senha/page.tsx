@@ -47,7 +47,6 @@ export default function RequiredPasswordChangePage() {
           <span>AtendON</span>
         </div>
         <header className="invitation-header">
-          <span className="eyebrow">SEGURANÇA DA CONTA</span>
           <h1 id="required-password-title">Crie uma nova senha</h1>
           <p>A senha recebida era temporária. Defina uma senha pessoal para liberar o acesso ao painel.</p>
         </header>

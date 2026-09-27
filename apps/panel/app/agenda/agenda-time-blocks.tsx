@@ -75,7 +75,6 @@ export function AgendaTimeBlockDialog({ open, anchor, timezone, initialRange = n
     >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <span className="eyebrow">INDISPONIBILIDADE PESSOAL</span>
           <h2 id="agenda-time-block-title" className="mt-2 text-lg font-semibold">Bloquear horário</h2>
           <p id="agenda-time-block-description" className="mt-1 text-xs text-[var(--text-secondary)]">A IA e o agendamento automático tratarão o período como ocupado somente para você.</p>
         </div>

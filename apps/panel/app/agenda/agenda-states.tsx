@@ -3,7 +3,7 @@ import { Button } from "@/components/ui";
 
 export function AgendaLoading({ label }: { label: string }) {
   return (
-    <div className="grid gap-3 py-6" aria-busy="true" aria-label={label} role="status">
+    <div className="grid gap-3 py-4" aria-busy="true" aria-label={label} role="status">
       <span className="sr-only">{label}</span>
       <div className="skeleton h-14" aria-hidden="true" />
       <div className="skeleton h-24" aria-hidden="true" />

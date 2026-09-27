@@ -232,6 +232,53 @@ describe("tarefas — tenancy e lead", () => {
     expect(linked.statusCode).toBe(201);
     expect(linked.json().task.lead.id).toBe(leadA);
   });
+
+  it("operador em escopo mine só vincula lead da própria carteira (não lê nome/telefone alheio)", async () => {
+    const lead = (await pool.query<{ id: string }>(
+      "INSERT INTO scheduling_leads(tenant_id,phone,name,unit_id,status,source) VALUES($1,$2,'Lead Alheio','calls','qualificado','tasks-test') RETURNING id",
+      [tenantA, `5511${Math.floor(Math.random() * 90_000_000 + 10_000_000)}`]
+    )).rows[0].id;
+    const foreign = await app.inject({
+      method: "POST", url: "/tasks", headers: { cookie: await loginAs(operatorA) },
+      payload: { title: "Espiar lead", assignee_id: operatorA, lead_id: lead }
+    });
+    expect(foreign.statusCode).toBe(404);
+    expect(foreign.body).not.toContain("Lead Alheio");
+
+    await pool.query(
+      "UPDATE scheduling_leads SET assigned_member_id=(SELECT id FROM workspace_members WHERE workspace_id=$1 AND user_id=$2) WHERE id=$3",
+      [tenantA, operatorA, lead]
+    );
+    const own = await app.inject({
+      method: "POST", url: "/tasks", headers: { cookie: await loginAs(operatorA) },
+      payload: { title: "Meu lead", assignee_id: operatorA, lead_id: lead }
+    });
+    expect(own.statusCode).toBe(201);
+    expect(own.json().task.lead.id).toBe(lead);
+  });
+
+  it("operador em escopo mine não lê nome/telefone de lead alheio pela lista nem pelo PATCH vazio", async () => {
+    const phone = `5511${Math.floor(Math.random() * 90_000_000 + 10_000_000)}`;
+    const lead = (await pool.query<{ id: string }>(
+      "INSERT INTO scheduling_leads(tenant_id,phone,name,unit_id,status,source) VALUES($1,$2,'Lead Da Gestao','calls','qualificado','tasks-test') RETURNING id",
+      [tenantA, phone]
+    )).rows[0].id;
+    const created = await app.inject({
+      method: "POST", url: "/tasks", headers: { cookie: await loginAs(ownerA) },
+      payload: { title: "Tarefa da gestão com lead", assignee_id: operatorA, lead_id: lead }
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().task.lead).toMatchObject({ id: lead, name: "Lead Da Gestao" });
+    const taskId = created.json().task.id;
+
+    const list = await app.inject({ url: "/tasks?scope=mine", headers: { cookie: await loginAs(operatorA) } });
+    expect(list.statusCode).toBe(200);
+    expect(list.body).not.toContain("Lead Da Gestao");
+    expect(list.body).not.toContain(phone);
+    const patched = await app.inject({ method: "PATCH", url: `/tasks/${taskId}`, headers: { cookie: await loginAs(operatorA) }, payload: {} });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().task.lead).toMatchObject({ id: lead, name: null, phone: null });
+  });
 });
 
 describe("tarefas — keyset", () => {

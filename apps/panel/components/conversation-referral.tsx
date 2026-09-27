@@ -62,7 +62,7 @@ export function ConversationReferral({ attribution }: { attribution: Attribution
                 <PlatformIcon size={19} weight="duotone" aria-hidden="true" />
               </span>
               <div className="min-w-0">
-                <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--primary-text)]">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--primary-text)]">
                   <Megaphone size={13} weight="bold" aria-hidden="true" />
                   {sourceType === "ad" ? `Anúncio do ${platform}` : `Origem ${platform}`}
                 </span>
@@ -106,10 +106,10 @@ export function ConversationReferral({ attribution }: { attribution: Attribution
           </div>
 
           {fields.length > 0 ? (
-            <dl className="mt-4 grid gap-x-6 gap-y-3 border-t border-[var(--border)] pt-4 sm:grid-cols-2">
+            <dl className="mt-4 grid gap-x-4 gap-y-3 border-t border-[var(--border)] pt-4 sm:grid-cols-2">
               {fields.map(([label, answer]) => (
                 <div key={label} className="min-w-0">
-                  <dt className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">{label}</dt>
+                  <dt className="text-xs font-medium text-[var(--text-muted)]">{label}</dt>
                   <dd className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-[var(--text)]">{answer}</dd>
                 </div>
               ))}

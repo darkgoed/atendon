@@ -135,4 +135,18 @@ describe("AI consumption against real Postgres", () => {
     // A reserva tem de ser liberada POR INTEIRO. Com o bug, sobraria (estimativa - real).
     expect(Number(await scalar("SELECT reserved_cents AS value FROM usage_periods WHERE id=$1", [u.id]))).toBe(0);
   });
+
+  it("assinatura suspensa/cancelada/expirada não recebe IA (nem reserva); inadimplência em carência segue atendida", async () => {
+    for (const status of ["SUSPENDED", "CANCELED", "EXPIRED"]) {
+      const t = await tenant(`inactive-${status.toLowerCase()}`), p = await plan(null); await subscribe(t, p); await period(t);
+      await pool.query("UPDATE tenant_subscriptions SET status=$2 WHERE tenant_id=$1", [t, status]);
+      expect(await consumeAiInteraction(t, "inbound_reply", randomUUID())).toEqual({ allowed: false, reason: "SUBSCRIPTION_INACTIVE" });
+      expect(await scalar<number>("SELECT count(*)::int AS value FROM ai_usage_ledger WHERE tenant_id=$1", [t])).toBe(0);
+    }
+    for (const status of ["PAST_DUE", "GRACE_PERIOD", "TRIALING"]) {
+      const t = await tenant(`chargeable-${status.toLowerCase()}`), p = await plan(null); await subscribe(t, p); await period(t);
+      await pool.query("UPDATE tenant_subscriptions SET status=$2 WHERE tenant_id=$1", [t, status]);
+      expect(await consumeAiInteraction(t, "inbound_reply", randomUUID())).toMatchObject({ allowed: true });
+    }
+  });
 });

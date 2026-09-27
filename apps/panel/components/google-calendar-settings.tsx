@@ -218,7 +218,7 @@ export function GoogleCalendarSettings({ canManage }: { canManage: boolean }) {
 
   if (isLoading) {
     return (
-      <div className="max-w-3xl border-t border-[var(--border)] pt-6" aria-busy="true" aria-label="Carregando configuração do Google Agenda">
+      <div className="max-w-3xl border-t border-[var(--border)] pt-4" aria-busy="true" aria-label="Carregando configuração do Google Agenda">
         <div className="grid gap-4">
           <div className="skeleton h-8 w-2/5" />
           <div className="skeleton h-28" />
@@ -228,7 +228,7 @@ export function GoogleCalendarSettings({ canManage }: { canManage: boolean }) {
   }
 
   return (
-    <section className="max-w-3xl border-t border-[var(--border)] pt-6" aria-labelledby="google-calendar-head">
+    <section className="max-w-3xl border-t border-[var(--border)] pt-4" aria-labelledby="google-calendar-head">
       <div className="grid gap-5">
         <div className="grid gap-5 sm:grid-cols-[40px_minmax(0,1fr)]">
           <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--primary-text)]">

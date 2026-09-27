@@ -146,12 +146,11 @@ export function AiStickerLibrary() {
   return <>
     <header className="pagehead items-start">
       <div>
-        <div className="mb-3 flex items-center gap-2 text-[var(--primary-text)]"><Sticker size={18}/><span className="mono type-caption uppercase tracking-[.16em]">Biblioteca da IA</span></div>
         <h1>Figurinhas com contexto</h1>
         <p>A IA escolhe somente itens ativos e usa sua descrição para entender o momento certo.</p>
       </div>
-      <div className="mono border-l border-[var(--border)] pl-5 text-right type-caption uppercase tracking-[.12em] text-[var(--text-muted)]">
-        <strong className="block text-2xl font-semibold text-[var(--text)]">{stickers.length}</strong>
+      <div className="border-l border-[var(--border)] pl-5 text-right type-caption text-[var(--text-muted)]">
+        <strong className="block text-xl font-semibold text-[var(--text)]">{stickers.length}</strong>
         {pendingCount} aguardando revisão
         <HelpHint label="Ajuda: Aguardando revisão" className="ml-2">Figurinhas importadas do WhatsApp chegam desativadas até você descrever o uso e salvar.</HelpHint>
       </div>
@@ -164,7 +163,7 @@ export function AiStickerLibrary() {
         </div>
         {isLoading ? <LoadingState label="Carregando figurinhas" />
           : error ? <ErrorState>{error.message}</ErrorState>
-          : stickers.length === 0 ? <Card className="channels-ai-section channels-ai-section--flat channels-ai-empty flex flex-col items-start justify-center py-12">
+          : stickers.length === 0 ? <Card className="channels-ai-section channels-ai-section--flat channels-ai-empty flex flex-col items-start justify-center py-8">
               <Sticker size={38} className="mb-5 text-[var(--text-muted)]"/><h2 className="text-lg font-semibold">Nenhuma figurinha cadastrada</h2><p className="sub mt-2 max-w-lg">Envie um WebP pelo formulário ou mande uma figurinha pelo WhatsApp conectado para iniciar a biblioteca.</p>
             </Card>
           : <div className="channels-ai-list">
@@ -182,7 +181,7 @@ export function AiStickerLibrary() {
                   <label className="field"><span>Tags separadas por vírgula</span><input className="input" value={draft.tags.join(", ")} onChange={(event) => changeDraft(sticker, { tags: event.target.value.split(",") })}/></label>
                   <label className="field sm:col-span-2"><span>Quando a IA pode usar</span><textarea className="input channels-ai-textarea-compact resize-y" placeholder="Ex.: comemorar quando o cliente confirma o agendamento" value={draft.description} onChange={(event) => changeDraft(sticker, { description: event.target.value })}/></label>
                   <div className="sm:col-span-2 flex flex-wrap items-center gap-3 type-caption text-[var(--text-muted)]">
-                    <span className="mono uppercase tracking-[.1em]">{sticker.source === "whatsapp_sent" ? "Importada do WhatsApp" : "Enviada pelo painel"}</span><span>{formatSize(sticker.size_bytes)}</span>
+                    <span className="">{sticker.source === "whatsapp_sent" ? "Importada do WhatsApp" : "Enviada pelo painel"}</span><span>{formatSize(sticker.size_bytes)}</span>
                     <label className="ml-auto flex items-center gap-2 text-xs text-[var(--text-secondary)]"><input type="checkbox" checked={draft.enabled} onChange={(event) => changeDraft(sticker, { enabled: event.target.checked })}/>Disponível para a IA</label>
                     <HelpHint label="Ajuda: Disponível para a IA">Desmarcada, a figurinha fica guardada na biblioteca, mas a IA não envia.</HelpHint>
                   </div>
@@ -205,7 +204,7 @@ export function AiStickerLibrary() {
           </div>}
       </section>
 
-      <aside className="grid content-start gap-7">
+      <aside className="grid content-start gap-5">
         <form onSubmit={upload} className="grid gap-4 border-t border-[var(--border)] pt-5">
           <div><h2 className="flex items-center gap-2 text-base font-semibold"><UploadSimple size={17}/>Adicionar arquivo</h2><p className="sub mt-1">WebP de até 1 MB.</p></div>
           <label className="field"><span>Arquivo</span><input ref={fileInput} className="input file:mr-3 file:border-0 file:bg-transparent file:text-xs file:font-semibold" type="file" accept="image/webp,.webp" onChange={(event) => setFile(event.target.files?.[0])}/></label>

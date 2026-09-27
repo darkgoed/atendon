@@ -2,6 +2,7 @@ import { forwardRef, type ComponentPropsWithRef, type ReactNode } from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/cn";
+import { Tooltip } from "./overlays";
 
 /**
  * Botão do design system. A API de CSS continua sendo `.btn` + variantes, então
@@ -63,20 +64,25 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 export type IconButtonSize = "sm" | "md" | "lg";
 export type IconButtonProps = Omit<ButtonProps, "size"> & { label: string; size?: IconButtonSize };
 
+/**
+ * Ação só com ícone: o rótulo vira nome acessível e tooltip do DS (o mesmo
+ * balão do rail), em vez do `title` nativo — menos texto na tela, ação clara.
+ */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  { label, size = "md", className, children, ...props },
+  { label, size = "md", className, children, title, ...props },
   ref
 ) {
   return (
-    <Button
-      {...props}
-      ref={ref}
-      aria-label={label}
-      title={props.title ?? label}
-      className={cn("icon-button", `icon-button--${size}`, className)}
-    >
-      {children}
-    </Button>
+    <Tooltip content={title ?? label}>
+      <Button
+        {...props}
+        ref={ref}
+        aria-label={label}
+        className={cn("icon-button", `icon-button--${size}`, className)}
+      >
+        {children}
+      </Button>
+    </Tooltip>
   );
 });
 

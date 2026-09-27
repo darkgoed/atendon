@@ -503,4 +503,87 @@ describe("Tripz AI tenant-safe persistence", () => {
     )).rejects.toMatchObject({ code: "23503" });
     await repository.deleteConversation(ownerScope, detail.conversation.id);
   });
+
+  it("scopes provider request/token budget to the current attempt but keeps cost across user retries", async () => {
+    const detail = await repository.createConversation(ownerScope, "Retry budget");
+    const current = await repository.createUserMessage(ownerScope, {
+      conversationId: detail.conversation.id,
+      content: "Monte a proposta",
+      attachmentIds: [],
+      idempotencyKey: "tripz-retry-budget"
+    });
+    const ids = { conversationId: detail.conversation.id, messageId: current.message.id };
+    await repository.markMessageProcessing(ownerScope, { ...ids, status: "processing" });
+    // Três chamadas falhas (502/timeout) e uma resposta truncada paga no primeiro attempt.
+    for (const requestIndex of [1, 2, 3]) {
+      await repository.recordUsage(ownerScope, {
+        ...ids, purpose: "conversation", model: "test/model",
+        inputTokens: requestIndex === 3 ? 100 : 0,
+        outputTokens: requestIndex === 3 ? 4_096 : 0,
+        costUsd: requestIndex === 3 ? 0.05 : 0,
+        durationMs: 1, requestIndex
+      });
+    }
+    expect(await repository.getUsageBudget(ownerScope, ids))
+      .toEqual({ providerRequests: 3, inputTokens: 100, outputTokens: 4_096, costUsd: 0.05 });
+    await repository.markMessageProcessing(ownerScope, { ...ids, status: "failed", errorCode: "TRIPZ_AI_OPENROUTER_UNAVAILABLE" });
+    await repository.retryUserMessage(ownerScope, detail.conversation.id, current.message.id);
+    expect(await repository.markMessageProcessing(ownerScope, { ...ids, status: "processing" })).toBe(true);
+    // Nova tentativa do usuário: chamadas/tokens zeram, custo acumulado do turno permanece.
+    expect(await repository.getUsageBudget(ownerScope, ids))
+      .toEqual({ providerRequests: 0, inputTokens: 0, outputTokens: 0, costUsd: 0.05 });
+    await repository.markMessageProcessing(ownerScope, { ...ids, status: "failed", errorCode: "TRIPZ_TEST_CLEANUP" });
+    await repository.deleteConversation(ownerScope, detail.conversation.id);
+  });
+
+  it("refuses a manual proposal patch while an AI turn is queued or processing", async () => {
+    const detail = await repository.createConversation(ownerScope, "Patch durante turno");
+    const current = await repository.createUserMessage(ownerScope, {
+      conversationId: detail.conversation.id,
+      content: "Monte a proposta",
+      attachmentIds: [],
+      idempotencyKey: "tripz-patch-during-turn"
+    });
+    const patch = { conversationId: detail.conversation.id, expectedRevision: 0, patch: { destination: "Aruba" } };
+    await expect(repository.patchProposal(ownerScope, patch))
+      .rejects.toMatchObject({ statusCode: 409, code: "TRIPZ_TURN_IN_PROGRESS" });
+    const ids = { conversationId: detail.conversation.id, messageId: current.message.id };
+    await repository.markMessageProcessing(ownerScope, { ...ids, status: "processing" });
+    await expect(repository.patchProposal(ownerScope, patch))
+      .rejects.toMatchObject({ statusCode: 409, code: "TRIPZ_TURN_IN_PROGRESS" });
+    await repository.markMessageProcessing(ownerScope, { ...ids, status: "failed", errorCode: "TRIPZ_TEST" });
+    await expect(repository.patchProposal(ownerScope, patch)).resolves.toMatchObject({ revision: 1 });
+    await repository.deleteConversation(ownerScope, detail.conversation.id);
+  });
+
+  it("frees storage quota when an attachment or a whole conversation is deleted", async () => {
+    const tenant = (await pool.query<{ id: string }>(
+      "INSERT INTO tenants(name,status,storage_quota_bytes) VALUES($1,'active',30) RETURNING id",
+      [`Tripz quota ${suffix}`]
+    )).rows[0].id;
+    const scope: TripzAccessScope = { tenantId: tenant, userId: ownerA, canManage: true };
+    const usedBytes = async () => Number((await pool.query<{ used_bytes: string }>(
+      "SELECT used_bytes FROM tenant_storage_usage WHERE tenant_id=$1",
+      [tenant]
+    )).rows[0]?.used_bytes ?? 0);
+    try {
+      const detail = await repository.createConversation(scope, "Quota");
+      const upload = (data: Buffer, conversationId = detail.conversation.id) =>
+        fileStore.upload(scope, { conversationId, fileName: "foto.png", mimeType: "image/png", data });
+      const first = await upload(png(2, 3));
+      expect(await usedBytes()).toBe(24);
+      expect(await repository.deleteAttachment(scope, detail.conversation.id, first.attachment.id)).toBe(true);
+      expect(await usedBytes()).toBe(0);
+      // Quota de 30 bytes: sem liberar o anexo excluído, o segundo upload seria 413.
+      await upload(png(4, 5));
+      expect(await usedBytes()).toBe(24);
+      expect(await repository.deleteConversation(scope, detail.conversation.id)).toBe(true);
+      expect(await usedBytes()).toBe(0);
+      const next = await repository.createConversation(scope, "Quota 2");
+      await upload(png(6, 7), next.conversation.id);
+      expect(await usedBytes()).toBe(24);
+    } finally {
+      await pool.query("DELETE FROM tenants WHERE id=$1", [tenant]);
+    }
+  });
 });

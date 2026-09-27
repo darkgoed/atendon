@@ -4,6 +4,7 @@ import { forwardRef, useCallback, useEffect, useRef, useState, type ReactNode } 
 import { createPortal } from "react-dom";
 import { Button, type ButtonProps } from "./button";
 import { cn } from "@/lib/cn";
+import { Check } from "@/components/icons";
 
 /**
  * Padrão de salvar do DS v2 (handoff README §2), obrigatório em todo
@@ -56,9 +57,7 @@ export function useSaveFeedback(duration = SAVE_FEEDBACK_MS) {
 export function SaveCheck({ size = 16 }: { size?: number }) {
   return (
     <span className="on-check" style={{ width: size, height: size }} aria-hidden="true">
-      <svg width={size * 0.75} height={size * 0.75} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
-        <path d="M5 12.5l4.5 4.5L19 7.5" />
-      </svg>
+      <Check size={size * 0.75} strokeWidth={2.5} />
     </span>
   );
 }

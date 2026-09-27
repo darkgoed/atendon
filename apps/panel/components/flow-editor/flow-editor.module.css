@@ -20,15 +20,18 @@
 :global(:root:not([data-theme="dark"])) .editor [style*="--nt"] { --nt-ink: color-mix(in srgb, var(--nt) 45%, var(--text)); }
 
 /* ---- shell do editor ---- */
+/* Flex em coluna: com grid "auto 1fr" a barra de problemas/erro ocupava a
+   linha 1fr (ficava gigante) e o canvas era espremido numa linha auto. */
 .editor {
-  display: grid;
-  grid-template-rows: auto 1fr;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
   overflow: hidden;
 }
 
 .header {
+  flex-shrink: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -49,7 +52,7 @@
   color: var(--text-muted);
   display: inline-flex;
   padding: 4px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 .headerTitle a:hover { background: var(--surface-hover); }
@@ -71,7 +74,7 @@
   gap: 7px;
   height: 26px;
   padding: 0 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 0;
   font-size: 12px;
   font-weight: var(--weight-medium);
@@ -84,7 +87,7 @@
   content: "";
   width: 6px;
   height: 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: currentColor;
 }
 
@@ -123,6 +126,7 @@
 .body {
   display: grid;
   grid-template-columns: 224px minmax(0, 1fr);
+  flex: 1 1 auto;
   min-height: 0;
 }
 
@@ -159,7 +163,7 @@
   text-align: left;
   padding: 7px 8px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
   color: var(--text);
@@ -173,7 +177,7 @@
   place-items: center;
   width: 30px;
   height: 30px;
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--nt) 12%, transparent);
   color: var(--nt-ink, var(--nt));
 }
@@ -200,7 +204,7 @@
 .canvasWrap :global(.react-flow__handle) {
   width: 8px;
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-hover);
   border: 1px solid var(--border-strong);
 }
@@ -226,7 +230,7 @@
   background: color-mix(in srgb, var(--surface-hover) 85%, transparent);
   backdrop-filter: blur(8px);
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 .canvasWrap :global(.react-flow__minimap svg) { width: 132px; height: 92px; background: transparent; }
@@ -236,7 +240,7 @@
   flex-direction: column;
   gap: 2px;
   padding: 4px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--surface-hover) 92%, transparent);
   backdrop-filter: blur(8px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
@@ -246,7 +250,7 @@
   height: 28px;
   padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-secondary);
 }
@@ -294,9 +298,9 @@
   position: relative;
   width: 320px;
   padding: 14px;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
-  background: var(--surface-raised-2, var(--surface));
+  background: var(--surface-elevated);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
   text-align: left;
   transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
@@ -319,7 +323,7 @@
   width: 36px;
   height: 36px;
   flex: none;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--nt) 12%, transparent);
   color: var(--nt-ink, var(--nt));
 }
@@ -357,7 +361,7 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   text-decoration: none;
   font-size: 15px;
@@ -367,12 +371,30 @@
 
 .errorList { margin: 4px 0 0; padding-left: 16px; font-weight: var(--weight-regular); }
 
+/* ---- pendências de validação: barra compacta recolhível ---- */
+.editorIssues {
+  flex-shrink: 0;
+  margin: 0 14px 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  background: var(--warning-subtle);
+  color: var(--warning-text);
+  font-size: var(--text-label);
+}
+
+.issuesSummary { cursor: pointer; list-style-position: inside; }
+
+.issuesHint { margin-left: 4px; font-weight: var(--weight-regular); opacity: 0.85; }
+
+.editorIssues .errorList { max-height: 160px; overflow-y: auto; }
+
 .nodeChips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 
 .nodeChip {
   max-width: 100%;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-sunken);
   border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
@@ -387,9 +409,9 @@
   align-items: center;
   gap: 12px;
   padding: 14px;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   border: 1px dashed var(--border-strong);
-  background: var(--surface-raised-2, var(--surface));
+  background: var(--surface-elevated);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
   text-align: left;
   transition: transform var(--duration-fast) var(--ease-out);
@@ -430,7 +452,7 @@
   align-items: center;
   gap: 6px;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 10px;
   font-weight: var(--weight-semibold);
   text-transform: uppercase;
@@ -452,7 +474,7 @@
   justify-content: center;
   width: 26px;
   height: 26px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -471,7 +493,7 @@
   margin-top: 6px;
   padding: 5px 10px;
   border: 1px dashed var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   font-size: var(--text-micro);
@@ -506,7 +528,7 @@
   gap: 6px;
   padding: 8px;
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 .buttonRemove {
   align-self: flex-end;
@@ -514,7 +536,7 @@
   height: 24px;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
   font-size: var(--text-body);
@@ -543,6 +565,7 @@
 
 /* ---- painel de simulação ---- */
 .trace {
+  flex-shrink: 0;
   border-top: 1px solid var(--border);
   background: var(--surface);
   max-height: 240px;
@@ -584,10 +607,11 @@
 .traceEnd { font-size: var(--text-micro); color: var(--text-muted); }
 
 .editorError {
+  flex-shrink: 0;
   margin: 0 14px 10px;
   padding: 10px 12px;
   border: 1px solid var(--danger-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--danger-subtle);
   color: var(--danger-text);
   font-size: var(--text-label);

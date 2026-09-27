@@ -19,7 +19,8 @@ const consumeAiInteractionMock = vi.hoisted(() => vi.fn().mockResolvedValue({ al
 const reconcileAiTurnFromUsageLogsMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock("../src/billing/ai-consumption.js", () => ({
   consumeAiInteraction: consumeAiInteractionMock,
-  reconcileAiTurnFromUsageLogs: reconcileAiTurnFromUsageLogsMock
+  reconcileAiTurnFromUsageLogs: reconcileAiTurnFromUsageLogsMock,
+  releaseAiInteractionWithoutUsage: vi.fn().mockResolvedValue(undefined)
 }));
 
 const acquireConversationLockMock = vi.hoisted(() => vi.fn());

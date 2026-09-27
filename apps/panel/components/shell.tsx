@@ -469,10 +469,10 @@ export function Shell({
       </aside>
       <header className="topbar">
         <div className="topbar__tenant">
-          <i className={`dot ${workspaceStatus !== "active" ? "warn" : ""}`} aria-hidden="true" />
-          <strong>{workspaceName}</strong>
-          {workspaceSlug ? <span className="topbar__slug mono">{workspaceSlug}</span> : null}
-          <span className="topbar__role">{accessStatusLabel(workspaceStatus)}</span>
+          <i className={`dot ${workspaceStatus !== "active" ? "warn" : ""}`} title={accessStatusLabel(workspaceStatus)} aria-hidden="true" />
+          <strong title={workspaceSlug ? `${workspaceName} · ${workspaceSlug}` : undefined}>{workspaceName}</strong>
+          {/* Status só aparece quando foge do normal; o ponto já diz "ativo". */}
+          {workspaceStatus !== "active" ? <span className="topbar__role">{accessStatusLabel(workspaceStatus)}</span> : null}
         </div>
         {/* DS v2 §3: busca central abre a paleta global (Ctrl/⌘ K). */}
         <button type="button" className="topbar__search" onClick={() => setPaletteOpen(true)} aria-label="Busca global (Ctrl+K)" title="Busca global (Ctrl+K)">

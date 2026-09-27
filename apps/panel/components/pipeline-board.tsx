@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowClockwise, GripVertical } from "@/components/icons";
+import { ArrowClockwise, GripVertical, HandGrab, PhoneCall, Plus, Robot } from "@/components/icons";
 import { NewStageColumn, PipelineStageMenu } from "@/components/pipeline-stage-menu";
 import {
   AnimatePresence,
@@ -23,7 +23,7 @@ import {
   type RefObject
 } from "react";
 import { PipelineCard } from "@/components/pipeline-card";
-import { ModeBar } from "@/components/ui";
+import { ModeBar, Tooltip } from "@/components/ui";
 import {
   PIPELINE_COLOR_SWATCHES,
   pipelineBoardStageId,
@@ -64,6 +64,12 @@ export function pipelineStageAutomationLabel(stage: Pick<PipelineStage, "operati
   if (stage.operational_kind === "ai_follow_up") return "IA";
   if (stage.operational_kind === "call") return "Ligação";
   return "Manual";
+}
+
+function StageKindIcon({ kind }: { kind: PipelineStage["operational_kind"] }) {
+  if (kind === "ai_follow_up") return <Robot size={14} aria-hidden="true" />;
+  if (kind === "call") return <PhoneCall size={14} aria-hidden="true" />;
+  return <HandGrab size={14} aria-hidden="true" />;
 }
 
 function stageTone(stage: PipelineStage): string {
@@ -657,7 +663,7 @@ export function PipelineBoard({
 
   if (loadError && leads.length === 0 && !loading) {
     return (
-      <section className="grid min-h-64 flex-1 place-items-center border border-dashed border-[var(--warning-border)] p-6 text-center" aria-label="Erro no quadro de pipeline">
+      <section className="grid min-h-64 flex-1 place-items-center border rounded-[var(--radius-md)] border-dashed border-[var(--warning-border)] p-4 text-center" aria-label="Erro no quadro de pipeline">
         <div className="max-w-md">
           <strong className="text-sm">Não foi possível carregar o pipeline</strong>
           <p className="mt-2 text-xs leading-relaxed text-[var(--text-secondary)]">{loadError}</p>
@@ -668,7 +674,7 @@ export function PipelineBoard({
   }
 
   if (!loading && stages.length === 0) {
-    return <section className="grid min-h-64 flex-1 place-items-center border border-dashed border-[var(--border)] p-6 text-center text-sm text-[var(--text-secondary)]">Nenhuma etapa ativa neste pipeline.</section>;
+    return <section className="grid min-h-64 flex-1 place-items-center border rounded-[var(--radius-md)] border-dashed border-[var(--border)] p-4 text-center text-sm text-[var(--text-secondary)]">Nenhuma etapa ativa neste pipeline.</section>;
   }
 
   return (
@@ -922,7 +928,12 @@ export function PipelineColumn({
           ) : null}
           <span className="pipeline-column__dot" style={{ backgroundColor: tone }} aria-hidden="true" />
           <span className="pipeline-column__stage-name">{stage.name}</span>
-          <span className="rounded bg-[var(--surface-active)] px-1.5 py-0.5 type-caption leading-none text-[var(--text-secondary)]" data-stage-kind={stage.operational_kind ?? "manual"}>{pipelineStageAutomationLabel(stage)}</span>
+          <Tooltip content={`Modo: ${pipelineStageAutomationLabel(stage)}`}>
+            <span className="pipeline-column__kind" data-stage-kind={stage.operational_kind ?? "manual"} tabIndex={0}>
+              <StageKindIcon kind={stage.operational_kind} />
+              <span className="sr-only">{pipelineStageAutomationLabel(stage)}</span>
+            </span>
+          </Tooltip>
           <span className="pipeline-column__count">
             <motion.span
               key={shownCount}
@@ -986,7 +997,7 @@ export function PipelineColumn({
               : `Carregar mais${loadMore.remaining != null && loadMore.remaining > 0 ? ` (${loadMore.remaining})` : ""}`}
           </button>
         ) : null}
-        {!loading ? <span className="pipeline-column__add" aria-hidden="true">+ Adicionar lead</span> : null}
+        {!loading ? <span className="pipeline-column__add" aria-hidden="true"><Plus size={14} aria-hidden="true" />Adicionar lead</span> : null}
       </div>
     </section>
   );

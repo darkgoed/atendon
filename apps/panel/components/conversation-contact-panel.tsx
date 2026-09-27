@@ -279,7 +279,7 @@ export function ConversationContactPanel({
           ) : null}
 
           {assetsError ? (
-            <div className="mt-3 flex items-center justify-between gap-2 border border-[var(--warning-border)] bg-[var(--warning-subtle)] p-2 text-xs text-[var(--warning-text)]" role="alert">
+            <div className="mt-3 flex items-center justify-between gap-2 border rounded-[var(--radius-md)] border-[var(--warning-border)] bg-[var(--warning-subtle)] p-2 text-xs text-[var(--warning-text)]" role="alert">
               <span>{assetsError}</span>
               {onRetryAssets ? <IconButton type="button" label="Tentar novamente" onClick={onRetryAssets}><ArrowClockwise size={14} aria-hidden="true" /></IconButton> : null}
             </div>

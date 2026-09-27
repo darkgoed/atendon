@@ -152,7 +152,7 @@ export function WorkspaceLogoSection({ canManage }: { canManage: boolean }) {
 
   const shownLogo = previewLogo || currentLogo;
   return (
-    <section className="max-w-2xl border-t border-[var(--border)] pt-6" aria-label="Logo da empresa">
+    <section className="max-w-2xl border-t border-[var(--border)] pt-4" aria-label="Logo da empresa">
       <div className="grid gap-5 sm:grid-cols-[40px_minmax(0,1fr)]">
         <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--primary-text)]">
           <Sticker size={19} aria-hidden="true" />

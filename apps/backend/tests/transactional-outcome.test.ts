@@ -105,6 +105,45 @@ describe("transactional outcome composer", () => {
     ]));
   });
 
+  const cancelledVisit = {
+    ...readyMeeting,
+    action: "cancel_visit",
+    facts: {
+      start: readyMeeting.facts.start,
+      end: readyMeeting.facts.end,
+      durationMinutes: 60,
+      timezone: "America/Sao_Paulo",
+      unitId: "loja",
+      unitName: "Loja",
+      appointmentStatus: "cancelado"
+    }
+  } satisfies TransactionalOutcome;
+
+  it.each([
+    "Não consegui cancelar a visita agora, tente mais tarde.",
+    "A visita não foi cancelada ainda, vou verificar."
+  ])("never relays model text that denies a persisted cancellation: %s", (text) => {
+    expect(composeTransactionalReply(text, [cancelledVisit]).text).toBe("Fechado, cancelei a visita.");
+  });
+
+  it.each([
+    "Fechado, agendado pra amanhã às 9h: https://meet.google.com/abc-defg-hij",
+    "Fechado, agendado pra hoje às 9h: https://meet.google.com/abc-defg-hij",
+    "Fechado, agendado pra terça às 9h: https://meet.google.com/abc-defg-hij",
+    "Fechado, agendado pro dia 08/01 às 9h: https://meet.google.com/abc-defg-hij",
+    "Não consegui agendar às 9h, tente de novo: https://meet.google.com/abc-defg-hij"
+  ])("replaces a scheduling reply that contradicts the persisted day or result: %s", (text) => {
+    expect(composeTransactionalReply(text, [readyMeeting]).text).toContain("segunda-feira, 07/01 às 9h");
+  });
+
+  it.each([
+    "Fechado, agendado pra segunda às 9h: https://meet.google.com/abc-defg-hij",
+    "Fechado, agendado pra segunda-feira, dia 07/01 às 9h: https://meet.google.com/abc-defg-hij",
+    "Fechado, agendado às 9h: https://meet.google.com/abc-defg-hij"
+  ])("keeps a natural scheduling reply consistent with the persisted outcome: %s", (text) => {
+    expect(composeTransactionalReply(text, [readyMeeting]).text).toBe(text);
+  });
+
   it.each(["pending", "uncertain"] as const)(
     "abstains while Meet provisioning is %s",
     (provisioning) => {

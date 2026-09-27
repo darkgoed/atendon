@@ -49,12 +49,6 @@
   height: 16px;
 }
 
-.connectorGlyph path {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1;
-}
-
 .root[data-direction="vertical"] .connectorGlyph {
   transform: rotate(90deg);
 }
@@ -74,7 +68,9 @@
 .connectorHead {
   fill: none;
   stroke: currentColor;
-  stroke-width: 1px;
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* Conectores medidos substituem os inline (que continuam no DOM para SSR). */

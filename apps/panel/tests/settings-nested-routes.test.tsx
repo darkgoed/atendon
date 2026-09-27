@@ -63,6 +63,7 @@ describe("layout de Configurações: sidebar persistente nas sub-rotas", () => {
 
     const navBefore = screen.getByRole("navigation", { name: "Configurações" });
     expect(screen.getByRole("link", { name: "Categorias" })).toHaveAttribute("aria-current", "page");
+    expect(screen.queryByRole("link", { name: "Filas de atendimento" })).not.toBeInTheDocument();
     expect(screen.getByText("Filho A")).toBeInTheDocument();
 
     navBefore.scrollTop = 42;

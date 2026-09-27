@@ -439,11 +439,19 @@ export class TripzAiRepository implements TripzRepositoryPort {
       if (conversation.processing_status === "queued" || conversation.processing_status === "processing") {
         throw new TripzAiError(409, "TRIPZ_TURN_IN_PROGRESS", "Aguarde a análise atual antes de excluir a proposta");
       }
+      // Anexos saem por ON DELETE CASCADE: devolve os bytes à quota na mesma
+      // transação (conversa travada acima impede upload concorrente nela).
+      const stored = await client.query<{ bytes: string }>(
+        `SELECT COALESCE(sum(octet_length(file_data)),0) bytes FROM tripz_ai_attachments
+         WHERE tenant_id=$1 AND conversation_id=$2`,
+        [scope.tenantId, conversationId]
+      );
       const result = await client.query(
         `DELETE FROM tripz_ai_conversations
          WHERE tenant_id=$1 AND id=$2`,
         [scope.tenantId, conversationId]
       );
+      await reserveStorageBytes(client, scope.tenantId, -Number(stored.rows[0].bytes));
       return (result.rowCount ?? 0) > 0;
     });
   }
@@ -639,6 +647,11 @@ export class TripzAiRepository implements TripzRepositoryPort {
   }): Promise<TripzProposal> {
     return transaction(this.database, async (client) => {
       const conversation = await lockVisibleConversation(client, scope, input.conversationId);
+      // Um patch no meio do turno faria completeAiTurn falhar por revisão
+      // depois de o custo do provedor já ter sido gasto.
+      if (conversation.processing_status === "queued" || conversation.processing_status === "processing") {
+        throw tripzConflict("TRIPZ_TURN_IN_PROGRESS", "Aguarde a análise atual antes de editar a proposta");
+      }
       const currentResult = await client.query<ProposalRow>(
         `SELECT id,conversation_id,schema_version,revision,state,created_at,updated_at
          FROM tripz_ai_proposals WHERE tenant_id=$1 AND conversation_id=$2 FOR UPDATE`,
@@ -754,12 +767,16 @@ export class TripzAiRepository implements TripzRepositoryPort {
   async deleteAttachment(scope: TripzAccessScope, conversationId: string, attachmentId: string): Promise<boolean> {
     return transaction(this.database, async (client) => {
       await lockVisibleConversation(client, scope, conversationId);
-      const result = await client.query(
+      const result = await client.query<{ bytes: number }>(
         `DELETE FROM tripz_ai_attachments
-         WHERE tenant_id=$1 AND conversation_id=$2 AND id=$3 AND message_id IS NULL`,
+         WHERE tenant_id=$1 AND conversation_id=$2 AND id=$3 AND message_id IS NULL
+         RETURNING octet_length(file_data) bytes`,
         [scope.tenantId, conversationId, attachmentId]
       );
-      if ((result.rowCount ?? 0) > 0) return true;
+      if (result.rows[0]) {
+        await reserveStorageBytes(client, scope.tenantId, -result.rows[0].bytes);
+        return true;
+      }
       const linked = await client.query<{ linked: boolean }>(
         `SELECT message_id IS NOT NULL linked FROM tripz_ai_attachments
          WHERE tenant_id=$1 AND conversation_id=$2 AND id=$3`,
@@ -1024,14 +1041,23 @@ export class TripzAiRepository implements TripzRepositoryPort {
       output_tokens: number;
       cost_usd: string | number;
     }>(
-      `SELECT count(usage.id)::int provider_requests,
-              COALESCE(sum(usage.input_tokens),0)::int input_tokens,
-              COALESCE(sum(usage.output_tokens),0)::int output_tokens,
+      // Chamadas e tokens contam só o attempt atual (desde o claim): uma
+      // queda do provedor não esgota a "Tentar novamente" do usuário. O custo
+      // soma todos os attempts da mensagem — o teto de custo do turno vale.
+      `SELECT count(usage.id) FILTER (WHERE current_attempt)::int provider_requests,
+              COALESCE(sum(usage.input_tokens) FILTER (WHERE current_attempt),0)::int input_tokens,
+              COALESCE(sum(usage.output_tokens) FILTER (WHERE current_attempt),0)::int output_tokens,
               COALESCE(sum(usage.cost_usd),0) cost_usd
        FROM tripz_ai_conversations conversation
+       LEFT JOIN tripz_ai_messages message
+         ON message.tenant_id=conversation.tenant_id
+        AND message.conversation_id=conversation.id AND message.id=$5
        LEFT JOIN tripz_ai_usage_logs usage
          ON usage.tenant_id=conversation.tenant_id
         AND usage.conversation_id=conversation.id AND usage.message_id=$5
+       CROSS JOIN LATERAL (
+         SELECT usage.created_at >= COALESCE(message.processing_started_at,'-infinity') current_attempt
+       ) attempt
        WHERE conversation.tenant_id=$1 AND conversation.id=$2
          AND (conversation.created_by_user_id=$3 OR $4::boolean)
        GROUP BY conversation.id`,

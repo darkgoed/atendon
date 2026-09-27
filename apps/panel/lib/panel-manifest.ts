@@ -134,7 +134,7 @@ export function firstEnabledModulePath(
 export type SettingsNavKey =
   | "workspace" | "signature" | "armazenamento" | "/uso"
   | "/workspace/members" | "attendants" | "/workspace/roles" | "/workspace/audit"
-  | "categorias" | "parceiros" | "unidades" | "conversation-queues"
+  | "categorias" | "parceiros" | "unidades"
   | "atendon-meet" | "google-meet" | "google-calendar" | "/conexao"
   | "/agente" | "/humanizacao" | "/follow-ups"
   | "panel-notifications" | "agenda-notifications" | "/alertas";
@@ -143,7 +143,7 @@ export type SettingsNavGroup = { label: string; keys: readonly SettingsNavKey[] 
 
 /**
  * R4 da SPEC settings-search: inventário completo e ÚNICO da navegação de
- * Configurações — 9 grupos semânticos com as 21 chaves (12 abas do hub +
+ * Configurações — 8 grupos semânticos com as 20 chaves (11 abas do hub +
  * 9 destinos), "Geral" primeiro, cada chave exatamente uma vez, sem rota
  * órfã. A ordem aqui É a ordem da navegação. O gating de cada chave fica no
  * hub (usePermission/attendantPoolAccess) e nas rotas do manifest — este
@@ -153,7 +153,6 @@ export const settingsNavGroups: readonly SettingsNavGroup[] = [
   { label: "Geral", keys: ["workspace", "signature", "armazenamento", "/uso"] },
   { label: "Equipe e acesso", keys: ["/workspace/members", "attendants", "/workspace/roles", "/workspace/audit"] },
   { label: "CRM/catálogos", keys: ["categorias", "parceiros", "unidades"] },
-  { label: "Atendimento", keys: ["conversation-queues"] },
   { label: "Agenda e integrações", keys: ["atendon-meet", "google-meet", "google-calendar"] },
   { label: "Canais", keys: ["/conexao"] },
   { label: "IA", keys: ["/agente", "/humanizacao", "/follow-ups"] },

@@ -133,7 +133,8 @@ export function evolutionMessageStatusUpdates(data: unknown): EvolutionMessageSt
     const normalized = String(rawStatus).toUpperCase();
     const status = ACK_STATUS[normalized];
     if (!status) {
-      console.warn(`[evolution-webhook] Unrecognized message status: "${rawStatus}" for message ${externalId}`, { rawStatus, ACK_STATUS: Object.keys(ACK_STATUS) });
+      // Sem externalId: console não passa pela redação do pino (logger.ts).
+      console.warn("[evolution-webhook] Unrecognized message status", { rawStatus: String(rawStatus).slice(0, 64) });
     }
     if (status) updates.push({
       externalId,

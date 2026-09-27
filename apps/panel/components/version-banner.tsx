@@ -36,7 +36,7 @@ export function VersionBanner({
       onClose={handleClose}
       className="max-w-lg"
     >
-      <div className="flex flex-col gap-4 p-6">
+      <div className="flex flex-col gap-4 p-4">
         <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
           <div className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--primary-subtle)] text-[var(--primary)]">
@@ -65,7 +65,7 @@ export function VersionBanner({
         <div className="max-h-72 overflow-y-auto space-y-4 pr-1" tabIndex={0}>
           {currentChangelog && currentChangelog.changes.length > 0 ? (
             <div className="space-y-2">
-              <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+              <span className="text-xs font-medium text-[var(--text-muted)]">
                 Mudanças nesta versão
               </span>
               <ul className="space-y-2">
@@ -85,7 +85,7 @@ export function VersionBanner({
 
           {versionInfo.changelog.length > 1 && (
             <div className="pt-3 border-t border-[var(--border)] space-y-3">
-              <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+              <span className="text-xs font-medium text-[var(--text-muted)]">
                 Histórico recente
               </span>
               {versionInfo.changelog

@@ -1,5 +1,5 @@
 "use client";
-import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowsLeftRight, BellRinging, BellSlash, CalendarDots, CheckCircle, Checks, Check, DotsThreeVertical, Flask, MagnifyingGlass, Pause, Robot, UserPlus, X } from "@/components/icons";
+import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowsLeftRight, BellRinging, BellSlash, CalendarClock, CalendarDots, CheckCircle, Checks, Check, DotsThreeVertical, Flask, Inbox, MagnifyingGlass, Pause, Robot, UserPlus, X, type Icon } from "@/components/icons";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { ConversationComposer } from "@/components/conversation-composer";
@@ -13,7 +13,7 @@ import { ConversationScheduler } from "@/components/conversation-scheduler";
 import { ConversationStatusPicker } from "@/components/conversation-status-picker";
 import { Empty } from "@/components/page-state";
 import { LeadTagChips, type LeadTag } from "@/components/lead-tag-picker";
-import { Field, HelpHint, IconButton, SaveButton, SaveToast, useFlashToast, useSaveFeedback } from "@/components/ui";
+import { Field, HelpHint, IconButton, SaveButton, SaveToast, Tooltip, useFlashToast, useSaveFeedback } from "@/components/ui";
 import { ListFiltersBar, type ListFilterDef } from "@/components/ui/filters";
 import { MessageActionsMenu } from "@/components/message-actions-menu";
 import { ModalDialog } from "@/components/modal-dialog";
@@ -113,10 +113,6 @@ type Conversation = {
   lead_status?: string;
   lead_updated_at?: string;
   unread_count?: number;
-  queue_id?: string | null;
-  queue_name?: string | null;
-  queue_color?: string | null;
-  queue_is_resolved?: boolean;
   next_action?: string | null;
   next_action_at?: string | null;
   next_action_due?: boolean;
@@ -464,6 +460,16 @@ function MessageDateSeparator({ label }: { label: string }) {
   );
 }
 
+// Abas da fila como ícones: cor = significado (laranja aguarda humano, roxo
+// IA, azul agenda, verde resolvido); o nome fica no aria-label e no tooltip.
+const CONVERSATION_TAB_ICONS: Record<string, Icon> = { human: Inbox, ai: Robot, scheduled: CalendarClock, resolved: CheckCircle };
+const CONVERSATION_TAB_HINTS: Record<string, string> = {
+  human: "Abertas — aguardando atendimento humano",
+  ai: "IA — a IA responde sozinha",
+  scheduled: "Agendadas — com horário confirmado",
+  resolved: "Resolvidas — encerradas"
+};
+
 export default function Conversations() {
   const { isEnabled } = useCapabilities();
   const leadsEnabled = isEnabled("leads_v1");
@@ -477,7 +483,6 @@ export default function Conversations() {
   const canSchedule = appointmentsEnabled && canCreateAppointment && canReadAvailability && canReadUnits;
   const [filter, setFilter] = useState("human");
   const [connectionFilter, setConnectionFilter] = useState("");
-  const [queueFilter, setQueueFilter] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [pendingOnly, setPendingOnly] = useState(false);
   const [selected, setSelected] = useState("");
@@ -575,14 +580,13 @@ export default function Conversations() {
   // Filtros no padrão único (ListFiltersBar, igual a /contatos): o objeto é a
   // projeção do estado existente — mesma query server-side de antes.
   const conversationFilters = {
-    fila: queueFilter,
     escopo: hasWorkspaceScope && (filter === "mine" || filter === "unassigned") ? filter : "",
     nao_lidas: unreadOnly ? "true" : "",
     pendencias: pendingOnly ? "true" : "",
     numero: connectionFilter
   };
   const listKey = session
-    ? `/conversations?filter=${effectiveFilter}${queueFilter ? `&queue_id=${queueFilter}` : ""}${connectionFilter ? `&session_id=${connectionFilter}` : ""}${unreadOnly ? "&unread=true" : ""}${pendingOnly ? "&pending_action=true" : ""}`
+    ? `/conversations?filter=${effectiveFilter}${connectionFilter ? `&session_id=${connectionFilter}` : ""}${unreadOnly ? "&unread=true" : ""}${pendingOnly ? "&pending_action=true" : ""}`
     : null;
   const { data: listData, error: listError, isLoading: listLoading, mutate: mutateList } = useSWR<ConversationsResponse>(listKey, fetcher, {
     refreshInterval: 10_000,
@@ -649,33 +653,20 @@ export default function Conversations() {
   );
 
   const connections = useMemo(() => connectionsData?.connections ?? [], [connectionsData?.connections]);
-  const { data: queueData, mutate: mutateQueues } = useSWR<{ queues: Array<{ id: string; name: string; color: string; is_resolved: boolean; conversation_count: number; archived_at: string | null }> }>(session ? "/conversation-queues" : null, fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
   const showConnectionFilter = shouldShowConversationConnectionFilter(connections);
   const setConversationFilter = (key: keyof typeof conversationFilters & string, value: string) => {
-    if (key === "fila") setQueueFilter(value);
-    else if (key === "escopo") setFilter(value || (hasWorkspaceScope ? "human" : "mine"));
+    if (key === "escopo") setFilter(value || (hasWorkspaceScope ? "human" : "mine"));
     else if (key === "nao_lidas") setUnreadOnly(value === "true");
     else if (key === "pendencias") setPendingOnly(value === "true");
     else if (key === "numero") setConnectionFilter(value);
   };
   const clearConversationFilters = () => {
     setConnectionFilter("");
-    setQueueFilter("");
     setFilter(hasWorkspaceScope ? "human" : "mine");
     setUnreadOnly(false);
     setPendingOnly(false);
   };
-  const activeQueues = (queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved);
-  const activeQueue = activeQueues.find((queue) => queue.id === queueFilter);
   const conversationFilterDefs: Array<ListFilterDef<typeof conversationFilters>> = [
-    {
-      key: "fila",
-      label: "Fila",
-      kind: "option",
-      // dot de cor da fila ativa no chip (paridade com os botões antigos)
-      icon: activeQueue ? <span className="inline-block size-2 shrink-0 rounded-full" style={{ backgroundColor: activeQueue.color }} aria-hidden="true" /> : undefined,
-      options: activeQueues.map((queue) => ({ id: queue.id, nome: queue.name }))
-    },
     { key: "nao_lidas", label: "Não lidas", kind: "option", options: [{ id: "true", nome: "Não lidas" }] },
     { key: "pendencias", label: "Pendências", kind: "option", options: [{ id: "true", nome: "Pendências" }] }
   ];
@@ -732,14 +723,6 @@ export default function Conversations() {
   useEffect(() => {
     if (!showConnectionFilter && connectionFilter) setConnectionFilter("");
   }, [connectionFilter, showConnectionFilter]);
-
-  // Fila filtrada que deixou de existir (arquivada/resolvida/apagada) não pode
-  // ficar presa como chip com id cru — limpa quando o catálogo atual a desconhece.
-  useEffect(() => {
-    if (!queueFilter || !queueData) return;
-    const known = (queueData.queues ?? []).some((queue) => queue.id === queueFilter && !queue.archived_at && !queue.is_resolved);
-    if (!known) setQueueFilter("");
-  }, [queueData, queueFilter]);
 
   useEffect(() => {
     selectedRef.current = selected;
@@ -1204,7 +1187,7 @@ export default function Conversations() {
     if (previousThread?.conversation.id === selectedRef.current) await mutateThread({ ...previousThread, conversation: optimistic(previousThread.conversation) }, { revalidate: false });
     try {
       await resolveConversationApi(selectedRef.current);
-      await Promise.all([mutateList(), mutateThread(), mutateQueues()]);
+      await Promise.all([mutateList(), mutateThread()]);
       return true;
     } catch (e) {
       await mutateList(previousList, { revalidate: false });
@@ -1292,25 +1275,6 @@ export default function Conversations() {
       setError(e instanceof Error ? e.message : "Falha ao transferir a conversa");
     } finally {
       setChangingOwner(false);
-    }
-  }
-
-  async function moveConversationToQueue(queueId: string) {
-    if (!selected || !canReply) return;
-    const previousList = listData;
-    const previousThread = threadData;
-    const queue = (queueData?.queues ?? []).find((item) => item.id === queueId);
-    const optimistic = (conversation: Conversation): Conversation => ({ ...conversation, queue_id: queueId, queue_name: queue?.name ?? conversation.queue_name, queue_color: queue?.color ?? conversation.queue_color, status: queue?.is_resolved ? "closed" : "open" });
-    await mutateList((current) => current ? { conversations: current.conversations.map((item) => item.id === selected ? optimistic(item) : item) } : current, { revalidate: false });
-    if (previousThread?.conversation.id === selected) await mutateThread({ ...previousThread, conversation: optimistic(previousThread.conversation) }, { revalidate: false });
-    try {
-      await api(`/conversations/${selected}/queue`, { method: "PATCH", body: JSON.stringify({ queue_id: queueId }) });
-      await Promise.all([mutateList(), mutateThread(), mutateQueues()]);
-      flash.show(queue ? `Conversa movida para a fila ${queue.name}.` : "Conversa movida de fila.");
-    } catch (caught) {
-      await mutateList(previousList, { revalidate: false });
-      await mutateThread(previousThread, { revalidate: false });
-      setError(caught instanceof Error ? caught.message : "Falha ao mover a conversa de fila");
     }
   }
 
@@ -1506,22 +1470,25 @@ export default function Conversations() {
                   ["ai", "IA", unreadCounts?.ai],
                   ["scheduled", "Agendadas", unreadCounts?.scheduled],
                   ["resolved", "Resolvidas", unreadCounts?.resolved]
-                ].map(([key, label, count]) => (
-                  <button
-                    type="button"
-                    key={key as string}
-                    onClick={() => setFilter(key as string)}
-                    aria-pressed={filter === key}
-                    className="flex min-w-0 items-center justify-center gap-1 truncate"
-                  >
-                    <span className="truncate">{label}</span>
-                    {Number(count) > 0 ? (
-                      <span className="mono flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] px-1 text-xs font-semibold text-[var(--primary-foreground)]">
-                        {Number(count) > 99 ? "99+" : count}
-                      </span>
-                    ) : null}
-                  </button>
-                ))}
+                ].map(([key, label, count]) => {
+                  const TabIcon = CONVERSATION_TAB_ICONS[key as string];
+                  return (
+                    <Tooltip key={key as string} content={CONVERSATION_TAB_HINTS[key as string] ?? label} side="bottom">
+                      <button
+                        type="button"
+                        onClick={() => setFilter(key as string)}
+                        aria-pressed={filter === key}
+                        aria-label={label as string}
+                        data-tab={key as string}
+                      >
+                        <span className="conversation-filter-tabs__icon" aria-hidden="true"><TabIcon size={16} /></span>
+                        {Number(count) > 0 ? (
+                          <span className="conversation-filter-tabs__count" aria-hidden="true">{Number(count) > 99 ? "99+" : count}</span>
+                        ) : null}
+                      </button>
+                    </Tooltip>
+                  );
+                })}
               </div>
             ) : (
               <div className="rounded-md border border-[var(--primary-border)] px-3 py-1.5 text-xs font-medium text-[var(--primary-text)]">
@@ -1579,7 +1546,7 @@ export default function Conversations() {
               <Empty>Selecione uma conversa na lista para ver o histórico e responder.</Empty>
             </div>
           ) : threadError ? (
-            <div className="flex h-full items-center justify-center p-6">
+            <div className="flex h-full items-center justify-center p-4">
               <div className="max-w-md rounded-lg border border-[var(--warning-border)] bg-transparent p-5 text-[var(--warning-text)]" role="alert">
                 <strong className="block text-sm">Falha ao carregar a conversa</strong>
                 <p className="mt-2 text-sm leading-relaxed">{threadError.message}</p>
@@ -1589,10 +1556,10 @@ export default function Conversations() {
           ) : !thread.conversation ? (
             <div className="m-6 flex-1 rounded-lg border border-[var(--border)] bg-transparent">
               <div className="h-16 border-b border-[var(--border)]" />
-              <div className="space-y-3 p-6">
+              <div className="space-y-3 p-4">
                 <div className="skeleton h-4 w-48 rounded-full" />
                 <div className="skeleton h-3 w-28 rounded-full" />
-                <div className="skeleton mt-6 h-20 rounded-lg" />
+                <div className="skeleton mt-4 h-20 rounded-lg" />
                 <div className="skeleton h-20 rounded-lg" />
                 <div className="skeleton h-10 rounded-lg" />
               </div>
@@ -1661,8 +1628,6 @@ export default function Conversations() {
                       />
                     ) : null
                   ) : null}
-                  {canReply && thread.conversation.status === "closed" && resolveSave.state === "idle" ? <span className="text-xs text-[var(--text-secondary)]" aria-label="Fila atual">Fila: {thread.conversation.queue_name ?? "Sem fila"}</span> : null}
-                  {canReply && thread.conversation.status === "open" ? <><HelpHint label="Ajuda: fila do atendimento" side="bottom">Move a conversa para outra fila do time. Não envia mensagem ao contato.</HelpHint><label className="field"><span className="sr-only">Fila do atendimento</span><select className="input" aria-label="Fila do atendimento" value={thread.conversation.queue_id ?? ""} onChange={(event) => { if (event.target.value) void moveConversationToQueue(event.target.value); }}><option value="">Sem fila</option>{(queueData?.queues ?? []).filter((queue) => !queue.archived_at && !queue.is_resolved).map((queue) => <option key={queue.id} value={queue.id}>{queue.name}</option>)}</select></label></> : null}
                   {/* DS v2 §2: Resolver segue o padrão de salvar (idle → busy →
                       done "Resolvida" + toast). Permanece montado durante o
                       feedback para o operador ver o check mesmo com o status
@@ -1830,7 +1795,7 @@ export default function Conversations() {
                     <ConversationReferral attribution={thread.conversation.facebook_attribution} />
                     <div className="flex flex-col gap-2">
                       {messages.length === 0 && !aiTurn ? (
-                        <div className="py-12">
+                        <div className="py-8">
                           <Empty>Sem mensagens nesta conversa. As novas mensagens aparecem aqui.</Empty>
                         </div>
                       ) : (

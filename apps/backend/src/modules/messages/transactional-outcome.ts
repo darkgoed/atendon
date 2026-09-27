@@ -258,12 +258,15 @@ function localDateTimeParts(value: string, timezone: string): LocalDateTimeParts
   };
 }
 
-function formatNaturalLocalStart(value: string, timezone: string, reference: string): string {
-  const start = localDateTimeParts(value, timezone);
-  const current = localDateTimeParts(reference, timezone);
+function localDayDifference(start: LocalDateTimeParts, current: LocalDateTimeParts): number {
   const startDay = Date.UTC(start.year, start.month - 1, start.day);
   const currentDay = Date.UTC(current.year, current.month - 1, current.day);
-  const dayDifference = Math.round((startDay - currentDay) / 86_400_000);
+  return Math.round((startDay - currentDay) / 86_400_000);
+}
+
+function formatNaturalLocalStart(value: string, timezone: string, reference: string): string {
+  const start = localDateTimeParts(value, timezone);
+  const dayDifference = localDayDifference(start, localDateTimeParts(reference, timezone));
   const dayLabel = dayDifference === 0
     ? "hoje"
     : dayDifference === 1
@@ -346,6 +349,19 @@ function successfulAppointmentText(outcome: Extract<TransactionalOutcome, { stat
     : base;
 }
 
+// Texto já normalizado (sem acento, minúsculo). Dia omitido é aceito; dia
+// citado (hoje/amanhã/dia da semana/dd/mm/"dia N") tem de ser o persistido.
+function mentionsOtherDay(text: string, start: LocalDateTimeParts, reference: LocalDateTimeParts): boolean {
+  const dayDifference = localDayDifference(start, reference);
+  if (/\bhoje\b/u.test(text) && dayDifference !== 0) return true;
+  if (/(?<!depois de )\bamanha\b/u.test(text) && dayDifference !== 1) return true;
+  const weekday = start.weekday.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").split("-")[0];
+  if ([...text.matchAll(/\b(segunda|terca|quarta|quinta|sexta|sabado|domingo)\b/gu)].some((match) => match[1] !== weekday)) return true;
+  if ([...text.matchAll(/\b(\d{1,2})\/(\d{1,2})\b/gu)]
+    .some((match) => Number(match[1]) !== start.day || Number(match[2]) !== start.month)) return true;
+  return [...text.matchAll(/\bdia\s+(\d{1,2})\b/gu)].some((match) => Number(match[1]) !== start.day);
+}
+
 export function transactionalReplyCorrection(
   modelText: string,
   outcomes: readonly TransactionalOutcome[]
@@ -367,7 +383,9 @@ export function transactionalReplyCorrection(
       : /\b(?:agend\w*|marcad\w*|confirmad\w*|reservad\w*|ficou\s+marcad\w*)/u.test(normalized);
   const hasCorrectTime = latest.action.startsWith("cancel") || timePattern.test(normalized);
   const hasCorrectMeetingUrl = !facts.meetingUrl || modelText.includes(facts.meetingUrl);
-  if (actionConfirmed && hasCorrectTime && hasCorrectMeetingUrl) return undefined;
+  const contradicts = EXPLICIT_TRANSACTIONAL_NEGATION.test(modelText)
+    || mentionsOtherDay(normalized, local, localDateTimeParts(latest.occurredAt, facts.timezone));
+  if (!contradicts && actionConfirmed && hasCorrectTime && hasCorrectMeetingUrl) return undefined;
 
   const exactOutcome = successfulAppointmentText(latest);
   return `A ação de agenda já foi concluída e persistida. Escreva você mesmo uma confirmação curta e natural usando exatamente estes fatos: ${exactOutcome}. Não invente outro horário ou link, não peça nova confirmação e não mencione sistema, ferramenta, erro, ajuste interno ou transferência.`;

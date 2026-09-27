@@ -22,7 +22,7 @@ import {
 } from "./humanizer.js";
 import type { MessageGateway } from "./types.js";
 import type { FollowUpDelivery } from "./follow-up-media.js";
-import { consumeAiInteraction, reconcileAiTurnFromUsageLogs } from "../../billing/ai-consumption.js";
+import { consumeAiInteraction, reconcileAiTurnFromUsageLogs, releaseAiInteractionWithoutUsage } from "../../billing/ai-consumption.js";
 import { deriveBillingTurnId } from "../../billing/turn-id.js";
 import { normalizeAiProvider } from "../../billing/pricing.js";
 import { logger } from "../../logger.js";
@@ -794,18 +794,28 @@ export class AiFollowUpProcessor {
     const lockHeartbeat = setInterval(() => void extendConversationLock(conversationLock).catch((error) => {
       console.error("Follow-up conversation lock heartbeat failed", { conversationId, error });
     }), 20_000);
+    // Reserva atômica da franquia (mesma razão do inbound_reply): a checagem e
+    // o consumo ocorrem na mesma transação serializada por tenant. A chave usa
+    // conversationId + sequenceVersion + etapa (followUpCount): estável entre
+    // retentativas da MESMA etapa (a contagem só avança em completeSent), mas
+    // cada etapa nova é reservada e cobrada — sem a etapa na chave, as etapas
+    // 2..N reutilizavam a reserva já cobrada da 1ª e rodavam sem cota nem cobrança.
+    const billingTurnId = deriveBillingTurnId(
+      claim.tenantId,
+      "follow_up",
+      `${claim.conversationId}:${claim.sequenceVersion}:${claim.followUpCount}`
+    );
     try {
-      // Reserva atômica da franquia (mesma razão do inbound_reply): a checagem e
-      // o consumo ocorrem na mesma transação serializada por tenant. A chave usa
-      // conversationId + sequenceVersion, estável entre retentativas do follow-up.
-      const billingTurnId = deriveBillingTurnId(
-        claim.tenantId,
-        "follow_up",
-        `${claim.conversationId}:${claim.sequenceVersion}`
-      );
       const consumption = await consumeAiInteraction(claim.tenantId, "follow_up", billingTurnId, { conversationId: claim.conversationId });
       if (!consumption.allowed) {
-        logger.warn({ event: "ai_interaction_blocked", tenantId: claim.tenantId, conversationId: claim.conversationId, purpose: "follow_up", reason: consumption.reason }, consumption.reason === "BILLING_UNAVAILABLE" ? "AI follow-up skipped because billing is unavailable" : "AI follow-up skipped because the billing quota was reached");
+        const unavailable = consumption.reason === "BILLING_UNAVAILABLE";
+        logger.warn({ event: "ai_interaction_blocked", tenantId: claim.tenantId, conversationId: claim.conversationId, purpose: "follow_up", reason: consumption.reason }, unavailable ? "AI follow-up delayed because billing is unavailable" : "AI follow-up skipped because the billing quota was reached");
+        // Falha transitória da contabilização não é cota esgotada: devolve a
+        // etapa à fila (fail closed, sem IA) em vez de cancelar a sequência.
+        if (unavailable) {
+          await this.repository.releaseClaim(claim, 60);
+          return "busy";
+        }
         await this.repository.cancelClaim(claim, "ai_quota_reached");
         return "cancelled";
       }
@@ -945,6 +955,9 @@ export class AiFollowUpProcessor {
       }
       return "sent";
     } catch (error) {
+      // Falha antes de gerar uso devolve a reserva já (sem esperar o TTL); com
+      // usage_logs a liberação não age e a reconciliação segue responsável.
+      void releaseAiInteractionWithoutUsage(claim.tenantId, "follow_up", billingTurnId).catch(() => {});
       if (isAmbiguousMessageDeliveryError(error)) {
         await this.repository.recordAmbiguousDelivery(claim, error);
         return "cancelled";

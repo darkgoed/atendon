@@ -272,7 +272,7 @@ export function AgentSettingsContent() {
               </select>
             </label>
           ) : null}
-          <span className={`mono rounded-full border px-3 py-2 type-caption font-semibold uppercase tracking-[.12em] ${form?.isActive ? "border-[var(--primary-border)] text-[var(--primary-text)]" : "border-[var(--warning-border)] text-[var(--warning-text)]"}`}>
+          <span className={`rounded-full border px-3 py-2 type-caption font-medium ${form?.isActive ? "border-[var(--primary-border)] text-[var(--primary-text)]" : "border-[var(--warning-border)] text-[var(--warning-text)]"}`}>
             {form?.isActive ? "IA ligada" : "IA desligada"}
           </span>
           <button type="button" className={`btn active:scale-[.98] ${form?.isActive ? "warn" : "primary"}`} disabled={!canManage || !form || changingStatus || saving || removingOverride || targetNeedsOverride} onClick={toggleAgent}>

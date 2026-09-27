@@ -136,4 +136,30 @@ describe("uso de IA tardio (reserva expirada durante a execução)", () => {
       expect((await ledger(x.t))[0]).toMatchObject({ reconciled: true, marker: null });
     }
   });
+
+  it("lote não fecha turno em voo: chamadas posteriores ao tick do lote entram no reconcile do turno", async () => {
+    const x = await setup(5); const turn = randomUUID();
+    await consumeAiInteraction(x.t, "inbound_reply", turn);
+    const call = (out: number) => pool.query("INSERT INTO usage_logs(tenant_id,request_id,ai_model,input_tokens,output_tokens,cost_usd) VALUES($1,$2,'test-model',10,$3,0.001)", [x.t, turn, out]);
+    await call(50);
+    // Tick do lote (60 s) no meio do turno: reserva recente pertence ao reconcile do turno.
+    await runBillingReconciliationBatch();
+    expect((await ledger(x.t))[0]).toMatchObject({ reconciled: false });
+    await call(70);
+    await reconcileAiTurnFromUsageLogs(x.t, "inbound_reply", turn);
+    expect(await one("SELECT output_tokens::text AS value FROM ai_usage_ledger WHERE tenant_id=$1", [x.t])).toBe("120");
+    expect(await one("SELECT provider_cost_usd_micros::text AS value FROM ai_usage_ledger WHERE tenant_id=$1", [x.t])).toBe("2000");
+  });
+
+  it("usage_log sem tokens nem custo fecha a reserva a custo zero e não trava o lote", async () => {
+    const x = await setup(5); const turn = randomUUID();
+    await consumeAiInteraction(x.t, "inbound_reply", turn);
+    await pool.query("INSERT INTO usage_logs(tenant_id,request_id,ai_model,input_tokens,output_tokens,cost_usd,cost_reported) VALUES($1,$2,'test-model',0,0,0,false)", [x.t, turn]);
+    await pool.query("UPDATE ai_usage_ledger SET created_at=now()-interval '2 days' WHERE tenant_id=$1", [x.t]);
+    await runBillingReconciliationBatch();
+    const [row] = await ledger(x.t);
+    expect(row).toMatchObject({ reconciled: true, marker: null, billable: "0" });
+    expect(await one("SELECT provider_cost_usd_micros::text AS value FROM ai_usage_ledger WHERE tenant_id=$1", [x.t])).toBe("0");
+    expect(await one("SELECT reserved_credits::text AS value FROM usage_periods WHERE id=$1", [x.period.id])).toBe("0");
+  });
 });

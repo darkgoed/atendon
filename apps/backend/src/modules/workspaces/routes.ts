@@ -4,6 +4,8 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { PermissionKey } from "../../auth/rbac.js";
 import { createSessionToken, requirePermission, requireRootWorkspace, requireSession, type WorkspaceSession } from "../../auth/session.js";
+import { createWorkspaceSessionRow } from "../../auth/sessions.js";
+import { issueTotpChallenge } from "../../auth/totp.js";
 import { db } from "../../db/client.js";
 import { config } from "../../config.js";
 import { withTenantTransaction } from "../../db/tenant-transaction.js";
@@ -761,8 +763,8 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
         throw httpError(409, "Convite expirado");
       }
 
-      const existing = await client.query<{ id: string; email: string; password_hash: string | null; is_root: boolean; status: string }>(
-        "SELECT id,email,password_hash,is_root,status FROM users WHERE email=$1",
+      const existing = await client.query<{ id: string; email: string; password_hash: string | null; is_root: boolean; status: string; totp_enabled: boolean }>(
+        "SELECT id,email,password_hash,is_root,status,totp_enabled_at IS NOT NULL AS totp_enabled FROM users WHERE email=$1",
         [invite.email]
       );
       let user = existing.rows[0];
@@ -779,7 +781,7 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
           "INSERT INTO users(email,password_hash,status,is_root) VALUES($1,$2,'active',false) RETURNING id,email,is_root",
           [invite.email, await hash(body.newPassword, 12)]
         );
-        user = { id: created.rows[0].id, email: created.rows[0].email, password_hash: null, is_root: created.rows[0].is_root, status: "active" };
+        user = { id: created.rows[0].id, email: created.rows[0].email, password_hash: null, is_root: created.rows[0].is_root, status: "active", totp_enabled: false };
       }
       const existingMember = await client.query<{ id: string }>(
         "SELECT id FROM workspace_members WHERE workspace_id=$1 AND user_id=$2",
@@ -808,14 +810,26 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
         ]
       );
       await client.query("COMMIT");
+      if (user.totp_enabled) {
+        // 2FA: senha não basta — mesmo desafio do /auth/login; só /auth/totp/verify emite a sessão.
+        await issueTotpChallenge(reply, user.id);
+        return { accepted: true, workspaceId: invite.workspace_id, totp_required: true };
+      }
       const role = await db.query<{ name: string }>("SELECT name FROM workspace_roles WHERE id=$1", [invite.role_id]);
+      const sid = await createWorkspaceSessionRow({
+        userId: user.id,
+        tenantId: invite.workspace_id,
+        ip: request.ip,
+        userAgent: typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : undefined
+      });
       const token = await createSessionToken({
         userId: user.id,
         tenantId: invite.workspace_id,
         email: user.email,
         role: role.rows[0].name,
         isRoot: user.is_root,
-        rootWorkspaceAccess: user.is_root
+        rootWorkspaceAccess: user.is_root,
+        sid
       });
       reply.setCookie("atendon_session", token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 43_200 });
       return { accepted: true, workspaceId: invite.workspace_id };

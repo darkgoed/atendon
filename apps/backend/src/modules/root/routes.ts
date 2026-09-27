@@ -459,7 +459,8 @@ export async function registerRootRoutes(app: FastifyInstance) {
       email: root.email,
       role: "ROOT",
       isRoot: true,
-      rootWorkspaceAccess: true
+      rootWorkspaceAccess: true,
+      sid: root.sid
     });
     reply.setCookie("atendon_session", token, { httpOnly: true, sameSite: "lax", secure: config.NODE_ENV === "production", path: "/", maxAge: 43_200 });
     await db.query(

@@ -243,6 +243,32 @@ describe("/changelog (Novidades)", () => {
     expect(callsFor("/panel/changelog/read")).toHaveLength(0);
   });
 
+  it("sem posts editoriais mostra as notas de versão publicadas (antes a página ficava vazia)", async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path.startsWith("/panel/changelog/feed")) return { posts: [], nextOffset: null };
+      if (path === "/panel/changelog/unread") return { count: 0, latestPost: null };
+      if (path === "/panel/version") {
+        return {
+          version: "2.1.2",
+          deployVersion: "2.1.2",
+          buildNumber: 129,
+          changelog: [
+            { version: "2.1.1", date: "2026-09-20", changes: ["Agenda por equipe"] },
+            { version: "2.1.2", date: "2026-09-24", changes: ["Uso no ciclo de cobrança", "Google Agenda mais estável"] }
+          ]
+        };
+      }
+      return {};
+    });
+    renderPage(<ChangelogPage />);
+    expect(await screen.findByText("Uso no ciclo de cobrança")).toBeInTheDocument();
+    expect(screen.getByText("Google Agenda mais estável")).toBeInTheDocument();
+    expect(screen.queryByText("Nenhuma novidade publicada ainda")).toBeNull();
+    const versions = Array.from(document.querySelectorAll("[data-changelog-release]")).map((node) => node.getAttribute("data-changelog-release"));
+    expect(versions).toEqual(["2.1.2", "2.1.1"]);
+    expect(screen.getByText("24/09/2026")).toBeInTheDocument();
+  });
+
   it("carrega atualizações anteriores por offset com dedupe por slug", async () => {
     api.mockImplementation(async (path: string, init?: { method?: string }) => {
       if (path === "/panel/changelog/feed?limit=20") return { posts: [feedPostUnread], nextOffset: 20 };

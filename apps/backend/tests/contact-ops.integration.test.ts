@@ -31,6 +31,8 @@ let tenantA = "";
 let tenantB = "";
 let ownerA = "";
 let ownerB = "";
+let operatorA = "";
+let operatorMemberA = "";
 const emails = new Map<string, string>();
 const cookies = new Map<string, string>();
 
@@ -40,7 +42,7 @@ async function loginAs(userId: string): Promise<string> {
   const email = emails.get(userId)!;
   const token = await createSessionToken({
     userId,
-    tenantId: userId === ownerA ? tenantA : tenantB,
+    tenantId: userId === ownerA || userId === operatorA ? tenantA : tenantB,
     email,
     isRoot: false,
     rootWorkspaceAccess: false,
@@ -84,6 +86,14 @@ beforeAll(async () => {
       emails.set(user.id, email);
       if (owner === "a") ownerA = user.id; else ownerB = user.id;
     }
+    const operatorEmail = `contact-ops-operator-${randomUUID()}@test.local`;
+    operatorA = (await client.query<{ id: string }>("INSERT INTO users(email,password_hash,status) VALUES($1,$2,'active') RETURNING id", [operatorEmail, await hash(password, 4)])).rows[0].id;
+    operatorMemberA = (await client.query<{ id: string }>(
+      `INSERT INTO workspace_members(workspace_id,user_id,role_id,status,joined_at)
+       SELECT $1,$2,id,'active',now() FROM workspace_roles WHERE workspace_id=$1 AND name='OPERADOR' RETURNING id`,
+      [tenantA, operatorA]
+    )).rows[0].id;
+    emails.set(operatorA, operatorEmail);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -95,6 +105,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await pool.query("DELETE FROM tenants WHERE id IN ($1,$2)", [tenantA, tenantB]);
+  await pool.query("DELETE FROM audit_logs WHERE actor_user_id=$1", [operatorA]);
+  await pool.query("DELETE FROM users WHERE id=$1", [operatorA]);
   await app.close();
   await pool.end();
 });
@@ -299,5 +311,83 @@ describe("R20 — onboarding-status", () => {
     const afterBody = after.json();
     expect(afterBody.items.every((item: { done: boolean }) => item.done)).toBe(true);
     expect(afterBody.all_done).toBe(true);
+  });
+});
+
+describe("R14 — importação respeita RBAC e escopo do OPERADOR", () => {
+  it("OPERADOR não cria campo personalizado nem grava valores de campo: colunas ignoradas com aviso", async () => {
+    const response = await importCsv(operatorA, "Nome,Telefone,Segredo\nNovo Op,21911110000,x\n", {
+      nome: "Nome", telefone: "Telefone", custom: { campo_op: "Segredo" }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ imported: 1, warnings: [expect.stringContaining("campos personalizados")] });
+    const defs = await pool.query("SELECT 1 FROM custom_field_defs WHERE tenant_id=$1 AND key='campo_op'", [tenantA]);
+    expect(defs.rowCount).toBe(0);
+  });
+
+  it("OPERADOR importa o modelo oficial (email auto-mapeado) sem 403 e sem gravar email", async () => {
+    const response = await importCsv(operatorA, "nome,telefone,email\nCliente Op,21966660000,op@test.local\n", { nome: "nome", telefone: "telefone", email: "email" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ imported: 1, errors: [] });
+    const email = await pool.query(
+      `SELECT 1 FROM lead_custom_values value JOIN custom_field_defs def ON def.id=value.field_id AND def.key='email'
+       JOIN scheduling_leads lead ON lead.id=value.lead_id WHERE lead.tenant_id=$1 AND lead.phone='5521966660000'`,
+      [tenantA]
+    );
+    expect(email.rowCount).toBe(0);
+  });
+
+  it("linha desfeita (etiqueta recusada) não impede a próxima linha do mesmo telefone em update", async () => {
+    await pool.query("INSERT INTO scheduling_leads(tenant_id,phone,name,source,assigned_member_id) VALUES($1,'5521977770000','Original','teste',$2)", [tenantA, operatorMemberA]);
+    const response = await importCsv(operatorA, "Nome,Telefone,Tags\nComTag,5521977770000,Nao Existe Rv\nNovoNome,5521977770000,\n", { nome: "Nome", telefone: "Telefone", tags: "Tags" }, { on_duplicate: "update" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().errors.map((e: { row: number }) => e.row)).toEqual([2]);
+    expect(response.json().updated).toBe(1);
+    const name = (await pool.query<{ name: string }>("SELECT name FROM scheduling_leads WHERE tenant_id=$1 AND phone='5521977770000'", [tenantA])).rows[0].name;
+    expect(name).toBe("NovoNome");
+  });
+
+  it("contato criado pelo OPERADOR nasce na carteira dele e pode ser reimportado em update", async () => {
+    const first = await importCsv(operatorA, "Nome,Telefone\nCriado Op,5521988880001\n", { nome: "Nome", telefone: "Telefone" });
+    expect(first.json()).toMatchObject({ imported: 1 });
+    const row = (await pool.query<{ assigned_member_id: string | null }>("SELECT assigned_member_id FROM scheduling_leads WHERE tenant_id=$1 AND phone='5521988880001'", [tenantA])).rows[0];
+    expect(row.assigned_member_id).toBe(operatorMemberA);
+    const second = await importCsv(operatorA, "Nome,Telefone\nCriado Op 2,5521988880001\n", { nome: "Nome", telefone: "Telefone" }, { on_duplicate: "update" });
+    expect(second.json()).toMatchObject({ updated: 1, errors: [] });
+  });
+
+  it("OPERADOR aplica etiqueta existente mas não cria etiqueta nova no catálogo", async () => {
+    await pool.query("INSERT INTO lead_tags(tenant_id,name,color) VALUES($1,'Vip Op','#2563EB')", [tenantA]);
+    const response = await importCsv(operatorA, "Nome,Telefone,Tags\nCom Tag,21922220000,Vip Op\nTag Nova,21933330000,Inventada Op\n", {
+      nome: "Nome", telefone: "Telefone", tags: "Tags"
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ imported: 1 });
+    expect(response.json().errors).toEqual([expect.objectContaining({ row: 3 })]);
+    const created = await pool.query("SELECT 1 FROM lead_tags WHERE tenant_id=$1 AND name='Inventada Op'", [tenantA]);
+    expect(created.rowCount).toBe(0);
+    const rolledBack = await pool.query("SELECT 1 FROM scheduling_leads WHERE tenant_id=$1 AND phone='5521933330000'", [tenantA]);
+    expect(rolledBack.rowCount).toBe(0);
+  });
+
+  it("OPERADOR em update só altera contatos da própria carteira (nem restaura lixeira alheia)", async () => {
+    const trashed = (await pool.query<{ id: string }>(
+      "INSERT INTO scheduling_leads(tenant_id,phone,name,source,deleted_at) VALUES($1,'5521944440000','Na Lixeira','teste',now()) RETURNING id",
+      [tenantA]
+    )).rows[0].id;
+    const mine = (await pool.query<{ id: string }>(
+      "INSERT INTO scheduling_leads(tenant_id,phone,name,source,assigned_member_id) VALUES($1,'5521955550000','Meu Lead','teste',$2) RETURNING id",
+      [tenantA, operatorMemberA]
+    )).rows[0].id;
+    const csvText = "Nome,Telefone\nAna Invadida,(21) 98888-7777\nRestaurado,5521944440000\nMeu Lead Novo,5521955550000\n";
+    const response = await importCsv(operatorA, csvText, { nome: "Nome", telefone: "Telefone" }, { on_duplicate: "update" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ updated: 1 });
+    expect(response.json().errors.map((error: { row: number }) => error.row)).toEqual([2, 3]);
+    const ana = (await pool.query<{ name: string }>("SELECT name FROM scheduling_leads WHERE tenant_id=$1 AND phone='5521988887777'", [tenantA])).rows[0];
+    expect(ana.name).not.toBe("Ana Invadida");
+    const trashedRow = (await pool.query<{ deleted_at: Date | null }>("SELECT deleted_at FROM scheduling_leads WHERE id=$1", [trashed])).rows[0];
+    expect(trashedRow.deleted_at).not.toBeNull();
+    expect((await pool.query<{ name: string }>("SELECT name FROM scheduling_leads WHERE id=$1", [mine])).rows[0].name).toBe("Meu Lead Novo");
   });
 });

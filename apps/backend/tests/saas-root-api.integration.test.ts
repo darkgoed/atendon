@@ -31,8 +31,10 @@ beforeAll(async () => {
     await ensureWorkspaceDefaultRoles(c, tenant);
     const ph = await hash(password, 4);
     const admin = (await c.query<{ id: string }>("INSERT INTO users(email,password_hash,status) VALUES($1,$2,'active') RETURNING id", [adminEmail, ph])).rows[0].id;
-    await c.query("INSERT INTO users(email,password_hash,status,is_root) VALUES($1,$2,'active',true)", [rootEmail, ph]);
-    await c.query("INSERT INTO workspace_members(workspace_id,user_id,role_id,status,joined_at) SELECT $1,$2,id,'active',now() FROM workspace_roles WHERE workspace_id=$1 AND name='ADMIN'", [tenant, admin]);
+    const root = (await c.query<{ id: string }>("INSERT INTO users(email,password_hash,status,is_root) VALUES($1,$2,'active',true) RETURNING id", [rootEmail, ph])).rows[0].id;
+    // Root sem membership cai no primeiro tenant global (ORDER BY name), que outros
+    // arquivos de teste criam/apagam em paralelo — a sessão então viola a FK.
+    await c.query("INSERT INTO workspace_members(workspace_id,user_id,role_id,status,joined_at) SELECT $1,u.id,r.id,'active',now() FROM workspace_roles r CROSS JOIN unnest($2::uuid[]) AS u(id) WHERE r.workspace_id=$1 AND r.name='ADMIN'", [tenant, [admin, root]]);
     plan = (await c.query<{ id: string }>("INSERT INTO plans(code,name,monthly_price_cents,status) VALUES($1,'Security plan',1000,'active') RETURNING id", [`security-${suffix}`])).rows[0].id;
     // Assinatura inicial: sem ela o tenant cai no fail-open e a troca de plano retorna 404.
     await c.query(

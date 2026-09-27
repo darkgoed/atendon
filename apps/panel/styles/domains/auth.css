@@ -78,7 +78,6 @@
 .eyebrow {
   display: block;
   color: var(--primary-text);
-  font-family: var(--font-mono);
   font-size: var(--text-micro);
   font-weight: var(--weight-medium);
   letter-spacing: var(--tracking-overline);
@@ -164,7 +163,7 @@
   background: var(--warning-subtle);
   color: var(--warning-text);
 }
-.denied-card h1 { font-size: var(--text-hero-sub); letter-spacing: var(--tracking-hero); }
+.denied-card h1 { font-size: var(--text-page-title); letter-spacing: var(--tracking-title); }
 .denied-card p { color: var(--text-secondary); font-size: var(--text-body); line-height: var(--leading-body); }
 .denied-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); padding-top: var(--space-1); }
 
@@ -180,7 +179,7 @@
   background: var(--surface);
 }
 .invitation-header { display: grid; gap: var(--space-1); }
-.invitation-header h1 { font-size: var(--text-hero-sub); letter-spacing: var(--tracking-hero); }
+.invitation-header h1 { font-size: var(--text-page-title); letter-spacing: var(--tracking-title); }
 .invitation-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
 
 /* ========================================================== RESPONSIVO == */

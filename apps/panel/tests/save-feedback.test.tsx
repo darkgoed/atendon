@@ -47,7 +47,7 @@ describe("padrão de salvar (DS v2 §2)", () => {
 
     rerender(<SaveButton state="done" onClick={onClick}>Salvar perfil</SaveButton>);
     expect(screen.getByRole("button", { name: "Salvo" })).toBeTruthy();
-    expect(document.querySelector(".on-check path")?.getAttribute("d")).toBe("M5 12.5l4.5 4.5L19 7.5");
+    expect(document.querySelector(".on-check path")?.getAttribute("d")).toBe("M20 6 9 17l-5-5");
   });
 
   it("SaveToast só aparece em show e anuncia como status", () => {

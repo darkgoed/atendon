@@ -45,6 +45,9 @@ hr { height: 1px; border: 0; background: var(--border-subtle); }
 
 small { font-size: var(--text-meta); }
 
+/* Ênfase inline discreta: sem o 700 padrão do navegador. */
+strong, b { font-weight: var(--weight-semibold); }
+
 code, kbd, samp, pre, .mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;

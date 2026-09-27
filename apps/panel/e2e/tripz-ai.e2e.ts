@@ -1,11 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type Route } from "@playwright/test";
 
-const credentials = {
-  email: process.env.PANEL_E2E_EMAIL ?? process.env.PANEL_SEED_EMAIL,
-  password: process.env.PANEL_E2E_PASSWORD ?? process.env.PANEL_SEED_PASSWORD
-};
-
 const viewports = [
   { name: "mobile", width: 360, height: 800 },
   { name: "tablet", width: 768, height: 1024 },
@@ -139,6 +134,8 @@ async function installTripzFixture(page: Page, unknownRoutes: string[]) {
   await page.route("**/backend/dashboard", (route) => json(route, { counts: { handoff: 0 } }));
   await page.route("**/backend/scheduling/config/attendants", (route) => json(route, { attendants: [], member_ids: [] }));
   await page.route("**/backend/me/notification-preferences", (route) => json(route, { enabled: false }));
+  await page.route("**/backend/me/appearance-preferences", (route) => json(route, { theme: null, accent: null, density: null }));
+  await page.route("**/backend/me/internal-notifications**", (route) => json(route, { items: [], total_unread: 0, next_cursor: null }));
   await page.route("**/backend/conversations/unread", (route) => json(route, { count: 0 }));
   await page.route("**/backend/events**", (route) => route.fulfill({ status: 204, body: "" }));
 
@@ -205,16 +202,6 @@ async function installTripzFixture(page: Page, unknownRoutes: string[]) {
   await page.route("**/backend/tripz-ai/**", handleTripzRoute);
 }
 
-async function login(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("E-mail").fill(credentials.email!);
-  await page.getByLabel("Senha", { exact: true }).fill(credentials.password!);
-  await Promise.all([
-    page.waitForURL((url) => url.pathname !== "/login"),
-    page.getByRole("button", { name: "Entrar" }).click()
-  ]);
-}
-
 async function expectNoOverflow(page: Page) {
   const metrics = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
   expect(metrics.scroll, `Tripz overflowed by ${metrics.scroll - metrics.client}px`).toBeLessThanOrEqual(metrics.client + 1);
@@ -222,7 +209,7 @@ async function expectNoOverflow(page: Page) {
 
 async function expectA11y(page: Page) {
   const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
-  expect(result.violations.map(({ id, impact, nodes }) => ({ id, impact, nodes: nodes.map(({ target }) => target) }))).toEqual([]);
+  expect(result.violations.map(({ id, impact, nodes }) => ({ id, impact, nodes: nodes.map(({ target, failureSummary }) => [...target, failureSummary ?? ""]) }))).toEqual([]);
 }
 
 test("authenticated Tripz IA covers flag-on create/upload/poll/retry/revision/preview/PDF and keyboard states", async ({ page }, testInfo) => {
@@ -238,18 +225,16 @@ test("authenticated Tripz IA covers flag-on create/upload/poll/retry/revision/pr
     }
   });
   await installTripzFixture(page, unknownRoutes);
-  if (credentials.email && credentials.password) {
-    await login(page);
-    await page.goto("/tripz-ai");
-  } else {
-    // The fixture still exercises the authenticated shell contract through a
-    // mocked /me response, so local QA does not require a shared test password.
-    await page.goto("/tripz-ai");
-  }
+  // O fixture intercepta toda /api e /backend (inclusive /auth/login), então o
+  // shell autenticado é exercido pelo /me mockado — sem login real.
+  await page.goto("/tripz-ai");
   const versionNotice = page.getByRole("button", { name: "Entendi" });
   await versionNotice.click({ timeout: 5_000 }).catch(() => undefined);
   await expect(page.locator(".action-overlay")).toHaveCount(0);
+  // Desktop usa o rail: páginas fora dos primários ficam no popover "Mais itens do menu".
+  await page.getByRole("button", { name: "Mais itens do menu" }).click();
   await expect(page.getByRole("link", { name: "Tripz IA" })).toHaveAttribute("aria-current", "page");
+  await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Nova proposta", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Aruba · Marina e Caio" })).toBeVisible();
@@ -297,7 +282,7 @@ test("authenticated Tripz IA covers flag-on create/upload/poll/retry/revision/pr
       await expect(historyTrigger).toBeFocused();
     }
     const composerSendBox = await page.getByRole("button", { name: "Enviar mensagem" }).boundingBox();
-    const notificationBox = await page.getByRole("button", { name: "Mensagens de contatos" }).boundingBox();
+    const notificationBox = await page.getByRole("button", { name: "Sino de notificações" }).boundingBox();
     expect(composerSendBox).not.toBeNull();
     expect(notificationBox).not.toBeNull();
     const overlapsComposerSend = !(

@@ -18,10 +18,12 @@ const releaseConversationLockMock = vi.hoisted(() => vi.fn());
 const extendConversationLockMock = vi.hoisted(() => vi.fn().mockResolvedValue(true));
 const consumeAiInteractionMock = vi.hoisted(() => vi.fn().mockResolvedValue({ allowed: true }));
 const reconcileAiTurnFromUsageLogsMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const releaseAiInteractionWithoutUsageMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock("../src/billing/ai-consumption.js", () => ({
   consumeAiInteraction: consumeAiInteractionMock,
-  reconcileAiTurnFromUsageLogs: reconcileAiTurnFromUsageLogsMock
+  reconcileAiTurnFromUsageLogs: reconcileAiTurnFromUsageLogsMock,
+  releaseAiInteractionWithoutUsage: releaseAiInteractionWithoutUsageMock
 }));
 
 vi.mock("../src/modules/messages/conversation-lock.js", () => ({
@@ -94,6 +96,8 @@ describe("AI follow-ups", () => {
     consumeAiInteractionMock.mockResolvedValue({ allowed: true });
     reconcileAiTurnFromUsageLogsMock.mockReset();
     reconcileAiTurnFromUsageLogsMock.mockResolvedValue(undefined);
+    releaseAiInteractionWithoutUsageMock.mockReset();
+    releaseAiInteractionWithoutUsageMock.mockResolvedValue(undefined);
   });
 
   it("derives stable RFC UUID v5 identifiers and separates logical keys", () => {
@@ -107,7 +111,7 @@ describe("AI follow-ups", () => {
     const { processor, ai } = setup();
     await expect(processor.process(claim.conversationId)).resolves.toBe("sent");
     const turnId = consumeAiInteractionMock.mock.calls[0]![2];
-    expect(turnId).toBe(deriveBillingTurnId(claim.tenantId, "follow_up", `${claim.conversationId}:${claim.sequenceVersion}`));
+    expect(turnId).toBe(deriveBillingTurnId(claim.tenantId, "follow_up", `${claim.conversationId}:${claim.sequenceVersion}:${claim.followUpCount}`));
     expect(ai.complete.mock.calls[0]![0].trace.requestId).toBe(turnId);
     expect(reconcileAiTurnFromUsageLogsMock).toHaveBeenCalledWith(claim.tenantId, "follow_up", turnId);
   });
@@ -118,9 +122,29 @@ describe("AI follow-ups", () => {
     const second = setup();
     await second.processor.process(claim.conversationId);
     expect(consumeAiInteractionMock.mock.calls.map((call) => call[2])).toEqual([
-      deriveBillingTurnId(claim.tenantId, "follow_up", "conversation-1:3"),
-      deriveBillingTurnId(claim.tenantId, "follow_up", "conversation-1:3")
+      deriveBillingTurnId(claim.tenantId, "follow_up", "conversation-1:3:0"),
+      deriveBillingTurnId(claim.tenantId, "follow_up", "conversation-1:3:0")
     ]);
+  });
+
+  it("reserves each step of the same sequence under its own billing key", async () => {
+    const first = setup();
+    await first.processor.process(claim.conversationId);
+    const second = setup();
+    second.repository.claimDue.mockResolvedValue({ ...claim, followUpCount: 1 });
+    await second.processor.process(claim.conversationId);
+    const [stepOne, stepTwo] = consumeAiInteractionMock.mock.calls.map((call) => call[2]);
+    expect(stepTwo).not.toBe(stepOne);
+    expect(second.ai.complete.mock.calls[0]![0].trace.requestId).toBe(stepTwo);
+  });
+
+  it("requeues the step instead of cancelling the sequence when billing is unavailable", async () => {
+    const { processor, repository, ai } = setup();
+    consumeAiInteractionMock.mockResolvedValueOnce({ allowed: false, reason: "BILLING_UNAVAILABLE" });
+    await expect(processor.process(claim.conversationId)).resolves.toBe("busy");
+    expect(repository.cancelClaim).not.toHaveBeenCalled();
+    expect(repository.releaseClaim).toHaveBeenCalledWith(claim, 60);
+    expect(ai.complete).not.toHaveBeenCalled();
   });
 
   it("cancels quota-refused claims without provider or reconciliation", async () => {
@@ -137,6 +161,19 @@ describe("AI follow-ups", () => {
     ai.complete.mockRejectedValueOnce(new Error("provider down"));
     await expect(processor.process(claim.conversationId)).rejects.toThrow("provider down");
     expect(reconcileAiTurnFromUsageLogsMock).not.toHaveBeenCalled();
+  });
+
+  it("releases the step reservation right away when the step fails (no TTL hold)", async () => {
+    const { processor, ai } = setup();
+    ai.complete.mockRejectedValueOnce(new Error("provider down"));
+    await expect(processor.process(claim.conversationId)).rejects.toThrow("provider down");
+    expect(releaseAiInteractionWithoutUsageMock).toHaveBeenCalledWith(claim.tenantId, "follow_up", consumeAiInteractionMock.mock.calls[0]![2]);
+  });
+
+  it("keeps the reservation of a sent step for reconciliation", async () => {
+    const { processor } = setup();
+    await expect(processor.process(claim.conversationId)).resolves.toBe("sent");
+    expect(releaseAiInteractionWithoutUsageMock).not.toHaveBeenCalled();
   });
 
   it("prioritizes the latest exchange and records a contextual follow-up", async () => {

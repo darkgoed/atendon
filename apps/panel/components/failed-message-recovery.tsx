@@ -34,7 +34,7 @@ export function FailedMessageRecovery({
   const disabled = !canManage || !connected || recovering || recovery.available === 0;
 
   return (
-    <section className="card mb-6" aria-labelledby="failed-message-recovery-title">
+    <section className="card mb-4" aria-labelledby="failed-message-recovery-title">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
           <Warning className="mt-0.5 shrink-0 text-[var(--warning-text)]" size={20} aria-hidden="true" />

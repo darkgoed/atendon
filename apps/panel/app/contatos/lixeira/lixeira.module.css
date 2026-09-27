@@ -1,36 +1,84 @@
-/* Lixeira de contatos (R19 v6). Classes de domínio próprias. */
+/* Lixeira de contatos (R19 v6). Classes de domínio próprias.
+   Uma única superfície com linhas divididas (sem card por item). */
 
 .page {
   display: grid;
   gap: var(--space-4);
 }
 
+.count {
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
 .list {
   display: grid;
-  gap: var(--space-3);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+}
+
+.skeletonRow {
+  height: 56px;
+  margin: var(--space-2) var(--space-4);
 }
 
 .item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--space-2) var(--space-4);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-3);
   align-items: center;
-  padding: var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.item:last-of-type {
+  border-bottom: 0;
+}
+
+.item:hover {
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+}
+
+.item[aria-busy="true"] {
+  opacity: .6;
+}
+
+.avatar {
+  flex: none;
+  filter: grayscale(1);
+  opacity: .75;
 }
 
 .itemBody {
   display: grid;
-  gap: var(--space-1);
+  gap: 2px;
   min-width: 0;
+}
+
+.itemHead {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .itemName {
   margin: 0;
-  font-weight: var(--weight-semibold);
   color: var(--text);
+  font-size: var(--text-control);
+  font-weight: var(--weight-semibold);
   overflow-wrap: anywhere;
 }
 
@@ -38,15 +86,31 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
-  font-family: var(--font-mono);
-  font-size: 10px;
+  gap: var(--space-1) var(--space-3);
   color: var(--text-muted);
+  font-size: var(--text-meta);
   overflow-wrap: anywhere;
 }
 
 .itemActions {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+@media (max-width: 520px) {
+  .item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .itemActions {
+    grid-column: 2;
+  }
 }

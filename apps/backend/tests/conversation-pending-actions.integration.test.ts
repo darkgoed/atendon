@@ -37,8 +37,8 @@ async function createPending(tenant: string, session: string, name: string, next
     [tenant, `5533${String(createdConversationIds.length + 1).padStart(10, "0")}`, name, nextActionAt]
   );
   const conversation = await first<{ id: string }>(
-    `INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name,lead_id,assigned_user_id,queue_id,status)
-     SELECT $1,$2,$3,$4,$5,$6,id,'open' FROM conversation_queues WHERE tenant_id=$1 AND is_initial RETURNING id`,
+    `INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name,lead_id,assigned_user_id,status)
+     VALUES($1,$2,$3,$4,$5,$6,'open') RETURNING id`,
     [tenant, session, `5533${String(createdConversationIds.length + 1).padStart(10, "0")}`, name, lead!.id, assignedUserId]
   );
   if (!conversation) throw new Error("pending action fixture conversation was not created");

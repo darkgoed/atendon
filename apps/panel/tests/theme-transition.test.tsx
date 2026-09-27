@@ -8,8 +8,7 @@ import {
   applyThemeWithTransition,
   currentTheme,
   finishThemeTransition,
-  THEME_SETTLE_MS,
-  THEME_SWEEP_MS
+  THEME_WIPE_MS
 } from "@/lib/theme-transition";
 
 function mockMatchMedia(reduced: boolean) {
@@ -28,98 +27,106 @@ function mockMatchMedia(reduced: boolean) {
   });
 }
 
+type FakeTransition = {
+  update: () => Promise<void> | void;
+  finished: Promise<void>;
+  finish: () => void;
+  skipTransition: ReturnType<typeof vi.fn>;
+};
+
+/** jsdom não tem View Transition API: um fake que registra o callback e deixa
+ *  o teste decidir quando o navegador "captura" e quando o wipe termina. */
+function mockViewTransitions() {
+  const calls: FakeTransition[] = [];
+  const start = vi.fn((update: () => Promise<void> | void) => {
+    let finish!: () => void;
+    const finished = new Promise<void>((resolve) => { finish = resolve; });
+    const transition: FakeTransition = { update, finished, finish, skipTransition: vi.fn(() => finish()) };
+    calls.push(transition);
+    return transition;
+  });
+  Object.defineProperty(document, "startViewTransition", { configurable: true, writable: true, value: start });
+  return { start, calls };
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   document.documentElement.dataset.theme = "dark";
   localStorage.clear();
   mockMatchMedia(false);
-  // jsdom não implementa CSS.supports; sem ele o motor cai no modo crossfade.
-  Object.defineProperty(window, "CSS", { configurable: true, writable: true, value: { supports: () => true } });
-  Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1280 });
-  Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 800 });
 });
 
 afterEach(() => {
   finishThemeTransition();
   cleanup();
   vi.useRealTimers();
+  delete (document as { startViewTransition?: unknown }).startViewTransition;
   delete document.documentElement.dataset.theme;
+  document.documentElement.removeAttribute("data-theme-switching");
 });
 
-describe("transição de tema", () => {
-  it("cobre a tela ANTES de trocar o tema e limpa o overlay ao fim", () => {
-    applyThemeWithTransition("light", { x: 100, y: 40 });
+describe("transição de tema (wipe)", () => {
+  it("troca o tema DENTRO da view transition e limpa o estado ao fim", async () => {
+    const { start, calls } = mockViewTransitions();
+    applyThemeWithTransition("light");
 
-    // Durante a varredura o tema ainda é o antigo: é isso que esconde o repaint.
-    const overlay = document.querySelector(".theme-fx");
-    expect(overlay).not.toBeNull();
-    expect(overlay?.getAttribute("data-theme-fx")).toBe("light");
-    expect(overlay?.getAttribute("aria-hidden")).toBe("true");
+    expect(start).toHaveBeenCalledTimes(1);
+    // Antes do callback o navegador ainda captura o snapshot antigo.
     expect(currentTheme()).toBe("dark");
+    expect(document.documentElement).toHaveAttribute("data-theme-switching");
 
-    vi.advanceTimersByTime(THEME_SWEEP_MS);
+    const update = calls[0].update();
     expect(currentTheme()).toBe("light");
     expect(localStorage.getItem("atendon-theme")).toBe("light");
-    expect(document.querySelector(".theme-fx")?.className).toContain("theme-fx--settle");
+    await vi.advanceTimersByTimeAsync(0);
+    await update;
 
-    vi.advanceTimersByTime(THEME_SETTLE_MS);
-    expect(document.querySelector(".theme-fx")).toBeNull();
+    calls[0].finish();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.documentElement).not.toHaveAttribute("data-theme-switching");
   });
 
-  // A onda é feita de camadas empilhadas numa ORDEM que importa: veil (volume)
-  // → spark (impulso) → ring (crista) → halo (bloom, vaza por fora do ring) →
-  // core (o disco que esconde o repaint) → flash (estalo do commit, por cima).
-  // Inverter a ordem apaga o efeito: o core pintaria por cima da crista.
-  it("monta as camadas da onda na ordem de composição", () => {
-    applyThemeWithTransition("light", { x: 100, y: 40 });
-    const layers = Array.from(document.querySelectorAll(".theme-fx > span")).map((node) => node.className);
-    expect(layers).toEqual([
-      "theme-fx__veil",
-      "theme-fx__spark",
-      "theme-fx__ring",
-      "theme-fx__halo",
-      "theme-fx__core",
-      "theme-fx__flash"
-    ]);
+  it("sem startViewTransition troca o tema na hora (fallback)", () => {
+    applyThemeWithTransition("light");
+    expect(currentTheme()).toBe("light");
+    expect(localStorage.getItem("atendon-theme")).toBe("light");
   });
 
-  it("ancora a onda no ponto clicado e cobre o canto mais distante", () => {
-    applyThemeWithTransition("light", { x: 0, y: 0 });
-    const overlay = document.querySelector<HTMLElement>(".theme-fx");
-    expect(overlay?.style.getPropertyValue("--theme-fx-x")).toBe("0px");
-    expect(overlay?.style.getPropertyValue("--theme-fx-y")).toBe("0px");
-    // Diagonal de 1280x800 = 1509,3… — o raio precisa cobrir a viewport inteira.
-    expect(Number.parseInt(overlay?.style.getPropertyValue("--theme-fx-r") ?? "0", 10)).toBeGreaterThanOrEqual(1509);
-  });
-
-  it("respeita prefers-reduced-motion: troca na hora, sem overlay", () => {
+  it("respeita prefers-reduced-motion: troca na hora, sem view transition", () => {
+    const { start } = mockViewTransitions();
     mockMatchMedia(true);
-    applyThemeWithTransition("light", { x: 10, y: 10 });
-    expect(document.querySelector(".theme-fx")).toBeNull();
+    applyThemeWithTransition("light");
+    expect(start).not.toHaveBeenCalled();
     expect(currentTheme()).toBe("light");
   });
 
-  it("degrada para crossfade quando clip-path não é suportado (Safari antigo)", () => {
-    Object.defineProperty(window, "CSS", { configurable: true, writable: true, value: { supports: () => false } });
-    applyThemeWithTransition("light", { x: 10, y: 10 });
-    expect(document.querySelector(".theme-fx")?.className).toContain("theme-fx--fade");
-    vi.advanceTimersByTime(THEME_SWEEP_MS);
-    expect(currentTheme()).toBe("light");
-  });
-
-  it("um segundo clique no meio da onda comita o tema pendente e não empilha overlays", () => {
-    applyThemeWithTransition("light", { x: 10, y: 10 });
-    vi.advanceTimersByTime(Math.floor(THEME_SWEEP_MS / 2));
-    applyThemeWithTransition("dark", { x: 10, y: 10 });
-    expect(document.querySelectorAll(".theme-fx")).toHaveLength(1);
-    vi.advanceTimersByTime(THEME_SWEEP_MS + THEME_SETTLE_MS);
+  it("um segundo clique no meio do wipe comita o tema pendente e pula o anterior", () => {
+    const { calls } = mockViewTransitions();
+    applyThemeWithTransition("light");
+    applyThemeWithTransition("dark");
+    expect(calls[0].skipTransition).toHaveBeenCalled();
+    // O callback atrasado da primeira transição não pode desfazer a segunda.
+    void calls[0].update();
+    void calls[1].update();
     expect(currentTheme()).toBe("dark");
-    expect(document.querySelector(".theme-fx")).toBeNull();
+    expect(localStorage.getItem("atendon-theme")).toBe("dark");
+  });
+
+  it("startViewTransition lançando erro não perde a troca", () => {
+    Object.defineProperty(document, "startViewTransition", {
+      configurable: true,
+      writable: true,
+      value: () => { throw new Error("InvalidStateError"); }
+    });
+    applyThemeWithTransition("light");
+    expect(currentTheme()).toBe("light");
+    expect(document.documentElement).not.toHaveAttribute("data-theme-switching");
   });
 });
 
 describe("ThemeToggle", () => {
-  it("dispara a onda a partir do botão e troca o ícone só após o commit", async () => {
+  it("dispara o wipe a partir do botão e troca o ícone após o commit", async () => {
+    const { start, calls } = mockViewTransitions();
     render(<ThemeToggle />);
     const button = screen.getByRole("button", { name: "Alternar tema" });
     expect(button).toHaveAttribute("title", "Tema claro");
@@ -127,37 +134,43 @@ describe("ThemeToggle", () => {
     // fireEvent, não user-event: user-event usa timers internos e trava com
     // vi.useFakeTimers neste cenário (o clique é síncrono, não precisa dele).
     act(() => { fireEvent.click(button); });
+    expect(start).toHaveBeenCalledTimes(1);
     expect(button).toHaveAttribute("data-swapping", "true");
-    expect(document.querySelector(".theme-fx")).not.toBeNull();
-    // Durante a varredura o ícone ainda é o do tema atual.
     expect(button).toHaveAttribute("title", "Tema claro");
 
-    act(() => { vi.advanceTimersByTime(THEME_SWEEP_MS + THEME_SETTLE_MS); });
-    // O ícone segue o MutationObserver de data-theme, que entrega em microtask.
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      const update = calls[0].update();
+      await vi.advanceTimersByTimeAsync(0);
+      await update;
+    });
     expect(currentTheme()).toBe("light");
     expect(button).toHaveAttribute("title", "Tema escuro");
+
+    await act(async () => {
+      calls[0].finish();
+      await vi.advanceTimersByTimeAsync(THEME_WIPE_MS);
+    });
     expect(button).toHaveAttribute("data-swapping", "false");
-    expect(document.querySelector(".theme-fx")).toBeNull();
+    expect(document.documentElement).not.toHaveAttribute("data-theme-switching");
   });
 
   it("dois toggles montados juntos sincronizam o ícone pelo data-theme", async () => {
     render(<><ThemeToggle /><ThemeToggle /></>);
     const [topbar, sidebar] = screen.getAllByRole("button", { name: "Alternar tema" });
     act(() => { fireEvent.click(topbar); });
-    act(() => { vi.advanceTimersByTime(THEME_SWEEP_MS + THEME_SETTLE_MS); });
     // O MutationObserver do jsdom entrega em microtask: deixa a fila drenar.
     await act(async () => { await Promise.resolve(); });
     expect(topbar).toHaveAttribute("title", "Tema escuro");
     expect(sidebar).toHaveAttribute("title", "Tema escuro");
   });
 
-  it("desmontar no meio da onda não deixa overlay preso nem perde o tema", () => {
+  it("desmontar no meio do wipe não perde o tema", () => {
+    const { calls } = mockViewTransitions();
     const view = render(<ThemeToggle />);
     const button = screen.getByRole("button", { name: "Alternar tema" });
     act(() => { fireEvent.click(button); });
     view.unmount();
-    expect(document.querySelector(".theme-fx")).toBeNull();
+    void calls[0].update();
     expect(currentTheme()).toBe("light");
   });
 });

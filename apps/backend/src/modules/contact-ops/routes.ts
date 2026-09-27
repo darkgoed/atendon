@@ -78,7 +78,10 @@ export async function registerContactOpsRoutes(app: FastifyInstance) {
   }, async (request) => {
     const session = await requirePermission(request, "leads.create");
     const body = importBody.parse(request.body);
-    return importContacts(session.tenantId, actor(request, session), body);
+    return importContacts(session.tenantId, actor(request, session), body, {
+      permissions: session.permissions,
+      scope: await resolveCaseScope(db, session)
+    });
   });
 
   app.get("/contact-ops/export.csv", { config: { rateLimit: HTTP_RATE_LIMITS.export } }, async (request, reply) => {

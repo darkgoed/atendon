@@ -43,7 +43,7 @@ function mockRects(specs: RectSpec[]) {
 }
 
 function overlay() {
-  const svg = document.querySelector('svg[aria-hidden="true"]');
+  const svg = document.querySelector('[role="list"] > svg[aria-hidden="true"]');
   expect(svg).not.toBeNull();
   return Array.from(svg!.querySelectorAll("path")).map((path) => path.getAttribute("d") ?? "");
 }
@@ -74,7 +74,7 @@ describe("FlowConnect", () => {
     const connectors = container.querySelectorAll("[data-flow-connector]");
     expect(connectors).toHaveLength(items.length - 1);
     connectors.forEach((connector) => expect(connector).toHaveAttribute("aria-hidden", "true"));
-    expect(container.querySelector('svg[aria-hidden="true"]')).toBeNull();
+    expect(container.querySelector('[role="list"] > svg[aria-hidden="true"]')).toBeNull();
     expect(document.querySelector("[data-measured]")).toBeNull();
   });
 
@@ -163,6 +163,6 @@ describe("FlowConnect", () => {
     const { container } = render(<FlowConnect items={items} />);
 
     expect(container.querySelectorAll("[data-flow-connector]")).toHaveLength(items.length - 1);
-    expect(container.querySelector('svg[aria-hidden="true"]')).toBeNull();
+    expect(container.querySelector('[role="list"] > svg[aria-hidden="true"]')).toBeNull();
   });
 });

@@ -109,7 +109,7 @@ export default function PrivacyPage() {
         <div className="grid gap-10 py-10 lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-16 lg:py-16">
           <div>
             <p className="eyebrow">TRANSPARÊNCIA · ATENDIMENTO</p>
-            <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-[-0.04em] sm:text-6xl">Política de privacidade</h1>
+            <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-[var(--tracking-title)] sm:text-6xl">Política de privacidade</h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-[var(--text-secondary)]">Uma visão clara sobre os dados tratados pelo AtendON, inclusive quando o atendimento acontece pelo Instagram Direct.</p>
             <p className="mt-5 text-sm text-[var(--text-muted)]">Em vigor desde 16 de setembro de 2026 · Publicada em 16 de setembro de 2026</p>
 

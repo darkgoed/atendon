@@ -154,12 +154,11 @@ export function TripzHistorySidebar({
       aria-labelledby="tripz-history-title"
       tabIndex={-1}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-4">
+      <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
         <div>
-          <span className="font-mono text-[9px] font-medium uppercase tracking-[.17em] text-[var(--primary-text)]">Tripz IA</span>
-          <h2 id="tripz-history-title" className="m-0 mt-1 text-sm font-semibold tracking-tight text-[var(--text)]">Propostas</h2>
+          <h2 id="tripz-history-title" className="m-0 text-sm font-semibold tracking-tight text-[var(--text)]">Propostas</h2>
         </div>
-        <button type="button" data-autofocus className="grid h-11 w-11 place-items-center border border-[var(--border)] bg-transparent text-[var(--text-secondary)] transition-[background,transform] hover:bg-[var(--surface-active)] hover:text-[var(--text)] active:translate-y-px lg:hidden" onClick={onCloseMobile} aria-label="Fechar histórico">
+        <button type="button" data-autofocus className="grid h-11 w-11 place-items-center border rounded-[var(--radius-md)] border-[var(--border)] bg-transparent text-[var(--text-secondary)] transition-[background,transform] hover:bg-[var(--surface-active)] hover:text-[var(--text)] active:translate-y-px lg:hidden" onClick={onCloseMobile} aria-label="Fechar histórico">
           <X size={16} aria-hidden="true" />
         </button>
       </div>
@@ -167,7 +166,7 @@ export function TripzHistorySidebar({
       <div className="px-3 py-3">
         <button
           type="button"
-          className={`flex min-h-11 w-full items-center justify-between gap-3 border border-[var(--primary)] bg-[var(--primary)] px-3 py-2 text-left text-xs font-bold transition-[transform,opacity] hover:opacity-90 active:translate-y-px disabled:opacity-50 ${styles.primaryAction}`}
+          className={`flex min-h-9 w-full items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--primary)] bg-[var(--primary)] px-3 py-2 text-left text-xs font-medium transition-[transform,opacity] hover:opacity-90 active:translate-y-px disabled:opacity-50 ${styles.primaryAction}`}
           disabled={creating}
           onClick={onCreate}
         >
@@ -197,7 +196,7 @@ export function TripzHistorySidebar({
                   {isEditing ? (
                     <form className="grid min-h-[4.5rem] grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 border-l-2 border-[var(--primary)] bg-[var(--surface-active)] px-2" onSubmit={(event) => { event.preventDefault(); void submitRename(); }}>
                       <label className="sr-only" htmlFor={`tripz-title-${conversation.id}`}>Nome da proposta</label>
-                      <input id={`tripz-title-${conversation.id}`} className="min-w-0 border border-[var(--border-strong)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text)] outline-none focus:border-[var(--primary)]" value={draftTitle} maxLength={200} autoFocus disabled={renamingId === conversation.id} onChange={(event) => setDraftTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setEditing(undefined); }} />
+                      <input id={`tripz-title-${conversation.id}`} className="min-w-0 border rounded-[var(--radius-md)] border-[var(--border-strong)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text)] outline-none focus:border-[var(--primary)]" value={draftTitle} maxLength={200} autoFocus disabled={renamingId === conversation.id} onChange={(event) => setDraftTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setEditing(undefined); }} />
                       <button type="submit" className="grid h-10 w-10 place-items-center bg-transparent text-[var(--primary)] disabled:opacity-40" disabled={!draftTitle.trim() || renamingId === conversation.id} aria-label="Salvar novo nome"><Check size={14} weight="bold" aria-hidden="true" /></button>
                       <button type="button" className="grid h-10 w-10 place-items-center bg-transparent text-[var(--text-secondary)]" onClick={() => setEditing(undefined)} disabled={renamingId === conversation.id} aria-label="Cancelar renomeação"><X size={14} aria-hidden="true" /></button>
                     </form>
@@ -216,8 +215,8 @@ export function TripzHistorySidebar({
                           <span className="truncate">{tripzConversationStatusLabel(conversation.status)}</span>
                         </span>
                       </button>
-                      <button type="button" className="absolute bottom-1.5 right-12 grid h-11 w-11 place-items-center border border-transparent bg-[var(--sidebar)] text-[var(--text-muted)] opacity-100 transition-[opacity,background,transform] hover:bg-[var(--surface-active)] hover:text-[var(--text)] focus-visible:opacity-100 active:scale-[.96] lg:bottom-2.5 lg:right-9 lg:h-7 lg:w-7 lg:opacity-0 lg:group-hover:opacity-100" onClick={() => { setEditing(conversation); setDraftTitle(conversation.title); }} aria-label={`Renomear ${conversation.title}`}><PencilSimple size={14} aria-hidden="true" /></button>
-                      <button type="button" className="absolute bottom-1.5 right-1 grid h-11 w-11 place-items-center border border-transparent bg-[var(--sidebar)] text-[var(--text-muted)] opacity-100 transition-[opacity,background,transform] hover:bg-[var(--warning-subtle)] hover:text-[var(--warning-text)] focus-visible:opacity-100 active:scale-[.96] lg:bottom-2.5 lg:right-2 lg:h-7 lg:w-7 lg:opacity-0 lg:group-hover:opacity-100" onClick={() => onDelete(conversation)} aria-label={`Excluir ${conversation.title}`}><Trash size={14} aria-hidden="true" /></button>
+                      <button type="button" className="absolute bottom-1.5 right-12 grid h-11 w-11 place-items-center border rounded-[var(--radius-md)] border-transparent bg-[var(--sidebar)] text-[var(--text-muted)] opacity-100 transition-[opacity,background,transform] hover:bg-[var(--surface-active)] hover:text-[var(--text)] focus-visible:opacity-100 active:scale-[.96] lg:bottom-2.5 lg:right-9 lg:h-7 lg:w-7 lg:opacity-0 lg:group-hover:opacity-100" onClick={() => { setEditing(conversation); setDraftTitle(conversation.title); }} aria-label={`Renomear ${conversation.title}`}><PencilSimple size={14} aria-hidden="true" /></button>
+                      <button type="button" className="absolute bottom-1.5 right-1 grid h-11 w-11 place-items-center border rounded-[var(--radius-md)] border-transparent bg-[var(--sidebar)] text-[var(--text-muted)] opacity-100 transition-[opacity,background,transform] hover:bg-[var(--warning-subtle)] hover:text-[var(--warning-text)] focus-visible:opacity-100 active:scale-[.96] lg:bottom-2.5 lg:right-2 lg:h-7 lg:w-7 lg:opacity-0 lg:group-hover:opacity-100" onClick={() => onDelete(conversation)} aria-label={`Excluir ${conversation.title}`}><Trash size={14} aria-hidden="true" /></button>
                     </>
                   )}
                 </li>

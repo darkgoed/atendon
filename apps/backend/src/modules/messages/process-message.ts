@@ -64,7 +64,7 @@ import {
   safeAiToolLabel
 } from "../realtime/ai-turn-contract.js";
 import { capabilityForAiTool, filterAiToolsByCapabilities } from "../../capabilities/ai-tools.js";
-import { consumeAiInteraction, reconcileAiTurnFromUsageLogs } from "../../billing/ai-consumption.js";
+import { consumeAiInteraction, reconcileAiTurnFromUsageLogs, releaseAiInteractionWithoutUsage, type ConsumeResult } from "../../billing/ai-consumption.js";
 import { isFeatureFlagEnabled, type CapabilityKey, type FeatureFlagQueryable } from "../operations/feature-flags.js";
 import type {
   AiTurnProgressPublisher,
@@ -852,6 +852,14 @@ export class ConversationBusyRetryError extends Error {
   }
 }
 
+/** Contabilização de IA indisponível (erro transitório): o job reprocessa o turno; nada é enviado. */
+export class BillingUnavailableRetryError extends Error {
+  constructor(readonly externalId: string) {
+    super("AI billing is unavailable; retry inbound message later");
+    this.name = "BillingUnavailableRetryError";
+  }
+}
+
 export function ensureMeetingLinkInReply(text: string, meetLink?: string): string {
   const normalized = text.trim();
   if (!meetLink || normalized.includes(meetLink)) return normalized;
@@ -1180,8 +1188,29 @@ export class MessageProcessor {
         if (!extended) logger.warn({ externalId: message.externalId, conversationId: context.conversationId }, "Conversation lock lost mid-turn");
       }).catch((err) => logger.error({ err, conversationId: context.conversationId }, "Failed to extend conversation lock"));
     }, 20_000);
+    let aiReservation: Promise<ConsumeResult> | undefined;
+    let aiTurnReconciled = false;
     try {
     if (config) await sleep(humanizedDelay(randomBetween(config.readDelay), config));
+
+    // Reserva de cobrança do turno ANTES da primeira chamada paga (transcrição,
+    // análise de mídia, confirmação ou geração), memoizada: a mesma chave
+    // (requestId) cobre todas as chamadas do turno. Recusa por cota/IA
+    // desligada = sem IA; contabilização indisponível = retentativa do job.
+    const reserveAiTurn = async (): Promise<boolean> => {
+      aiReservation ??= consumeAiInteraction(message.tenantId, "inbound_reply", requestId, { conversationId: context.conversationId, messageId: context.messageId })
+        .then((consumption) => {
+          if (!consumption.allowed) logger.warn({ event: "ai_interaction_blocked", tenantId: message.tenantId, conversationId: context.conversationId, purpose: "inbound_reply", reason: consumption.reason }, consumption.reason === "BILLING_UNAVAILABLE" ? "AI inbound reply delayed because billing is unavailable" : "AI inbound reply skipped because the billing quota was reached");
+          return consumption;
+        });
+      const consumption = await aiReservation;
+      if (consumption.reason === "BILLING_UNAVAILABLE") throw new BillingUnavailableRetryError(message.externalId);
+      return consumption.allowed;
+    };
+    const reconcileAiTurn = () => {
+      aiTurnReconciled = true;
+      void reconcileAiTurnFromUsageLogs(message.tenantId, "inbound_reply", requestId).catch(() => {});
+    };
 
     let mediaUnderstood = false;
     if (message.mediaType) {
@@ -1195,7 +1224,7 @@ export class MessageProcessor {
       if (persistedTranscription) {
         effectiveMessage = { ...message, text: persistedTranscription };
         mediaUnderstood = true;
-      } else if (this.gateway.downloadMedia && this.ai.transcribe) {
+      } else if (this.gateway.downloadMedia && this.ai.transcribe && await reserveAiTurn()) {
         try {
           const media = await this.gateway.downloadMedia(message.sessionId, message.externalId);
           const recordUsage = (usage: Parameters<NonNullable<Parameters<typeof this.ai.complete>[0]["onUsage"]>>[0]) =>
@@ -1231,7 +1260,7 @@ export class MessageProcessor {
       if (persistedAnalysis) {
         effectiveMessage = { ...message, text: persistedAnalysis };
         mediaUnderstood = true;
-      } else if (this.gateway.downloadMedia && this.ai.analyzeMedia) {
+      } else if (this.gateway.downloadMedia && this.ai.analyzeMedia && await reserveAiTurn()) {
         try {
           const media = await this.gateway.downloadMedia(message.sessionId, message.externalId);
           const recordUsage = (usage: Parameters<NonNullable<Parameters<typeof this.ai.complete>[0]["onUsage"]>>[0]) =>
@@ -1476,6 +1505,12 @@ export class MessageProcessor {
     }
 
     if (message.mediaType && !mediaUnderstood) {
+      // Mídia não analisada porque a IA foi recusada (cota/IA desligada): mesmo
+      // desfecho do gate de cobrança, sem resposta canned pedindo texto.
+      if (aiReservation && !(await aiReservation).allowed) {
+        await this.repository.markInboundProcessed(message, processingExternalIds);
+        return "fallback";
+      }
       const text = context.mediaFallback?.[message.mediaType] ?? mediaFallback(message.mediaType);
       const sent = await this.gateway.sendText(message.sessionId, destination, text);
       await this.repository.recordFallback({ tenantId: message.tenantId, sessionId: message.sessionId,
@@ -1548,6 +1583,10 @@ export class MessageProcessor {
       context.activeAppointment.start,
       context.timeZone
     )) {
+      if (!await reserveAiTurn()) {
+        await this.repository.markInboundProcessed(message);
+        return "fallback";
+      }
       const appointmentFacts = composeActiveAppointmentConfirmation(context.activeAppointment, context.timeZone);
       const validatePersistedAppointmentText = (candidate: string): string | undefined => {
         const parsedCandidate = parseAgentHandoff(sanitizeOutbound(candidate, ""));
@@ -1613,6 +1652,7 @@ export class MessageProcessor {
         inboundExternalId: message.externalId,
         inboundExternalIds: [...processingExternalIds]
       });
+      reconcileAiTurn();
       logger.info({
         event: "ai_message_processing",
         conversationId: context.conversationId,
@@ -2653,21 +2693,17 @@ export class MessageProcessor {
       }
     }
 
+    // Reserva atômica: lê o saldo e grava o consumo na MESMA transação,
+    // serializada por tenant. A chave é derivada do turno lógico, então
+    // retentativa do mesmo job não consome duas vezes.
+    if (!await reserveAiTurn()) {
+      await this.repository.markInboundProcessed(message);
+      return "fallback";
+    }
     let result: Awaited<ReturnType<typeof sendReply>>;
     try {
-      // Reserva atômica: lê o saldo e grava o consumo na MESMA transação,
-      // serializada por tenant. Uma checagem solta permitiria que duas mensagens
-      // simultâneas do mesmo tenant lessem o mesmo saldo e estourassem a franquia.
-      // A chave é derivada do turno lógico, então retentativa do mesmo job não
-      // consome duas vezes.
-      const consumption = await consumeAiInteraction(message.tenantId, "inbound_reply", requestId, { conversationId: context.conversationId, messageId: context.messageId });
-      if (!consumption.allowed) {
-        logger.warn({ event: "ai_interaction_blocked", tenantId: message.tenantId, conversationId: context.conversationId, purpose: "inbound_reply", reason: consumption.reason }, consumption.reason === "BILLING_UNAVAILABLE" ? "AI inbound reply skipped because billing is unavailable" : "AI inbound reply skipped because the billing quota was reached");
-        await this.repository.markInboundProcessed(message);
-        return "fallback";
-      }
       result = await sendReply();
-      void reconcileAiTurnFromUsageLogs(message.tenantId, "inbound_reply", requestId).catch(() => {});
+      reconcileAiTurn();
     } catch (error) {
       await recordQualitySignal();
       try {
@@ -2787,6 +2823,10 @@ export class MessageProcessor {
           }, "AI turn progress clear failed");
         }
       }
+      // Turno que reservou e não chegou a reconciliar (falha/saída antecipada):
+      // devolve a reserva já — sem esperar o TTL. Só age sem usage_logs;
+      // retentativa com a mesma chave reabre a reserva.
+      if (aiReservation && !aiTurnReconciled) void releaseAiInteractionWithoutUsage(message.tenantId, "inbound_reply", requestId).catch(() => {});
       clearInterval(lockHeartbeat);
       await releaseConversationLock(conversationLock);
     }

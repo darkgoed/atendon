@@ -60,7 +60,7 @@
 .agenda-head.pagehead h1 {
   margin: 0;
   color: var(--text);
-  font-size: var(--text-body);
+  font-size: var(--text-page-title);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-title);
@@ -690,7 +690,8 @@
   align-content: start;
   gap: 1px;
   overflow: hidden;
-  padding: var(--space-1) var(--space-2);
+  /* 2px no bloco: nome + horário + status cabem nos 51px úteis da célula de 60px. */
+  padding: 2px var(--space-2);
   border: 1px solid var(--primary-border);
   border-inline-start: 2px solid var(--primary);
   border-radius: var(--radius-sm);
@@ -1094,6 +1095,12 @@
   white-space: normal;
   overflow-wrap: break-word;
 }
+/* Ações secundárias só-ícone (tooltip): tamanho fixo, sem esticar na grade. */
+.agenda-detail-actions .btn.icon-button {
+  width: var(--control-height-md);
+  flex: none;
+  padding: 0;
+}
 
 .agenda-final-action-actions {
   display: flex;
@@ -1278,6 +1285,8 @@
   .agenda-head__toggle--filters {
     display: grid;
     width: 100%;
+    /* A base usa min-width: max-content; em 2 colunas isso estoura o cabeçalho a 320px. */
+    min-width: 0;
     max-width: none;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1338,6 +1347,10 @@
   .agenda-detail-actions .btn {
     min-height: var(--control-height-touch);
     flex: 1 1 100%;
+  }
+  .agenda-detail-actions .btn.icon-button {
+    width: var(--control-height-touch);
+    flex: none;
   }
 
   .agenda-final-action-form input,

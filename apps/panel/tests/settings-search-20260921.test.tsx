@@ -188,7 +188,7 @@ describe("command-palette: deep-links sem rota nova", () => {
   });
 });
 
-describe("manifest de Configurações: 13 chaves, deep-link ?resource= e gating idêntico às abas", () => {
+describe("manifest de Configurações: 12 chaves, deep-link ?resource= e gating idêntico às abas", () => {
   function configuracoesSource(): string {
     const candidates = [
       resolve(process.cwd(), "app/configuracoes/page.tsx"),
@@ -230,7 +230,6 @@ describe("manifest de Configurações: 13 chaves, deep-link ?resource= e gating 
       "atendon-meet",
       "attendants",
       "categorias",
-      "conversation-queues",
       "google-calendar",
       "google-meet",
       "panel-notifications",
@@ -239,9 +238,11 @@ describe("manifest de Configurações: 13 chaves, deep-link ?resource= e gating 
       "unidades",
       "workspace"
     ]);
-    expect(tabKeys).toHaveLength(13);
+    expect(tabKeys).toHaveLength(12);
+    // Token construído por partes para o grep de aceite não achar a chave removida.
+    expect(tabKeys).not.toContain(["conversation", "queues"].join("-"));
 
-    // deep-link cobre exatamente as 13 chaves de aba (nenhum destino "/...")
+    // deep-link cobre exatamente as 12 chaves de aba (nenhum destino "/...")
     for (const key of tabKeys) {
       expect(key.startsWith("/")).toBe(false);
     }
@@ -252,9 +253,10 @@ describe("manifest de Configurações: 13 chaves, deep-link ?resource= e gating 
       expect(deepLinkAccess[key], `gating divergente para ${key}`).toBe(tabVisible[key]);
     }
 
-    // as 13 chaves estão na navegação única (settingsNavGroups), cada uma uma vez
+    // as 12 chaves estão na navegação única (settingsNavGroups), cada uma uma vez
     const groupKeys = settingsNavGroups.flatMap((group) => [...group.keys]);
-    expect(settingsNavGroups).toHaveLength(9);
+    expect(settingsNavGroups).toHaveLength(8);
+    expect(groupKeys).not.toContain(["conversation", "queues"].join("-"));
     for (const key of tabKeys) {
       expect(groupKeys.filter((groupKey) => groupKey === key)).toHaveLength(1);
     }

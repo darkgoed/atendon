@@ -159,7 +159,7 @@ export function PipelineCard({
         <span className="pipeline-card__footer-actions">
           {canMove ? (
             <button type="button" className="pipeline-card__icon-action" onClick={onMove} disabled={pending} aria-label="Mover" title="Avançar etapa">
-              <ArrowRight size={13} strokeWidth={2} aria-hidden="true" />
+              <ArrowRight size={13} aria-hidden="true" />
             </button>
           ) : null}
           {lead.conversation_id ? (
@@ -169,11 +169,11 @@ export function PipelineCard({
               aria-label={`Conversar com ${lead.nome ?? lead.telefone} pelo WhatsApp`}
               title="Conversar"
             >
-              <ChatsCircle size={13} strokeWidth={2} aria-hidden="true" />
+              <ChatsCircle size={13} aria-hidden="true" />
             </Link>
           ) : null}
           <Link className="pipeline-card__icon-action" href={`/contatos/${lead.id}`} aria-label="Detalhes" title="Detalhes">
-            <ArrowSquareOut size={13} strokeWidth={2} aria-hidden="true" />
+            <ArrowSquareOut size={13} aria-hidden="true" />
           </Link>
         </span>
         {visible("stalled") ? <time className="pipeline-card__age" dateTime={lead.atualizado_em}><Clock size={10} aria-hidden="true" />{formatPipelineAge(lead.atualizado_em)}</time> : <span />}

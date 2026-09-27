@@ -18,6 +18,10 @@ function errorMessage(value: unknown): string {
   return "Ocorreu um erro inesperado";
 }
 
+function isBenignResizeObserverError(message: unknown): boolean {
+  return typeof message === "string" && message.includes("ResizeObserver loop");
+}
+
 export function ErrorToasts() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(0);
@@ -47,7 +51,12 @@ export function ErrorToasts() {
       timers.add(timer);
     };
     const onReportedError = (event: Event) => add(errorMessage((event as CustomEvent<{ message?: unknown }>).detail?.message));
-    const onWindowError = (event: ErrorEvent) => add(errorMessage(event.error ?? event.message));
+    const onWindowError = (event: ErrorEvent) => {
+      /* Aviso benigno do navegador (layout reajustado no mesmo frame, ex.:
+         arrastar nós no editor de fluxos) — não é falha da operação. */
+      if (isBenignResizeObserverError(event.message)) return;
+      add(errorMessage(event.error ?? event.message));
+    };
     const onUnhandledRejection = (event: PromiseRejectionEvent) => add(errorMessage(event.reason));
 
     const readSession = async (): Promise<PanelSession | null> => {

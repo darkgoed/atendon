@@ -427,7 +427,7 @@ export function ConversationComposer({
             <strong className="block truncate text-xs text-[var(--text)]">
               {attachment.mediaType === "audio" ? audioDisplayName(attachment.file.name) : attachment.file.name}
             </strong>
-            <span className="mono mt-1 block text-xs uppercase tracking-wide text-[var(--text-muted)]">{attachment.mediaType} · {formatBytes(attachment.file.size)}</span>
+            <span className="mt-1 block text-xs text-[var(--text-muted)]">{attachment.mediaType} · {formatBytes(attachment.file.size)}</span>
           </div>
           <Button type="button" onClick={() => setAttachment(null)} className="btn p-2 active:scale-95" aria-label="Remover anexo" disabled={sending}>
             <X size={16} />
