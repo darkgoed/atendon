@@ -91,11 +91,11 @@ beforeAll(async()=>{
   userA=ownerA.userId;cookieA=ownerA.cookie;
   cookieB=(await ownerCookie(tenantB,"b")).cookie;
   cookieC=(await ownerCookie(tenantC,"c")).cookie;
-  // Leitura sem billing.manage: papel com apenas agent.read.
+  // Leitura sem billing.manage: papel com usage.read (ver uso), sem gerenciar cobrança.
   const readEmail=`efi-mandate-read-${randomUUID()}@test.local`;emails.push(readEmail);
   const readUser=(await pool.query<{id:string}>("INSERT INTO users(email,password_hash,status) VALUES($1,$2,'active') RETURNING id",[readEmail,await hash("efi-mandate-password",4)])).rows[0].id;
   const readRole=(await pool.query<{id:string}>("INSERT INTO workspace_roles(workspace_id,name,description) VALUES($1,$2,'Somente leitura') RETURNING id",[tenantA,`EFI READ ${randomUUID()}`])).rows[0].id;
-  await pool.query("INSERT INTO workspace_role_permissions(role_id,permission_key) VALUES($1,'agent.read')",[readRole]);
+  await pool.query("INSERT INTO workspace_role_permissions(role_id,permission_key) VALUES($1,'usage.read')",[readRole]);
   await pool.query("INSERT INTO workspace_members(workspace_id,user_id,role_id,status,joined_at) VALUES($1,$2,$3,'active',now())",[tenantA,readUser,readRole]);
   const readLogin=await app.inject({method:"POST",url:"/auth/login",payload:{email:readEmail,password:"efi-mandate-password"}});
   readCookie=(Array.isArray(readLogin.headers["set-cookie"])?readLogin.headers["set-cookie"][0]:readLogin.headers["set-cookie"]!).split(";")[0];
@@ -113,7 +113,7 @@ afterAll(async()=>{
 });
 
 describe("rotas do mandato Pix Automático (Efí)",()=>{
-  it("GET exige apenas workspace; POST/DELETE exigem billing.manage; sem sessão é 401",async()=>{
+  it("GET exige usage.read; POST/DELETE exigem billing.manage; sem sessão é 401",async()=>{
     for(const method of ["GET","POST","DELETE"] as const)expect((await app.inject({method,url:PATH})).statusCode).toBe(401);
     expect((await app.inject({url:PATH,headers:{cookie:readCookie}})).statusCode).toBe(200);
     expect((await app.inject({url:PATH,headers:{cookie:readCookie}})).json()).toEqual({mandate:null});
@@ -121,6 +121,19 @@ describe("rotas do mandato Pix Automático (Efí)",()=>{
     expect((await app.inject({method:"DELETE",url:PATH,headers:{cookie:readCookie}})).statusCode).toBe(403);
     // Rota literal vizinha segue intacta (precedência do path literal).
     expect((await app.inject({url:"/billing/ai-credit-packs/balance",headers:{cookie:readCookie}})).statusCode).toBe(200);
+  });
+
+  it("sem usage.read (ex.: OPERADOR) não lê faturas, custo de IA nem saldo (seg. C5)",async()=>{
+    const email=`efi-mandate-nousage-${randomUUID()}@test.local`;emails.push(email);
+    const user=(await pool.query<{id:string}>("INSERT INTO users(email,password_hash,status) VALUES($1,$2,'active') RETURNING id",[email,await hash("efi-mandate-password",4)])).rows[0].id;
+    const role=(await pool.query<{id:string}>("INSERT INTO workspace_roles(workspace_id,name,description) VALUES($1,$2,'Sem uso') RETURNING id",[tenantA,`SEM USO ${randomUUID()}`])).rows[0].id;
+    await pool.query("INSERT INTO workspace_role_permissions(role_id,permission_key) VALUES($1,'agent.read')",[role]);
+    await pool.query("INSERT INTO workspace_members(workspace_id,user_id,role_id,status,joined_at) VALUES($1,$2,$3,'active',now())",[tenantA,user,role]);
+    const login=await app.inject({method:"POST",url:"/auth/login",payload:{email,password:"efi-mandate-password"}});
+    const cookie=(Array.isArray(login.headers["set-cookie"])?login.headers["set-cookie"][0]:login.headers["set-cookie"]!).split(";")[0];
+    for(const url of [PATH,"/billing/ai-credit-packs","/billing/ai-credit-packs/balance","/billing/usage-dashboard","/billing/history","/billing/usage-credit","/billing/ai-usage"]){
+      expect((await app.inject({url,headers:{cookie}})).statusCode,url).toBe(403);
+    }
   });
 
   it("POST rejeita corpo: preço e quantidade são fixos no servidor",async()=>{

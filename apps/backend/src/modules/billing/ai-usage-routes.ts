@@ -12,7 +12,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "../../db/client.js";
-import { requireRoot, requireWorkspace } from "../../auth/session.js";
+import { requireRoot, requirePermission } from "../../auth/session.js";
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida");
 const uuid = z.string().uuid();
@@ -278,7 +278,8 @@ async function buildReport(tenantScope: string | null, rootTenantFilter: string 
 
 export async function registerAiUsageRoutes(app: FastifyInstance): Promise<void> {
   app.get("/billing/ai-usage", async (request) => {
-    const session = await requireWorkspace(request);
+    // Custo do provedor por chamada e faturas: só quem pode ver uso (painel /uso).
+    const session = await requirePermission(request, "usage.read");
     const q = parseOr400(usageQuery, request.query);
     const window = (q.period === "current" ? await currentPeriodWindow(session.tenantId) : null) ?? dateWindow(q.from, q.to);
     return buildReport(session.tenantId, null, q, window);
