@@ -1165,7 +1165,9 @@ export default function Conversations() {
         method: "POST",
         headers: { "Idempotency-Key": `conversation-follow-up-${selectedRef.current}-${Date.now()}` }
       });
-      setAiActionNotice(response.status === "pending" ? "Follow-up enfileirado; o envio está sendo processado." : "Follow-up aceito.");
+      setAiActionNotice(response.status === "pending"
+        ? "Follow-up enfileirado; o envio está sendo processado."
+        : response.status === "scheduled" ? "Follow-up agendado; o envio sai em instantes." : "Follow-up aceito.");
       await Promise.all([mutateList(), mutateThread()]);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Falha ao enviar follow-up";

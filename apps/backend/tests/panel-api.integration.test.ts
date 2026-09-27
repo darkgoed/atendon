@@ -6,6 +6,7 @@ import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { createSessionToken } from "../src/auth/session.js";
 import { buildApp } from "../src/app.js";
 import { config } from "../src/config.js";
+import { db as appDb } from "../src/db/client.js";
 import { AiFollowUpRepository } from "../src/modules/messages/ai-follow-up.js";
 import { payloadFingerprint } from "../src/modules/messages/idempotency.js";
 import { MessageRepository } from "../src/modules/messages/repository.js";
@@ -679,6 +680,32 @@ describe("panel API tenant isolation",()=>{
     expect(row.due).toBe(true);
     await pool.query("UPDATE ai_follow_up_schedules SET status='completed',next_run_at=NULL WHERE conversation_id=$1",[conversation]);
     expect(await repository.bringScheduledForward(tenantA,conversation)).toBe(false);
+  });
+  it("manual follow-up whose immediate dispatch fails still answers 202 scheduled, because it was already brought forward (MSG C11)",async()=>{
+    const session=await pool.query<{session_id:string}>("SELECT session_id FROM conversations WHERE id=$1",[conversationA]);
+    const conversation=(await pool.query<{id:string}>(
+      "INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_name) VALUES($1,$2,$3,'Follow-up sem fila') RETURNING id",
+      [tenantA,session.rows[0].session_id,nextPhone()]
+    )).rows[0].id;
+    const agentMessage=(await pool.query<{id:string}>("INSERT INTO messages(conversation_id,sender,content) VALUES($1,'agent','Posso ajudar?') RETURNING id",[conversation])).rows[0].id;
+    await pool.query(
+      `INSERT INTO ai_follow_up_schedules(conversation_id,tenant_id,last_agent_message_id,status,next_run_at)
+       VALUES($1,$2,$3,'scheduled',now()+interval '1 day')`,[conversation,tenantA,agentMessage]
+    );
+    const original=appDb.query.bind(appDb);
+    const spy=vi.spyOn(appDb,"query").mockImplementation(((text:unknown,...rest:unknown[])=>{
+      if(typeof text==="string"&&text.includes("INSERT INTO outbound_message_requests")) return Promise.reject(new Error("db blip"));
+      return (original as (...args:unknown[])=>unknown)(text,...rest);
+    }) as typeof appDb.query);
+    try{
+      const response=await app.inject({method:"POST",url:`/conversations/${conversation}/follow-up`,headers:{cookie:cookieA,"idempotency-key":`blip-${randomUUID()}`}});
+      expect(response.statusCode).toBe(202);
+      expect(response.json()).toMatchObject({ok:true,status:"scheduled"});
+    }finally{
+      spy.mockRestore();
+    }
+    expect((await pool.query<{due:boolean}>("SELECT next_run_at<=now() AS due FROM ai_follow_up_schedules WHERE conversation_id=$1",[conversation])).rows[0].due).toBe(true);
+    await pool.query("UPDATE ai_follow_up_schedules SET status='completed',next_run_at=NULL WHERE conversation_id=$1",[conversation]);
   });
   it("delta refresh returns backdated AI bubbles and updates of loaded rows through since/changes (MSG C10)",async()=>{
     await pool.query(

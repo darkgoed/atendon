@@ -2690,6 +2690,9 @@ export function buildApp(options: {
     } catch (error) {
       if ((error as { statusCode?: number }).statusCode === 409) return reply.status(409).send({ ok: false, code: "idempotency_conflict", error: "Este follow-up já foi solicitado com outro conteúdo." });
       request.log.error({ err: error, conversationId: id, idempotencyKey, fingerprint }, "Manual follow-up enqueue failed");
+      // O follow-up já foi antecipado para agora: o agendador envia mesmo sem o
+      // disparo imediato. Responder 503 dizia "falhou" e ele saía assim mesmo.
+      if (!keyUsed) return reply.status(202).send({ ok: true, status: "scheduled", request_id: null });
       return reply.status(503).send({ ok: false, code: "follow_up_unavailable", error: "Não foi possível solicitar o follow-up agora. Tente novamente em instantes." });
     }
     return reply.status(202).send({ ok: true, status: claimedResult.status, request_id: claimedResult.requestId });
