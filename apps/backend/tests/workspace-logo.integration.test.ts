@@ -129,6 +129,16 @@ describe("workspace logo REST API",() => {
     })).statusCode).toBe(403);
   });
 
+  it("rejects a partial business-hours PATCH that would leave start after end (runtime S5)",async () => {
+    await pool.query("UPDATE tenants SET business_hours_start='08:00',business_hours_end='18:00' WHERE id=$1",[tenantId]);
+    const invalid = await app.inject({ method: "PATCH", url: "/workspaces/current/timezone", headers: { cookie: ownerCookie }, payload: { timezone: "America/Sao_Paulo", business_hours_start: "19:00" } });
+    expect(invalid.statusCode).toBe(400);
+    const stored = await pool.query<{ start: string }>("SELECT business_hours_start::text start FROM tenants WHERE id=$1",[tenantId]);
+    expect(stored.rows[0].start.startsWith("08:00")).toBe(true);
+    const valid = await app.inject({ method: "PATCH", url: "/workspaces/current/timezone", headers: { cookie: ownerCookie }, payload: { timezone: "America/Sao_Paulo", business_hours_start: "07:00" } });
+    expect(valid.statusCode).toBe(200);
+  });
+
   it("isolates logos per tenant",async () => {
     const patched = await app.inject({
       method: "PATCH",url: "/workspaces/current/logo",headers: { cookie: ownerCookie },

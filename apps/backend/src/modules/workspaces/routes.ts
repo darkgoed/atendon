@@ -185,10 +185,17 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
          business_hours_start=COALESCE($3,business_hours_start),
          business_hours_end=COALESCE($4,business_hours_end),
          updated_at=now()
-       WHERE id=$1 RETURNING id,name,timezone,business_hours_start,business_hours_end`,
+       WHERE id=$1
+         -- PATCH parcial: valida o par já mesclado com o valor salvo (runtime S5).
+         AND COALESCE($3,business_hours_start)::time < COALESCE($4,business_hours_end)::time
+       RETURNING id,name,timezone,business_hours_start,business_hours_end`,
       [session.tenantId, body.timezone, body.business_hours_start ?? null, body.business_hours_end ?? null]
     );
-    if (!result.rows[0]) throw httpError(404, "Workspace não encontrado");
+    if (!result.rows[0]) {
+      const exists = await db.query("SELECT 1 FROM tenants WHERE id=$1", [session.tenantId]);
+      if (exists.rows[0]) throw httpError(400, "O início do horário comercial deve ser antes do fim");
+      throw httpError(404, "Workspace não encontrado");
+    }
     let queueAdjustment = { promoted: 0, rescheduled: 0, skipped: 0 };
     try {
       queueAdjustment = await adjustDelayedInboundJobs(session.tenantId, {
