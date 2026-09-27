@@ -2962,6 +2962,18 @@ Full name: Renan de Carvalho`;
     expect(ai.complete).not.toHaveBeenCalled();
   });
 
+  it("a busy replay re-defers right away while the neighbouring turn holds the conversation (Ponytail-2 P3)", async () => {
+    isConversationLockedMock.mockResolvedValueOnce(true);
+    const { processor, repository, gateway } = setup();
+
+    await expect(processor.process(message, { busyReplay: true })).rejects.toBeInstanceOf(ConversationBusyRetryError);
+
+    expect(gateway.setPresence).not.toHaveBeenCalled();
+    expect(gateway.markMessageAsRead).not.toHaveBeenCalled();
+    expect(acquireConversationLockMock).not.toHaveBeenCalled();
+    expect(repository.releaseInboundProcessing).toHaveBeenCalledWith(message);
+  });
+
   it("marks a new message read immediately when the AI is already composing", async () => {
     isConversationLockedMock.mockResolvedValueOnce(true);
     acquireConversationLockMock.mockResolvedValueOnce(null);

@@ -1027,7 +1027,7 @@ export class MessageProcessor {
 
   async process(
     message: SessionMessage,
-    processing: { attempt?: number; requestId?: string; automaticRecoveryAttempt?: number } = {}
+    processing: { attempt?: number; requestId?: string; automaticRecoveryAttempt?: number; busyReplay?: boolean } = {}
   ): Promise<"answered" | "fallback" | "handoff" | "human_recorded" | "ignored" | "duplicate"> {
     const requestId = processing.requestId ?? randomUUID();
     const processingAttempt = processing.attempt ?? 1;
@@ -1103,8 +1103,14 @@ export class MessageProcessor {
     const destination = message.channel === "instagram"
       ? `ig:${message.instagramContactId}`
       : message.contactJid ?? message.contactPhone;
-    await this.gateway.setPresence(message.sessionId, "available");
     const conversationKey = `${message.tenantId}:${destination}`;
+    // Replay de job adiado por conversa ocupada: se o turno vizinho ainda
+    // segura a conversa, volta a adiar já, sem presença/debounce/recibos a
+    // cada replay nem ocupar o slot durante o debounce (Ponytail-2 P3).
+    if (processing.busyReplay && await isConversationLocked(conversationKey)) {
+      throw new ConversationBusyRetryError(message.externalId, context.conversationId);
+    }
+    await this.gateway.setPresence(message.sessionId, "available");
     const remoteJid = message.channel === "instagram"
       ? destination
       : message.contactJid ?? `${message.contactPhone}@s.whatsapp.net`;

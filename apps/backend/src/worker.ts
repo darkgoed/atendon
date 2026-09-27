@@ -141,7 +141,8 @@ const worker = new Worker<InboundJobData>(INBOUND_QUEUE, async (job, token) => {
     return await processor.process(data, {
       attempt: job.attemptsMade + 1,
       requestId: data.aiTurnId,
-      automaticRecoveryAttempt: data.automaticRecoveryAttempt ?? 0
+      automaticRecoveryAttempt: data.automaticRecoveryAttempt ?? 0,
+      busyReplay: (data.busyDeferrals ?? 0) > 0
     });
   } catch (error) {
     if (error instanceof ConversationBusyRetryError) {
