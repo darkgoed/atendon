@@ -2615,7 +2615,23 @@ export function buildApp(options: {
     if (channelError) return reply.status(409).send({ error: channelError });
     if (conversation.rows[0].status !== "open") return reply.status(409).send({ error: "Reabra a conversa antes de fazer follow-up" });
     const row = conversation.rows[0];
-    const processor = new AiFollowUpProcessor(new AiFollowUpRepository(db, config), whatsapp, new OpenRouterClient(config));
+    const followUpRepository = new AiFollowUpRepository(db, config);
+    // O clique dispara na hora o follow-up pendente; sem pendente, a resposta é
+    // 409 agora — antes virava 202 "enfileirado" e nada era enviado.
+    // Retry com a MESMA Idempotency-Key devolve o resultado gravado (abaixo),
+    // mesmo que a sequência já tenha andado depois do envio.
+    const keyUsed = (await db.query(
+      "SELECT 1 FROM outbound_message_requests WHERE tenant_id=$1 AND idempotency_key=$2",
+      [session.tenantId, idempotencyKey]
+    )).rows.length > 0;
+    if (!keyUsed && !await followUpRepository.bringScheduledForward(session.tenantId, id)) {
+      return reply.status(409).send({
+        ok: false,
+        code: "follow_up_not_pending",
+        error: "Não há follow-up pendente nesta conversa: o contato respondeu por último, o follow-up automático está desligado ou a sequência já terminou."
+      });
+    }
+    const processor = new AiFollowUpProcessor(followUpRepository, whatsapp, new OpenRouterClient(config));
     let claimedResult: { requestId: string; duplicate: boolean; status: string; result?: { externalId: string; messageId: string | null } };
     try {
       claimedResult = await enqueueFollowUpOnce(db, { tenantId: session.tenantId, conversationId: id, idempotencyKey }, async () => {
@@ -2635,9 +2651,9 @@ export function buildApp(options: {
         return { externalId: sent.rows[0]?.external_message_id ?? "", messageId: sent.rows[0]?.id ?? null };
       });
     } catch (error) {
-      if ((error as { statusCode?: number }).statusCode === 409) return reply.status(409).send({ ok: false, code: "idempotency_conflict" });
+      if ((error as { statusCode?: number }).statusCode === 409) return reply.status(409).send({ ok: false, code: "idempotency_conflict", error: "Este follow-up já foi solicitado com outro conteúdo." });
       request.log.error({ err: error, conversationId: id, idempotencyKey, fingerprint }, "Manual follow-up enqueue failed");
-      return reply.status(503).send({ ok: false, code: "follow_up_unavailable" });
+      return reply.status(503).send({ ok: false, code: "follow_up_unavailable", error: "Não foi possível solicitar o follow-up agora. Tente novamente em instantes." });
     }
     return reply.status(202).send({ ok: true, status: claimedResult.status, request_id: claimedResult.requestId });
   });

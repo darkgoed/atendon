@@ -1151,7 +1151,8 @@ export default function Conversations() {
       await Promise.all([mutateList(), mutateThread()]);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Falha ao enviar follow-up";
-      setError(message.includes("idempotency_conflict") ? "Esta solicitação já está em andamento." : message);
+      // O backend devolve texto legível em `error` (sem follow-up pendente, chave em conflito, indisponível).
+      setError(message);
     } finally {
       setFollowUpPending(false);
     }

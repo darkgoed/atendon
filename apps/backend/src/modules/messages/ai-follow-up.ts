@@ -321,6 +321,20 @@ export class AiFollowUpRepository {
     } : null;
   }
 
+  /**
+   * Botão "Follow-up": antecipa para agora o follow-up automático pendente da
+   * conversa (a sequência segue normal depois). false = não há follow-up
+   * pendente (contato falou por último, recurso desligado ou sequência finda).
+   */
+  async bringScheduledForward(tenantId: string, conversationId: string): Promise<boolean> {
+    const result = await this.db.query(
+      `UPDATE ai_follow_up_schedules SET next_run_at=LEAST(next_run_at,now()),updated_at=now()
+       WHERE tenant_id=$1 AND conversation_id=$2 AND status='scheduled' AND next_run_at IS NOT NULL`,
+      [tenantId, conversationId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async claimDue(conversationId: string): Promise<AiFollowUpClaim | null> {
     const client = await this.db.connect();
     try {
