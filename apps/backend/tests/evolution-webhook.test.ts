@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { config } from "../src/config.js";
 import { normalizedFacebookAttribution } from "../src/modules/messages/repository.js";
 import { evolutionContactUpdates, evolutionMessage, evolutionMessageStatusUpdates, evolutionPresenceUpdates, evolutionStickerMessage, evolutionUnrecognizedMessageContentKeys, parseEvolutionEvent } from "../src/modules/whatsapp/evolution-webhook.js";
-import { handleEvolutionWebhook } from "../src/modules/whatsapp/webhook-handler.js";
+import { handleEvolutionWebhook, offHoursJitterMs } from "../src/modules/whatsapp/webhook-handler.js";
 import type { WhatsAppSessionManager } from "../src/modules/whatsapp/session-manager.js";
 import { enqueueInbound } from "../src/queue/message-queue.js";
 
@@ -484,5 +484,18 @@ describe("Evolution webhook ack status mapping", () => {
     expect(evolutionMessageStatusUpdates({ status: "READ" })).toEqual([]);
     expect(evolutionMessageStatusUpdates({ id: "wamid-7", status: "SOMETHING_UNKNOWN" })).toEqual([]);
     expect(evolutionMessageStatusUpdates(null)).toEqual([]);
+  });
+});
+
+describe("off-hours reply jitter (MSG C7)", () => {
+  it("is stable per contact, so a contact's fragments fire together, and stays within 10 minutes", () => {
+    const first = offHoursJitterMs("tenant-a", "5511999990001");
+    expect(offHoursJitterMs("tenant-a", "5511999990001")).toBe(first);
+    const spread = new Set(["5511999990001", "5511999990002", "5511999990003", "5511999990004"].map((contact) => offHoursJitterMs("tenant-a", contact)));
+    expect(spread.size).toBeGreaterThan(1);
+    for (const value of spread) {
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThan(10 * 60_000);
+    }
   });
 });

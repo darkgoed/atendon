@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { timingSafeEqual, createHash } from "node:crypto";
 import type { FastifyBaseLogger, FastifyReply, FastifyRequest } from "fastify";
 import { config } from "../../config.js";
 import { db as defaultDb } from "../../db/client.js";
@@ -10,6 +10,11 @@ import { enqueueInbound } from "../../queue/message-queue.js";
 import { loadBusinessHoursConfig, isWithinBusinessHours, nextBusinessHoursStart } from "./business-hours.js";
 import { StickerRepository } from "../stickers/repository.js";
 import type { WhatsAppSessionManager } from "./session-manager.js";
+
+/** 0–10 min estável por contato: mesmo contato → mesmo instante de disparo. */
+export function offHoursJitterMs(tenantId: string, contact: string): number {
+  return createHash("sha256").update(`${tenantId}:${contact}`).digest().readUInt32BE(0) % (10 * 60_000);
+}
 export type EvolutionWebhookDeps = { db?: typeof defaultDb; whatsapp: WhatsAppSessionManager; log: FastifyBaseLogger };
 function secretMatches(received: unknown, expected: string): boolean { if (typeof received !== "string") return false; const a=Buffer.from(received), b=Buffer.from(expected); return a.length===b.length && timingSafeEqual(a,b); }
 
@@ -74,14 +79,16 @@ export async function handleEvolutionWebhook(request: FastifyRequest, reply: Fas
         // acúmulo da madrugada não ser processado todo no mesmo instante. A
         // mensagem em si é gravada na hora (claim:false) para aparecer pro
         // humano no painel; só a resposta automática da IA espera o expediente.
-        // ponytail: jitter simples (0-10min); um sequenciador por tenant seria o upgrade se precisar de ordem estrita.
+        // Jitter por CONTATO (0-10min, hash estável): os fragmentos do mesmo
+        // contato disparam juntos e são respondidos numa resposta só; contatos
+        // diferentes seguem espalhados no início do expediente.
         let delayMs = 0;
         if (message.kind === "contact") {
           const hours = await loadBusinessHoursConfig(deps.db ?? defaultDb, message.tenantId);
           const now = new Date();
           if (!isWithinBusinessHours(now, hours)) {
             const start = nextBusinessHoursStart(now, hours);
-            delayMs = (start.getTime() - now.getTime()) + Math.floor(Math.random() * 10 * 60_000);
+            delayMs = (start.getTime() - now.getTime()) + offHoursJitterMs(message.tenantId, message.contactPhone);
             await new MessageRepository(deps.db ?? defaultDb).recordInboundAndLoadContext(message, { claim: false });
           }
         }

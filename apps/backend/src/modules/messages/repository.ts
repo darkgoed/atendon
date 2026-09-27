@@ -1424,7 +1424,11 @@ export class MessageRepository {
          AND m.media_type IS NULL
          AND m.processed_at IS NULL
          AND m.external_message_id IS NOT NULL
-         AND (m.created_at, m.id) >= (a.created_at, a.id)
+         -- Fragmentos ANTERIORES ainda sem resposta também entram (em ordem):
+         -- jobs do mesmo contato podem disparar fora de ordem (fila fora do
+         -- expediente, retry). Quem cai aqui já foi respondido ou ignorado
+         -- tem processed_at; a janela de 24h evita ressuscitar o que é antigo.
+         AND m.created_at >= a.created_at - interval '24 hours'
        ORDER BY m.created_at, m.id`,
       [conversationId, fromExternalId]
     );

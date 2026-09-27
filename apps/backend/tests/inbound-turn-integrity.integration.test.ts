@@ -16,6 +16,16 @@ let sessionId = "";
 beforeAll(async () => {
   tenantId = (await pool.query<{ id: string }>("INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id", [`Claim turn ${suffix}`])).rows[0].id;
   sessionId = (await pool.query<{ id: string }>("INSERT INTO whatsapp_sessions(tenant_id,status) VALUES($1,'connected') RETURNING id", [tenantId])).rows[0].id;
+  // Agente ativo: sem ele o repositório marca todo inbound como processado na hora.
+  const configId = (await pool.query<{ id: string }>(
+    `INSERT INTO agent_configs(tenant_id,name,system_prompt,ai_model,model_params,enabled_tools,is_active,updated_at)
+     VALUES($1,'Agente','PROMPT','openai/gpt-4o-mini','{}'::jsonb,'[]'::jsonb,true,now()) RETURNING id`,
+    [tenantId]
+  )).rows[0].id;
+  const versionId = (await pool.query<{ id: string }>(
+    "SELECT id FROM agent_config_versions WHERE agent_config_id=$1 AND status='active'", [configId]
+  )).rows[0].id;
+  await pool.query("UPDATE agent_configs SET active_version_id=$2 WHERE id=$1", [configId, versionId]);
 });
 
 afterAll(async () => {
@@ -37,5 +47,22 @@ describe("inbound claim lease by AI turn", () => {
 
     await expect(repository.recordInboundAndLoadContext(message, { turnId: `other-${suffix}` })).resolves.toBeNull();
     await expect(repository.recordInboundAndLoadContext(message, { turnId })).resolves.not.toBeNull();
+  });
+});
+
+describe("pending contact fragments (MSG C7)", () => {
+  it("a turn fired by the newest fragment also takes the older unanswered fragments, in order", async () => {
+    const repository = new MessageRepository(pool, config, { followUp: vi.fn().mockResolvedValue(undefined) });
+    const contact = `5511${randomUUID().replace(/\D/g, "").padEnd(9, "4").slice(0, 9)}`;
+    const base = { tenantId, sessionId, contactPhone: contact };
+    const ids = ["oi", "quero saber o preço", "do plano X"].map((text, index) => ({ text, externalId: `frag-${index}-${suffix}` }));
+    let conversationId = "";
+    for (const fragment of ids) {
+      // Fora do expediente o webhook grava na hora (claim:false); cada job dispara depois.
+      const context = await repository.recordInboundAndLoadContext({ ...base, ...fragment }, { claim: false });
+      conversationId = context!.conversationId;
+    }
+    const pending = await repository.findPendingContactTextMessages(conversationId, ids[2].externalId);
+    expect(pending.map((item) => item.text)).toEqual(["oi", "quero saber o preço", "do plano X"]);
   });
 });
