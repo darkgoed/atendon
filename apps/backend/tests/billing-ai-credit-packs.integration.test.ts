@@ -303,7 +303,14 @@ describe("AI credit pack purchases", () => {
       expect(invoice.status).toBe("paid");
       const payment = (await pool.query<{ status: string }>("SELECT status FROM payments WHERE invoice_id=$1", [purchase.invoiceId])).rows[0];
       expect(payment.status).toBe("paid");
-      expect(await balanceOf(x)).toMatchObject({ availableCredits: CREDITS });
+      expect(await balanceOf(x)).toMatchObject({ availableCredits: CREDITS, usableCredits: CREDITS, strandedCredits: 0 });
+
+      // IA C6: saldo abaixo da reserva de UMA interação não é consumível — o
+      // painel não pode apresentá-lo como disponível para uso.
+      const estimate = (await balanceOf(x) as unknown as { turnEstimateCredits: number }).turnEstimateCredits;
+      expect(estimate).toBeGreaterThan(1);
+      await pool.query("UPDATE usage_grants SET consumed_amount=amount-$2 WHERE id=$1", [grants[0].id, estimate - 1]);
+      expect(await balanceOf(x)).toMatchObject({ availableCredits: estimate - 1, usableCredits: 0, strandedCredits: estimate - 1 });
     } finally { await clean(x); }
   });
 

@@ -23,14 +23,14 @@ let failNextCharge: boolean;
 let failNextPost: boolean;
 let idemKeys: Record<string, string>;
 
-function mockApi(overrides: { usageUnit?: string; failOptional?: boolean } = {}) {
+function mockApi(overrides: { usageUnit?: string; failOptional?: boolean; balance?: Record<string, unknown> } = {}) {
   invoices = {}; invoiceSeq = 0; chargeCalls = []; idemKeys = {};
   const failOptional = overrides.failOptional ?? false;
   api.mockImplementation(async (path: string, init?: RequestInit) => {
     if (path === "/billing/usage-dashboard") return { dashboard: { ...dashboard, usageUnit: overrides.usageUnit ?? "CREDIT" } };
     if (path.startsWith("/billing/history")) return { history: [] };
     if (path === "/billing/usage-credit") return credit;
-    if (path === "/billing/ai-credit-packs/balance") { if (failOptional) throw new Error("Saldo indisponível"); return { balance: { availableCredits: 0, grants: [] } }; }
+    if (path === "/billing/ai-credit-packs/balance") { if (failOptional) throw new Error("Saldo indisponível"); return { balance: overrides.balance ?? { availableCredits: 0, grants: [] } }; }
     if (path.startsWith("/billing/ai-usage")) { if (failOptional) throw new Error("Relatório indisponível"); return { summary: { calls: { count: 0 } } }; }
     if (path === "/billing/ai-credit-packs") {
       if (init?.method === "POST") {
@@ -147,4 +147,12 @@ describe("usage page AI credit packs flow", () => {
     render(<UsoBody />);
     expect(await screen.findByText("Créditos de IA do período")).toBeTruthy();
   });
+
+  it("mostra só o saldo de pacotes utilizável e avisa sobra abaixo de uma interação (IA C6)", async () => {
+    mockApi({ balance: { availableCredits: 24_000, usableCredits: 0, strandedCredits: 24_000, turnEstimateCredits: 25_000, grants: [{}] } });
+    render(<UsoBody />);
+    expect(await screen.findByText(/Pacotes comprados: 0 utilizáveis/)).toBeTruthy();
+    expect(screen.getByText(/24\.000 créditos em sobras abaixo de uma interação \(25\.000\) não podem ser usados/)).toBeTruthy();
+  });
 });
+

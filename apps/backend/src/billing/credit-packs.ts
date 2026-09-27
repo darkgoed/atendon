@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import { db } from "../db/client.js";
 import { withTenantTransaction } from "../db/tenant-transaction.js";
 import { ensureOpenPeriod } from "./usage-period.js";
+import { estimateTurnCredits } from "./pricing.js";
 
 /**
  * Compra de pacotes de créditos de IA (tokens normalizados).
@@ -175,6 +176,11 @@ export async function revokeCreditPackageGrant(client: PoolClient, tenantId: str
 
 export type CreditPackBalance = {
   availableCredits: number;
+  /** Saldo que cobre ao menos a reserva de uma interação (o que a IA consegue usar). */
+  usableCredits: number;
+  /** Sobras abaixo da reserva de uma interação: não são consumíveis (IA C6). */
+  strandedCredits: number;
+  turnEstimateCredits: number;
   grantedCredits: number;
   consumedCredits: number;
   grants: Array<{ id: string; amount: number; consumedAmount: number; remaining: number; active: boolean; expiresAt: Date | null; createdAt: Date; invoiceId: string | null; purchaseStatus: string | null }>;
@@ -204,8 +210,17 @@ export async function creditPackBalance(tenantId: string): Promise<CreditPackBal
     invoiceId: row.invoice_id,
     purchaseStatus: row.purchase_status
   }));
+  // O consumo só usa uma concessão que cubra a reserva do turno inteiro
+  // (ai-consumption: available >= estimativa); sobra menor fica parada.
+  const turnEstimateCredits = await estimateTurnCredits();
+  const active = grants.filter(g => g.active);
+  const usableCredits = active.filter(g => g.remaining >= turnEstimateCredits).reduce((sum, g) => sum + g.remaining, 0);
+  const availableCredits = active.reduce((sum, g) => sum + g.remaining, 0);
   return {
-    availableCredits: grants.filter(g => g.active).reduce((sum, g) => sum + g.remaining, 0),
+    availableCredits,
+    usableCredits,
+    strandedCredits: availableCredits - usableCredits,
+    turnEstimateCredits,
     grantedCredits: grants.reduce((sum, g) => sum + g.amount, 0),
     consumedCredits: grants.reduce((sum, g) => sum + g.consumedAmount, 0),
     grants
