@@ -221,7 +221,12 @@ const conversationMessagesV2QuerySchema = z.object({
   before: messageCursorSchema.optional(),
   after: messageCursorSchema.optional(),
   // Token `sync` da resposta anterior: devolve em `changes` o que mudou desde então.
-  since: z.string().datetime({ offset: true }).optional()
+  // Formato: "<ISO>" ou "<ISO>|<uuid>" (cursor de lote cheio, desempata por id).
+  since: z.string().max(100).refine((value) => {
+    const [at, id, ...rest] = value.split("|");
+    return rest.length === 0 && z.string().datetime({ offset: true }).safeParse(at).success
+      && (id === undefined || z.string().uuid().safeParse(id).success);
+  }, "since inválido").optional()
 }).refine((value) => !(value.before && value.after), {
   message: "Use somente before ou after"
 });
@@ -2097,18 +2102,21 @@ export function buildApp(options: {
                   m.ai_model_used, m.status, m.created_at, COALESCE(su.name, su.email) sender_name,
                   m.reaction_emoji, m.edited_at, m.deleted_at, m.deleted_for_everyone_at,
                   reply.id reply_to_message_id, reply.content reply_to_content, reply.sender reply_to_sender,
-                  to_char(m.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') change_token
+                  to_char(m.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') || '|' || m.id change_token
            FROM messages m LEFT JOIN users su ON su.id=m.sent_by_user_id
                   LEFT JOIN messages reply
                     ON reply.id=m.reply_to_message_id AND reply.conversation_id=m.conversation_id
-           WHERE m.conversation_id=$1 AND m.updated_at > $2::timestamptz
+           WHERE m.conversation_id=$1
+             AND (m.updated_at, m.id) > ($2::timestamptz, COALESCE($3::uuid, 'ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid))
            ORDER BY m.updated_at, m.id
            LIMIT ${DELTA_CHANGES_LIMIT}`,
-          [id, query.since]
+          [id, query.since.split("|")[0], query.since.split("|")[1] ?? null]
         )).rows.map(({ change_token: changeToken, ...message }) => ({ message, changeToken: changeToken as string }))
       : undefined;
-    // Lote cheio: o próximo `since` é o updated_at (µs) da última linha
-    // devolvida, senão o que passou do limite se perderia (Ponytail #4c).
+    // Lote cheio: o próximo `since` é o cursor (updated_at µs | id) da última
+    // linha — desempata linhas com o mesmo updated_at (INSERT em lote na mesma
+    // transação). A resposta seguinte, não cheia, volta a now()-60 s e recobre
+    // commits atrasados (Ponytail #4c / Ponytail-2 P3).
     const sync = changes && changes.length >= DELTA_CHANGES_LIMIT
       ? changes.at(-1)!.changeToken
       : (await db.query<{ sync: Date }>("SELECT statement_timestamp() - interval '60 seconds' AS sync")).rows[0].sync.toISOString();

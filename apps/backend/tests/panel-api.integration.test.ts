@@ -774,7 +774,8 @@ describe("panel API tenant isolation",()=>{
       const inserted=(await pool.query<{id:string}>(
         "INSERT INTO messages(conversation_id,sender,content,created_at) SELECT $1,'contact','m'||n,now()-interval '1 hour'+n*interval '1 second' FROM generate_series(1,250) n RETURNING id",[conversation]
       )).rows.map((row)=>row.id);
-      await pool.query("UPDATE messages SET status='read' WHERE conversation_id=$1",[conversation]);
+      // Sem UPDATE: as 250 linhas têm o MESMO updated_at (now() da transação) — o
+      // cursor precisa desempatar por id (Ponytail-2 P3).
       const seen=new Set<string>();
       let since=sync;
       for(let poll=0;poll<2;poll+=1){
