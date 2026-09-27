@@ -9,6 +9,7 @@ import {
   redistributeRemovedAssignments,
   transferCaseAssignment
 } from "../src/modules/assignments/service.js";
+import { MessageRepository } from "../src/modules/messages/repository.js";
 
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL, max: 20 });
 
@@ -367,6 +368,28 @@ describe("strict attendant round robin", () => {
       "responsavel_atribuido_automaticamente",
       "responsavel_reatribuido_retorno"
     ]);
+  });
+
+  it("does not rotate when the off-hours job re-claims a message recorded before the conversation was closed (runtime S4)", async () => {
+    const item = await createCase();
+    expect((await assignCase({ leadId: item.leadId }))?.memberId).toBe(betoMemberId);
+    if (!(await pool.query("SELECT 1 FROM agent_configs WHERE tenant_id=$1", [tenantId])).rowCount) {
+      await pool.query("INSERT INTO agent_configs(tenant_id,system_prompt,ai_model,model_params) VALUES($1,'Atenda.','test/model',$2)", [tenantId, { temperature: 0.5, max_tokens: 300 }]);
+    }
+    const repository = new MessageRepository(pool, config);
+    const message = { tenantId, sessionId: whatsappSessionId, contactPhone: item.phone, text: "oi, de madrugada", externalId: `night-${randomUUID()}` };
+    // Madrugada: gravada sem reivindicar (claim:false); o job fica para o expediente.
+    await repository.recordInboundAndLoadContext(message, { claim: false });
+    // Operador encerra a conversa antes do expediente.
+    await pool.query("UPDATE conversations SET status='closed' WHERE id=$1", [item.conversationId]);
+    // Expediente: o job adiado reivindica a MESMA mensagem — não é contato novo.
+    await repository.recordInboundAndLoadContext(message);
+    expect((await pool.query<{ claimed: boolean }>("SELECT processing_started_at IS NOT NULL claimed FROM messages WHERE external_message_id=$1", [message.externalId])).rows[0].claimed).toBe(true);
+    expect(await caseAssignments(item.phone)).toEqual({ memberIds: [betoMemberId], userIds: [betoUserId] });
+    const events = (await pool.query<{ event_type: string }>(
+      "SELECT event_type FROM scheduling_lead_events WHERE lead_id=$1 ORDER BY created_at,id", [item.leadId]
+    )).rows.map((row) => row.event_type);
+    expect(events).not.toContain("responsavel_reatribuido_retorno");
   });
 
   it("keeps the case with its closer when attendance is concluded even with forceRotation", async () => {

@@ -656,6 +656,7 @@ export class MessageRepository {
       ai_active: boolean;
       agent_is_active: boolean;
       message_inserted: boolean;
+      message_new: boolean;
       processed_at: Date | null;
       agent_config_version_id: string | null;
       system_prompt: string;
@@ -841,6 +842,7 @@ export class MessageRepository {
         agent.agent_is_active,
         agent.agent_config_version_id,
         COALESCE(msg.id IS NOT NULL OR claimed.id IS NOT NULL, FALSE) as message_inserted,
+        msg.id IS NOT NULL as message_new,
         COALESCE(msg.processed_at, claimed.processed_at) AS processed_at,
         agent.system_prompt,
         agent.ai_model,
@@ -932,7 +934,11 @@ export class MessageRepository {
       leadsCapabilityEnabled,
       turnId
       ]);
-      if (recorded.rows[0]?.message_inserted) {
+      // Só mensagem NOVA distribui/rotaciona o caso. O job adiado do fora-do-
+      // expediente re-reivindica a linha gravada à noite: sem isso, conversa
+      // encerrada pelo operador de madrugada era rotacionada sem contato novo
+      // (auditoria runtime S4). Mesmo critério do caminho do Instagram.
+      if (recorded.rows[0]?.message_new) {
         const returning = previous.rows.length > 0
           && !previous.rows.some((conversation) => conversation.status === "open")
           && previous.rows.some((conversation) => conversation.status === "closed");
