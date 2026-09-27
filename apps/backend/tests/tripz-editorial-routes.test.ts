@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 /**
  * Testes das rotas editoriais da Tripz (Wave B2):
  * brand settings (GET/PUT + leak guard), validate, finalize + versionamento
@@ -124,7 +125,8 @@ class FakeRepository {
 
 import { createHash } from "node:crypto";
 import Fastify from "fastify";
-import { registerTripzAiRoutes, isPrivateHost } from "../src/modules/tripz-ai/routes.js";
+import { registerTripzAiRoutes } from "../src/modules/tripz-ai/routes.js";
+import { OutboundDownloadTooLargeError } from "../src/security/outbound-url.js";
 import type { TripzAccessScope, TripzProposalState } from "../src/modules/tripz-ai/domain.js";
 import { NEUTRAL_PROPOSAL_BRAND } from "../../proposal-renderer/dist/index.js";
 
@@ -136,7 +138,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function buildApp(repository: FakeRepository) {
+async function buildApp(repository: FakeRepository, downloadMedia?: Parameters<typeof registerTripzAiRoutes>[1] extends infer D ? D extends { downloadMedia?: infer F } ? F : never : never) {
   const app = Fastify();
   apps.push(app);
   app.setErrorHandler((error, _request, reply) => reply
@@ -150,7 +152,8 @@ async function buildApp(repository: FakeRepository) {
     fileStore: { save: async () => "/dev/null", read: async () => Buffer.alloc(0), remove: async () => undefined } as never,
     authorize: async () => ({ ...scope, actorScope: "workspace", isRoot: false }),
     featureGate: async () => undefined,
-    onMessageCreated: async () => undefined
+    onMessageCreated: async () => undefined,
+    ...(downloadMedia ? { downloadMedia } : {})
   });
   await app.ready();
   return app;
@@ -263,69 +266,57 @@ describe("validate + finalize + versions", () => {
 });
 
 describe("media from-url (SSRF guard)", () => {
-  it("bloqueia hosts privados, link-local e protocolos não-http", async () => {
+  const post = (app: Awaited<ReturnType<typeof buildApp>>, payload: Record<string, unknown>) => app.inject({
+    method: "POST",
+    url: `/tripz-ai/conversations/${conversationId}/media/from-url`,
+    payload
+  });
+
+  it("recusa http, hosts internos e NOMES que resolvem para IP interno (download real, pinado)", async () => {
     const repository = new FakeRepository();
     const app = await buildApp(repository);
-    for (const url of ["http://169.254.169.254/latest/meta-data/", "http://localhost:5432/img.png", "ftp://example.com/a.png", "http://10.0.0.1/a.png"]) {
-      const response = await app.inject({
-        method: "POST",
-        url: `/tripz-ai/conversations/${conversationId}/media/from-url`,
-        payload: { url }
-      });
-      expect(response.statusCode).toBe(400);
+    // os.hostname() resolve para IP do próprio container (privado/loopback):
+    // o guard antigo só olhava o texto da URL e deixava passar.
+    for (const url of [
+      "http://169.254.169.254/latest/meta-data/", "https://localhost/img.png", "ftp://example.com/a.png",
+      "https://10.0.0.1/a.png", `https://${hostname()}/loopback.png`, "http://images.example.com/a.png"
+    ]) {
+      const response = await post(app, { url });
+      expect(response.statusCode, url).toBe(400);
     }
+    expect(repository.attachments).toHaveLength(0);
+  });
+
+  it("não segue redirect (3xx vira falha) e corta imagem acima de 8 MB", async () => {
+    const repository = new FakeRepository();
+    const redirect = await buildApp(repository, vi.fn(async () => ({ status: 302, contentType: "", body: Buffer.alloc(0) })));
+    expect((await post(redirect, { url: "https://images.example.com/a.png" })).json().error).toBe("TRIPZ_MEDIA_URL_FETCH");
+    const huge = await buildApp(repository, vi.fn(async () => { throw new OutboundDownloadTooLargeError("big"); }));
+    expect((await post(huge, { url: "https://images.example.com/a.png" })).statusCode).toBe(413);
     expect(repository.attachments).toHaveLength(0);
   });
 
   it("baixa imagem válida e cria attachment (mediaId = attachmentId)", async () => {
     const repository = new FakeRepository();
-    const app = await buildApp(repository);
     const png = Buffer.from("89504e470d0a1a0a", "hex");
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(png, {
-      status: 200,
-      headers: { "content-type": "image/png" }
-    })));
-    const response = await app.inject({
-      method: "POST",
-      url: `/tripz-ai/conversations/${conversationId}/media/from-url`,
-      payload: { url: "https://images.example.com/porto-rio.jpg", category: "destination", label: "Rio Douro" }
-    });
+    const download = vi.fn(async () => ({ status: 200, contentType: "image/png", body: png }));
+    const app = await buildApp(repository, download);
+    const response = await post(app, { url: "https://images.example.com/porto-rio.jpg", category: "destination", label: "Rio Douro" });
     expect(response.statusCode).toBe(201);
     const body = JSON.parse(response.body);
     expect(body.mediaId).toBe(body.attachmentId);
     expect(body.category).toBe("destination");
     expect(repository.attachments).toHaveLength(1);
     expect((repository.attachments[0] as { fileName: string }).fileName).toContain("Rio-Douro");
-    vi.unstubAllGlobals();
+    expect(download).toHaveBeenCalledWith("https://images.example.com/porto-rio.jpg", expect.objectContaining({ maxBytes: 8 * 1024 * 1024 }));
   });
 
   it("recusa conteúdo não-imagem", async () => {
     const repository = new FakeRepository();
-    const app = await buildApp(repository);
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("<html>", {
-      status: 200,
-      headers: { "content-type": "text/html" }
-    })));
-    const response = await app.inject({
-      method: "POST",
-      url: `/tripz-ai/conversations/${conversationId}/media/from-url`,
-      payload: { url: "https://example.com/page" }
-    });
+    const app = await buildApp(repository, vi.fn(async () => ({ status: 200, contentType: "text/html", body: Buffer.from("<html>") })));
+    const response = await post(app, { url: "https://example.com/page" });
     expect(response.statusCode).toBe(400);
     expect(JSON.parse(response.body).error).toBe("TRIPZ_MEDIA_URL_TYPE");
-    vi.unstubAllGlobals();
-  });
-});
-
-describe("isPrivateHost", () => {
-  it("classifica hosts perigosos", () => {
-    expect(isPrivateHost("localhost", new URL("http://localhost/a"))).toBe(true);
-    expect(isPrivateHost("169.254.169.254", new URL("http://169.254.169.254/"))).toBe(true);
-    expect(isPrivateHost("172.16.0.1", new URL("http://172.16.0.1/"))).toBe(true);
-    expect(isPrivateHost("10.1.2.3", new URL("http://10.1.2.3/"))).toBe(true);
-    expect(isPrivateHost("user@evil.com", new URL("http://a:b@evil.com/"))).toBe(true);
-    expect(isPrivateHost("images.example.com", new URL("https://images.example.com/a.jpg"))).toBe(false);
-    expect(isPrivateHost("8.8.8.8", new URL("https://8.8.8.8/a.jpg"))).toBe(false);
   });
 });
 

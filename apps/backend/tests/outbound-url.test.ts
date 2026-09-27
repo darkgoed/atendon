@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import https from "node:https";
-import { isPublicHttpsUrl, publicHttpsAgent, resolvePublicHttpsUrl } from "../src/security/outbound-url.js";
+import { isPublicHttpsUrl, OutboundUrlError, publicHttpsAgent, publicHttpsDownload, resolvePublicHttpsUrl } from "../src/security/outbound-url.js";
 
 describe("public HTTPS outbound URL policy", () => {
   it.each([
@@ -55,3 +55,14 @@ describe("public HTTPS outbound URL policy", () => {
     else await expect(result).resolves.toBeDefined();
   });
 });
+
+describe("publicHttpsDownload (mídia externa do Tripz)", () => {
+  it("recusa nome público que resolve para IP interno e http, antes de abrir socket", async () => {
+    const internal = async () => [{ address: "10.0.0.5", family: 4 }];
+    await expect(publicHttpsDownload("https://images.attacker.test/a.png", { maxBytes: 1024, timeoutMs: 1000 }, internal))
+      .rejects.toBeInstanceOf(OutboundUrlError);
+    await expect(publicHttpsDownload("http://images.example.com/a.png", { maxBytes: 1024, timeoutMs: 1000 }, async () => [{ address: "93.184.216.34", family: 4 }]))
+      .rejects.toBeInstanceOf(OutboundUrlError);
+  });
+});
+

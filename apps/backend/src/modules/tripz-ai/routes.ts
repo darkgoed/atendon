@@ -29,6 +29,7 @@ import {
   tripzProposalPatchRequestSchema
 } from "./schemas.js";
 import { PostgresTripzFileStore, tripzContentDisposition, type TripzFileStore } from "./storage.js";
+import { OutboundDownloadTooLargeError, OutboundUrlError, publicHttpsDownload, type PublicHttpsDownload } from "../../security/outbound-url.js";
 
 export interface TripzMessageCreatedContext {
   scope: TripzAccessScope;
@@ -62,6 +63,8 @@ export interface TripzRouteDependencies {
   onMessageCreated?: (context: TripzMessageCreatedContext) => Promise<void>;
   renderPreview?: (context: TripzDocumentRenderContext) => Promise<TripzPreviewRenderResult>;
   renderPdf?: (context: TripzDocumentRenderContext) => Promise<TripzPdfRenderResult>;
+  /** Download de mídia externa (padrão: publicHttpsDownload, pinado contra SSRF). */
+  downloadMedia?: typeof publicHttpsDownload;
 }
 
 function responseError(statusCode: number, code: string, message: string): TripzAiError {
@@ -97,6 +100,7 @@ export async function registerTripzAiRoutes(app: FastifyInstance, dependencies: 
   const fileStore = dependencies.fileStore ?? new PostgresTripzFileStore(repository);
   const authorize = dependencies.authorize ?? requireTripzAiPermission;
   const featureGate = dependencies.featureGate ?? createTripzFeatureGate(db);
+  const downloadMedia = dependencies.downloadMedia ?? publicHttpsDownload;
 
   for (const contentType of ["image/jpeg", "image/png", "image/webp", "application/pdf"]) {
     if (!app.hasContentTypeParser(contentType)) {
@@ -491,28 +495,34 @@ export async function registerTripzAiRoutes(app: FastifyInstance, dependencies: 
     const scope = await access(request);
     const { id } = tripzConversationParamsSchema.parse(request.params);
     const body = tripzMediaFromUrlSchema.parse(request.body);
-    const parsedUrl = new URL(body.url);
-    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-      throw responseError(400, "TRIPZ_MEDIA_URL_PROTOCOL", "Somente URLs http(s) são aceitas");
+    // SSRF: HTTPS apenas, DNS pinado no socket (nome que resolve para IP
+    // interno é recusado), 3xx não seguido e corpo cortado em 8 MB no stream.
+    let downloaded: PublicHttpsDownload;
+    try {
+      downloaded = await downloadMedia(body.url, {
+        maxBytes: 8 * 1024 * 1024,
+        timeoutMs: 15_000,
+        headers: { "user-agent": "AtendON-TripzMedia/1.0" }
+      });
+    } catch (error) {
+      if (error instanceof OutboundUrlError) {
+        throw responseError(400, "TRIPZ_MEDIA_URL_PRIVATE", "A URL precisa ser HTTPS pública");
+      }
+      if (error instanceof OutboundDownloadTooLargeError) {
+        throw responseError(413, "TRIPZ_MEDIA_URL_SIZE", "A imagem excede o limite de 8 MB");
+      }
+      throw responseError(400, "TRIPZ_MEDIA_URL_FETCH", "Não foi possível baixar a imagem");
     }
-    const host = parsedUrl.hostname.toLowerCase();
-    if (isPrivateHost(host, parsedUrl)) {
-      throw responseError(400, "TRIPZ_MEDIA_URL_PRIVATE", "URL aponta para um host não permitido");
+    if (downloaded.status < 200 || downloaded.status >= 300) {
+      throw responseError(400, "TRIPZ_MEDIA_URL_FETCH", "Não foi possível baixar a imagem");
     }
-    const response = await fetch(parsedUrl, {
-      headers: { "user-agent": "AtendON-TripzMedia/1.0" },
-      signal: AbortSignal.timeout(15_000)
-    });
-    if (!response.ok) {
-      throw responseError(400, "TRIPZ_MEDIA_URL_FETCH", `Download falhou com status ${response.status}`);
-    }
-    const mimeType = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    const mimeType = downloaded.contentType.split(";")[0].trim().toLowerCase();
     if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
       throw responseError(400, "TRIPZ_MEDIA_URL_TYPE", "A URL deve apontar para uma imagem jpeg/png/webp");
     }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.length === 0 || buffer.length > 8 * 1024 * 1024) {
-      throw responseError(413, "TRIPZ_MEDIA_URL_SIZE", "A imagem excede o limite de 8 MB");
+    const buffer = downloaded.body;
+    if (buffer.length === 0) {
+      throw responseError(400, "TRIPZ_MEDIA_URL_FETCH", "Não foi possível baixar a imagem");
     }
     const fileName = body.label
       ? `${body.label.replace(/[^\p{L}\p{N}]+/gu, "-").slice(0, 80)}${extensionForMime(mimeType)}`
@@ -539,28 +549,6 @@ export async function registerTripzAiRoutes(app: FastifyInstance, dependencies: 
       ...(body.label ? { label: body.label } : {})
     });
   });
-}
-
-/** Hosts que uma URL de mídia externa NUNCA pode alcançar (SSRF). */
-export function isPrivateHost(hostname: string, url: URL): boolean {
-  const host = hostname.toLowerCase();
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return true;
-  if (host === "0.0.0.0" || host === "::1" || host === "[::1]") return true;
-  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4) {
-    const octets = ipv4.slice(1).map(Number);
-    const [a, b] = octets;
-    if (a === 10 || a === 127 || a === 0) return true;
-    if (a === 169 && b === 254) return true; // link-local (metadata clouds)
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a >= 224) return true; // multicast/reservado
-  }
-  if (host.startsWith("[")) return true; // literais IPv6 → bloquear por padrão
-  // Credenciais embutidas e portas não HTTP
-  if (url.username || url.password) return true;
-  if (url.port && !["80", "443", ""].includes(url.port)) return true;
-  return false;
 }
 
 function extensionForMime(mimeType: string): string {

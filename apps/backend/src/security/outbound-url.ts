@@ -120,3 +120,59 @@ export async function publicHttpsFetch(
     request.end();
   });
 }
+
+export class OutboundDownloadTooLargeError extends Error {
+  readonly code = "OUTBOUND_DOWNLOAD_TOO_LARGE";
+}
+
+export type PublicHttpsDownload = { status: number; contentType: string; body: Buffer };
+
+/**
+ * Download de corpo com as mesmas garantias do publicHttpsFetch: HTTPS apenas,
+ * IP público revalidado no lookup do PRÓPRIO socket (sem janela de DNS
+ * rebinding), 3xx NUNCA seguido (volta como status, sem corpo) e corpo lido em
+ * stream com corte em maxBytes — nada é bufferizado além do limite.
+ */
+export async function publicHttpsDownload(
+  url: string,
+  options: { maxBytes: number; timeoutMs: number; headers?: Record<string, string> },
+  lookup: LookupAll = systemLookup
+): Promise<PublicHttpsDownload> {
+  const target = await resolvePublicHttpsUrl(url, lookup);
+  return new Promise<PublicHttpsDownload>((resolve, reject) => {
+    const request = https.request(
+      target,
+      { method: "GET", headers: options.headers, agent: publicHttpsAgent(lookup), signal: AbortSignal.timeout(options.timeoutMs) },
+      (response) => {
+        const status = response.statusCode ?? 0;
+        const contentType = String(response.headers["content-type"] ?? "");
+        if (status < 200 || status >= 300) {
+          response.resume();
+          resolve({ status, contentType, body: Buffer.alloc(0) });
+          return;
+        }
+        const declared = Number(response.headers["content-length"] ?? NaN);
+        if (Number.isFinite(declared) && declared > options.maxBytes) {
+          response.destroy();
+          reject(new OutboundDownloadTooLargeError("Download exceeds the size limit"));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        let received = 0;
+        response.on("data", (chunk: Buffer) => {
+          received += chunk.length;
+          if (received > options.maxBytes) {
+            response.destroy();
+            reject(new OutboundDownloadTooLargeError("Download exceeds the size limit"));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        response.on("end", () => resolve({ status, contentType, body: Buffer.concat(chunks) }));
+        response.on("error", reject);
+      }
+    );
+    request.on("error", reject);
+    request.end();
+  });
+}
