@@ -81,7 +81,7 @@ export async function runBillingReconciliationBatch(limit = 100, chargeDeps: Cha
         // lista antes, o período recém-fechado nunca aparecia — e no ciclo seguinte
         // o tenant já não era candidato, então a fatura de renovação nunca nascia.
         await ensureOpenPeriod(client, tenant_id); result.periods++; result.rolloverExpired += await expireRollover(client, tenant_id);
-        const pending = await client.query<{ id: string }>(`SELECT id FROM usage_periods WHERE tenant_id=$1 AND ((status='CLOSED' AND billing_evaluated_at IS NULL) OR status='INVOICED') AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.metadata->>'usage_period_id'=usage_periods.id::text AND EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id=i.id AND p.external_id IS NOT NULL))`, [tenant_id]);
+        const pending = await client.query<{ id: string }>(`SELECT id FROM usage_periods WHERE tenant_id=$1 AND ((status='CLOSED' AND billing_evaluated_at IS NULL AND NOT EXISTS (SELECT 1 FROM ai_usage_ledger l WHERE l.usage_period_id=usage_periods.id AND l.reconciled=false)) OR status='INVOICED') AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.metadata->>'usage_period_id'=usage_periods.id::text AND EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id=i.id AND p.external_id IS NOT NULL))`, [tenant_id]);
         return pending.rows.map(x => x.id);
       });
       for (const periodId of closed) {
