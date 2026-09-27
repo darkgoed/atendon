@@ -1865,7 +1865,8 @@ export class MessageProcessor {
     const prefilledNote = prefilledLeadContextNote(
       context.history,
       context.facebookAttribution ?? {},
-      meetingSlotDurationMinutes
+      meetingSlotDurationMinutes,
+      schedulingToolsConfigured && (context.meetingAgendas?.length ?? 0) > 0
     );
     const tripzZulu = isTripzZuluAgent(context.systemPrompt, context.tripzZuluEnabled === true);
     const tripzZuluSignals = tripzZulu

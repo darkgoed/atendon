@@ -451,4 +451,15 @@ Full name: Renan de Carvalho` }];
       [...history, { role: "assistant", content: "Olá, Renan, tudo certo?" }]
     )).toBeUndefined();
   });
+
+  it("regras de venda por Google Meet só entram para quem agenda reuniões (TRIPZ C4)", () => {
+    const history = [{ role: "user" as const, content: "Nome: Ana\nEndereço: Rua X, 10" }];
+    const generic = prefilledLeadContextNote(history, {}, undefined, false);
+    expect(generic).toContain("DADOS NÃO CONFIÁVEIS");
+    expect(generic).toContain("Não pergunte, não peça confirmação");
+    expect(generic).not.toContain("Google Meet");
+    expect(generic).not.toContain("Ticket médio");
+    expect(prefilledLeadContextNote(history, {}, 30, true)).toContain("Google Meet");
+  });
 });
+
