@@ -1036,7 +1036,7 @@ export class MessageProcessor {
       const result = await this.repository.recordHuman(message);
       return result === "recorded" ? "human_recorded" : "duplicate";
     }
-    const initialContext = await this.repository.recordInboundAndLoadContext(message);
+    const initialContext = await this.repository.recordInboundAndLoadContext(message, { turnId: requestId });
     if (!initialContext) return "duplicate";
     const turnBudget = await this.repository.getAiUsageTotals({
       tenantId: message.tenantId,

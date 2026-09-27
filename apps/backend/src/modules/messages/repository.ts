@@ -404,7 +404,7 @@ export class MessageRepository {
 
   private async recordInstagramInboundAndLoadContext(
     message: InboundMessage & { channel: "instagram"; instagramContactId: string },
-    input: { shouldClaim: boolean; tripzAiEnabled: boolean }
+    input: { shouldClaim: boolean; tripzAiEnabled: boolean; turnId: string | null }
   ): Promise<ConversationContext | null> {
     const attribution = normalizedFacebookAttribution(message.referral, message.text);
     const transaction = await withTenantTransaction(this.db, message.tenantId, async (client) => {
@@ -438,22 +438,23 @@ export class MessageRepository {
       const inserted = await client.query<{ id: string }>(
         `INSERT INTO messages(
            conversation_id,sender,content,media_type,external_message_id,provider_message_key,
-           processing_started_at,media_mime_type,media_file_name,media_size_bytes,media_is_sticker
-         ) VALUES($1,'contact',$2,$3,$4,$5,CASE WHEN $6 THEN now() ELSE NULL END,$7,$8,$9,$10)
+           processing_started_at,media_mime_type,media_file_name,media_size_bytes,media_is_sticker,processing_turn_id
+         ) VALUES($1,'contact',$2,$3,$4,$5,CASE WHEN $6 THEN now() ELSE NULL END,$7,$8,$9,$10,CASE WHEN $6 THEN $11 END)
          ON CONFLICT(provider_message_key) DO NOTHING RETURNING id`,
         [current.id, message.text, message.mediaType ?? null, message.externalId, this.messageKey(message),
           input.shouldClaim, message.mediaMimeType ?? null, message.mediaFileName ?? null,
-          message.mediaSizeBytes ?? null, message.mediaIsSticker ?? false]
+          message.mediaSizeBytes ?? null, message.mediaIsSticker ?? false, input.turnId]
       );
       let messageId = inserted.rows[0]?.id;
       let acquired = Boolean(messageId);
       if (!messageId) {
         const existing = await client.query<{ id: string; processed_at: Date | null }>(
-          `UPDATE messages SET processing_started_at=now()
+          `UPDATE messages SET processing_started_at=now(),processing_turn_id=$3
            WHERE provider_message_key=$1 AND $2::boolean AND processed_at IS NULL
-             AND (processing_started_at IS NULL OR processing_started_at<now()-interval '10 minutes')
+             AND (processing_started_at IS NULL OR processing_started_at<now()-interval '10 minutes'
+                  OR processing_turn_id=$3)
            RETURNING id,processed_at`,
-          [this.messageKey(message), input.shouldClaim]
+          [this.messageKey(message), input.shouldClaim, input.turnId]
         );
         messageId = existing.rows[0]?.id;
         acquired = Boolean(messageId);
@@ -614,9 +615,11 @@ export class MessageRepository {
     };
   }
 
-  async recordInboundAndLoadContext(message: InboundMessage, options: { claim?: boolean } = {}): Promise<ConversationContext | null> {
+  async recordInboundAndLoadContext(message: InboundMessage, options: { claim?: boolean; turnId?: string } = {}): Promise<ConversationContext | null> {
     message = canonicalMessageAddress(message);
     const shouldClaim = options.claim !== false;
+    // Turno dono da lease: o retry do mesmo turno (crash do worker) retoma a lease recente.
+    const turnId = options.turnId ?? null;
     const safeCapabilityEnabled = async (key: CapabilityKey): Promise<boolean> => {
       try {
         return await this.capabilityEnabled(message.tenantId, key);
@@ -633,7 +636,7 @@ export class MessageRepository {
     if (message.channel === "instagram") {
       return this.recordInstagramInboundAndLoadContext(
         message as InboundMessage & { channel: "instagram"; instagramContactId: string },
-        { shouldClaim, tripzAiEnabled }
+        { shouldClaim, tripzAiEnabled, turnId }
       );
     }
     // Single query: upsert conversation, insert message (if new), and get agent config + history
@@ -740,8 +743,9 @@ export class MessageRepository {
       msg AS (
         INSERT INTO messages
           (conversation_id, sender, content, media_type, external_message_id, provider_message_key, processing_started_at,
-           media_mime_type, media_file_name, media_size_bytes, media_is_sticker)
-        SELECT conv.id, 'contact', $6, $7, $8, $9, CASE WHEN $12 THEN now() ELSE NULL END, $14, $15, $16, $17 FROM conv
+           media_mime_type, media_file_name, media_size_bytes, media_is_sticker, processing_turn_id)
+        SELECT conv.id, 'contact', $6, $7, $8, $9, CASE WHEN $12 THEN now() ELSE NULL END, $14, $15, $16, $17,
+               CASE WHEN $12 THEN $19::text END FROM conv
         ON CONFLICT (provider_message_key) DO NOTHING
         RETURNING id, sender, content, created_at, processed_at
       ),
@@ -755,10 +759,11 @@ export class MessageRepository {
         RETURNING conversation_id
       ),
       claimed AS (
-        UPDATE messages SET processing_started_at = now()
+        UPDATE messages SET processing_started_at = now(), processing_turn_id = $19::text
         WHERE provider_message_key = $9 AND $12
           AND processed_at IS NULL
-          AND (processing_started_at IS NULL OR processing_started_at < now() - interval '10 minutes')
+          AND (processing_started_at IS NULL OR processing_started_at < now() - interval '10 minutes'
+               OR processing_turn_id = $19::text)
         RETURNING id, processed_at
       ),
       agent AS (
@@ -924,7 +929,8 @@ export class MessageRepository {
       message.mediaFileName ?? null,
       message.mediaSizeBytes ?? null,
       message.mediaIsSticker ?? false,
-      leadsCapabilityEnabled
+      leadsCapabilityEnabled,
+      turnId
       ]);
       if (recorded.rows[0]?.message_inserted) {
         const returning = previous.rows.length > 0
