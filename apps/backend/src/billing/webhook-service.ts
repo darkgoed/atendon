@@ -3,6 +3,7 @@ import { db } from "../db/client.js";
 import { getProvider } from "./providers/registry.js";
 import { getBillingSettings } from "./settings.js";
 import { grantPaidCreditPackage, revokeCreditPackageGrant } from "./credit-packs.js";
+import { recordChargebackSignal } from "./fraud-signals.js";
 import type { WebhookResult } from "./providers/types.js";
 
 /**
@@ -196,7 +197,21 @@ async function applyApproved(client: PoolClient, provider: ProviderRow, result: 
 
   // Pagamento em dia só reativa quem estava inadimplente; não mexe em quem já está ACTIVE.
   if (sub.status === "PAST_DUE" || sub.status === "GRACE_PERIOD" || sub.status === "SUSPENDED") {
-    if (row.kind !== "subscription") return;
+    // Quitar fatura de uso/prorrata também tira da inadimplência, desde que não
+    // reste outra fatura da assinatura vencida em aberto.
+    const overdue = await client.query(
+      `SELECT 1 FROM invoices WHERE subscription_id=$1 AND id<>$2 AND status IN ('open','pending')
+         AND kind <> 'credit_package' AND due_date <= now() LIMIT 1`, [sub.id, row.id]);
+    if (overdue.rowCount) return;
+    if (row.kind !== "subscription") {
+      await client.query(
+        `UPDATE tenant_subscriptions SET status='ACTIVE', grace_period_ends_at=NULL, suspended_at=NULL, updated_at=now() WHERE id=$1`, [sub.id]);
+      await client.query(
+        `INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_plan_id,to_plan_id,from_status,to_status,metadata)
+         VALUES($1,$2,'PAYMENT_APPROVED',$3,$3,$4,'ACTIVE',$5)`,
+        [row.tenant_id, sub.id, sub.plan_id, sub.status, { invoiceId: row.id }]);
+      return;
+    }
     await client.query(
       `UPDATE tenant_subscriptions
        SET status='ACTIVE', grace_period_ends_at=NULL,
@@ -264,6 +279,11 @@ async function applyReversal(client: PoolClient, provider: ProviderRow, result: 
   // de grant; o inverso aqui seria deadlock). Chargeback NÃO debita o
   // financial_ledger da dívida — carteira de créditos é distinta do saldo.
   if (row.kind === "credit_package") await revokeCreditPackageGrant(client, row.tenant_id, row.id);
+  if (status === "charged_back") {
+    const recent = await client.query<{ n: number }>(
+      "SELECT count(*)::int n FROM payments WHERE tenant_id=$1 AND status='charged_back' AND updated_at >= now() - interval '90 days'", [row.tenant_id]);
+    if (recent.rows[0].n >= 2) await recordChargebackSignal(client, row.tenant_id, recent.rows[0].n, { invoiceId: row.id });
+  }
   if (row.subscription_id) await client.query(`INSERT INTO subscription_events(tenant_id,subscription_id,event_type,from_plan_id,to_plan_id,from_status,to_status,metadata) SELECT $1,$2,$3,s.plan_id,s.plan_id,s.status,s.status,$4 FROM tenant_subscriptions s WHERE s.id=$2`, [row.tenant_id,row.subscription_id,status === "refunded" ? "PAYMENT_REFUNDED" : "PAYMENT_CHARGED_BACK", { invoiceId: row.id, reversal: true }]);
 }
 
@@ -298,6 +318,9 @@ async function applyRejected(client: PoolClient, provider: ProviderRow, result: 
     );
   }
 
+  // Pix expirado de pacote de créditos (compra opcional) ou de fatura já
+  // quitada por outro pagamento não é dívida: não gera inadimplência.
+  if (row.kind === "credit_package" || !row.subscription_id || ["paid", "refunded", "charged_back"].includes(row.status)) return;
   const subscription = await client.query<SubscriptionRow>(
     `SELECT s.id,s.status,s.current_period_end,s.plan_id,p.billing_period_months,p.grace_period_days
      FROM tenant_subscriptions s JOIN plans p ON p.id=s.plan_id
