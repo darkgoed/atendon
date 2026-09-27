@@ -33,6 +33,11 @@ export async function consumeRateLimitRedis(key: string, maximum: number, window
   return accepted === 1;
 }
 
+export async function resetRateLimitRedis(key: string): Promise<void> {
+  const client = await getRedisClient();
+  await client.del(`ratelimit:${key}`);
+}
+
 export async function closeRateLimiter(): Promise<void> {
   if (redisClient?.isOpen) {
     await redisClient.quit();

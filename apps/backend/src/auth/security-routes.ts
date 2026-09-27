@@ -5,7 +5,7 @@ import { config } from "../config.js";
 import { db } from "../db/client.js";
 import { httpError, withTransaction } from "../modules/scheduling/service.js";
 import { HTTP_RATE_LIMITS } from "../security/http-rate-limit.js";
-import { consumeRateLimitRedis } from "../modules/messages/rate-limiter.js";
+import { consumeRateLimitRedis, resetRateLimitRedis } from "../modules/messages/rate-limiter.js";
 import { listWorkspacesForUser } from "./workspace-service.js";
 import {
   createSessionToken,
@@ -187,7 +187,13 @@ export async function registerSecurityRoutes(app: FastifyInstance) {
       clearTotpChallenge(reply);
       throw httpError(401, "Verificação em duas etapas não está ativa");
     }
-    if (!await consumeRateLimitRedis(`totp-verify:${userId}`, TOTP_VERIFY_MAX_ATTEMPTS, TOTP_VERIFY_WINDOW_MS)) {
+    // Fail-closed: sem Redis não há como limitar tentativas, então não verifica.
+    const allowed = await consumeRateLimitRedis(`totp-verify:${userId}`, TOTP_VERIFY_MAX_ATTEMPTS, TOTP_VERIFY_WINDOW_MS)
+      .catch((error: unknown) => {
+        request.log.error({ err: error }, "TOTP rate limiter unavailable");
+        throw httpError(503, "Verificação em duas etapas temporariamente indisponível; tente novamente em instantes");
+      });
+    if (!allowed) {
       clearTotpChallenge(reply);
       throw httpError(429, "Muitas tentativas de verificação; aguarde alguns minutos e faça login novamente");
     }
@@ -195,6 +201,8 @@ export async function registerSecurityRoutes(app: FastifyInstance) {
       // Desafio continua válido dentro do TTL — o usuário pode tentar de novo.
       throw httpError(401, "Código inválido");
     }
+    // Código correto zera a janela: só erros acumulam (vários dispositivos não se bloqueiam).
+    await resetRateLimitRedis(`totp-verify:${userId}`).catch(() => undefined);
 
     // Picking de workspace idêntico ao /auth/login.
     const workspaces = await listWorkspacesForUser(db, user.id, user.is_root);

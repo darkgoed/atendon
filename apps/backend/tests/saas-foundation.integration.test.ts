@@ -27,6 +27,7 @@ const rootInvitedEmail = `root-invited-${suffix}@test.local`;
 const sidInvitedEmail = `sid-invited-${suffix}@test.local`;
 const totpInvitedEmail = `totp-invited-${suffix}@test.local`;
 const totpBruteEmail = `totp-brute-${suffix}@test.local`;
+const totpMultiEmail = `totp-multi-${suffix}@test.local`;
 
 let tenantA = "";
 let tenantB = "";
@@ -142,9 +143,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   setEmailProviderForTests(undefined);
-  await pool.query("DELETE FROM audit_logs WHERE actor_user_id IN (SELECT id FROM users WHERE email=ANY($1::text[]))", [[ownerEmail, adminEmail, operatorEmail, managedMemberEmail, rootEmail, invitedEmail, expiredEmail, disabledInviteEmail, failedEmail, initialOwnerEmail, sidInvitedEmail, totpInvitedEmail, totpBruteEmail]]);
+  await pool.query("DELETE FROM audit_logs WHERE actor_user_id IN (SELECT id FROM users WHERE email=ANY($1::text[]))", [[ownerEmail, adminEmail, operatorEmail, managedMemberEmail, rootEmail, invitedEmail, expiredEmail, disabledInviteEmail, failedEmail, initialOwnerEmail, sidInvitedEmail, totpInvitedEmail, totpBruteEmail, totpMultiEmail]]);
   await pool.query("DELETE FROM tenants WHERE id=ANY($1::uuid[])", [[tenantA, tenantB, tenantC, rootCreatedTenant].filter(Boolean)]);
-  await pool.query("DELETE FROM users WHERE email=ANY($1::text[])", [[ownerEmail, adminEmail, operatorEmail, managedMemberEmail, rootEmail, invitedEmail, expiredEmail, disabledInviteEmail, failedEmail, initialOwnerEmail, rootInvitedEmail, sidInvitedEmail, totpInvitedEmail, totpBruteEmail]]);
+  await pool.query("DELETE FROM users WHERE email=ANY($1::text[])", [[ownerEmail, adminEmail, operatorEmail, managedMemberEmail, rootEmail, invitedEmail, expiredEmail, disabledInviteEmail, failedEmail, initialOwnerEmail, rootInvitedEmail, sidInvitedEmail, totpInvitedEmail, totpBruteEmail, totpMultiEmail]]);
   await pool.end();
   await app.close();
 });
@@ -928,5 +929,26 @@ describe("TOTP verify brute force", () => {
     const locked = await attempt(5, totpCode(secret));
     expect(locked.statusCode).toBe(429);
     expect(locked.headers["set-cookie"] ?? "").not.toContain("atendon_session=");
+  }, 30_000);
+
+  it("successful second-factor logins reset the per-user window (several devices never lock out)", async () => {
+    const email = totpMultiEmail;
+    const secret = generateTotpSecret();
+    const user = await pool.query<{ id: string }>(
+      "INSERT INTO users(email,password_hash,status,totp_secret_encrypted,totp_enabled_at) VALUES($1,$2,'active',$3,now()) RETURNING id",
+      [email, await hash(password, 4), encryptTotpSecret(secret)]
+    );
+    await pool.query(
+      `INSERT INTO workspace_members(workspace_id,user_id,role_id,status,joined_at)
+       SELECT $1,$2,id,'active',now() FROM workspace_roles WHERE workspace_id=$1 AND name='OPERADOR'`,
+      [tenantA, user.rows[0].id]
+    );
+    for (let index = 0; index < 7; index++) {
+      const login = await app.inject({ method: "POST", url: "/auth/login", remoteAddress: `10.48.${index}.1`, payload: { email, password } });
+      const header = login.headers["set-cookie"];
+      const challenge = (Array.isArray(header) ? header : [header!]).find((cookie) => cookie.startsWith("atendon_totp_challenge="))!.split(";")[0];
+      const verified = await app.inject({ method: "POST", url: "/auth/totp/verify", remoteAddress: `10.49.${index}.1`, headers: { cookie: challenge }, payload: { code: totpCode(secret) } });
+      expect(verified.statusCode, `login ${index + 1}`).toBe(200);
+    }
   }, 30_000);
 });
