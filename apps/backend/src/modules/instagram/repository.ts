@@ -89,6 +89,10 @@ function isUniqueViolation(error: unknown): error is DatabaseError {
   return error instanceof Error && (error as DatabaseError).code === "23505";
 }
 
+// The inbox drains about every 5 seconds per tenant.
+const INBOX_DEPRIORITIZE_AFTER_ATTEMPTS = 5;
+const INBOX_MAX_ATTEMPTS = 720;
+
 export class InstagramRepository {
   private readonly keyring: SecretKeyring;
 
@@ -505,10 +509,14 @@ export class InstagramRepository {
            SELECT id FROM instagram_webhook_inbox
            WHERE tenant_id=$1 AND processed_at IS NULL
              AND (claimed_at IS NULL OR claimed_at<now()-interval '5 minutes')
-           ORDER BY received_at FOR UPDATE SKIP LOCKED LIMIT $2
+             AND attempts<$3
+           ORDER BY (attempts>=$4), received_at FOR UPDATE SKIP LOCKED LIMIT $2
          )
          RETURNING *`,
-        [tenantId, limit]
+        // ponytail: rows that keep failing go behind fresh events (no
+        // head-of-line blocking) and stop being claimed after ~1h of drains;
+        // they stay in the table with last_error for inspection/replay.
+        [tenantId, limit, INBOX_MAX_ATTEMPTS, INBOX_DEPRIORITIZE_AFTER_ATTEMPTS]
       );
       return result.rows;
     });

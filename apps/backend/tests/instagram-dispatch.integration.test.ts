@@ -503,3 +503,132 @@ describe("durable Instagram inbox dispatch", () => {
     expect(texts).toContain("[Não é possível visualizar este conteúdo pelo AtendON: localização, visualização única ou conteúdo não suportado pelo Instagram]");
   });
 });
+
+function inboxRow(mid: string, payload: Record<string, unknown>, extra: { receivedAt?: Date; attempts?: number } = {}) {
+  return {
+    id: randomUUID(), tenant_id: tenantId, session_id: sessionId, provider_event_id: `message:${mid}`,
+    account_id: accountId, received_at: extra.receivedAt ?? new Date(), attempts: extra.attempts ?? 1, payload
+  };
+}
+
+describe("Instagram echo of the AI's own bubble", () => {
+  function dispatcher() {
+    return createInstagramInboxDispatcher({
+      database: pool,
+      instagram: { repository: new InstagramRepository(pool, key), provider },
+      messages: new MessageRepository(pool, config, { followUp: async () => "enqueued" }),
+      enqueueInbound: async () => undefined
+    });
+  }
+  async function conversationState() {
+    return (await pool.query<{ ai_active: boolean; handoff_reason: string | null }>(
+      "SELECT ai_active,handoff_reason FROM conversations WHERE id=$1",
+      [conversationId]
+    )).rows[0];
+  }
+
+  it("does not pause the AI when the echo is drained before the bubble is recorded", async () => {
+    await pool.query("UPDATE conversations SET ai_active=true,handoff_reason=NULL WHERE id=$1", [conversationId]);
+    const mid = `ai-bubble-${randomUUID()}`;
+    const echo = inboxRow(mid, {
+      sender: { id: accountId }, recipient: { id: contactId }, timestamp: Date.now(),
+      message: { mid, text: "Primeira bolha", is_echo: true }
+    });
+    const dispatch = dispatcher();
+
+    // The AI turn is still between provider acceptance and persistence.
+    await expect(dispatch(echo)).rejects.toThrow(/not yet correlated/);
+    expect(await conversationState()).toEqual({ ai_active: true, handoff_reason: null });
+
+    await pool.query(
+      `INSERT INTO messages(conversation_id,sender,content,external_message_id,provider_message_key,status)
+       VALUES($1,'agent','Primeira bolha',$2,$3,'sent')`,
+      [conversationId, mid, `${tenantId}:${sessionId}:${mid}`]
+    );
+    await expect(dispatch(echo)).resolves.toBe("echo_confirmed");
+    expect(await conversationState()).toEqual({ ai_active: true, handoff_reason: null });
+    expect((await pool.query<{ sender: string }>(
+      "SELECT sender FROM messages WHERE provider_message_key=$1", [`${tenantId}:${sessionId}:${mid}`]
+    )).rows).toEqual([{ sender: "agent" }]);
+  });
+
+  it("still records a native-app human reply once its echo is past the correlation grace", async () => {
+    await pool.query("UPDATE conversations SET ai_active=true,handoff_reason=NULL WHERE id=$1", [conversationId]);
+    const mid = `human-native-${randomUUID()}`;
+    const echo = inboxRow(mid, {
+      sender: { id: accountId }, recipient: { id: contactId }, timestamp: Date.now(),
+      message: { mid, text: "Oi, aqui é o João", is_echo: true }
+    }, { receivedAt: new Date(Date.now() - 60_000) });
+
+    await expect(dispatcher()(echo)).resolves.toBe("human_echo_recorded");
+    expect(await conversationState()).toEqual({ ai_active: false, handoff_reason: "manually_paused" });
+  });
+});
+
+describe("Instagram media that cannot be downloaded", () => {
+  it("is retried briefly, then persisted as a visible fallback instead of retrying forever", async () => {
+    const failingProvider: InstagramProvider = { ...provider, fetchMedia: vi.fn().mockRejectedValue(new Error("Unsupported media type")) };
+    const received: SessionMessage[] = [];
+    const dispatch = createInstagramInboxDispatcher({
+      database: pool,
+      instagram: { repository: new InstagramRepository(pool, key), provider: failingProvider },
+      messages: new MessageRepository(pool, config, { followUp: async () => "enqueued" }),
+      enqueueInbound: async (message) => { received.push(message); }
+    });
+    const mid = `docx-${randomUUID()}`;
+    const payload = {
+      sender: { id: contactId }, recipient: { id: accountId }, timestamp: Date.now(),
+      message: { mid, text: "segue o contrato", attachments: [{ type: "file", payload: { url: "https://lookaside.instagram.test/contrato.docx" } }] }
+    };
+
+    await expect(dispatch(inboxRow(mid, payload, { attempts: 1 }))).rejects.toThrow("Unsupported media type");
+    expect(received).toEqual([]);
+
+    await expect(dispatch(inboxRow(mid, payload, { attempts: 3 }))).resolves.toBe("inbound_enqueued");
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({ channel: "instagram", instagramContactId: contactId });
+    expect(received[0]!.mediaType).toBeUndefined();
+    expect(received[0]!.text).toBe("segue o contrato\n[Mídia recebida pelo Instagram que não pôde ser baixada]");
+  });
+});
+
+describe("Instagram inbox claim", () => {
+  let claimTenantId = "";
+  let claimSessionId = "";
+
+  beforeAll(async () => {
+    claimTenantId = (await pool.query<{ id: string }>(
+      "INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id",
+      [`Instagram claim ${randomUUID()}`]
+    )).rows[0].id;
+    claimSessionId = (await new InstagramRepository(pool, key).saveConnection({
+      tenantId: claimTenantId, label: "Instagram", accountId: `account-${randomUUID()}`, accessToken: "provider-token",
+      // Not due for refresh: refreshDueTokens is global across tenants.
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    })).id;
+  });
+
+  afterAll(async () => {
+    if (claimTenantId) await pool.query("DELETE FROM tenants WHERE id=$1", [claimTenantId]);
+  });
+
+  async function insertInbox(eventId: string, attempts: number, receivedAt: Date) {
+    await pool.query(
+      `INSERT INTO instagram_webhook_inbox(tenant_id,session_id,provider_event_id,account_id,payload,raw_body,received_at,attempts)
+       VALUES($1,$2,$3,'claim-account','{}'::jsonb,'\\x7b7d'::bytea,$4,$5)`,
+      [claimTenantId, claimSessionId, eventId, receivedAt, attempts]
+    );
+  }
+
+  it("serves fresh events before rows that keep failing and stops claiming exhausted rows", async () => {
+    const repository = new InstagramRepository(pool, key);
+    await insertInbox("poison", 10, new Date(Date.now() - 60_000));
+    await insertInbox("exhausted", 720, new Date(Date.now() - 120_000));
+    await insertInbox("fresh", 0, new Date());
+
+    const first = await repository.claimInbox(claimTenantId, 1);
+    expect(first.map((row) => row.provider_event_id)).toEqual(["fresh"]);
+    const rest = await repository.claimInbox(claimTenantId, 10);
+    expect(rest.map((row) => row.provider_event_id)).toEqual(["poison"]);
+  });
+});

@@ -25,6 +25,28 @@ export type InstagramDispatchResult =
 
 export type InstagramInboxDispatcher = (row: Record<string, unknown>) => Promise<InstagramDispatchResult>;
 
+// The inbox drains every ~5s, so this is a few retries: long enough for the AI
+// turn to persist the bubble it just sent, short enough that a reply typed in
+// the native Instagram app still pauses the AI promptly.
+const ECHO_CORRELATION_GRACE_MS = 20_000;
+// Drains (attempts include the current one) before undownloadable media is
+// persisted as fallback text instead of being retried.
+const MEDIA_DOWNLOAD_ATTEMPTS = 3;
+const UNDOWNLOADABLE_MEDIA_TEXT = "[Mídia recebida pelo Instagram que não pôde ser baixada]";
+
+function receivedAgoMs(row: Record<string, unknown>): number {
+  const receivedAt = row.received_at instanceof Date || typeof row.received_at === "string"
+    ? new Date(row.received_at).getTime()
+    : Number.NaN;
+  // Rows without a timestamp keep the historical behavior (no grace).
+  return Number.isFinite(receivedAt) ? Date.now() - receivedAt : Number.POSITIVE_INFINITY;
+}
+
+function inboxAttempts(row: Record<string, unknown>): number {
+  const attempts = Number(row.attempts);
+  return Number.isFinite(attempts) ? attempts : 0;
+}
+
 export interface InstagramInboxDispatcherOptions {
   database: Pick<Pool, "query">;
   instagram: Pick<InstagramRuntime, "repository" | "provider"> | {
@@ -263,6 +285,12 @@ export function createInstagramInboxDispatcher(options: InstagramInboxDispatcher
           externalId: rawMid
         });
         if (known) return "echo_confirmed";
+        // The AI persists each bubble right after Meta accepts it, but the echo
+        // can be drained in between. Recording it now would store the AI's own
+        // bubble as a human takeover and pause the AI; retry on the next drain.
+        if (receivedAgoMs(untypedRow) < ECHO_CORRELATION_GRACE_MS) {
+          throw new Error("Instagram echo not yet correlated with an outbound message; retrying");
+        }
         await options.messages.recordHuman({
           kind: "human",
           channel: "instagram",
@@ -294,41 +322,53 @@ export function createInstagramInboxDispatcher(options: InstagramInboxDispatcher
       const downloadableAttachment = attachments.find((attachment) => attachmentUrl(attachment) !== null);
       const firstAttachment = attachments[0] ?? null;
 
+      let text = typeof message.text === "string" ? message.text : "";
       if (downloadableAttachment) {
         const url = attachmentUrl(downloadableAttachment)!;
         const token = await options.instagram.repository.getToken(row.tenant_id, row.session_id);
-        const downloaded = await options.instagram.provider.fetchMedia({ url, accessToken: token });
-        // Notas de voz do Instagram chegam num contêiner MP4 que a CDN da Meta
-        // serve com Content-Type `video/mp4` — o mesmo contêiner de vídeos,
-        // indistinguível por assinatura mágica (ver matchesMimeMagic). Quando o
-        // webhook DECLARA o attachment como `audio`, é esse tipo declarado que
-        // decide: sem este desempate, toda nota de voz aparece no painel como
-        // vídeo (player de vídeo com cara de errado) em vez do player de voz.
-        let type = mediaTypeFromContentType(downloaded.contentType);
-        if (type === "video" && String(downloadableAttachment.type) === "audio") {
-          type = "audio";
+        let downloaded: Awaited<ReturnType<InstagramProvider["fetchMedia"]>> | null = null;
+        let type: MediaType | null = null;
+        try {
+          downloaded = await options.instagram.provider.fetchMedia({ url, accessToken: token });
+          // Notas de voz do Instagram chegam num contêiner MP4 que a CDN da Meta
+          // serve com Content-Type `video/mp4` — o mesmo contêiner de vídeos,
+          // indistinguível por assinatura mágica (ver matchesMimeMagic). Quando o
+          // webhook DECLARA o attachment como `audio`, é esse tipo declarado que
+          // decide: sem este desempate, toda nota de voz aparece no painel como
+          // vídeo (player de vídeo com cara de errado) em vez do player de voz.
+          type = mediaTypeFromContentType(downloaded.contentType);
+          if (type === "video" && String(downloadableAttachment.type) === "audio") {
+            type = "audio";
+          }
+          if (!type) throw new Error("Instagram inbox media attachment has an unsupported content type");
+        } catch (error) {
+          // Transient failures get a few drains; a file type we cannot keep, an
+          // oversized file or an expired CDN URL would otherwise retry forever
+          // and the contact's message would never reach the panel or the AI.
+          if (inboxAttempts(untypedRow) < MEDIA_DOWNLOAD_ATTEMPTS) throw error;
+          text = [text, UNDOWNLOADABLE_MEDIA_TEXT].filter(Boolean).join("\n");
         }
-        if (!type) throw new Error("Instagram inbox media attachment has an unsupported content type");
-        const conversationId = await conversationIdFor(options.database, row, instagramContactId);
-        await options.instagram.repository.savePublicMedia({
-          tenantId: row.tenant_id,
-          sessionId: row.session_id,
-          conversationId,
-          bytes: downloaded.bytes,
-          contentType: downloaded.contentType,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000),
-          sourceUrl: downloaded.finalUrl,
-          storageKey: externalId
-        });
-        inboundMedia = {
-          mediaType: type,
-          mediaMimeType: downloaded.contentType,
-          mediaFileName: mediaFileName(type, downloaded.contentType),
-          mediaSizeBytes: downloaded.sizeBytes
-        };
+        if (downloaded && type) {
+          const conversationId = await conversationIdFor(options.database, row, instagramContactId);
+          await options.instagram.repository.savePublicMedia({
+            tenantId: row.tenant_id,
+            sessionId: row.session_id,
+            conversationId,
+            bytes: downloaded.bytes,
+            contentType: downloaded.contentType,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000),
+            sourceUrl: downloaded.finalUrl,
+            storageKey: externalId
+          });
+          inboundMedia = {
+            mediaType: type,
+            mediaMimeType: downloaded.contentType,
+            mediaFileName: mediaFileName(type, downloaded.contentType),
+            mediaSizeBytes: downloaded.sizeBytes
+          };
+        }
       }
 
-      let text = typeof message.text === "string" ? message.text : "";
       // Attachment presente mas sem URL baixável (ex.: `template`, `ephemeral`
       // — visualização única —, `location`), ou mensagem explicitamente marcada
       // como não suportada pela Meta (is_unsupported: localização, perfil

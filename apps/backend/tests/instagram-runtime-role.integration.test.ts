@@ -116,7 +116,14 @@ describe("Instagram foundation under the real runtime PostgreSQL role shape", ()
     });
 
     const database = roleDatabase();
-    const repository = new InstagramRepository(database, key);
+    // A varredura de tokens vencidos é GLOBAL e outras suítes do Instagram
+    // criam conexões perto do vencimento em paralelo: o serviço deste teste só
+    // enxerga os próprios tenants (a consulta em si segue rodando como runtime).
+    const repository = new (class extends InstagramRepository {
+      override async refreshDueTokens(cutoff: Date) {
+        return (await super.refreshDueTokens(cutoff)).filter((token) => token.tenantId === tenantA || token.tenantId === tenantB);
+      }
+    })(database, key);
     const oauth = new InstagramOAuthStore(database);
     const tenantA = await tenant("instagram-runtime-a");
     const tenantB = await tenant("instagram-runtime-b");
@@ -185,7 +192,10 @@ describe("Instagram foundation under the real runtime PostgreSQL role shape", ()
       tenantId: tenantB,
       sessionId: connectionB.id
     });
-    await expect(repository.listActiveTenants()).resolves.toEqual([tenantA, tenantB].sort());
+    // Lista GLOBAL (worker): outras suítes do Instagram têm tenants ativos em
+    // paralelo; o que se prova aqui é que o runtime enxerga os dois deste teste.
+    expect((await repository.listActiveTenants()).filter((id) => id === tenantA || id === tenantB))
+      .toEqual([tenantA, tenantB].sort());
 
     const event = messageEvent(accountA, `igsid-${randomUUID()}`);
     const persisted = await repository.persistEvent(
@@ -249,6 +259,9 @@ describe("Instagram foundation under the real runtime PostgreSQL role shape", ()
       failed: 0
     });
     expect(provider.refreshAccessToken).toHaveBeenCalledTimes(2);
-    await expect(repository.listActiveTenants()).resolves.toEqual([tenantA, tenantB].sort());
+    // Lista GLOBAL (worker): outras suítes do Instagram têm tenants ativos em
+    // paralelo; o que se prova aqui é que o runtime enxerga os dois deste teste.
+    expect((await repository.listActiveTenants()).filter((id) => id === tenantA || id === tenantB))
+      .toEqual([tenantA, tenantB].sort());
   });
 });

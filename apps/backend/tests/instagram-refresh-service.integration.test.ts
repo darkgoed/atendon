@@ -17,6 +17,15 @@ const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 const key = "instagram-refresh-service-key-00000000000000";
 const tenantIds: string[] = [];
 
+// A varredura de tokens vencidos é GLOBAL e várias suítes do Instagram criam
+// conexões perto do vencimento em paralelo (com outra chave de cifra → "failed").
+// Os contadores deste arquivo só olham as conexões dos próprios tenants.
+class ScopedRepository extends InstagramRepository {
+  override async refreshDueTokens(cutoff: Date) {
+    return (await super.refreshDueTokens(cutoff)).filter((token) => tenantIds.includes(token.tenantId));
+  }
+}
+
 async function tenant(): Promise<string> {
   const result = await pool.query<{ id: string }>(
     "INSERT INTO tenants(name,status) VALUES($1,'active') RETURNING id",
@@ -50,7 +59,7 @@ describe("Instagram due token refresh service", () => {
 
   it("refreshes only due active tokens", async () => {
     const tenantId = await tenant();
-    const repository = new InstagramRepository(pool, key);
+    const repository = new ScopedRepository(pool, key);
     const due = await repository.saveConnection({
       tenantId,
       label: "Due",
@@ -82,7 +91,7 @@ describe("Instagram due token refresh service", () => {
 
   it("invalidates a provider-revoked connection and never selects it again", async () => {
     const tenantId = await tenant();
-    const repository = new InstagramRepository(pool, key);
+    const repository = new ScopedRepository(pool, key);
     const connection = await repository.saveConnection({
       tenantId,
       label: "Revoked",
@@ -110,7 +119,7 @@ describe("Instagram due token refresh service", () => {
 
   it("keeps the credential on Meta throttling 4xx and revokes only on invalid-token errors", async () => {
     const tenantId = await tenant();
-    const repository = new InstagramRepository(pool, key);
+    const repository = new ScopedRepository(pool, key);
     const connection = await repository.saveConnection({
       tenantId,
       label: "Throttled",
@@ -135,7 +144,7 @@ describe("Instagram due token refresh service", () => {
 
   it("does not overwrite a reauthorized token with a stale refresh result", async () => {
     const tenantId = await tenant();
-    const repository = new InstagramRepository(pool, key);
+    const repository = new ScopedRepository(pool, key);
     const accountId = `account-${randomUUID()}`;
     const connection = await repository.saveConnection({
       tenantId,
@@ -178,7 +187,7 @@ describe("Instagram due token refresh service", () => {
 
   it("does not revoke a reauthorized token after a stale provider rejection", async () => {
     const tenantId = await tenant();
-    const repository = new InstagramRepository(pool, key);
+    const repository = new ScopedRepository(pool, key);
     const accountId = `account-${randomUUID()}`;
     const connection = await repository.saveConnection({
       tenantId,
@@ -218,7 +227,7 @@ describe("Instagram due token refresh service", () => {
 
   it("keeps an ambiguous refresh active for explicit retry without changing its token", async () => {
     const tenantId = await tenant();
-    const repository = new InstagramRepository(pool, key);
+    const repository = new ScopedRepository(pool, key);
     const connection = await repository.saveConnection({
       tenantId,
       label: "Ambiguous",
