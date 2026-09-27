@@ -957,3 +957,30 @@ describe("TOTP verify brute force", () => {
     }
   }, 30_000);
 });
+
+describe("login com o workspace escolhido apagado no meio do caminho", () => {
+  it("ROOT sem workspace próprio escolhe de novo em vez de 500 quando o tenant some antes da sessão", async () => {
+    const key = randomUUID();
+    const email = `root-vanish-${key}@test.local`;
+    // Nome ordena primeiro: é o tenant que o login do ROOT sem membership escolhe.
+    const vanish = (await pool.query<{ id: string }>("INSERT INTO tenants(name,slug,status) VALUES($1,$2,'active') RETURNING id", [`   !vanish ${key}`, `vanish-${key}`])).rows[0].id;
+    const root = (await pool.query<{ id: string }>("INSERT INTO users(email,password_hash,status,is_root) VALUES($1,$2,'active',true) RETURNING id", [email, await hash(password, 4)])).rows[0].id;
+    const fn = `vanish_${key.replaceAll("-", "")}`;
+    // Simula outro processo apagando o tenant entre a escolha e o INSERT: a 1ª
+    // tentativa recebe a violação de FK (sequência não sofre rollback).
+    await pool.query(`CREATE SEQUENCE ${fn}_seq`);
+    await pool.query(`CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tenant_id = '${vanish}' AND nextval('${fn}_seq') = 1 THEN RAISE foreign_key_violation USING MESSAGE = 'tenant apagado durante o login'; END IF; RETURN NEW; END $$`);
+    await pool.query(`CREATE TRIGGER ${fn} BEFORE INSERT ON workspace_sessions FOR EACH ROW EXECUTE FUNCTION ${fn}()`);
+    try {
+      const response = await app.inject({ method: "POST", url: "/auth/login", payload: { email, password } });
+      expect(response.statusCode).toBe(200);
+    } finally {
+      await pool.query(`DROP TRIGGER IF EXISTS ${fn} ON workspace_sessions`);
+      await pool.query(`DROP FUNCTION IF EXISTS ${fn}()`);
+      await pool.query(`DROP SEQUENCE IF EXISTS ${fn}_seq`);
+      await pool.query("DELETE FROM tenants WHERE id=$1", [vanish]);
+      await pool.query("DELETE FROM workspace_sessions WHERE user_id=$1", [root]);
+      await pool.query("DELETE FROM users WHERE id=$1", [root]);
+    }
+  });
+});

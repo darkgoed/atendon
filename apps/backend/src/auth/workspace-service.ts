@@ -2,6 +2,7 @@ import { hash } from "bcryptjs";
 import type { Pool } from "pg";
 import { db } from "../db/client.js";
 import { PERMISSIONS } from "./rbac.js";
+import { createWorkspaceSessionRow } from "./sessions.js";
 
 export interface WorkspaceSummary {
   id: string;
@@ -37,6 +38,35 @@ export async function listWorkspacesForUser(pool: Pool, userId: string, isRoot: 
     [userId]
   );
   return result.rows;
+}
+
+/**
+ * Escolhe o workspace de entrada (ROOT: o próprio, se tiver; senão o 1º da lista)
+ * e cria a linha de sessão. O tenant pode ser apagado entre a escolha e o INSERT
+ * (FK 23503): escolhe de novo em vez de devolver 500.
+ */
+export async function openLoginSession(
+  user: { id: string; is_root: boolean },
+  meta: { ip?: string; userAgent?: string }
+): Promise<{ activeWorkspace: WorkspaceSummary; sid: string; workspaces: WorkspaceSummary[] } | null> {
+  for (let attempt = 0; ; attempt++) {
+    const workspaces = await listWorkspacesForUser(db, user.id, user.is_root);
+    let activeWorkspace = workspaces[0];
+    if (user.is_root) {
+      const home = await db.query<{ workspace_id: string }>(
+        "SELECT workspace_id FROM workspace_members WHERE user_id=$1 AND status='active' ORDER BY created_at LIMIT 1",
+        [user.id]
+      );
+      activeWorkspace = workspaces.find((workspace) => workspace.id === home.rows[0]?.workspace_id) ?? activeWorkspace;
+    }
+    if (!activeWorkspace) return null;
+    try {
+      const sid = await createWorkspaceSessionRow({ userId: user.id, tenantId: activeWorkspace.id, kind: "session", ip: meta.ip, userAgent: meta.userAgent });
+      return { activeWorkspace, sid, workspaces };
+    } catch (error) {
+      if ((error as { code?: string }).code !== "23503" || attempt >= 2) throw error;
+    }
+  }
 }
 
 export async function buildMePayload(session: {

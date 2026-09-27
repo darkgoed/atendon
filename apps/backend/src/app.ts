@@ -9,9 +9,8 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 import { zodErrorMessage } from "./zod-error-message.js";
 import { createSessionToken, requireIdentity, requirePermission, requireRootWorkspace, requireSession, requireWorkspace } from "./auth/session.js";
-import { buildMePayload, listWorkspacesForUser } from "./auth/workspace-service.js";
+import { buildMePayload, listWorkspacesForUser, openLoginSession } from "./auth/workspace-service.js";
 import { issueTotpChallenge } from "./auth/totp.js";
-import { createWorkspaceSessionRow } from "./auth/sessions.js";
 import { closeRateLimiter } from "./modules/messages/rate-limiter.js";
 import { config } from "./config.js";
 import { db } from "./db/client.js";
@@ -597,22 +596,9 @@ export function buildApp(options: {
           user: { id: user.id, email: user.email, isRoot: user.is_root }
         };
       }
-      const workspaces = await listWorkspacesForUser(db, user.id, user.is_root);
-      let activeWorkspace = workspaces[0];
-      if (user.is_root) {
-        const home = await db.query<{ workspace_id: string }>(
-          "SELECT workspace_id FROM workspace_members WHERE user_id=$1 AND status='active' ORDER BY created_at LIMIT 1",
-          [user.id]
-        );
-        activeWorkspace = workspaces.find((workspace) => workspace.id === home.rows[0]?.workspace_id) ?? activeWorkspace;
-      }
-      if (!activeWorkspace) return reply.status(403).send({ error: "Usuário sem workspace ativo" });
-      const sid = await createWorkspaceSessionRow({
-        userId: user.id,
-        tenantId: activeWorkspace.id,
-        ip: request.ip,
-        userAgent: request.headers["user-agent"] as string | undefined
-      });
+      const opened = await openLoginSession(user, { ip: request.ip, userAgent: request.headers["user-agent"] as string | undefined });
+      if (!opened) return reply.status(403).send({ error: "Usuário sem workspace ativo" });
+      const { activeWorkspace, sid, workspaces } = opened;
       const token = await createSessionToken({
         userId: user.id,
         tenantId: activeWorkspace.id,

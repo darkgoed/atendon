@@ -6,13 +6,12 @@ import { db } from "../db/client.js";
 import { httpError, withTransaction } from "../modules/scheduling/service.js";
 import { HTTP_RATE_LIMITS } from "../security/http-rate-limit.js";
 import { consumeRateLimitRedis, resetRateLimitRedis } from "../modules/messages/rate-limiter.js";
-import { listWorkspacesForUser } from "./workspace-service.js";
+import { openLoginSession } from "./workspace-service.js";
 import {
   createSessionToken,
   requireWorkspace
 } from "./session.js";
 import {
-  createWorkspaceSessionRow,
   insertSecurityAudit,
   listWorkspaceSessions,
   revokeOtherSessions,
@@ -205,27 +204,12 @@ export async function registerSecurityRoutes(app: FastifyInstance) {
     await resetRateLimitRedis(`totp-verify:${userId}`).catch(() => undefined);
 
     // Picking de workspace idêntico ao /auth/login.
-    const workspaces = await listWorkspacesForUser(db, user.id, user.is_root);
-    let activeWorkspace = workspaces[0];
-    if (user.is_root) {
-      const home = await db.query<{ workspace_id: string }>(
-        "SELECT workspace_id FROM workspace_members WHERE user_id=$1 AND status='active' ORDER BY created_at LIMIT 1",
-        [user.id]
-      );
-      activeWorkspace = workspaces.find((workspace) => workspace.id === home.rows[0]?.workspace_id) ?? activeWorkspace;
-    }
-    if (!activeWorkspace) {
+    const opened = await openLoginSession(user, { ip: request.ip, userAgent: request.headers["user-agent"] });
+    if (!opened) {
       clearTotpChallenge(reply);
       return reply.status(403).send({ error: "Usuário sem workspace ativo" });
     }
-
-    const sid = await createWorkspaceSessionRow({
-      userId: user.id,
-      tenantId: activeWorkspace.id,
-      kind: "session",
-      ip: request.ip,
-      userAgent: request.headers["user-agent"]
-    });
+    const { activeWorkspace, sid, workspaces } = opened;
     const token = await createSessionToken({
       userId: user.id,
       tenantId: activeWorkspace.id,
