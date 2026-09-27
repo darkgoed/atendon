@@ -731,6 +731,20 @@ describe("panel API tenant isolation",()=>{
     const byTag=await app.inject({url:`/conversations?filter=all&q=${encodeURIComponent(tagName)}`,headers:{cookie:cookieA}});
     expect(byTag.json().conversations.map((item:{id:string})=>item.id)).toEqual([conversation.id]);
   });
+  it("Instagram conversation (no phone) can be claimed through its lead (ORG C5)",async()=>{
+    const instagram=await createInstagramConversationFixture();
+    try{
+      const claim=await app.inject({method:"PATCH",url:`/conversations/${instagram.conversationId}/claim`,headers:{cookie:cookieA}});
+      expect(claim.statusCode).toBe(200);
+      const row=(await pool.query<{assigned_user_id:string|null}>("SELECT assigned_user_id FROM conversations WHERE id=$1",[instagram.conversationId])).rows[0];
+      expect(row.assigned_user_id).not.toBeNull();
+      const lead=(await pool.query<{assigned_member_id:string|null}>("SELECT assigned_member_id FROM scheduling_leads WHERE id=$1",[instagram.leadId])).rows[0];
+      expect(lead.assigned_member_id).not.toBeNull();
+    }finally{
+      await pool.query("DELETE FROM audit_logs WHERE resource_id=$1",[instagram.conversationId]);
+      await deleteInstagramConversationFixture(instagram);
+    }
+  });
   it("returns sanitized Meta attribution with the selected conversation",async()=>{
     const response=await app.inject({url:`/conversations/${conversationA}/messages`,headers:{cookie:cookieA}});
     expect(response.statusCode).toBe(200);

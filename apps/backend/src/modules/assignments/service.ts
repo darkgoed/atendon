@@ -352,25 +352,49 @@ export async function pickTeamRoundRobinMember(
   return selectNextAttendant(client, tenantId, { teamId });
 }
 
+async function loadLeadCaseRows(client: PoolClient, tenantId: string, leadId: string): Promise<CaseRows | null> {
+  const leads = await client.query<{ id: string; assigned_member_id: string | null; status: string }>(
+    "SELECT id,assigned_member_id,status FROM scheduling_leads WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+    [tenantId, leadId]
+  );
+  if (!leads.rows[0]) return null;
+  const conversations = await client.query<{ id: string; assigned_user_id: string | null; status: string }>(
+    `SELECT id,assigned_user_id,status FROM conversations
+     WHERE tenant_id=$1 AND lead_id=$2
+     ORDER BY created_at,id
+     FOR UPDATE`,
+    [tenantId, leadId]
+  );
+  return { phone: "", leads: leads.rows, conversations: conversations.rows };
+}
+
 async function loadCaseRows(
   client: PoolClient,
   tenantId: string,
   selector: { phone: string } | { leadId: string } | { conversationId: string }
 ): Promise<CaseRows | null> {
   let phone: string | null = null;
+  let leadIdWithoutPhone: string | null = null;
   if ("phone" in selector) {
     phone = selector.phone;
   } else if ("leadId" in selector) {
-    phone = (await client.query<{ phone: string }>(
+    const lead = (await client.query<{ phone: string | null }>(
       "SELECT phone FROM scheduling_leads WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
       [tenantId, selector.leadId]
-    )).rows[0]?.phone ?? null;
+    )).rows[0];
+    phone = lead?.phone ?? null;
+    if (lead && !phone) leadIdWithoutPhone = selector.leadId;
   } else {
-    phone = (await client.query<{ contact_phone: string }>(
-      "SELECT contact_phone FROM conversations WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+    const conversation = (await client.query<{ contact_phone: string | null; lead_id: string | null }>(
+      "SELECT contact_phone,lead_id FROM conversations WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
       [tenantId, selector.conversationId]
-    )).rows[0]?.contact_phone ?? null;
+    )).rows[0];
+    phone = conversation?.contact_phone ?? null;
+    if (conversation && !phone) leadIdWithoutPhone = conversation.lead_id;
   }
+  // Instagram não tem telefone: o caso é o lead e as conversas dele. Sem isto,
+  // assumir/transferir uma DM respondia 404 e ninguém com escopo "minhas" a via.
+  if (!phone && leadIdWithoutPhone) return loadLeadCaseRows(client, tenantId, leadIdWithoutPhone);
   if (!phone) return null;
   // Telefone de um source mesclado resolve para o principal; o caso inclui
   // as conversas do lead (inclusive as de telefones mesclados nele).

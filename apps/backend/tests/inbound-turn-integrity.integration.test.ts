@@ -87,8 +87,9 @@ describe("realtime signal of in-place message changes (ORG C6)", () => {
       await notify(tenantId, context!.conversationId);
       await notify(tenantId, context!.conversationId);
       await vi.waitFor(() => expect(payloads.length).toBeGreaterThanOrEqual(2), { timeout: 2_000 });
+      type MessagesChanged = Extract<NonNullable<ReturnType<typeof parseInternalRealtimeSignal>>, { type: "conversation.messages.changed" }>;
       const signals = payloads.map((payload) => parseInternalRealtimeSignal(payload))
-        .filter((signal) => signal?.type === "conversation.messages.changed" && signal.conversationId === context!.conversationId);
+        .filter((signal): signal is MessagesChanged => signal?.type === "conversation.messages.changed" && signal.conversationId === context!.conversationId);
       expect(signals).toHaveLength(2);
       expect(signals[0]).toMatchObject({ tenantId });
       expect(signals[0]!.entityId).not.toBe(signals[1]!.entityId);
