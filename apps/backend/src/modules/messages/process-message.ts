@@ -1096,7 +1096,7 @@ export class MessageProcessor {
     }
 
     let effectiveMessage = message;
-    const config = context.humanizer;
+    const config = context.humanizer ? { ...context.humanizer, timeZone: context.timeZone } : undefined;
     const destination = message.channel === "instagram"
       ? `ig:${message.instagramContactId}`
       : message.contactJid ?? message.contactPhone;

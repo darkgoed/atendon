@@ -107,6 +107,7 @@ type FollowUpRow = {
   openrouter_provider: string | null;
   openrouter_api_key_encrypted: string | null;
   humanizer_config: HumanizerConfig | null;
+  tenant_timezone?: string | null;
 };
 
 function selectedDelivery(value: unknown, index: number): FollowUpDelivery {
@@ -348,6 +349,7 @@ export class AiFollowUpRepository {
                 s.ai_follow_up_enabled,s.ai_follow_up_max_count,s.ai_follow_up_interval_minutes,
                 s.ai_follow_up_delays_minutes,s.ai_follow_up_delivery,
                 s.openrouter_provider,s.openrouter_api_key_encrypted,s.humanizer_config,
+                (SELECT tenant.timezone FROM tenants tenant WHERE tenant.id=f.tenant_id) tenant_timezone,
                 a.agent_config_version_id,a.system_prompt,a.ai_model,a.model_params,a.is_active agent_is_active,
                 latest.id latest_message_id,latest.sender latest_sender,
                 CASE
@@ -563,7 +565,9 @@ export class AiFollowUpRepository {
         temperature: row.model_params?.temperature ?? 0.4,
         maxTokens: row.model_params?.max_tokens ?? 512,
         openRouterApiKey: configuredKey,
-        humanizer: this.config ? migrateHumanizerConfig(row.humanizer_config ?? DEFAULT_HUMANIZER_CONFIG) : undefined,
+        humanizer: this.config
+          ? { ...migrateHumanizerConfig(row.humanizer_config ?? DEFAULT_HUMANIZER_CONFIG), timeZone: row.tenant_timezone ?? undefined }
+          : undefined,
         history: historyResult.rows.map((message) => ({
           role: message.sender === "contact" ? "user" as const : "assistant" as const,
           content: message.content

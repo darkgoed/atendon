@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { composingDuration, consumeRateLimit, debounceInbound, DEFAULT_HUMANIZER_CONFIG, migrateHumanizerConfig, sanitizeOutbound, selectContextualReaction, splitResponse, withComposingRefresh, type HumanizerConfig } from "../src/modules/messages/humanizer.js";
+import { composingDuration, consumeRateLimit, debounceInbound, DEFAULT_HUMANIZER_CONFIG, migrateHumanizerConfig, sanitizeOutbound, selectContextualReaction, splitResponse, withComposingRefresh, type HumanizerConfig, isActiveHour } from "../src/modules/messages/humanizer.js";
 
 const config: HumanizerConfig = {
   readDelay:{min:0,max:0},readingPause:{min:0,max:0},
@@ -207,3 +207,14 @@ describe("humanizer", () => {
     }
   });
 });
+
+describe("horário ativo do humanizador no fuso do tenant (auditoria runtime #6)", () => {
+  it("usa a hora local do workspace, não a do servidor", () => {
+    const config = { ...DEFAULT_HUMANIZER_CONFIG, presence: { ...DEFAULT_HUMANIZER_CONFIG.presence, activeHours: { start: 9, end: 19 } }, timeZone: "America/Sao_Paulo" };
+    expect(isActiveHour(config, new Date("2026-09-10T11:30:00Z"))).toBe(false); // 08:30 em São Paulo
+    expect(isActiveHour(config, new Date("2026-09-10T12:30:00Z"))).toBe(true); // 09:30
+    expect(isActiveHour(config, new Date("2026-09-10T21:30:00Z"))).toBe(true); // 18:30
+    expect(isActiveHour(config, new Date("2026-09-10T22:30:00Z"))).toBe(false); // 19:30
+  });
+});
+

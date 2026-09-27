@@ -1,3 +1,4 @@
+import { zonedParts } from "../../timezone.js";
 export interface Range { min: number; max: number }
 
 export interface DebounceConfig {
@@ -7,6 +8,8 @@ export interface DebounceConfig {
 }
 
 export interface HumanizerConfig {
+  /** Fuso do tenant (runtime, não persistido): o "horário ativo" é hora LOCAL do workspace. */
+  timeZone?: string;
   readDelay: Range;
   readingPause: Range;
   composing: { wpm: number; jitterMs: number; minMs: number; maxMs: number; resendIntervalMs: number };
@@ -90,7 +93,9 @@ export function randomBetween(range: Range): number {
 }
 
 export function isActiveHour(config: HumanizerConfig, date = new Date()): boolean {
-  const hour = date.getHours();
+  // Sem o fuso, getHours() usa o relógio do servidor (UTC nos containers):
+  // 9–19 em São Paulo virava 06–16 local.
+  const hour = config.timeZone ? zonedParts(date, config.timeZone).hour : date.getHours();
   const { start, end } = config.presence.activeHours;
   return start <= end ? hour >= start && hour < end : hour >= start || hour < end;
 }
