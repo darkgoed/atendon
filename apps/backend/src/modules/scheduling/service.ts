@@ -662,7 +662,9 @@ export async function updateLeadFollowUp(tenantId: string, leadId: string, input
     if (!current) throw httpError(404, "Lead não encontrado");
 
     const assignedMemberId = hasOwn(input, "responsavel_member_id") ? input.responsavel_member_id ?? null : current.assigned_member_id;
-    if (assignedMemberId) {
+    // Só valida o pool quando o responsável MUDA: dono que saiu do pool não
+    // pode travar a edição da próxima ação do lead (auditoria painel P2-3).
+    if (assignedMemberId && assignedMemberId !== current.assigned_member_id) {
       const eligible = await client.query(
         `SELECT m.id FROM scheduling_google_meet_closers pool
          JOIN workspace_members m ON m.id=pool.member_id AND m.workspace_id=pool.tenant_id

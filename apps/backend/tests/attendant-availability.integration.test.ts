@@ -480,6 +480,28 @@ describe("attendant availability and redistribution", () => {
     )).rows[0].assigned_member_id).toBe(ownerMemberId);
   });
 
+  it("edits the next action of a lead whose owner has left the pool, but still refuses assigning someone outside it (painel P2-3)", async () => {
+    const { leadId } = await insertAppointment({ label: "Owner left pool", start: "2032-04-06T09:00:00.000Z" });
+    await pool.query("UPDATE scheduling_leads SET assigned_member_id=$3 WHERE tenant_id=$1 AND id=$2", [tenantId, leadId, operatorMemberId]);
+    await pool.query("DELETE FROM scheduling_google_meet_closers WHERE tenant_id=$1 AND member_id=$2", [tenantId, operatorMemberId]);
+    const nextAction = await app.inject({
+      method: "PATCH",
+      url: `/scheduling/leads/${leadId}/follow-up`,
+      headers: { cookie: ownerCookie },
+      payload: { proxima_acao: "Ligar amanhã", proxima_acao_em_local: "2032-04-07T10:00" }
+    });
+    expect(nextAction.statusCode).toBe(200);
+    expect(nextAction.json().follow_up.proxima_acao).toBe("Ligar amanhã");
+    await pool.query("DELETE FROM scheduling_google_meet_closers WHERE tenant_id=$1 AND member_id=$2", [tenantId, ownerMemberId]);
+    const outside = await app.inject({
+      method: "PATCH",
+      url: `/scheduling/leads/${leadId}/follow-up`,
+      headers: { cookie: ownerCookie },
+      payload: { responsavel_member_id: ownerMemberId }
+    });
+    expect(outside.statusCode).toBe(400);
+  });
+
   it("synchronizes a manual lead assignment to its active appointment even when the target is unavailable", async () => {
     await pool.query(
       "UPDATE scheduling_google_meet_closers SET availability_status='unavailable' WHERE tenant_id=$1 AND member_id=$2",
