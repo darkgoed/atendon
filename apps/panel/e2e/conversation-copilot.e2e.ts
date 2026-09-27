@@ -172,7 +172,9 @@ for (const viewport of viewports) {
     await draft.pressSequentially("Olá, Marina");
     await openConversation(page, "Bruno Tavares");
     await openConversation(page, "Marina Ribeiro");
-    await expect(draft).toHaveValue("");
+    // O rascunho sobrevive à troca de conversa (PAINEL C13); o resto do roteiro parte do composer vazio.
+    await expect(draft).toHaveValue("Olá, Marina");
+    await draft.fill("");
     await page.waitForTimeout(500); // ponytail: janela fixa para provar ausência de chamada em segundo plano; a contagem exata no fim cobre chamadas tardias.
     expect(state.copilotCalls).toEqual([]);
     await expect(chip).toHaveCount(0);
