@@ -91,7 +91,7 @@ async function fixture(dueOffsetDays: number, mandateStatus = "APPROVED"): Promi
     const rec = `rec-${id}`;
     const mandate = (await client.query<{ id: string }>(
       `INSERT INTO ai_credit_pix_mandates(tenant_id,provider_id,status,first_due_on,consent_actor_user_id,credits,price_cents,external_id_rec)
-       VALUES($1,$2,$3,CURRENT_DATE + $4::int,$5,50000000,15700,$6) RETURNING id`,
+       VALUES($1,$2,$3,(now() AT TIME ZONE 'America/Sao_Paulo')::date + $4::int,$5,50000000,15700,$6) RETURNING id`,
       [tenant, provider, mandateStatus, dueOffsetDays, ACTOR, rec])).rows[0].id;
     await client.query("COMMIT");
     return { tenant, provider, mandate, rec };

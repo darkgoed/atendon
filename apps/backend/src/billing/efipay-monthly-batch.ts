@@ -213,7 +213,10 @@ async function createMonthlyCharge(candidate: NextDueRow, client: EfiMonthlyClie
       "SELECT status,external_id_rec FROM ai_credit_pix_mandates WHERE id=$1 FOR UPDATE", [candidate.mandate_id]);
     const row = mandate.rows[0];
     if (!row || row.status !== "APPROVED" || row.external_id_rec !== candidate.external_id_rec) {
-      // Mandato deixou de estar aprovado (corrida com cancelamento) — nada nasce.
+      // Mandato deixou de estar aprovado (corrida com cancelamento) — nada nasce,
+      // e a fatura de pacote criada antes do lock não fica pendente órfã.
+      const charged = await client.query("SELECT 1 FROM ai_credit_pix_charges WHERE invoice_id=$1 LIMIT 1", [invoice.id]);
+      if (!charged.rowCount) await closeUnpaidCycleInvoice(client, invoice.id, "cancelled");
       result.skipped++;
       return;
     }
@@ -394,21 +397,22 @@ async function confirmFromGet(client: EfiMonthlyClient, charge: PendingChargeRow
 }
 
 /** Próximo vencimento mensal ancorado em first_due_on (sem deriva de mês curto). */
-const NEXT_DUE_SQL = `
+// Dias do Pix Automático contam no calendário de Brasília, nunca no fuso da sessão.
+export const NEXT_DUE_SQL = `
   SELECT m.id AS mandate_id, m.tenant_id, m.external_id_rec,
          (m.first_due_on + (nd.k || ' months')::interval)::date::text AS due_on,
          p.id AS provider_id, p.environment, p.credentials_encrypted
     FROM ai_credit_pix_mandates m
     JOIN LATERAL (
       SELECT k FROM generate_series(0, $2) AS k
-       WHERE (m.first_due_on + (k || ' months')::interval)::date >= CURRENT_DATE
+       WHERE (m.first_due_on + (k || ' months')::interval)::date >= (now() AT TIME ZONE 'America/Sao_Paulo')::date
        ORDER BY k LIMIT 1
     ) nd ON TRUE
     JOIN billing_providers p ON p.id = m.provider_id
    WHERE m.status = 'APPROVED'
      AND m.external_id_rec IS NOT NULL
      AND p.enabled AND p.credentials_encrypted IS NOT NULL
-     AND (m.first_due_on + (nd.k || ' months')::interval)::date - CURRENT_DATE BETWEEN $3 AND $4
+     AND (m.first_due_on + (nd.k || ' months')::interval)::date - (now() AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $3 AND $4
      AND NOT EXISTS (
        SELECT 1 FROM ai_credit_pix_charges x
         WHERE x.mandate_id = m.id
@@ -418,14 +422,14 @@ const NEXT_DUE_SQL = `
 
 const PENDING_CHARGES_SQL = `
   SELECT ch.id AS charge_id, ch.txid, ch.due_on::text AS due_on, ch.invoice_id,
-         (ch.due_on - CURRENT_DATE) BETWEEN $2 AND $3 AS in_window,
+         (ch.due_on - (now() AT TIME ZONE 'America/Sao_Paulo')::date) BETWEEN $2 AND $3 AS in_window,
          m.id AS mandate_id, m.tenant_id, m.status AS mandate_status, m.external_id_rec,
          p.id AS provider_id, p.environment, p.credentials_encrypted
     FROM ai_credit_pix_charges ch
     JOIN ai_credit_pix_mandates m ON m.id = ch.mandate_id
     JOIN billing_providers p ON p.id = m.provider_id
    WHERE ch.status = 'PENDING'
-     AND ch.due_on >= CURRENT_DATE - $4::int
+     AND ch.due_on >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - $4::int
      AND ch.invoice_id IS NOT NULL
      AND m.external_id_rec IS NOT NULL
      AND p.enabled AND p.credentials_encrypted IS NOT NULL

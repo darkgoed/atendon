@@ -255,7 +255,7 @@ export async function stopMonthlyPixMandate(tenantId: string, actorUserId: strin
     // a fecham, e o lote roda mesmo com o mandato CANCELLED.
     const charges = (await client.query<{ id: string; txid: string; invoice_id: string | null }>(
       `SELECT id,txid,invoice_id FROM ai_credit_pix_charges
-        WHERE mandate_id=$1 AND status='PENDING' AND due_on>CURRENT_DATE ORDER BY due_on`,
+        WHERE mandate_id=$1 AND status='PENDING' AND due_on>(now() AT TIME ZONE 'America/Sao_Paulo')::date ORDER BY due_on`,
       [row.id])).rows;
     return { row, charges };
   });
@@ -315,7 +315,7 @@ export async function stopMonthlyPixMandate(tenantId: string, actorUserId: strin
     await client.query("SELECT 1 FROM ai_credit_pix_mandates WHERE id=$1 FOR NO KEY UPDATE", [target.row.id]);
     const late = await client.query(
       `SELECT 1 FROM ai_credit_pix_charges
-        WHERE mandate_id=$1 AND status='PENDING' AND due_on>CURRENT_DATE AND NOT (id = ANY($2::uuid[])) LIMIT 1`,
+        WHERE mandate_id=$1 AND status='PENDING' AND due_on>(now() AT TIME ZONE 'America/Sao_Paulo')::date AND NOT (id = ANY($2::uuid[])) LIMIT 1`,
       [target.row.id, target.charges.map((c) => c.id)]);
     if (late.rowCount) throw new Error("nova cobrança futura criada durante a parada; tente novamente");
     const cancelled = (await client.query<MandateRow>(

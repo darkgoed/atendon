@@ -120,11 +120,12 @@ async function insertStuckCreatingMandate(tenantId: string): Promise<string> {
   // Simula queda no meio da criação remota: CREATING, sem idRec nem location.
   const r = await pool.query<{ id: string }>(
     `INSERT INTO ai_credit_pix_mandates(tenant_id,provider_id,status,first_due_on,consent_actor_user_id,credits,price_cents)
-     VALUES($1,$2,'CREATING',CURRENT_DATE+30,$3,50000000,15700) RETURNING id`, [tenantId, providerId, ACTOR]);
+     VALUES($1,$2,'CREATING',(now() AT TIME ZONE 'America/Sao_Paulo')::date+30,$3,50000000,15700) RETURNING id`, [tenantId, providerId, ACTOR]);
   return r.rows[0].id;
 }
 
-const futureDate = (days: number): string => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+// Datas da Efí são do calendário de Brasília (o mesmo que o código usa).
+const futureDate = (days: number): string => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date(Date.now() + days * 86_400_000));
 const txidFor = (seed: string): string => seed.replaceAll("-", "").slice(-26); // cauda carrega o sufixo distinto (txid é global único)
 
 async function insertCharge(mandateId: string, txid: string, dueOn: string, status = "PENDING", invoiceId?: string): Promise<string> {
