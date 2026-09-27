@@ -128,6 +128,26 @@ describe("same-turn retake detects an already delivered reply (Ponytail #2)", ()
   });
 });
 
+describe("@lid conversation created before phone resolution (Ponytail-2 P2)", () => {
+  it("is adopted by the real phone instead of splitting into a new empty conversation", async () => {
+    const repository = new MessageRepository(pool, config, { followUp: vi.fn().mockResolvedValue(undefined) });
+    const lid = `9${randomUUID().replace(/\D/g, "").padEnd(13, "3").slice(0, 13)}`;
+    const phone = `5511${randomUUID().replace(/\D/g, "").padEnd(9, "4").slice(0, 9)}`;
+    const legacy = (await pool.query<{ id: string }>(
+      "INSERT INTO conversations(tenant_id,session_id,contact_phone,contact_jid,ai_active,handoff_reason) VALUES($1,$2,$3,$4,false,'manually_paused') RETURNING id",
+      [tenantId, sessionId, lid, `${lid}@lid`]
+    )).rows[0].id;
+    const context = await repository.recordInboundAndLoadContext(
+      { tenantId, sessionId, contactPhone: phone, contactJid: `${lid}@lid`, text: "voltei", externalId: `lid-${randomUUID()}` },
+      { claim: false }
+    );
+    expect(context?.conversationId).toBe(legacy);
+    const row = (await pool.query<{ contact_phone: string; ai_active: boolean }>("SELECT contact_phone,ai_active FROM conversations WHERE id=$1", [legacy])).rows[0];
+    expect(row).toEqual({ contact_phone: phone, ai_active: false });
+    expect((await pool.query("SELECT 1 FROM conversations WHERE tenant_id=$1 AND session_id=$2 AND contact_phone IN ($3,$4)", [tenantId, sessionId, lid, phone])).rowCount).toBe(1);
+  });
+});
+
 describe("handoff notification of an Instagram conversation (auditoria runtime #3)", () => {
   it("goes out through the tenant's WhatsApp connection, not the Instagram one", async () => {
     const repository = new MessageRepository(pool, config, { followUp: vi.fn().mockResolvedValue(undefined) });

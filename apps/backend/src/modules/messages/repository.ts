@@ -23,6 +23,29 @@ import { enqueueAiFollowUp } from "../../queue/ai-follow-up-queue.js";
 import { assignConversationToNamedAttendant, ensureCaseAssignment } from "../assignments/service.js";
 import { extractPrefilledFields } from "./prefilled-context-policy.js";
 
+/**
+ * Conversa criada antes da resolução de @lid (auditoria runtime S3) guarda os
+ * dígitos do LID como contact_phone. Quando a mensagem já traz o telefone
+ * real, a conversa antiga é adotada (mesma linha: histórico, handoff, dono,
+ * follow-up) em vez de nascer outra vazia (Ponytail-2 P2).
+ */
+async function adoptLidKeyedConversation(
+  client: { query: (sql: string, values: unknown[]) => Promise<unknown> },
+  message: { tenantId: string; sessionId: string; contactPhone: string; contactJid?: string }
+): Promise<void> {
+  if (!message.contactJid?.endsWith("@lid")) return;
+  const lidDigits = message.contactJid.split("@")[0].split(":")[0];
+  if (!lidDigits || lidDigits === message.contactPhone) return;
+  await client.query(
+    `UPDATE conversations SET contact_phone=$4
+     WHERE tenant_id=$1 AND session_id=$2 AND contact_phone=$3
+       AND NOT EXISTS (
+         SELECT 1 FROM conversations other WHERE other.tenant_id=$1 AND other.session_id=$2 AND other.contact_phone=$4
+       )`,
+    [message.tenantId, message.sessionId, lidDigits, message.contactPhone]
+  );
+}
+
 function canonicalMessageAddress<T extends InboundMessage | HumanMessage>(message: T): T {
   if (message.channel === "instagram") {
     const instagramContactId = message.instagramContactId?.trim();
@@ -649,6 +672,7 @@ export class MessageRepository {
     }
     // Single query: upsert conversation, insert message (if new), and get agent config + history
     const result = await withTenantTransaction(this.db, message.tenantId, async (client) => {
+      await adoptLidKeyedConversation(client, message);
       const previous = await client.query<{ status: string }>(
         `SELECT status
          FROM conversations
@@ -2445,6 +2469,7 @@ export class MessageRepository {
       );
     }
     const conversation = await withTenantTransaction(this.db, message.tenantId, async (client) => {
+      await adoptLidKeyedConversation(client, message);
       const recorded = await client.query<{ id: string }>(
         `WITH conv AS (
          INSERT INTO conversations (tenant_id, session_id, contact_phone, contact_jid)
