@@ -70,7 +70,7 @@ export async function runMercadoPagoReconciliationBatch(limit = 100, deps: Recon
       const remoteData = ((remote as { payload?: unknown }).payload ?? remote) as Remote;
       const snapshot = safeRemote(remoteData);
       const checks: Array<[ReconciliationFindingType, boolean]> = [
-        ["STATUS_MISMATCH", String(remoteData.status ?? "").toLowerCase() !== String(payment.status).toLowerCase() && String(remoteData.status ?? "").toLowerCase() !== String(payment.invoice_status).toLowerCase()],
+        ["STATUS_MISMATCH", localStatus(remoteData.status) !== String(payment.status).toLowerCase() && localStatus(remoteData.status) !== String(payment.invoice_status).toLowerCase()],
         ["AMOUNT_MISMATCH", typeof remoteData.transaction_amount === "number" && Math.round(remoteData.transaction_amount * 100) !== Number(payment.amount_cents) && Math.round(remoteData.transaction_amount * 100) !== Number(payment.invoice_amount_cents)],
         ["CURRENCY_MISMATCH", typeof remoteData.currency_id === "string" && remoteData.currency_id !== payment.currency && remoteData.currency_id !== payment.invoice_currency],
         ["REFERENCE_MISMATCH", typeof remoteData.external_reference === "string" && payment.external_reference != null && remoteData.external_reference !== payment.external_reference]
@@ -99,4 +99,11 @@ export async function runMercadoPagoReconciliationBatch(limit = 100, deps: Recon
     }
   }
   return result;
+}
+
+// Vocabulário do gateway → vocabulário local (o mesmo do classify do webhook).
+const MP_TO_LOCAL: Record<string, string> = { approved: "paid", accredited: "paid", cancelled: "rejected", in_process: "pending", authorized: "pending", chargeback: "charged_back", refund: "refunded" };
+function localStatus(remote: unknown): string {
+  const status = String(remote ?? "").toLowerCase();
+  return MP_TO_LOCAL[status] ?? status;
 }
