@@ -7,6 +7,9 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { ConversationComposer, type ConversationComposerCapabilities } from "@/components/conversation-composer";
 
+// O composer guarda rascunho por conversa em localStorage (PAINEL C13): isola os testes.
+beforeEach(() => { window.localStorage.clear(); });
+
 // SPEC comments-20260924-ai-conversas R3: copiloto sob demanda no composer.
 // Contrato: POST /conversations/:id/copilot-suggestion {previous_suggestion?}
 // → {suggestion, context_complete, messages_used, messages_total}.

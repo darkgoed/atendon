@@ -3,7 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 
 // Radix Popover/Tooltip medem o balão com ResizeObserver, ausente no jsdom.
 globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
@@ -34,6 +34,9 @@ vi.mock("@/lib/loss-reasons", () => ({ useLossReasons: () => ({ reasons: [], err
 import { ConversationComposer, type ConversationComposerCapabilities } from "@/components/conversation-composer";
 import { ConversationNotes } from "@/components/conversation-notes";
 import { ConversationStatusPicker } from "@/components/conversation-status-picker";
+
+// O composer guarda rascunho por conversa em localStorage (PAINEL C13): isola os testes.
+beforeEach(() => { window.localStorage.clear(); });
 
 afterEach(() => {
   cleanup();

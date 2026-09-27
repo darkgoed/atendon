@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowBendUpLeft, Check, File, MagicWand, Microphone, Paperclip, PaperPlaneRight, X } from "@/components/icons";
-import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { VoiceInput, VoiceMessagePlayer } from "@/components/ui/voice-input";
 import { Button, HelpHint, Input, Textarea, Tooltip } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -10,6 +10,7 @@ import { confirmedFailedSend, definitiveProviderRejection } from "@/lib/conversa
 import { randomUUID, shouldSubmitOnEnter, submitForm } from "@/lib/compat";
 import { ConversationQuickReplies, type ConversationQuickRepliesHandle } from "@/components/conversation-quick-replies";
 import styles from "@/components/conversation-quick-replies.module.css";
+import { clearDraft, readDraft, writeDraft } from "@/lib/drafts";
 
 type MediaType = "audio" | "image" | "video" | "document";
 type Attachment = { file: globalThis.File; mediaType: MediaType };
@@ -90,7 +91,20 @@ export function ConversationComposer({
   capabilities?: ConversationComposerCapabilities;
   capabilitiesError?: unknown;
 }) {
-  const [draft, setDraft] = useState("");
+  // Rascunho por conversa (lib/drafts, TTL 6h): trocar de conversa, reativar a
+  // IA ou resolver desmonta o composer e o texto meio digitado se perdia.
+  const draftKey = `composer:${conversationId}`;
+  const [draft, setDraftState] = useState(() => readDraft<string>(draftKey)?.data ?? "");
+  const [draftFor, setDraftFor] = useState(draftKey);
+  if (draftFor !== draftKey) {
+    setDraftFor(draftKey);
+    setDraftState(readDraft<string>(draftKey)?.data ?? "");
+  }
+  const setDraft = useCallback((value: string) => {
+    setDraftState(value);
+    if (value) writeDraft(draftKey, value);
+    else clearDraft(draftKey);
+  }, [draftKey]);
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [sending, setSending] = useState(false);

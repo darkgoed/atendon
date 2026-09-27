@@ -5,6 +5,9 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationComposer } from "@/components/conversation-composer";
 
+// O composer guarda rascunho por conversa em localStorage (PAINEL C13): isola os testes.
+beforeEach(() => { window.localStorage.clear(); });
+
 function jsonResponse(body: unknown = {}): Response {
   return new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
 }

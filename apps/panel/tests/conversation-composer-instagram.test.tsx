@@ -5,6 +5,9 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationComposer, type ConversationComposerCapabilities } from "@/components/conversation-composer";
 
+// O composer guarda rascunho por conversa em localStorage (PAINEL C13): isola os testes.
+beforeEach(() => { window.localStorage.clear(); });
+
 const openCapabilities: ConversationComposerCapabilities = {
   channel: "instagram",
   can_send: true,
