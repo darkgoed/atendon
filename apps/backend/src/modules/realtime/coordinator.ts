@@ -94,10 +94,21 @@ export class RealtimeCoordinator {
   private async start(): Promise<void> {
     if (!this.postgresClient) {
       let client: pg.PoolClient | null = null;
+      let released = false;
+      // Uma queda durante o LISTEN emite "error" E rejeita a query: devolver ao
+      // pool duas vezes lança no pg-pool. O listener no-op fica após a
+      // devolução para um erro tardio não virar exceção sem handler.
+      const releaseOnce = (target: pg.PoolClient, error: Error | true) => {
+        if (released) return;
+        released = true;
+        target.removeAllListeners("notification");
+        target.removeAllListeners("error");
+        target.on("error", () => undefined);
+        target.release(error);
+      };
       try {
         client = await this.pool.connect();
         const listener = client;
-        let released = false;
         client.on("notification", (notification) => {
           if (notification.channel !== REALTIME_POSTGRES_CHANNEL) return;
           const signal = parseInternalRealtimeSignal(notification.payload);
@@ -125,11 +136,7 @@ export class RealtimeCoordinator {
           if (this.postgresClient === listener) this.postgresClient = null;
           // Cliente em checkout só sai do pool por release: sem isto cada queda
           // do Postgres vazava uma vaga do pool da API (max 10) até travá-la.
-          if (!released) {
-            released = true;
-            listener.removeAllListeners("notification");
-            listener.release(error);
-          }
+          releaseOnce(listener, error);
           this.scheduleReconnect();
         });
         await client.query(`LISTEN ${REALTIME_POSTGRES_CHANNEL}`);
@@ -139,11 +146,7 @@ export class RealtimeCoordinator {
       } catch (error) {
         incrementRealtimeMetric("postgres_listener", "disconnect");
         this.log.warn({ error }, "Realtime PostgreSQL listener unavailable; polling remains active");
-        if (client) {
-          client.removeAllListeners("notification");
-          client.removeAllListeners("error");
-          client.release(error instanceof Error ? error : true);
-        }
+        if (client) releaseOnce(client, error instanceof Error ? error : true);
         this.scheduleReconnect();
       }
     }
@@ -202,7 +205,8 @@ export class RealtimeCoordinator {
     if (this.stopped || this.reconnectTimer) return;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      void this.ensureStarted();
+      // Sem catch, uma falha aqui é rejeição não tratada: derruba o processo (Node 22).
+      this.ensureStarted().catch((error) => this.log.warn({ error }, "Realtime reconnect failed; retrying"));
     }, 1_000);
     this.reconnectTimer.unref();
   }
