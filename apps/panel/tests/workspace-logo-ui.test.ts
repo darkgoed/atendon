@@ -30,7 +30,6 @@ vi.mock("@/lib/api", () => ({ api: mocks.api }));
 vi.mock("@/components/shell", () => ({ Shell: ({ children }: { children?: import("react").ReactNode }) => createElement("div", null, children) }));
 vi.mock("@/lib/capabilities", () => ({ useCapabilities: () => ({ isEnabled: () => false }) }));
 vi.mock("@/components/web-push-settings", () => ({ WebPushSettings: () => null }));
-vi.mock("@/components/conversation-queue-manager", () => ({ ConversationQueueManager: () => null }));
 const permissionState = vi.hoisted(() => ({ value: true }));
 vi.mock("@/lib/use-permission", () => ({ usePermission: () => permissionState.value }));
 

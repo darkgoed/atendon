@@ -3,6 +3,10 @@
 FROM node:22-bookworm-slim AS dependencies
 RUN npm install --global npm@12.0.1
 WORKDIR /app
+# xlsx 0.20.x só existe no CDN da SheetJS (tarball remoto); o npm 12 bloqueia
+# remotes por padrão (allow-remote=none). "root" libera apenas URLs declaradas
+# no package.json do projeto.
+ENV NPM_CONFIG_ALLOW_REMOTE=root
 COPY package.json package-lock.json ./
 COPY apps/backend/package.json apps/backend/package.json
 COPY apps/panel/package.json apps/panel/package.json

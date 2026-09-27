@@ -6,6 +6,7 @@ import {
   GoogleCalendarClient,
   GoogleCalendarConfigurationError,
   GoogleCalendarOAuthClient,
+  GoogleCalendarServiceDisabledError,
   atendonCalendarEventId,
   pkceChallenge
 } from "../src/modules/scheduling/google-calendar.js";
@@ -51,6 +52,24 @@ function makeClient(fetcher: ReturnType<typeof vi.fn>): GoogleCalendarClient {
 
 function asUrlParams(init: unknown): Record<string, string> {
   return Object.fromEntries((init as RequestInit).body as unknown as URLSearchParams);
+}
+
+// Campos observados na medição de produção (READ-ONLY): status, errors[].reason,
+// details[].reason e metadata.service/consumer. O corpo bruto/mensagem NÃO foi medido:
+// o fixture reproduz só o que foi visto, com projeto fictício e sem atribuição inventada.
+function serviceDisabledBody(): unknown {
+  return {
+    error: {
+      status: "PERMISSION_DENIED",
+      errors: [{ reason: "accessNotConfigured" }],
+      details: [
+        {
+          reason: "SERVICE_DISABLED",
+          metadata: { service: "calendar-json.googleapis.com", consumer: "projects/123456789" }
+        }
+      ]
+    }
+  };
 }
 
 describe("GoogleCalendarOAuthClient", () => {
@@ -136,6 +155,28 @@ describe("GoogleCalendarOAuthClient", () => {
       .mockResolvedValueOnce(jsonResponse({ email: "a@b.com", email_verified: true }));
     await new GoogleCalendarOAuthClient(clientConfig, fetcher as unknown as typeof fetch).exchangeCode("c", REDIRECT_URI, "verificador");
     expect(asUrlParams(fetcher.mock.calls[0][1])).toMatchObject({ code_verifier: "verificador" });
+  });
+
+  it("403 SERVICE_DISABLED nos endpoints OAuth (token e userinfo) mantém erro genérico: o reason só classifica a API Calendar", async () => {
+    const tokenRefused = vi.fn().mockResolvedValueOnce(jsonResponse(serviceDisabledBody(), 403));
+    const tokenError = await new GoogleCalendarOAuthClient(clientConfig, tokenRefused as unknown as typeof fetch)
+      .exchangeCode("c", REDIRECT_URI)
+      .catch((caught: unknown) => caught);
+    expect(tokenError).toBeInstanceOf(GoogleCalendarApiError);
+    expect(tokenError).not.toBeInstanceOf(GoogleCalendarServiceDisabledError);
+    expect(tokenError).toMatchObject({ status: 403, outcome: "failed" });
+    expect((tokenError as Error).message).toContain("O Google recusou o código de autorização do Calendar (HTTP 403)");
+
+    const userRefused = vi.fn()
+      .mockResolvedValueOnce(tokenResponse({ refresh_token: "r", scope: GRANTED }))
+      .mockResolvedValueOnce(jsonResponse(serviceDisabledBody(), 403));
+    const userError = await new GoogleCalendarOAuthClient(clientConfig, userRefused as unknown as typeof fetch)
+      .exchangeCode("c", REDIRECT_URI)
+      .catch((caught: unknown) => caught);
+    expect(userError).toBeInstanceOf(GoogleCalendarApiError);
+    expect(userError).not.toBeInstanceOf(GoogleCalendarServiceDisabledError);
+    expect(userError).toMatchObject({ status: 403, outcome: "failed" });
+    expect((userError as Error).message).toContain("O Google recusou a identificação da conta (HTTP 403)");
   });
 
   it("recusa consentimento granular sem todos os escopos da agenda (ou sem scope na resposta)", async () => {
@@ -381,6 +422,93 @@ describe("GoogleCalendarClient", () => {
       .mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"));
     await expect(makeClient(mutationFailure).upsertEvent("r", "cal-1", "evento-1", eventFields))
       .rejects.toMatchObject({ outcome: "uncertain" });
+  });
+
+  it("403 SERVICE_DISABLED no calendarList vira erro dedicado: mandar ativar a API, sem pedir reconexão e sem vazar corpo", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(tokenResponse())
+      .mockResolvedValueOnce(jsonResponse(serviceDisabledBody(), 403));
+    const error = await makeClient(fetcher).listCalendars("refresh-token").catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(GoogleCalendarApiError);
+    expect(error).toMatchObject({ name: "GoogleCalendarServiceDisabledError", outcome: "failed", status: 403 });
+    expect(error).not.toBeInstanceOf(GoogleCalendarAuthRevokedError);
+    const message = (error as Error).message;
+    expect(message).toContain("Ative a \"Google Calendar API\"");
+    expect(message).toContain("não é preciso reconectar");
+    // Nenhum conteúdo do corpo do Google entra na mensagem: nem consumer/project, nem serviço.
+    expect(message).not.toContain("123456789");
+    expect(message).not.toContain("calendar-json.googleapis.com");
+  });
+
+  it("403 SERVICE_DISABLED no freeBusy recebe a mesma classificação pelo ponto compartilhado", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(tokenResponse())
+      .mockResolvedValueOnce(jsonResponse(serviceDisabledBody(), 403));
+    const error = await makeClient(fetcher)
+      .freeBusy("refresh-token", "cal-1", "2026-09-24T08:00:00Z", "2026-09-24T18:00:00Z")
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ name: "GoogleCalendarServiceDisabledError", outcome: "failed", status: 403 });
+    expect(error).not.toBeInstanceOf(GoogleCalendarAuthRevokedError);
+  });
+
+  it("403 com SERVICE_DISABLED apenas em error.details também é serviço desativado (listEvents)", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(tokenResponse())
+      .mockResolvedValueOnce(jsonResponse({
+        error: {
+          code: 403,
+          message: "Permission denied",
+          details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "SERVICE_DISABLED", domain: "googleapis.com" }]
+        }
+      }, 403));
+    const error = await makeClient(fetcher)
+      .listEvents("refresh-token", "cal-1", "2026-09-24T08:00:00Z", "2026-09-24T18:00:00Z")
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ name: "GoogleCalendarServiceDisabledError", outcome: "failed", status: 403 });
+    expect(error).not.toBeInstanceOf(GoogleCalendarAuthRevokedError);
+  });
+
+  it("403 com outro motivo mantém a classificação atual: nem serviço desativado, nem revogado", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(tokenResponse())
+      .mockResolvedValueOnce(jsonResponse({
+        error: {
+          code: 403,
+          message: "The user does not have sufficient permissions",
+          errors: [{ domain: "global", reason: "insufficientPermissions" }],
+          status: "PERMISSION_DENIED"
+        }
+      }, 403));
+    const error = await makeClient(fetcher).listCalendars("refresh-token").catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(GoogleCalendarApiError);
+    expect(error).toMatchObject({ name: "GoogleCalendarApiError", outcome: "failed", status: 403 });
+    const message = (error as Error).message;
+    expect(message).toContain("O Google recusou a listagem de agendas (HTTP 403)");
+    expect(error).not.toBeInstanceOf(GoogleCalendarAuthRevokedError);
+  });
+
+  it("403 SERVICE_DISABLED na renovação do access token (endpoint OAuth) mantém erro genérico", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(jsonResponse(serviceDisabledBody(), 403));
+    const error = await makeClient(fetcher).listCalendars("refresh-token").catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(GoogleCalendarApiError);
+    expect(error).not.toBeInstanceOf(GoogleCalendarServiceDisabledError);
+    expect(error).toMatchObject({ status: 403, outcome: "failed" });
+    expect((error as Error).message).toContain("O Google recusou a renovação do acesso ao Calendar (HTTP 403)");
+  });
+
+  it("corpo de erro maior que o cap não é interpretado: leitura truncada, falha fechada", async () => {
+    const padded = { error: { code: 403, padding: "x".repeat(20_000), details: [{ reason: "SERVICE_DISABLED" }] } };
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(tokenResponse())
+      .mockResolvedValueOnce(new Response(JSON.stringify(padded), { status: 403 }));
+    const error = await makeClient(fetcher).listCalendars("refresh-token").catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(GoogleCalendarApiError);
+    expect(error).not.toBeInstanceOf(GoogleCalendarServiceDisabledError);
+    expect(error).toMatchObject({ status: 403, outcome: "failed" });
   });
 
   it("mantém toda requisição nas origens fixas do Google, sem redirect e com timeout", async () => {

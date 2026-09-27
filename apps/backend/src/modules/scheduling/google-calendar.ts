@@ -157,19 +157,94 @@ export async function markCalendarConnectionAuthRevoked(
   );
 }
 
+// API do Google Calendar DESATIVADA no projeto Google Cloud (403 SERVICE_DISABLED /
+// accessNotConfigured do calendar-json.googleapis.com): definitivo até alguém ativar a
+// API no console. Subclasse para todo catch/rethrow existente continuar valendo; NÃO é
+// revogação — a concessão OAuth está intacta e reconectar não resolve nada.
+export class GoogleCalendarServiceDisabledError extends GoogleCalendarApiError {
+  constructor() {
+    super(
+      "O Google recusou o acesso à Agenda porque a API do Google Calendar está desativada no projeto Google Cloud do OAuth usado pelo AtendON. Ative a \"Google Calendar API\" nesse projeto e tente novamente. A conexão da conta continua válida; não é preciso reconectar.",
+      "failed",
+      403
+    );
+    this.name = "GoogleCalendarServiceDisabledError";
+  }
+}
+
 async function googleFetch(fetcher: typeof fetch, timeoutMs: number, url: string, init: RequestInit): Promise<Response> {
   const origin = new URL(url).origin;
   if (!GOOGLE_ALLOWED_ORIGINS.has(origin)) throw new Error(`Origem fixa do Google violada: ${origin}`);
   return fetcher(url, { ...init, redirect: "error", signal: AbortSignal.timeout(timeoutMs) });
 }
 
-function googleHttpError(status: number, message: string, mutating: boolean): GoogleCalendarApiError {
+// Reasons oficiais que provam serviço desativado: calendarList/list e os demais endpoints
+// retornam accessNotConfigured; o formato gRPC ErrorInfo (error.details) traz SERVICE_DISABLED.
+const SERVICE_DISABLED_REASONS = new Set(["SERVICE_DISABLED", "accessNotConfigured"]);
+
+// Corpo de erro lido de forma fechada: só os reasons conhecidos são interpretados. Nada do
+// corpo (mensagem do Google, project, consumer, tokens) entra em log, mensagem ou UI.
+const googleErrorBodySchema = z.object({
+  error: z.object({
+    errors: z.array(z.object({ reason: z.string().optional() })).optional(),
+    details: z.array(z.object({ reason: z.string().optional() })).optional()
+  }).optional()
+});
+
+// ponytail: o Google devolve ~1KB de erro; a leitura do corpo é limitada de verdade (stream
+// interrompida no limite) para nunca segurar/interpretar um corpo gigante.
+const MAX_GOOGLE_ERROR_BODY_CHARS = 16_384;
+
+// Lê no máximo MAX_GOOGLE_ERROR_BODY_CHARS do corpo, pela stream, e descarta o excedente
+// (reader.cancel). Texto truncado falha no JSON.parse e cai no erro genérico.
+async function readGoogleErrorBody(response: Response): Promise<string> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let body = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return body + decoder.decode();
+    body += decoder.decode(value, { stream: true });
+    if (body.length >= MAX_GOOGLE_ERROR_BODY_CHARS) {
+      void reader.cancel().catch(() => {});
+      return body.slice(0, MAX_GOOGLE_ERROR_BODY_CHARS);
+    }
+  }
+}
+
+async function googleHttpError(response: Response, message: string, mutating: boolean): Promise<GoogleCalendarApiError> {
+  const status = response.status;
   const retriable = status === 408 || status === 409 || status === 429 || status >= 500;
   return new GoogleCalendarApiError(
     `${message} (HTTP ${status})`,
     !retriable && status >= 400 ? "failed" : mutating ? "uncertain" : "safe_to_retry",
     status
   );
+}
+
+// Ponto compartilhado dos endpoints /calendar/v3: 403 com reason de serviço desativado vira o
+// erro dedicado (manda ativar a API); outro motivo cai no erro genérico. Endpoints OAuth
+// (token e userinfo) chamam googleHttpError: o reason de lá não prova nada sobre o Calendar.
+async function calendarHttpError(response: Response, message: string, mutating: boolean): Promise<GoogleCalendarApiError> {
+  if (response.status === 403) {
+    const text = await readGoogleErrorBody(response).catch(() => "");
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = null;
+    }
+    const body = googleErrorBodySchema.safeParse(parsed);
+    const reasons = body.success
+      ? [
+          ...(body.data.error?.errors ?? []).map((item) => item.reason),
+          ...(body.data.error?.details ?? []).map((item) => item.reason)
+        ].filter((reason): reason is string => typeof reason === "string")
+      : [];
+    if (reasons.some((reason) => SERVICE_DISABLED_REASONS.has(reason))) throw new GoogleCalendarServiceDisabledError();
+  }
+  return googleHttpError(response, message, mutating);
 }
 
 function eventPath(calendarId: string, eventId: string): string {
@@ -227,7 +302,7 @@ export class GoogleCalendarOAuthClient {
     } catch {
       throw new GoogleCalendarApiError("Não foi possível concluir a conexão com o Google Calendar");
     }
-    if (!tokenResponse.ok) throw googleHttpError(tokenResponse.status, "O Google recusou o código de autorização do Calendar", false);
+    if (!tokenResponse.ok) throw await googleHttpError(tokenResponse, "O Google recusou o código de autorização do Calendar", false);
     const token = tokenResponseSchema.safeParse(await tokenResponse.json().catch(() => null));
     if (!token.success || !token.data.refresh_token) {
       throw new GoogleCalendarApiError("O Google não forneceu acesso permanente; conecte a conta novamente", "failed");
@@ -248,7 +323,7 @@ export class GoogleCalendarOAuthClient {
     } catch {
       throw new GoogleCalendarApiError("Não foi possível identificar a conta Google conectada");
     }
-    if (!userResponse.ok) throw googleHttpError(userResponse.status, "O Google recusou a identificação da conta", false);
+    if (!userResponse.ok) throw await googleHttpError(userResponse, "O Google recusou a identificação da conta", false);
     // userInfoSchema exige email_verified === true; parse com flag ausente/false falha e rejeita a conexão.
     const user = userInfoSchema.safeParse(await userResponse.json().catch(() => null));
     if (!user.success) {
@@ -323,7 +398,8 @@ export class GoogleCalendarClient {
       // invalid_grant = refresh token revogado/expirado (docs OAuth do Google): terminal.
       const body = await response.json().catch(() => null) as { error?: unknown } | null;
       if (response.status === 400 && body?.error === "invalid_grant") throw new GoogleCalendarAuthRevokedError();
-      throw googleHttpError(response.status, "O Google recusou a renovação do acesso ao Calendar", false);
+      // Body já consumido acima (invalid_grant); googleHttpError não lê corpo e mantém o erro genérico.
+      throw await googleHttpError(response, "O Google recusou a renovação do acesso ao Calendar", false);
     }
     let token: z.infer<typeof tokenResponseSchema>;
     try {
@@ -378,7 +454,7 @@ export class GoogleCalendarClient {
       const query = new URLSearchParams({ minAccessRole: "writer", maxResults: "250" });
       if (pageToken) query.set("pageToken", pageToken);
       const response = await this.calendarRequest(accessToken, "GET", `/users/me/calendarList?${query.toString()}`);
-      if (!response.ok) throw googleHttpError(response.status, "O Google recusou a listagem de agendas", false);
+      if (!response.ok) throw await calendarHttpError(response, "O Google recusou a listagem de agendas", false);
       let page: z.infer<typeof calendarListPageSchema>;
       try {
         page = calendarListPageSchema.parse(await response.json());
@@ -400,7 +476,7 @@ export class GoogleCalendarClient {
     const response = await this.calendarRequest(accessToken, "POST", "/freeBusy", {
       json: { timeMin: start, timeMax: end, items: [{ id: calendarId }] }
     });
-    if (!response.ok) throw googleHttpError(response.status, "O Google recusou a consulta de disponibilidade", false);
+    if (!response.ok) throw await calendarHttpError(response, "O Google recusou a consulta de disponibilidade", false);
     let data: z.infer<typeof freeBusyResponseSchema>;
     try {
       data = freeBusyResponseSchema.parse(await response.json());
@@ -426,7 +502,7 @@ export class GoogleCalendarClient {
       const query = new URLSearchParams({ timeMin: start, timeMax: end, singleEvents: "true", showDeleted: "false", maxResults: "250" });
       if (pageToken) query.set("pageToken", pageToken);
       const response = await this.calendarRequest(accessToken, "GET", `/calendars/${encodeURIComponent(calendarId)}/events?${query.toString()}`);
-      if (!response.ok) throw googleHttpError(response.status, "O Google recusou a listagem de eventos", false);
+      if (!response.ok) throw await calendarHttpError(response, "O Google recusou a listagem de eventos", false);
       let page: z.infer<typeof eventListPageSchema>;
       try {
         page = eventListPageSchema.parse(await response.json());
@@ -480,7 +556,7 @@ export class GoogleCalendarClient {
     const response = await this.calendarRequest(accessToken, "POST", `/calendars/${encodeURIComponent(calendarId)}/events${eventQuery(fields)}`, {
       json: { ...fields, id: eventId }
     });
-    if (!response.ok) throw googleHttpError(response.status, "O Google recusou a criação do evento no Calendar", true);
+    if (!response.ok) throw await calendarHttpError(response, "O Google recusou a criação do evento no Calendar", true);
     return this.parseEvent(response, true);
   }
 
@@ -495,14 +571,14 @@ export class GoogleCalendarClient {
       json: fields,
       etag
     });
-    if (!response.ok) throw googleHttpError(response.status, "O Google recusou a atualização do evento no Calendar", true);
+    if (!response.ok) throw await calendarHttpError(response, "O Google recusou a atualização do evento no Calendar", true);
     return this.parseEvent(response, true);
   }
 
   async getEvent(refreshToken: string, calendarId: string, eventId: string): Promise<GoogleCalendarEvent> {
     const accessToken = await this.accessToken(refreshToken);
     const response = await this.calendarRequest(accessToken, "GET", eventPath(calendarId, eventId));
-    if (!response.ok) throw googleHttpError(response.status, "O Google recusou a leitura do evento no Calendar", false);
+    if (!response.ok) throw await calendarHttpError(response, "O Google recusou a leitura do evento no Calendar", false);
     return this.parseEvent(response, false);
   }
 
@@ -511,7 +587,7 @@ export class GoogleCalendarClient {
     const response = await this.calendarRequest(accessToken, "DELETE", eventPath(calendarId, eventId));
     // 404/410 = evento já removido no Google: exclusão idempotente confirmada (spec: só apagar vínculo após confirmação).
     if (response.ok || response.status === 404 || response.status === 410) return;
-    throw googleHttpError(response.status, "O Google recusou a exclusão do evento no Calendar", true);
+    throw await calendarHttpError(response, "O Google recusou a exclusão do evento no Calendar", true);
   }
 }
 

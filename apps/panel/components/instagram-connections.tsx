@@ -3,7 +3,7 @@
 import { ArrowClockwise, CheckCircle, InstagramLogo, Link, Trash, Warning } from "@/components/icons";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { HelpHint } from "@/components/ui";
+import { HelpHint, Tooltip } from "@/components/ui";
 import { disconnectInstagram, refreshInstagram, startInstagramOAuth, type ConnectionState, type InstagramStatus } from "@/lib/connections";
 import { instagramDisplayIdentity } from "@/lib/channel-identity";
 
@@ -82,7 +82,7 @@ export function InstagramConnections({
               <HelpHint label="Ajuda: estado da conta" className="ml-1">“Reatorização necessária” pede nova autorização da conta. “Permissão necessária” exige o acesso do app aprovado na Meta para esta conta.</HelpHint>
             </div>
             <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2"><div><dt className="label">Token expira em <HelpHint label="Ajuda: Token expira em">Prazo de validade da autorização desta conta na Meta. Ao expirar, use Reautorizar para religar.</HelpHint></dt><dd className="mono mt-1">{safeDate(connection.token_expires_at)}</dd></div><div><dt className="label">Conta</dt><dd className="mono mt-1">{connection.instagram_account_id ?? "não informado"}</dd></div></dl>
-            {canManage ? <div className="mt-4 flex flex-wrap gap-2">{needsAuth ? <Button type="button" className="btn" disabled={busy === connection.id} onClick={() => void authorize(connection.id)}><ArrowClockwise size={15} />Reautorizar</Button> : <Button type="button" className="btn" disabled={busy === connection.id} onClick={() => void action("refresh", connection)}><ArrowClockwise size={15} />Atualizar</Button>}<Button type="button" className="btn warn" disabled={Boolean(busy)} onClick={() => void action("disconnect", connection)}><Trash size={15} />Desconectar</Button></div> : null}
+            {canManage ? <div className="mt-4 flex flex-wrap gap-2">{needsAuth ? <Tooltip content="Reautorizar"><Button type="button" className="btn icon-button" disabled={busy === connection.id} onClick={() => void authorize(connection.id)}><ArrowClockwise size={15} /><span className="sr-only">Reautorizar</span></Button></Tooltip> : <Tooltip content="Atualizar"><Button type="button" className="btn icon-button" disabled={busy === connection.id} onClick={() => void action("refresh", connection)}><ArrowClockwise size={15} /><span className="sr-only">Atualizar</span></Button></Tooltip>}<Tooltip content="Desconectar"><Button type="button" className="btn warn icon-button" disabled={Boolean(busy)} onClick={() => void action("disconnect", connection)}><Trash size={15} /><span className="sr-only">Desconectar</span></Button></Tooltip></div> : null}
           </article>;
         })}
       </div>

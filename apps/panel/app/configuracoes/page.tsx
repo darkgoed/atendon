@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRinging, BellSimple, Buildings, CalendarCheck, CalendarDots, CheckCircle, ChatCircleDots, FloppyDisk, GlobeHemisphereWest, GoogleLogo, Handshake, HardDrives, LinkBreak, PencilSimple, Plus, Queue, SlidersHorizontal, SpeakerHigh, TagSimple, Trash, UserList, UsersThree, VideoCamera, WarningCircle, X, type Icon } from "@/components/icons";
+import { BellRinging, BellSimple, Buildings, CalendarCheck, CalendarDots, CheckCircle, ChatCircleDots, FloppyDisk, GlobeHemisphereWest, GoogleLogo, Handshake, HardDrives, LinkBreak, PencilSimple, Plus, SlidersHorizontal, SpeakerHigh, TagSimple, Trash, UserList, UsersThree, VideoCamera, WarningCircle, X, type Icon } from "@/components/icons";
 import { usePathname } from "next/navigation";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
@@ -30,7 +30,6 @@ import {
   resolveSoundKey
 } from "@/lib/notification-sounds";
 import { WebPushSettings } from "@/components/web-push-settings";
-import { ConversationQueueManager } from "@/components/conversation-queue-manager";
 import { WorkspaceLogoSection } from "@/components/workspace-logo";
 import { StorageSettingsPanel } from "@/components/storage-settings";
 import { GoogleCalendarSettings } from "@/components/google-calendar-settings";
@@ -39,7 +38,7 @@ import { Button, Field as UiField, HelpHint, IconButton, Input, SaveButton, Save
 import styles from "@/components/settings-panels.module.css";
 
 type CatalogResource = "categorias" | "parceiros" | "unidades";
-type Resource = CatalogResource | "workspace" | "attendants" | "conversation-queues" | "atendon-meet" | "google-meet" | "google-calendar" | "signature" | "panel-notifications" | "agenda-notifications" | "armazenamento";
+type Resource = CatalogResource | "workspace" | "attendants" | "atendon-meet" | "google-meet" | "google-calendar" | "signature" | "panel-notifications" | "agenda-notifications" | "armazenamento";
 type CatalogItem = {
   id?: string;
   nome?: string;
@@ -65,7 +64,6 @@ const resourceLabels: Record<Resource, string> = {
   parceiros: "Parceiros",
   unidades: "Unidades",
   attendants: "Equipe de atendimento",
-  "conversation-queues": "Filas de atendimento",
   "atendon-meet": "AtendON Meet",
   "google-meet": "Google Meet",
   "google-calendar": "Google Agenda",
@@ -94,7 +92,6 @@ const resourceIcons: Record<Resource, Icon> = {
   parceiros: Handshake,
   unidades: Buildings,
   attendants: UserList,
-  "conversation-queues": Queue,
   "atendon-meet": VideoCamera,
   "google-meet": GoogleLogo,
   "google-calendar": CalendarDots,
@@ -170,7 +167,6 @@ export default function ConfigPage() {
   });
   const canManageAttendants = attendantAccess.canManage;
   const canReadAttendants = attendantAccess.canRead;
-  const canManageQueues = usePermission("conversations.queues.manage");
   // Mesmo gating de antes, agora tab por chave (deep-links por segmento
   // /configuracoes/<recurso> ou legado ?resource= cobrem as chaves com as
   // MESMAS condições). O teste tests/settings-search-20260921.test.tsx extrai
@@ -181,7 +177,6 @@ export default function ConfigPage() {
     parceiros: leadsEnabled && canReadPartners,
     unidades: leadsEnabled && canReadUnits,
     attendants: canReadAttendants,
-    "conversation-queues": canManageQueues,
     "atendon-meet": appointmentsEnabled && canReadUnits,
     "google-meet": appointmentsEnabled && canReadUnits,
     "google-calendar": appointmentsEnabled && canReadUnits,
@@ -196,7 +191,6 @@ export default function ConfigPage() {
     ...(leadsEnabled && canReadPartners ? ["parceiros" as const] : []),
     ...(leadsEnabled && canReadUnits ? ["unidades" as const] : []),
     ...(canReadAttendants ? ["attendants" as const] : []),
-    ...(canManageQueues ? ["conversation-queues" as const] : []),
     ...(appointmentsEnabled && canReadUnits ? ["atendon-meet" as const, "google-meet" as const, "google-calendar" as const] : []),
     ...(canReadSignature ? ["signature" as const] : []),
     ...(session?.activeWorkspace ? ["panel-notifications" as const] : []),
@@ -204,7 +198,6 @@ export default function ConfigPage() {
     ...(canManageStorage ? ["armazenamento" as const] : [])
   ], [
     canReadAttendants,
-    canManageQueues,
     canReadAgendaNotifications,
     canReadCategories,
     canReadPartners,
@@ -229,7 +222,6 @@ export default function ConfigPage() {
     parceiros: leadsEnabled && canReadPartners,
     unidades: leadsEnabled && canReadUnits,
     attendants: canReadAttendants,
-    "conversation-queues": canManageQueues,
     "atendon-meet": appointmentsEnabled && canReadUnits,
     "google-meet": appointmentsEnabled && canReadUnits,
     "google-calendar": appointmentsEnabled && canReadUnits,
@@ -264,7 +256,6 @@ export default function ConfigPage() {
 
   const canManage = activeResource === "workspace" ? canUpdateWorkspace
        : activeResource === "attendants" ? canManageAttendants
-    : activeResource === "conversation-queues" ? canManageQueues
     : activeResource === "atendon-meet" || activeResource === "google-meet" || activeResource === "google-calendar" ? canManageUnits
     : activeResource === "signature" ? canManageSignature
     : activeResource === "panel-notifications" ? true
@@ -278,7 +269,7 @@ export default function ConfigPage() {
       setLoading(false);
       return Promise.resolve();
     }
-    if (activeResource === "workspace" || activeResource === "attendants" || activeResource === "conversation-queues" || activeResource === "atendon-meet" || activeResource === "google-meet" || activeResource === "google-calendar" || activeResource === "signature" || activeResource === "panel-notifications" || activeResource === "agenda-notifications" || activeResource === "armazenamento") {
+    if (activeResource === "workspace" || activeResource === "attendants" || activeResource === "atendon-meet" || activeResource === "google-meet" || activeResource === "google-calendar" || activeResource === "signature" || activeResource === "panel-notifications" || activeResource === "agenda-notifications" || activeResource === "armazenamento") {
       setLoading(false);
       return Promise.resolve();
     }
@@ -329,8 +320,6 @@ export default function ConfigPage() {
         <WorkspaceSettingsPanel canManageLogo={canUpdateWorkspace} />
       ) : activeResource === "attendants" ? (
         <AttendantSettingsPanel canManage={canManageAttendants} />
-      ) : activeResource === "conversation-queues" ? (
-        <ConversationQueueManager />
       ) : activeResource === "atendon-meet" ? (
         <AtendonMeetSettingsPanel canManage={canManageUnits} />
       ) : activeResource === "google-meet" ? (

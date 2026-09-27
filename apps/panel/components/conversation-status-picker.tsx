@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowsLeftRight } from "@/components/icons";
-import { HelpHint, useFlashToast } from "@/components/ui";
+import { HelpHint, useFlashToast, Tooltip } from "@/components/ui";
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { PipelineTransitionDialog } from "@/components/pipeline-transition-dialog";
@@ -110,17 +110,14 @@ export function ConversationStatusPicker({
   const disabled = organizationEnabled !== true || !targets.length;
   return (
     <>
-      <button
+      <Tooltip content="Etapa comercial"><button
         type="button"
-        className="conversation-status-picker btn shrink-0 active:scale-95"
+        className="conversation-status-picker btn shrink-0 active:scale-95 icon-button"
         onClick={() => { setError(""); setOpen(true); }}
         disabled={disabled}
         title={disabled ? "Nenhuma mudança de etapa comercial disponível" : `Etapa comercial atual: ${pipelineStage.name}`}
         aria-label={`Etapa comercial atual: ${pipelineStage.name}`}
-      >
-        <ArrowsLeftRight size={14} aria-hidden="true" />
-        Etapa comercial
-      </button>
+      ><ArrowsLeftRight size={14} aria-hidden="true" /><span className="sr-only">Etapa comercial</span></button></Tooltip>
       <HelpHint label="Ajuda: Etapa comercial">Move este lead para outra etapa do pipeline comercial. Aparecem apenas as etapas liberadas a partir da atual, conforme a configuração do pipeline.</HelpHint>
       {open ? (
         <PipelineTransitionDialog

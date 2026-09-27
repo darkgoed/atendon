@@ -23,7 +23,7 @@ import {
 } from "@/lib/connections";
 import { usePermission } from "@/lib/use-permission";
 import { Button } from "@/components/ui/button";
-import { HelpHint, IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
+import { HelpHint, IconButton, SaveButton, SaveToast, useSaveFeedback, Tooltip } from "@/components/ui";
 import { PageHeader } from "@/components/ui/layout";
 import { PopoverMenu } from "@/components/popover-menu";
 import { InstagramConnections } from "@/components/instagram-connections";
@@ -376,16 +376,13 @@ export function ConnectionSettingsContent() {
             </span>
           ) : null}
           {canManageConnection ? (
-            <Button
+            <Tooltip content="Adicionar número"><Button
               type="button"
-              className=""
+              className=" icon-button"
               disabled={atLimit || adding}
               title={limitTitle}
               onClick={() => { setActionError(""); setNotice(""); setAddOpen(true); }}
-            >
-              <Plus size={16} aria-hidden="true" />
-              Adicionar número
-            </Button>
+            ><Plus size={16} aria-hidden="true" /><span className="sr-only">Adicionar número</span></Button></Tooltip>
           ) : <span className="text-sm text-[var(--text-secondary)]" role="status">Acesso somente leitura. O gerenciamento das conexões está indisponível.</span>}
           </div>
         }

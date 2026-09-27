@@ -78,11 +78,10 @@ async function createLeadAndThread(
   if (!lead) throw new Error("briefing integration lead was not created");
   const conversation = await first<{ id: string }>(
     `INSERT INTO conversations(
-       tenant_id,session_id,contact_phone,contact_name,instagram_contact_id,instagram_username,lead_id,assigned_user_id,queue_id,status
+       tenant_id,session_id,contact_phone,contact_name,instagram_contact_id,instagram_username,lead_id,assigned_user_id,status
      )
-     SELECT $1,$2,lead.phone,lead.name,lead.instagram_contact_id,lead.instagram_username,lead.id,$4,q.id,'open'
+     SELECT $1,$2,lead.phone,lead.name,lead.instagram_contact_id,lead.instagram_username,lead.id,$4,'open'
      FROM scheduling_leads lead
-     JOIN conversation_queues q ON q.tenant_id=lead.tenant_id AND q.is_initial
      WHERE lead.id=$3
      RETURNING id`,
     [tenant, sessionId, lead.id, assignedUserId]

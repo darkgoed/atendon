@@ -7,6 +7,10 @@
  * leitura via POST /panel/changelog/read (idempotente no backend). Corpo é
  * TEXTO PLANO por parágrafos — proibido markdown/HTML/dangerouslySetInnerHTML.
  * Páginas dinâmicas: fetch sempre cache:"no-store" (revogabilidade da SPEC).
+ *
+ * As notas de versão (releases publicadas, as mesmas do aviso "O que há de
+ * novo") entram na mesma timeline, lidas de GET /panel/version — que já filtra
+ * item a item por workspace. Só leitura: nada é gravado em changelog_posts.
  */
 
 import { CaretDown, CaretUp } from "@/components/icons";
@@ -14,7 +18,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
 import { Badge, Button, Dot, EmptyState, ErrorState, IconButton, LoadingState, PageHeader } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, type ChangelogItem, type VersionInfo } from "@/lib/api";
 import {
   changelogApiUrl,
   changelogCategoryLabel,
@@ -29,6 +33,11 @@ const fetcher = <T,>(url: string) => api<T>(url, { cache: "no-store" });
 
 const FEED_LIMIT = 20;
 const dateOnly = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" });
+// Datas de release chegam como "AAAA-MM-DD" (sem hora): formata sem fuso para não voltar um dia.
+const formatDay = (day: string) => {
+  const [year, month, date] = day.split("-");
+  return year && month && date ? `${date}/${month}/${year}` : day;
+};
 
 export default function ChangelogPage() {
   const { data: feed, error: feedError, mutate: mutateFeed } = useSWR<{ posts: ChangelogFeedPost[]; nextOffset: number | null }>(
@@ -39,10 +48,18 @@ export default function ChangelogPage() {
   const { data: unread, mutate: mutateUnread } = useSWR<ChangelogUnread>("/panel/changelog/unread", fetcher, {
     revalidateOnFocus: false
   });
+  // Mesma chave SWR do Shell: reaproveita o cache do aviso de versão.
+  const { data: versionInfo } = useSWR<VersionInfo>("/panel/version", fetcher, { revalidateOnFocus: false });
+  const releaseNotes: ChangelogItem[] = Array.isArray(versionInfo?.changelog) ? versionInfo.changelog : [];
   const [openSlug, setOpenSlug] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState("");
   const posts = feed?.posts ?? [];
+  // Timeline única por data: posts editoriais + notas de versão.
+  const timeline = [
+    ...posts.map((post) => ({ kind: "post" as const, key: `post:${post.slug}`, at: post.publishedAt ?? "", post })),
+    ...releaseNotes.map((note) => ({ kind: "release" as const, key: `release:${note.version}`, at: note.date, note }))
+  ].sort((a, b) => b.at.localeCompare(a.at));
 
   // Marca leitura ao VISUALIZAR o post. user_id é sempre o da sessão (servidor
   // ignora body); idempotente. O feed ainda não expõe o id interno (gap de
@@ -104,15 +121,31 @@ export default function ChangelogPage() {
         ) : null}
         {!feed && !feedError ? <LoadingState label="Carregando novidades" /> : null}
 
-        {feed && posts.length === 0 ? (
+        {feed && timeline.length === 0 ? (
           <EmptyState title="Nenhuma novidade publicada ainda">Posts publicados pelo time do AtendON aparecem aqui automaticamente.</EmptyState>
         ) : null}
 
         <div className="grid gap-3">
-          {posts.map((post) => {
+          {timeline.map((entry) => {
+            if (entry.kind === "release") {
+              const { note } = entry;
+              return (
+                <article key={entry.key} className="card" data-changelog-release={note.version}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone="neutral" variant="pill">Versão</Badge>
+                    <span className="sub mono">v{note.version}</span>
+                    <span className="sub ml-auto text-sm">{formatDay(note.date)}</span>
+                  </div>
+                  <ul className="mt-2 grid list-disc gap-1 pl-5">
+                    {note.changes.map((change, index) => <li key={index}>{change}</li>)}
+                  </ul>
+                </article>
+              );
+            }
+            const { post } = entry;
             const isOpen = openSlug === post.slug;
             return (
-              <article key={post.slug} className="card" data-changelog-post={post.slug}>
+              <article key={entry.key} className="card" data-changelog-post={post.slug}>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone="info" variant="pill">{changelogCategoryLabel(post.category)}</Badge>
                   {post.versionLabel ? <span className="sub mono">{post.versionLabel}</span> : null}
