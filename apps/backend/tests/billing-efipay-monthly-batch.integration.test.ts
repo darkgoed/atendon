@@ -201,6 +201,13 @@ describe("fase de criação (janela 2–10 dias)", () => {
     expect(fake.charges.has(charge.txid)).toBe(false); // nenhum PUT desta cobrança
   });
 
+  it("S4: mandato cancelado entre o GET da rec e o lock não deixa fatura de pacote órfã pendente", async () => {
+    const f = await fixture(5); const fake = new FakeEfi();
+    fake.getRecurrence = async (idRec: string) => { if (idRec === f.rec) await pool.query("UPDATE ai_credit_pix_mandates SET status='CANCELLED',cancelled_at=now() WHERE id=$1", [f.mandate]); return { idRec, status: "APROVADA", payload: {} }; };
+    await runBatch(fake);
+    expect((await pool.query<{ status: string }>("SELECT status FROM invoices WHERE tenant_id=$1", [f.tenant])).rows.map((r) => r.status)).not.toContain("pending");
+  });
+
   it("rec não-APROVADA na Efí bloqueia, espelha o status terminal e não cria", async () => {
     const f = await fixture(5);
     const fake = new FakeEfi();

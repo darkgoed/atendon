@@ -193,4 +193,19 @@ describe("billing usage periods integration", () => {
     const after = await pool.query("SELECT count(*)::int AS count FROM usage_periods WHERE tenant_id=$1", [tenantId]);
     expect(after.rows[0].count).toBe(before.rows[0].count);
   });
+
+  it("C12: períodos ficam ancorados no dia do contrato (31/jan não deriva para o dia 28)", async () => {
+    const tenantId = await createTenant("anchor");
+    const planId = await createPlan();
+    await pool.query(
+      `INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,current_period_start,current_period_end)
+       VALUES($1,$2,'ACTIVE','2026-01-31T12:00:00Z','2026-02-28T12:00:00Z')`, [tenantId, planId]);
+    await inTransaction((client) => ensureWithSubscriptionLock(client, tenantId));
+    const rows = (await pool.query<{ sequence: number; start_day: string; end_day: string }>(
+      `SELECT sequence, to_char(start_at AT TIME ZONE 'UTC','YYYY-MM-DD') start_day, to_char(end_at AT TIME ZONE 'UTC','YYYY-MM-DD') end_day
+         FROM usage_periods WHERE tenant_id=$1 ORDER BY sequence`, [tenantId])).rows;
+    expect(rows.slice(0, 4).map((r) => [r.start_day, r.end_day])).toEqual([
+      ["2026-01-31", "2026-02-28"], ["2026-02-28", "2026-03-31"], ["2026-03-31", "2026-04-30"], ["2026-04-30", "2026-05-31"]
+    ]);
+  });
 });

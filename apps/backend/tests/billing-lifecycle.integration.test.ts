@@ -131,4 +131,17 @@ describe("billing lifecycle with real Postgres", () => {
     expect(rows.reduce((sum, row) => sum + (row.direction === "CREDIT" ? Number(row.amount_cents) : -Number(row.amount_cents)), 0)).toBe(0);
     expect(await scalar("SELECT reconciled AS value FROM ai_usage_ledger WHERE tenant_id=$1", [x.t])).toBe(true);
   });
+  it("C11: a period is only invoiced after its in-flight AI reservations reconcile, so late overage is billed", async () => {
+    const x = await setup(0); await credit(x.t, 100000);
+    const key = randomUUID();
+    expect(await consumeAiInteraction(x.t, "inbound_reply", key)).toMatchObject({ allowed: true, consumptionType: "OVERAGE" });
+    await pool.query("UPDATE usage_periods SET end_at=now()-interval '1 second' WHERE id=$1", [x.period.id]);
+    await runBillingReconciliationBatch(1000);
+    expect(await scalar("SELECT status AS value FROM usage_periods WHERE id=$1", [x.period.id])).toBe("CLOSED");
+    await reconcileAiInteraction(x.t, "inbound_reply", key, { model: null, inputTokens: 0, outputTokens: 0, cachedTokens: 0, providerCostUsd: 1 });
+    const overage = Number(await scalar("SELECT overage_amount_brl_cents AS value FROM usage_periods WHERE id=$1", [x.period.id]));
+    expect(overage).toBeGreaterThan(0);
+    await runBillingReconciliationBatch(1000);
+    expect(Number(await scalar("SELECT l.amount_cents AS value FROM invoice_line_items l JOIN invoices i ON i.id=l.invoice_id WHERE i.metadata->>'usage_period_id'=$1 AND l.kind='AI_OVERAGE'", [x.period.id]))).toBe(overage);
+  });
 });

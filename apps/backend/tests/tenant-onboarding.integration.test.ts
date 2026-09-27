@@ -7,6 +7,7 @@ import { ensureWorkspaceDefaultRoles } from "../src/auth/rbac.js";
 import { config } from "../src/config.js";
 import type { EmailMessage, EmailProvider } from "../src/mail/email-provider.js";
 import { setEmailProviderForTests } from "../src/mail/index.js";
+import { runBillingReconciliationBatch } from "../src/billing/reconciler.js";
 
 /**
  * Cadastro de empresa nova precisa ser vendável e genérico.
@@ -200,5 +201,40 @@ describe("cadastro genérico de empresa", () => {
       planCode: "PLANO_QUE_NAO_EXISTE"
     });
     expect(response.statusCode).toBe(404);
+  });
+
+  it("C3: empresa criada pelo ROOT nasce com o preço do plano congelado e a mensalidade é faturada", async () => {
+    const price = (await pool.query<{ final_price_cents: string }>(
+      "SELECT pp.final_price_cents FROM plans p JOIN plan_prices pp ON pp.plan_id=p.id AND pp.billing_cycle='MONTHLY' AND pp.active WHERE p.is_default")).rows[0];
+    const response = await createWorkspace({ name: `Empresa Faturada ${suffix}`, ownerEmail: `faturada-${suffix}@test.local` });
+    expect(response.statusCode).toBe(201);
+    const tenantId = response.json().workspace.id as string;
+    createdTenants.push(tenantId);
+    const sub = (await pool.query<{ billing_cycle: string; final_price_cents: string | null }>("SELECT billing_cycle,final_price_cents FROM tenant_subscriptions WHERE tenant_id=$1", [tenantId])).rows[0];
+    expect(sub).toMatchObject({ billing_cycle: "MONTHLY", final_price_cents: price.final_price_cents });
+    // Um mês se passa: ciclo contratado e período de uso vencem juntos.
+    expect((await pool.query("SELECT 1 FROM usage_periods WHERE tenant_id=$1 AND status='OPEN'", [tenantId])).rowCount).toBe(1);
+    await pool.query("UPDATE tenant_subscriptions SET current_period_end=now()-interval '1 second' WHERE tenant_id=$1", [tenantId]);
+    await pool.query("UPDATE usage_periods SET end_at=now()-interval '1 second' WHERE tenant_id=$1", [tenantId]);
+    await runBillingReconciliationBatch(1000);
+    const lines = await pool.query<{ amount_cents: string }>("SELECT l.amount_cents FROM invoice_line_items l JOIN invoices i ON i.id=l.invoice_id WHERE i.tenant_id=$1 AND l.kind='PLAN'", [tenantId]);
+    expect(lines.rows.map((r) => r.amount_cents)).toEqual([price.final_price_cents]);
+  });
+
+  it("C8: o ciclo contratado de uma empresa em trial começa a contar depois do trial", async () => {
+    const trialCode = `TRIALC_${suffix.slice(0, 8).toUpperCase()}`;
+    await pool.query("INSERT INTO plans(code,name,monthly_price_cents,billing_period_months,trial_days,status) VALUES($1,$1,19700,1,14,'active')", [trialCode]);
+    const trialTenants: string[] = [];
+    try {
+      const response = await createWorkspace({ name: `Empresa Trial Ciclo ${suffix}`, ownerEmail: `trial-ciclo-${suffix}@test.local`, planCode: trialCode });
+      expect(response.statusCode).toBe(201);
+      trialTenants.push(response.json().workspace.id as string);
+      const sub = (await pool.query<{ ok: boolean; final_price_cents: string }>(
+        "SELECT current_period_end = trial_ends_at + interval '1 month' AS ok, final_price_cents FROM tenant_subscriptions WHERE tenant_id=$1", [trialTenants[0]])).rows[0];
+      expect(sub).toMatchObject({ ok: true, final_price_cents: "19700" });
+    } finally {
+      await pool.query("DELETE FROM tenants WHERE id = ANY($1::uuid[])", [trialTenants]);
+      await pool.query("DELETE FROM plans WHERE code=$1", [trialCode]);
+    }
   });
 });

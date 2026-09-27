@@ -73,6 +73,12 @@ describe("provider homologation integration", () => {
     for (const row of selectable.rows) expect(blocked).not.toContain(row.code);
   });
 
+  it("S5: a homologated code without a webhook/charge client (efipay) fails as a typed 4xx, never a 500", () => {
+    let caught: unknown;
+    try { getProvider("efipay", {}); } catch (error) { caught = error; }
+    expect(caught).toMatchObject({ statusCode: 400, code: "PROVIDER_NOT_SUPPORTED" });
+  });
+
   it("keeps Mercado Pago usable while rejecting all non-homologated codes", () => {
     expect(() => assertHomologatedProvider("mercadopago")).not.toThrow();
     expect(() => assertHomologatedProvider("foobar")).toThrowError(/não homologado/);
