@@ -311,6 +311,44 @@ describe("TripzOpenRouterClient transport", () => {
     expect(result.output.proposalPatch).toEqual({ destination: "Aruba" });
   });
 
+  it("coerces a passenger list into passenger counts", async () => {
+    const fetcher = vi.fn().mockResolvedValue(successResponse({
+      choices: [{ message: { content: JSON.stringify(validOutput({
+        proposalPatch: JSON.stringify({
+          destination: "Gramado",
+          startDate: "2026-10-01",
+          endDate: "2026-10-03",
+          passengers: [{ name: "Ana", type: "adult" }]
+        })
+      })) } }]
+    }));
+    const client = new TripzOpenRouterClient(config(), { fetcher });
+    const result = await client.completeStructured({
+      conversationId: UUID_1,
+      systemPrompt: TRIPZ_AI_SYSTEM_PROMPT,
+      userContent: "Destino Gramado"
+    });
+    expect(result.output.proposalPatch).toEqual({
+      destination: "Gramado",
+      startDate: "2026-10-01",
+      endDate: "2026-10-03",
+      passengers: { adults: 1, children: 0, infants: 0 }
+    });
+  });
+
+  it("rejects an unknown passenger type", async () => {
+    const content = JSON.stringify(validOutput({
+      proposalPatch: JSON.stringify({ passengers: [{ name: "Rex", type: "pet" }] })
+    }));
+    const fetcher = vi.fn().mockResolvedValue(successResponse({ choices: [{ message: { content } }] }));
+    const client = new TripzOpenRouterClient(config(), { fetcher });
+    await expect(client.completeStructured({
+      conversationId: UUID_1,
+      systemPrompt: TRIPZ_AI_SYSTEM_PROMPT,
+      userContent: "Passageiros"
+    })).rejects.toMatchObject({ code: "TRIPZ_AI_INVALID_STRUCTURED_OUTPUT" });
+  });
+
   it("reports an exhausted OpenRouter key limit without exposing the provider message", async () => {
     const fetcher = vi.fn().mockResolvedValue(Response.json({
       error: {
@@ -436,6 +474,99 @@ describe("TripzOpenRouterClient transport", () => {
       costUsd: 0.012,
       providerRequestIndex: 1
     }));
+  });
+
+  it("keeps provider content and raw issue payloads out of structured-output error logs", async () => {
+    const marker = "PII-MARCADOR-PRIVADO-424242";
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+    const badPatch = JSON.stringify(validOutput({
+      assistantMessage: `Confirmação ${marker}`,
+      proposalPatch: { status: "pdf_generated" }
+    }));
+    const mismatchClient = new TripzOpenRouterClient(config(), {
+      fetcher: vi.fn().mockResolvedValue(successResponse({ choices: [{ message: { content: badPatch } }] })),
+      logger
+    });
+    await expect(mismatchClient.completeStructured({
+      conversationId: UUID_1,
+      systemPrompt: TRIPZ_AI_SYSTEM_PROMPT,
+      userContent: "Teste"
+    })).rejects.toMatchObject({ code: "TRIPZ_AI_INVALID_STRUCTURED_OUTPUT" });
+
+    const notJsonClient = new TripzOpenRouterClient(config(), {
+      fetcher: vi.fn().mockResolvedValue(successResponse({
+        choices: [{ message: { content: `{"assistantMessage":"${marker}"` } }]
+      })),
+      logger
+    });
+    await expect(notJsonClient.completeStructured({
+      conversationId: UUID_2,
+      systemPrompt: TRIPZ_AI_SYSTEM_PROMPT,
+      userContent: "Teste"
+    })).rejects.toMatchObject({ code: "TRIPZ_AI_INVALID_STRUCTURED_OUTPUT" });
+
+    expect(logger.error).toHaveBeenCalledTimes(2);
+    const logged = JSON.stringify(logger.error.mock.calls);
+    expect(logged).not.toContain(marker);
+    expect(logged).not.toContain("contentPreview");
+
+    const [mismatchCall, notJsonCall] = logger.error.mock.calls;
+    expect(mismatchCall[0]).toMatchObject({
+      component: "TripzAI",
+      event: "structured_output_schema_mismatch",
+      conversationId: UUID_1,
+      model: "configured/model"
+    });
+    expect(mismatchCall[0].issues.length).toBeGreaterThan(0);
+    expect(JSON.stringify(mismatchCall[0].issues)).toContain("proposalPatch");
+    for (const issue of mismatchCall[0].issues) {
+      expect(Object.keys(issue).sort()).toEqual(["code", "path"]);
+      expect(typeof issue.code).toBe("string");
+      expect(Array.isArray(issue.path)).toBe(true);
+    }
+    expect(notJsonCall[0]).toMatchObject({
+      component: "TripzAI",
+      event: "structured_output_not_json",
+      conversationId: UUID_2,
+      model: "configured/model"
+    });
+  });
+
+  it("keeps provider-controlled issue paths out of structured-output error logs", async () => {
+    const marker = "PRIVATE-KEY-MARKER-111";
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const badPatch = JSON.stringify(validOutput({
+      proposalPatch: JSON.stringify({
+        editorial: { narrative: { destinationCopy: { [marker]: { headline: "ok" } } } }
+      })
+    }));
+    const client = new TripzOpenRouterClient(config(), {
+      fetcher: vi.fn().mockResolvedValue(successResponse({ choices: [{ message: { content: badPatch } }] })),
+      logger
+    });
+    await expect(client.completeStructured({
+      conversationId: UUID_1,
+      systemPrompt: TRIPZ_AI_SYSTEM_PROMPT,
+      userContent: "Teste"
+    })).rejects.toMatchObject({ code: "TRIPZ_AI_INVALID_STRUCTURED_OUTPUT" });
+
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    const logged = JSON.stringify(logger.error.mock.calls);
+    expect(logged).not.toContain(marker);
+    const [mismatchCall] = logger.error.mock.calls;
+    expect(mismatchCall[0]).toMatchObject({
+      component: "TripzAI",
+      event: "structured_output_schema_mismatch",
+      conversationId: UUID_1,
+      model: "configured/model"
+    });
+    expect(JSON.stringify(mismatchCall[0].issues)).toContain("proposalPatch");
+    for (const issue of mismatchCall[0].issues) {
+      expect(Object.keys(issue).sort()).toEqual(["code", "path"]);
+      expect(issue.path.every((segment: unknown) => typeof segment === "string")).toBe(true);
+    }
+    expect(mismatchCall[0].issues.every((issue: { path: unknown[] }) => issue.path.length <= 1)).toBe(true);
   });
 
   it("records a zero-valued provider attempt when a successful HTTP response is not JSON", async () => {

@@ -602,20 +602,27 @@ export class TripzOpenRouterClient {
             component: "TripzAI",
             event: "structured_output_not_json",
             conversationId: input.conversationId,
-            model: this.config.model,
-            contentPreview: content.slice(0, 4_000)
+            model: this.config.model
           }, "[TripzAI] Provider content is not valid JSON");
           throw this.error(502, "TRIPZ_AI_INVALID_STRUCTURED_OUTPUT", "A resposta estruturada da IA não é JSON válido", false, budget);
         }
         const output = tripzAiProviderOutputSchema.safeParse(json);
         if (!output.success) {
+          // Path do issue é controlado pelo provedor (chaves de z.record) e pode conter
+          // conteúdo do usuário: logar apenas o primeiro segmento, se allowlisted.
+          const topLevelKeys = new Set([
+            "assistantMessage", "summary", "proposalPatch", "mediaUpdates",
+            "explicitCorrections", "requestedAction", "missingInformation", "issues"
+          ]);
           this.logger.error({
             component: "TripzAI",
             event: "structured_output_schema_mismatch",
             conversationId: input.conversationId,
             model: this.config.model,
-            issues: output.error.issues.slice(0, 20),
-            contentPreview: content.slice(0, 4_000)
+            issues: output.error.issues.slice(0, 20).map((issue) => ({
+              code: issue.code,
+              path: typeof issue.path[0] === "string" && topLevelKeys.has(issue.path[0]) ? [issue.path[0]] : []
+            }))
           }, "[TripzAI] Provider content does not match schema");
           throw this.error(502, "TRIPZ_AI_INVALID_STRUCTURED_OUTPUT", "A resposta estruturada da IA não obedece ao contrato", false, budget);
         }

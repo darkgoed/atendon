@@ -7,7 +7,7 @@ import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { apiMock, permissions, exportResult } = vi.hoisted(() => ({ apiMock: vi.fn(), permissions: { value: true }, exportResult: { value: Promise.resolve("id,nome\n") as Promise<unknown> } }));
+const { apiMock, permissions, exportResult } = vi.hoisted(() => ({ apiMock: vi.fn(), permissions: { value: true }, exportResult: { value: () => Promise.resolve("id,nome\n") as Promise<unknown> } }));
 
 // Referências ESTÁVEIS: o efeito de sincronia da paginação keyset compara
 // data?.page por referência; mock que devolve objeto novo por render entra em
@@ -23,7 +23,7 @@ apiMock.mockImplementation((url: string, init?: { method?: string; body?: string
   if (url === "/scheduling/leads" && init?.method === "POST") {
     return Promise.resolve({ lead: { id: "lead-new", nome: "Maria", telefone: "5511912345678", status: "novo", atualizado_em: "2026-01-01T00:00:00Z" } });
   }
-  if (url.startsWith("/contact-ops/export.csv")) return exportResult.value;
+  if (url.startsWith("/contact-ops/export.csv")) return exportResult.value();
   if (url.startsWith("/scheduling/leads") && url.includes("cursor=")) {
     return Promise.resolve({ leads: [{ id: "lead-2", telefone: "5511988888888", nome: "Bruno", status: "novo", atualizado_em: "2025-12-01T00:00:00Z" }], total: 2, page: { limit: 50, has_more: false, next_cursor: null } });
   }
@@ -91,7 +91,7 @@ describe("contatos: exportar CSV", () => {
   beforeEach(() => { apiMock.mockClear(); });
 
   it("erro do export aparece no painel e não navega para o JSON da API", async () => {
-    exportResult.value = Promise.reject(new Error("Campo status: valor não permitido"));
+    exportResult.value = () => Promise.reject(new Error("Campo status: valor não permitido"));
     const assign = vi.fn();
     Object.defineProperty(window, "location", { configurable: true, value: { ...window.location, assign } });
     const user = userEvent.setup();
@@ -102,7 +102,7 @@ describe("contatos: exportar CSV", () => {
   });
 
   it("sucesso baixa o CSV como arquivo", async () => {
-    exportResult.value = Promise.resolve("id,nome\n1,Ana\n");
+    exportResult.value = () => Promise.resolve("id,nome\n1,Ana\n");
     const createObjectURL = vi.fn(() => "blob:csv");
     Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);

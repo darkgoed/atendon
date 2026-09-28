@@ -159,7 +159,20 @@ export const tripzProposalPatchSchema = z.object({
     // Providers sometimes summarize passengers as a bare headcount instead
     // of the {adults, children, infants} object despite the prompt. Coerce
     // rather than fail the whole turn.
-    z.number().int().min(0).max(100).transform((adults) => ({ adults, children: 0, infants: 0 }))
+    z.number().int().min(0).max(100).transform((adults) => ({ adults, children: 0, infants: 0 })),
+    // Providers sometimes return a named passenger list instead of the
+    // headcount object despite the prompt. Coerce to counts rather than fail
+    // the whole turn.
+    z.array(
+      z.object({
+        name: z.string().trim().min(1).max(500),
+        type: z.enum(['adult', 'child', 'infant'])
+      }).strict()
+    ).min(1).max(100).transform((items) => ({
+      adults: items.filter((p) => p.type === 'adult').length,
+      children: items.filter((p) => p.type === 'child').length,
+      infants: items.filter((p) => p.type === 'infant').length
+    }))
   ]).nullable().optional(),
   flights: z.array(tripzFlightPatchSchema).max(30).optional(),
   hotel: z.object({
