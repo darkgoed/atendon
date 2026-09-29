@@ -341,74 +341,34 @@ class HookTestCase(unittest.TestCase):
 
     # ---- fail closed: provision quebrado / resposta divergente / worktree errada ----
 
-    def test_provision_exit_nonzero_blocks(self):
-        self.write_response(self.ok_response())
-        env = self.env()
-        env["MOCK_PROVISION_FAIL_IDS"] = "flow-9"
-        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]}, env=env)
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("fail closed", out["message"])
-
-    def test_provision_invalid_json_blocks(self):
-        self.write_response(raw="isto não é json")
-        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]})
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("invalid JSON", out["message"])
-
-    def test_provision_missing_keys_blocks(self):
-        self.write_response({"task_id": "flow-9"})
-        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]})
-        self.assertEqual(self.out(proc)["action"], "block")
-
-    def test_provision_task_id_mismatch_blocks(self):
-        self.write_response(self.ok_response(task_id="flow-99"))  # fixo, divergente do solicitado
-        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]})
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("task_id", out["message"])
-
-    def test_provision_branch_mismatch_blocks(self):
-        self.write_response(self.ok_response(branch="agent/main"))  # branch sem o task_id
-        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]})
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("branch", out["message"])
-
-    def test_provision_base_sha_invalid_blocks(self):
-        self.write_response(self.ok_response(base_sha="not-a-sha"))
-        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]})
-        self.assertEqual(self.out(proc)["action"], "block")
-
-    def test_provision_ownership_mismatch_blocks(self):
-        self.write_response(self.ok_response(ownership="apps/backend/"))  # divergente do owner scripts/
-        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]})
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("ownership", out["message"])
-
-    def test_worktree_outside_task_id_blocks(self):
-        self.write_response(self.ok_response(worktree="outra-pasta"))  # nome não bate com o ID
-        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]})
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("worktree", out["message"])
-
-    def test_worktree_under_varwww_blocks(self):
-        divergent = "/var/www/apps/atendon-wt-divergente"
-        self.write_response(self.ok_response(worktree=divergent))
-        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]})
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("fail closed", out["message"])
-
-    def test_worktree_missing_on_disk_blocks(self):
-        env = self.env()
-        env["MOCK_PROVISION_MKDIR"] = "0"  # CLI não criou o worktree
-        self.write_response(self.ok_response(worktree="flow-ghost"))
-        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]}, env=env)
-        self.assertEqual(self.out(proc)["action"], "block")
+    def test_provision_divergent_responses_block(self):
+        # table-driven: cada case desvia a resposta/ambiente do mock CLI; hook bloqueia fail closed.
+        cases = [
+            ("exit nonzero", {}, {"MOCK_PROVISION_FAIL_IDS": "flow-9"}, "fail closed"),
+            ("invalid JSON", {"raw": "isto não é json"}, {}, "invalid JSON"),
+            ("missing keys", {"raw": '{"task_id": "flow-9"}'}, {}, None),
+            ("task_id mismatch", {"task_id": "flow-99"}, {}, "task_id"),
+            ("branch mismatch", {"branch": "agent/main"}, {}, "branch"),
+            ("base_sha invalid", {"base_sha": "not-a-sha"}, {}, None),
+            ("ownership mismatch", {"ownership": "apps/backend/"}, {}, "ownership"),
+            ("worktree fora do task_id", {"worktree": "outra-pasta"}, {}, "worktree"),
+            ("worktree sob /var/www", {"worktree": "/var/www/apps/atendon-wt-divergente"}, {}, "fail closed"),
+            ("worktree ausente no disco", {"worktree": "flow-ghost"}, {"MOCK_PROVISION_MKDIR": "0"}, None),
+        ]
+        for name, resp, env_over, fragment in cases:
+            with self.subTest(name):
+                if os.path.exists(self.record):  # teardown do mock por case: sem vazamento
+                    os.remove(self.record)
+                env = dict(self.env(), **env_over)
+                if "raw" in resp:
+                    self.write_response(raw=resp["raw"])
+                else:
+                    self.write_response(self.ok_response(**resp))
+                proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]}, env=env)
+                out = self.out(proc)
+                self.assertEqual(out["action"], "block")
+                if fragment:
+                    self.assertIn(fragment, out["message"])
 
     # ---- fail closed: batch inteiro bloqueado + cleanup manual reportado ----
 
