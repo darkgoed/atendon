@@ -5,7 +5,7 @@ O CLI de provision é mockado via ATENDON_MULTIAGENT_CLI: um script que grava o 
 recebido (acumulando por provision) e cospe um JSON canônico com substituição
 {task_id}/{owner} controlada pelo teste — ownership no formato CANÔNICO do core
 (`owner.rstrip('/') + '/'`, cf. norm_owner; owner é PREFIXO DE DIRETÓRIO, ex.:
-`scripts/` — globs (* ? [ ]) são rejeitados pelo hook ANTES de provision). Os
+`scripts/` — globs (* ? [ ]) são rejeitados pelo hook ANTES de provision).
 Rodar: python scripts/test_multiagent_hook.py   (ou python -m unittest)
 """
 import json
@@ -152,9 +152,9 @@ class HookTestCase(unittest.TestCase):
         self.assertEqual(self.out(proc), {})
         self.assertEqual(proc.returncode, 0)
 
-    # ---- fail closed: código AtendON sem tasks[] ou sem task_id/owner ----
+    # ---- activación por marker: exactamente UNA task ----
 
-    def test_atendon_spawn_without_tasks_blocks(self):
+    def test_marker_spawn_without_tasks_blocks(self):
         proc = self.run_hook(tool_input={
             "goal": "Implementar validação de passageiros no export AtendON e testar. [ATENDON-MULTIAGENT]",
             "context": "task_id: FLOW-9\nowner: scripts/",
@@ -164,7 +164,19 @@ class HookTestCase(unittest.TestCase):
         self.assertIn("tasks[]", out["message"])
         self.assertFalse(os.path.exists(self.record))  # zero provisions
 
-    def test_atendon_task_without_owner_blocks(self):
+    def test_marker_multi_task_blocks(self):
+        # contrato singleton: 1 worktree por agente -> exactamente UNA task por invocação
+        self.write_response(self.ok_response())
+        proc = self.run_hook(tool_input={
+            "tasks": [self.task("FLOW-9", owner="scripts/a"),
+                      self.task("FLOW-7", owner="scripts/b")],
+        }, cwd="/var/www/apps/atendon")
+        out = self.out(proc)
+        self.assertEqual(out["action"], "block")
+        self.assertIn("EXACTAMENTE UNA", out["message"])
+        self.assertFalse(os.path.exists(self.record))  # zero provisions
+
+    def test_marker_task_without_owner_blocks(self):
         proc = self.run_hook(tool_input={
             "tasks": [{"goal": "Implementar validação no export AtendON.",
                        "context": "[ATENDON-MULTIAGENT]\ntask_id: FLOW-9"}],
@@ -224,7 +236,7 @@ class HookTestCase(unittest.TestCase):
     # ---- provision + modify: tasks[] sem chaves extras, contrato no context ----
 
     def assert_task_schema_clean(self, task):
-        """Nenhuma chave extra: schema de task aceita só goal/context/output_schema/images."""
+        """Nenhuna chave extra: schema de task aceita só goal/context/output_schema/images."""
         self.assertLessEqual(set(task), {"goal", "context", "output_schema", "images"})
         self.assertNotIn("worktree", task)
         self.assertNotIn("branch", task)
@@ -233,7 +245,7 @@ class HookTestCase(unittest.TestCase):
         self.assertNotIn("task_id", task)
         self.assertNotIn("owner", task)
 
-    def test_provision_and_modify_batch(self):
+    def test_provision_and_modify_single_task(self):
         self.write_response(self.ok_response())
         proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]})
         out = self.out(proc)
@@ -260,27 +272,6 @@ class HookTestCase(unittest.TestCase):
         self.assertIn("--owner", argv); self.assertIn("scripts/", argv)
         self.assertIn("--goal", argv)
 
-    def test_batch_two_tasks_distinct_worktrees(self):
-        self.write_response(self.ok_response())
-        proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="scripts/a"),
-            self.task("FLOW-7", owner="scripts/b"),
-        ]})
-        out = self.out(proc)
-        self.assertEqual(out["action"], "modify")
-        tasks = out["args"]["tasks"]
-        self.assertEqual(len(tasks), 2)
-        wt9 = os.path.join(self.canonical, "flow-9")
-        wt7 = os.path.join(self.canonical, "flow-7")
-        self.assertNotEqual(wt9, wt7)
-        self.assertEqual(tasks[0]["context"].count(wt9), 1)
-        self.assertEqual(tasks[1]["context"].count(wt7), 1)
-        self.assertNotIn(wt9, tasks[1]["context"])  # nunca a mesma worktree para múltiplos
-        self.assertNotIn(wt7, tasks[0]["context"])
-        for t in tasks:
-            self.assert_task_schema_clean(t)
-        self.assertEqual(self.task_ids_called(), ["flow-9", "flow-7"])  # provision individual
-
     def test_task_id_case_normalized(self):
         self.write_response(self.ok_response())
         proc = self.run_hook(tool_input={"tasks": [self.task("Flow-9")]})  # mixed case
@@ -300,7 +291,7 @@ class HookTestCase(unittest.TestCase):
         self.assertIn("flow-42", argv)
         self.assertIn("scripts/funil", argv)
 
-    def test_batch_passthrough_output_schema_images(self):
+    def test_passthrough_output_schema_images(self):
         self.write_response(self.ok_response())
         proc = self.run_hook(tool_input={"tasks": [
             self.task("FLOW-9", output_schema={"type": "object"}, images=["x.png"]),
@@ -368,46 +359,19 @@ class HookTestCase(unittest.TestCase):
                 if fragment:
                     self.assertIn(fragment, out["message"])
 
-    # ---- fail closed: batch inteiro bloqueado + cleanup manual reportado ----
+    # ---- fail closed: provision OK deixa worktree, resposta divergente reporta cleanup ----
 
-    def test_batch_second_task_fails_blocks_all_and_reports_first(self):
-        self.write_response(self.ok_response())
-        env = self.env()
-        env["MOCK_PROVISION_FAIL_IDS"] = "flow-7"
-        proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="scripts/a"),
-            self.task("FLOW-7", owner="scripts/b"),
-        ]}, env=env)
+    def test_divergent_response_after_provision_reports_cleanup(self):
+        # contrato: worktrees NUNCA são removidas pelo hook; provision já feito é
+        # reportado para cleanup manual no bloco.
+        self.write_response(self.ok_response(branch="agent/main"))  # divergente
+        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]})
         out = self.out(proc)
-        self.assertEqual(out["action"], "block")  # batch INTEIRO bloqueado
+        self.assertEqual(out["action"], "block")
         self.assertIn("fail closed", out["message"])
-        self.assertIn("flow-9", out["message"])  # provision parcial reportado p/ cleanup manual
+        self.assertIn("flow-9", out["message"])        # task_id reportado
         self.assertIn("cleanup manual", out["message"])
-        self.assertIn("flow-7", out["message"])
-        self.assertEqual(self.task_ids_called(), ["flow-9", "flow-7"])
-
-    def test_batch_member_without_identifier_blocks(self):
-        self.write_response(self.ok_response())
-        proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="scripts/a"),
-            {"goal": "Revisar arquivos alterados no AtendON e rodar testes."},  # sem task_id/owner
-        ]})
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("tasks[1]", out["message"])
-        self.assertFalse(os.path.exists(self.record))  # validação total ANTES: zero provisions
-        self.assertNotIn("action\": \"modify", proc.stdout)
-
-    def test_duplicate_task_id_blocks(self):
-        self.write_response(self.ok_response())
-        proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="scripts/a"),
-            self.task("flow-9", owner="scripts/b"),  # mesmo ID (case-normalizado)
-        ]})
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("duplicado", out["message"])
-        self.assertFalse(os.path.exists(self.record))  # zero provisions: duplicado é validado ANTES
+        self.assertIn("NÃO removidos automaticamente", out["message"])
 
     # ---- não vazar segredos ----
 

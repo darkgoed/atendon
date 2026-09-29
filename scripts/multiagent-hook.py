@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Hermes pre_tool_call shell hook: auto-provisiona worktree multiagent para delegações de código AtendON.
+"""Hermes pre_tool_call shell hook: auto-provisiona worktree multiagent para
+delegações de código AtendON marcadas explicitamente.
 
 Protocolo oficial (https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks):
   stdin  : {"hook_event_name":"pre_tool_call","tool_name":"delegate_task","tool_input":{...},"cwd":...,"profile":...}
@@ -8,15 +9,19 @@ Protocolo oficial (https://hermes-agent.nousresearch.com/docs/user-guide/feature
            {}                                 -> no-op (pass-through)
   exit 2 = block fallback (não usado; bloco sai sempre via stdout JSON).
 
+Activación EXPLÍCITA: a delegação deve llevar o marker literal [ATENDON-MULTIAGENT]
+en goal/context (top-level ou na task) para recibir provisioning. Sin marker ->
+pass-through. Un única task por invocación (1 worktree por agente): para N tareas
+paralelas lança N delegações separadas.
+
 Fails closed no fluxo identificado (delegação marcada com [ATENDON-MULTIAGENT]):
-spawn sem tasks[] (top-level goal/context não é más suportado), task sem
-task_id/owner no batch, provision com erro, JSON inválido,
-resposta divergente do solicitado, slug/owner inválidos, ou worktree fora do
-root canônico /home/deploy/atendon-agents (nunca sob /var/www divergente).
-Um batch com QUALQUER task problemática é bloqueado inteiro; provisions já
-feitos são reportados no bloco para cleanup manual (worktrees NUNCA são
-removidas automaticamente). Delegações sem marker, controle (list/steer/stop)
-e tarefas de pesquisa passam.
+spawn sem tasks[], tasks[] com != 1 entrada, task sem task_id/owner, provision
+com erro, JSON inválido, resposta divergente do solicitado, slug/owner inválidos,
+ou worktree fora do root canônico /home/deploy/atendon-agents (nunca sob
+/var/www divergente). A worktree que um provision deixó atrás num fallo do
+validate é reportada no bloco para cleanup manual (nunca removida
+automáticamente). Delegações sem marker, controle (list/steer/stop) e tarefas
+de pesquisa passam.
 
 Contrato com a API real: cada entrada de tasks[] do delegate_task aceita APENAS
 goal, context, output_schema, images. task_id/owner NÃO são chaves de task —
@@ -29,7 +34,7 @@ O integrador registra (não configurado por este script):
   hooks:
     pre_tool_call:
       - matcher: "delegate_task"
-        command: "python /home/deploy/atendon-agents/flow-tests/scripts/multiagent-hook.py"
+        command: "python /home/deploy/atendon-agents/integration/scripts/multiagent-hook.py"
         timeout: 180
         fail_closed: true   # cobre crash/timeout do próprio hook no nível do dispatcher
 
@@ -47,9 +52,8 @@ FORBIDDEN_ROOT = "/var/www"                      # monorepo divergente — nunca
 DEFAULT_CLI = "/home/deploy/atendon-agents/integration/scripts/multiagent.py"
 PROVISION_TIMEOUT_S = 120
 
-# Activación EXPLÍCITA: la delegación debe llevar el marker literal
-# [ATENDON-MULTIAGENT] en goal/context (top-level o en cualquier task) para
-# recibir provision. Sin marker -> pass-through. Sin clasificador de lenguaje.
+# Activación explícita: marker literal exigido en la delegação (nunca
+# clasificador de lenguaje natural).
 MARKER = "[ATENDON-MULTIAGENT]"
 # task_id/owner por task: chaves extras em tasks[] NÃO são aceitas pela API
 # (schema de task só permite goal/context/output_schema/images), então vêm da
@@ -58,7 +62,6 @@ TASK_ID_RE = re.compile(r"\btask[-_ ]?id\s*[:=]\s*([^\s,;]+)", re.I)
 OWNER_RE = re.compile(r"\bowner\s*[:=]\s*([^\s,;]+)", re.I)
 SLUG_RE = re.compile(r"^[a-z0-9-]+$")   # alinhado ao core multiagent.py ID_RE (sem ._)
 GLOB_CHARS = "*?[]"
-
 
 WORKER_CONTRACT = (
     "[ATENDON-MULTIAGENT] Regras do worker:\n"
@@ -85,11 +88,8 @@ def _block(message):
 
 
 def _args_text(args):
-    """Texto p/ FILTROS (atendon + intenção de código): goal/context do topo E das tasks[].
-
-    Topo é usado só para identificação — spawn/extração de task_id/owner vem
-    EXCLUSIVAMENTE das entradas de tasks[].
-    """
+    """Texto p/ identificación (marker): goal/context do topo E das tasks[].\n
+    Topo é usado só para identificação — task_id/owner vêm EXCLUSIVAMENTE da task."""
     parts = []
     for key in ("goal", "context"):
         val = args.get(key)
@@ -101,12 +101,6 @@ def _args_text(args):
     return "\n".join(parts)
 
 
-def _is_multiaagent(text):
-    """Activación explícita: el marker literal [ATENDON-MULTIAGENT] debe estar
-    en el texto de la delegación (goal/context top-level o de cualquier task)."""
-    return isinstance(text, str) and MARKER in text
-
-
 def _slug(raw):
     """task_id case-normalized (lowercase) e validado como slug. None quando inválido/ausente."""
     if not isinstance(raw, str):
@@ -116,15 +110,6 @@ def _slug(raw):
         return None
     slug = m.group(1).strip("`\"'").strip().lower()
     return slug if SLUG_RE.match(slug) else None
-
-
-def _extract_owner(text):
-    if not isinstance(text, str):
-        return None
-    m = OWNER_RE.search(text)
-    if not m:
-        return None
-    return m.group(1).strip("`\"'").strip()
 
 
 def _check_owner(owner):
@@ -149,33 +134,16 @@ def _check_owner(owner):
         raise RuntimeError("owner inválido: %r" % owner)
 
 
-def canonical_owner(owner):
-    """Ownership canônico do core (multiagent.py norm_owner): `owner.rstrip('/') + '/'`.
-
-    Exige owner seguro relativo (prefixo de diretório, sem glob) antes de canonicar.
-    """
-    _check_owner(owner)
-    return "/".join(p for p in owner.split("/") if p not in ("", ".")) + "/"
-
-
-def _task_text(t):
-    return "\n".join(t[k] for k in ("goal", "context") if isinstance(t.get(k), str))
-
-
-def _cli_command():
-    """([argv-tail], cwd) para chamar o CLI de provision conforme a interface documentada."""
+def _provision(task_id, owner, goal):
+    """Roda provision; retorna dict JSON. Levanta RuntimeError com mensagem curta em qualquer falha."""
     cli = os.environ.get("ATENDON_MULTIAGENT_CLI")
     if cli:
         # override (testes): caminho absoluto, cwd = diretório do CLI
-        return [cli], os.path.dirname(os.path.abspath(cli))
-    # interface oficial: `python scripts/multiagent.py provision ...` a partir da raiz do worktree
-    root = os.path.dirname(os.path.dirname(os.path.abspath(DEFAULT_CLI)))
-    return ["scripts/multiagent.py"], root
-
-
-def _provision(task_id, owner, goal):
-    """Roda provision; retorna dict JSON. Levanta RuntimeError com mensagem curta em qualquer falha."""
-    tail, cwd = _cli_command()
+        tail, cwd = [cli], os.path.dirname(os.path.abspath(cli))
+    else:
+        # interface oficial: `python scripts/multiagent.py provision ...` a partir da raiz do worktree
+        root = os.path.dirname(os.path.dirname(os.path.abspath(DEFAULT_CLI)))
+        tail, cwd = ["scripts/multiagent.py"], root
     cmd = [sys.executable] + tail + ["provision", "--task-id", task_id, "--owner", owner, "--goal", goal]
     try:
         proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=PROVISION_TIMEOUT_S)
@@ -198,11 +166,11 @@ def _provision(task_id, owner, goal):
 def _validate_response(task_id, owner, info):
     """Resposta do provision tem que BATER com o solicitado. Levanta RuntimeError.
 
-    Contrato core (multiagent.py): ownership canônico `owner.rstrip('/') + '/'`,
-    branch exatamente `agent/{task_id}`, worktree exatamente
-    `{CANONICAL_ROOT}/{task_id}` (comparação via realpath).
+    Contrato core (multiagent.py): ownership canônico `owner.rstrip('/') + '/'`
+    (owner já validado por _check_owner), branch exatamente `agent/{task_id}`,
+    worktree exatamente `{CANONICAL_ROOT}/{task_id}` (comparação via realpath).
     """
-    expected_owner = canonical_owner(owner)  # valida owner seguro relativo sem glob inválido
+    expected_owner = owner.rstrip("/") + "/"
     if info["task_id"].strip().lower() != task_id:
         raise RuntimeError("provision devolveu task_id %r, solicitado %r" % (info["task_id"], task_id))
     if info["ownership"].strip().lower() != expected_owner.lower():
@@ -239,50 +207,8 @@ def _new_task(t, info):
     return nt
 
 
-def handle_batch(args):
-    """Único caminho: extrai e valida TODOS os task_id/owner, duplicados e schema
-    ANTES de qualquer provision; depois provisiona um a um.
-
-    Qualquer membro problemático (sem identificador, slug/owner inválido, provision com
-    erro, resposta divergente, worktree errada, task_id duplicado) bloqueia o batch inteiro.
-    Provisions já feitos são listados no bloco para cleanup manual — nunca removidos aqui.
-    """
-    tasks = args.get("tasks")
-    provisioned = []
-    try:
-        parsed = []   # validação total primeiro: nenhum provision com task inválida à frente
-        seen = set()
-        for idx, t in enumerate(tasks):
-            if not isinstance(t, dict):
-                raise RuntimeError("tasks[%d] não é um objeto" % idx)
-            ttext = _task_text(t)
-            task_id = _slug(ttext)
-            if not task_id:
-                raise RuntimeError("tasks[%d]: task_id ausente ou slug inválido (esperado `task_id: slug` em goal/context)" % idx)
-            if task_id in seen:
-                raise RuntimeError("tasks[%d]: task_id %r duplicado — 1 worktree por agente" % (idx, task_id))
-            seen.add(task_id)
-            owner = _extract_owner(ttext)
-            _check_owner(owner)
-            goal = (t.get("goal") if isinstance(t.get("goal"), str) else "") or ttext.strip()[:500]
-            parsed.append((idx, t, task_id, owner, goal))
-        results = []
-        for idx, t, task_id, owner, goal in parsed:
-            try:
-                info = _provision(task_id, owner, goal)
-                _validate_response(task_id, owner, info)
-                provisioned.append(task_id)
-            except Exception as exc:
-                raise RuntimeError("tasks[%d] (task_id=%s): %s" % (idx, task_id, exc))
-            results.append((t, info))
-        print(json.dumps({"action": "modify", "args": {"tasks": [_new_task(t, info) for t, info in results]}}))
-        return 0
-    except Exception as exc:  # fail closed no caminho identificado
-        msg = "AtendON multiagent hook fail closed: %s" % exc
-        if provisioned:
-            msg += (" | Provisions JÁ FEITOS nesta execução (cleanup manual: worktrees sob %s — "
-                    "NÃO removidos automaticamente): task_ids: %s" % (CANONICAL_ROOT, ", ".join(provisioned)))
-        return _block(msg)
+def _task_text(t):
+    return "\n".join(t[k] for k in ("goal", "context") if isinstance(t.get(k), str))
 
 
 def handle(payload):
@@ -298,18 +224,47 @@ def handle(payload):
     if str(args.get("action") or "").strip().lower() in ("list", "steer", "stop"):
         return _no_op()
     try:
-            # identificación: falha aqui NUNCA bloqueia (hook global — outras delegações devem passar)
-            try:
-                text = _args_text(args)
-            except Exception:
-                text = ""
-            if not _is_multiaagent(text):
-                return _no_op()  # sin marker -> pass-through (pesquisa/análisis no-multiagente)
-            if isinstance(args.get("tasks"), list) and args["tasks"]:
-                return handle_batch(args)
-            return _block("AtendON multiagent hook fail closed: delegação de código AtendON "
-                          "requer tasks[] com task_id/owner em cada task "
-                          "(spawn top-level goal/context não é suportado)")
+        # identificação: falha aqui NUNCA bloqueia (hook global — outras delegações devem passar)
+        try:
+            text = _args_text(args)
+        except Exception:
+            text = ""
+        if not (isinstance(text, str) and MARKER in text):
+            return _no_op()  # sin marker -> pass-through (pesquisa/análisis no-multiagente)
+        tasks = args.get("tasks")
+        if not (isinstance(tasks, list) and len(tasks) == 1 and isinstance(tasks[0], dict)):
+            return _block("AtendON multiagent hook fail closed: delegação [ATENDON-MULTIAGENT] "
+                          "requiere EXACTAMENTE UNA task em tasks[] (1 worktree por agente; "
+                          "para N tareas paralelas lança N delegações) em vez de %r" % (
+                              "spawn top-level" if not isinstance(tasks, list) else
+                              "tasks[] com %d entradas" % len(tasks)))
+        t = tasks[0]
+        ttext = _task_text(t)
+        task_id = _slug(ttext)
+        if not task_id:
+            return _block("AtendON multiagent hook fail closed: task_id ausente ou slug inválido "
+                          "(esperado `task_id: slug` em goal/context)")
+        m = OWNER_RE.search(ttext)
+        owner = m.group(1).strip("`\"'").strip() if m else None
+        try:
+            _check_owner(owner)
+        except RuntimeError as exc:
+            return _block("AtendON multiagent hook fail closed: %s" % exc)
+        goal = (t.get("goal") if isinstance(t.get("goal"), str) else "") or ttext.strip()[:500]
+        provisioned = []
+        try:
+            info = _provision(task_id, owner, goal)
+            provisioned.append(task_id)
+            _validate_response(task_id, owner, info)
+        except Exception as exc:
+            msg = "AtendON multiagent hook fail closed: %s" % exc
+            if provisioned:
+                msg += (" | Provisions JÁ FEITOS nesta execução (cleanup manual: worktrees sob %s — "
+                        "NÃO removidos automaticamente): task_ids: %s"
+                        % (CANONICAL_ROOT, ", ".join(provisioned)))
+            return _block(msg)
+        print(json.dumps({"action": "modify", "args": {"tasks": [_new_task(t, info)]}}))
+        return 0
     except Exception as exc:  # fail closed no caminho identificado
         return _block("AtendON multiagent hook fail closed: %s" % exc)
 
