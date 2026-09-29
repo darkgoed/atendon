@@ -19,7 +19,8 @@ e tarefas de pesquisa passam.
 
 Contrato com a API real: cada entrada de tasks[] do delegate_task aceita APENAS
 goal, context, output_schema, images. task_id/owner NÃO são chaves de task —
-vêm da string context/goal de cada task (`task_id: slug`, `owner: path`) e o
+vêm da string context/goal de cada task (`task_id: slug`, `owner: prefixo de
+diretório relativo ao app, ex.: scripts/`) e o
 worktree/branch/base_sha/ownership aprovados são entregues via contrato dentro
 do context (nunca como chaves extras).
 
@@ -58,7 +59,7 @@ CODE_RE = re.compile(
 TASK_ID_RE = re.compile(r"\btask[-_ ]?id\s*[:=]\s*([^\s,;]+)", re.I)
 OWNER_RE = re.compile(r"\bowner\s*[:=]\s*([^\s,;]+)", re.I)
 SLUG_RE = re.compile(r"^[a-z0-9-]+$")   # alinhado ao core multiagent.py ID_RE (sem ._)
-GLOB_CHARS = "*?["
+GLOB_CHARS = "*?[]"
 
 
 def _owner_segments(owner):
@@ -138,21 +139,23 @@ def _extract_owner(text):
 
 
 def _check_owner(owner):
-    """Owner é relativo à raiz do app (app root canônico remoto), ex.: scripts/foo/*.
+    """Owner é PREFIXO DE DIRETÓRIO relativo à raiz do app, ex.: scripts/ ou apps/backend/.
 
-    Recusa os mesmos caminhos inseguros do norm_owner do core (absoluto, '.', '..',
-    '/', backslash, NUL) além de ~, prefixo do monorepo apps/atendon/ e glob
-    inválido (caracteres de glob fora do último segmento). Levanta RuntimeError.
+    O core casa ownership por prefixo de diretório (f.startswith(owner)); globs
+    (* ? [ ]) nunca casam com nenhum caminho, então rejeita QUALQUER glob ANTES
+    de provision. Recusa também os caminhos inseguros do norm_owner do core
+    (absoluto, '.', '..', '/', backslash, NUL) além de ~ e prefixo do monorepo
+    apps/atendon/. Levanta RuntimeError.
     """
     if not owner or owner in (".", "..", "/"):
         raise RuntimeError("owner ausente ou inseguro: %r" % owner)
     if owner.startswith(("/", "~")) or "\\" in owner or "\x00" in owner or ".." in owner.split("/"):
         raise RuntimeError("owner deve ser caminho relativo ao app root, não %r" % owner)
     if owner == "apps/atendon" or owner.startswith("apps/atendon/"):
-        raise RuntimeError("owner deve ser relativo ao app root (ex.: scripts/*), não ao monorepo (%r)" % owner)
+        raise RuntimeError("owner deve ser relativo ao app root (ex.: scripts/), não ao monorepo (%r)" % owner)
+    if any(c in owner for c in GLOB_CHARS):
+        raise RuntimeError("owner é prefixo de diretório; globs (* ? [ ]) não são aceitos (%r)" % owner)
     segs = _owner_segments(owner)
-    if any(any(c in seg for c in GLOB_CHARS) for seg in segs[:-1]):
-        raise RuntimeError("owner com glob inválido: globs só no último segmento (%r)" % owner)
     if not [p for p in segs if p not in ("", ".")]:
         raise RuntimeError("owner inválido: %r" % owner)
 
@@ -160,7 +163,7 @@ def _check_owner(owner):
 def canonical_owner(owner):
     """Ownership canônico do core (multiagent.py norm_owner): `owner.rstrip('/') + '/'`.
 
-    Exige owner seguro relativo (sem glob inválido) antes de canonicar.
+    Exige owner seguro relativo (prefixo de diretório, sem glob) antes de canonicar.
     """
     _check_owner(owner)
     return "/".join(p for p in owner.split("/") if p not in ("", ".")) + "/"

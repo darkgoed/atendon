@@ -4,7 +4,9 @@
 O CLI de provision é mockado via ATENDON_MULTIAGENT_CLI: um script que grava o argv
 recebido (acumulando por provision) e cospe um JSON canônico com substituição
 {task_id}/{owner} controlada pelo teste — ownership no formato CANÔNICO do core
-(`owner.rstrip('/') + '/'`, cf. norm_owner). Os testes de CONTRATO carregam o
+(`owner.rstrip('/') + '/'`, cf. norm_owner; owner é PREFIXO DE DIRETÓRIO, ex.:
+`scripts/` — globs (* ? [ ]) são rejeitados pelo hook ANTES de provision). Os
+testes de CONTRATO carregam o
 multiagent.py REAL (norm_owner/ID_RE) em fixture e o usam como fonte canônica.
 Rodar: python scripts/test_multiagent_hook.py   (ou python -m unittest)
 """
@@ -33,6 +35,7 @@ items.append({"argv": args, "cwd": os.getcwd()})
 json.dump(items, open(path, "w"))
 tid = args[args.index("--task-id") + 1] if "--task-id" in args else ""
 owner = args[args.index("--owner") + 1] if "--owner" in args else ""
+owner = owner.rstrip("/")  # forma canônica do core norm_owner (prefixo + '/')
 raw = open(os.environ["MOCK_PROVISION_RESPONSE"]).read()
 try:
     tpl = json.loads(raw)
@@ -148,7 +151,7 @@ class HookTestCase(unittest.TestCase):
         argvs = self.recorded_argv()
         return [a["argv"][a["argv"].index("--task-id") + 1] for a in argvs]
 
-    def task(self, tid, owner="scripts/foo/*", goal=None, **extra):
+    def task(self, tid, owner="scripts/", goal=None, **extra):
         d = {"goal": goal or "Implementar o export corrigido no AtendON.",
              "context": "Arquivo: scripts/verify-blockers.ts\n"
                         "task_id: %s\nowner: %s" % (tid, owner)}
@@ -191,7 +194,7 @@ class HookTestCase(unittest.TestCase):
     def test_atendon_code_without_task_id_blocks(self):
         proc = self.run_hook(tool_input={
             "goal": "Implementar validação de passageiros no export AtendON e testar.",
-            "context": "owner: scripts/verify-blockers.ts",
+            "context": "owner: scripts/",
         }, cwd="/var/www/apps/atendon")
         out = self.out(proc)
         self.assertEqual(out["action"], "block")
@@ -208,7 +211,7 @@ class HookTestCase(unittest.TestCase):
 
     def test_owner_monorepo_prefix_blocks(self):
         proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="apps/atendon/scripts/*"),
+            self.task("FLOW-9", owner="apps/atendon/scripts"),
         ]})
         out = self.out(proc)
         self.assertEqual(out["action"], "block")
@@ -223,7 +226,7 @@ class HookTestCase(unittest.TestCase):
 
     def test_owner_traversal_blocks(self):
         proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="scripts/../other/*"),
+            self.task("FLOW-9", owner="scripts/../other"),
         ]})
         self.assertEqual(self.out(proc)["action"], "block")
 
@@ -242,15 +245,16 @@ class HookTestCase(unittest.TestCase):
             self.assertEqual(self.out(proc)["action"], "block", msg=tid)
             self.assertFalse(os.path.exists(self.record), msg=tid)
 
-    def test_owner_glob_outside_last_segment_blocks(self):
+    def test_owner_glob_rejected_without_provision(self):
+        # contrato: owner é prefixo de diretório — globs (* ? [ ]) rejeitados ANTES
+        # de provision (o core nunca casaria: f.startswith('scripts/*') é falso)
         self.write_response(self.ok_response())
-        proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="sc*pts/foo/*"),
-        ]})
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("glob", out["message"])
-        self.assertFalse(os.path.exists(self.record))
+        for owner in ("scripts/*", "sc*pts/foo/*", "scripts/foo[1]", "scripts/funil/**"):
+            proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9", owner=owner)]})
+            out = self.out(proc)
+            self.assertEqual(out["action"], "block", msg=owner)
+            self.assertIn("glob", out["message"], msg=owner)
+            self.assertFalse(os.path.exists(self.record), msg=owner)  # sem provision
 
     def test_ownership_canonical_core_form_accepted(self):
         # bug 2a6a68ac: core norm_owner devolve `scripts` -> `scripts/`; hook deve aceitar
@@ -294,7 +298,7 @@ class HookTestCase(unittest.TestCase):
         self.assertIn(wt, task["context"])
         self.assertIn("agent/flow-9", task["context"])
         self.assertIn("916c7ff7deadbeef", task["context"])
-        self.assertIn("scripts/foo/*", task["context"])
+        self.assertIn("ownership: scripts/", task["context"])
         self.assertIn("PROIBIDO", task["context"])
         self.assertIn("git add .", task["context"])
         self.assertIn("Retorno obrigatório", task["context"])
@@ -304,14 +308,14 @@ class HookTestCase(unittest.TestCase):
         argv = argvs[0]["argv"]
         self.assertIn("provision", argv)
         self.assertIn("--task-id", argv); self.assertIn("flow-9", argv)
-        self.assertIn("--owner", argv); self.assertIn("scripts/foo/*", argv)
+        self.assertIn("--owner", argv); self.assertIn("scripts/", argv)
         self.assertIn("--goal", argv)
 
     def test_batch_two_tasks_distinct_worktrees(self):
         self.write_response(self.ok_response())
         proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="scripts/a/*"),
-            self.task("FLOW-7", owner="scripts/b/*"),
+            self.task("FLOW-9", owner="scripts/a"),
+            self.task("FLOW-7", owner="scripts/b"),
         ]})
         out = self.out(proc)
         self.assertEqual(out["action"], "modify")
@@ -339,19 +343,19 @@ class HookTestCase(unittest.TestCase):
     def test_task_id_owner_from_text_fallback(self):
         self.write_response(self.ok_response())
         proc = self.run_hook(tool_input={
-            "goal": "Corrigir o bug do funil AtendON. task-id: FLOW-42 owner: scripts/funil/**",
+            "goal": "Corrigir o bug do funil AtendON. task-id: FLOW-42 owner: scripts/funil",
         })
         out = self.out(proc)
         self.assertEqual(out["action"], "modify")
         argv = self.recorded_argv()[0]["argv"]
         self.assertIn("flow-42", argv)
-        self.assertIn("scripts/funil/**", argv)
+        self.assertIn("scripts/funil", argv)
 
     def test_single_goal_form_modify(self):
         self.write_response(self.ok_response())
         proc = self.run_hook(tool_input={
             "goal": "Implementar teste do export AtendON.",
-            "context": "task_id: FLOW-9\nowner: scripts/verify-blockers.ts",
+            "context": "task_id: FLOW-9\nowner: scripts/",
         })
         out = self.out(proc)
         self.assertEqual(out["action"], "modify")
@@ -419,8 +423,7 @@ class HookTestCase(unittest.TestCase):
         # in-process: norm_owner REAL do core == canonical_owner do hook para toda owner
         core = self._load_module(DEFAULT_CORE, "core_multiagent")
         hook = self._load_module(HOOK, "hook_module")
-        for owner in ("scripts", "scripts/foo", "scripts/foo/*", "scripts/funil/**",
-                      "a.b-c/d_e/f", "scripts/", "scripts//foo/*", ".x/y"):
+        for owner in ("scripts", "scripts/foo", "a.b-c/d_e/f", "scripts/", "scripts//foo", ".x/y"):
             self.assertEqual(core.norm_owner(owner), hook.canonical_owner(owner), msg=owner)
         # slug: conjunto aceito pelo hook == aceito pelo core ID_RE (case-normalized)
         for slug in ("flow-9", "a", "flow9", "9flow", "a-1-b"):
@@ -445,13 +448,13 @@ class HookTestCase(unittest.TestCase):
         env["ATENDON_MULTIAGENT_CLI"] = cli
         proc = self.run_hook(tool_input={"tasks": [
             self.task("FLOW-9", owner="scripts"),
-            self.task("FLOW-7", owner="scripts/foo/*"),
+            self.task("FLOW-7", owner="scripts/foo"),
         ]}, env=env)
         out = self.out(proc)
         self.assertEqual(out["action"], "modify")
         t0, t1 = out["args"]["tasks"]
         self.assertIn("ownership: scripts/", t0["context"])          # canônico core
-        self.assertIn("ownership: scripts/foo/*/", t1["context"])
+        self.assertIn("ownership: scripts/foo/", t1["context"])
         wt9 = os.path.join(self.canonical, "flow-9")
         wt7 = os.path.join(self.canonical, "flow-7")
         self.assertEqual(t0["context"].count(wt9), 1)
@@ -476,7 +479,7 @@ class HookTestCase(unittest.TestCase):
         env["ATENDON_MULTIAGENT_CLI"] = cli
         env["MOCK_PROVISION_MKDIR"] = "1"
         proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="scripts/../etc/*"),
+            self.task("FLOW-9", owner="scripts/../etc"),
         ]}, env=env)
         out = self.out(proc)
         self.assertEqual(out["action"], "block")
@@ -525,7 +528,7 @@ class HookTestCase(unittest.TestCase):
         self.assertEqual(self.out(proc)["action"], "block")
 
     def test_provision_ownership_mismatch_blocks(self):
-        self.write_response(self.ok_response(ownership="scripts/other/*"))  # divergente do owner
+        self.write_response(self.ok_response(ownership="apps/backend/"))  # divergente do owner scripts/
         proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]})
         out = self.out(proc)
         self.assertEqual(out["action"], "block")
@@ -560,8 +563,8 @@ class HookTestCase(unittest.TestCase):
         env = self.env()
         env["MOCK_PROVISION_FAIL_IDS"] = "flow-7"
         proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="scripts/a/*"),
-            self.task("FLOW-7", owner="scripts/b/*"),
+            self.task("FLOW-9", owner="scripts/a"),
+            self.task("FLOW-7", owner="scripts/b"),
         ]}, env=env)
         out = self.out(proc)
         self.assertEqual(out["action"], "block")  # batch INTEIRO bloqueado
@@ -574,7 +577,7 @@ class HookTestCase(unittest.TestCase):
     def test_batch_member_without_identifier_blocks(self):
         self.write_response(self.ok_response())
         proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="scripts/a/*"),
+            self.task("FLOW-9", owner="scripts/a"),
             {"goal": "Revisar arquivos alterados no AtendON e rodar testes."},  # sem task_id/owner
         ]})
         out = self.out(proc)
@@ -586,8 +589,8 @@ class HookTestCase(unittest.TestCase):
     def test_duplicate_task_id_blocks(self):
         self.write_response(self.ok_response())
         proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="scripts/a/*"),
-            self.task("flow-9", owner="scripts/b/*"),  # mesmo ID (case-normalizado)
+            self.task("FLOW-9", owner="scripts/a"),
+            self.task("flow-9", owner="scripts/b"),  # mesmo ID (case-normalizado)
         ]})
         out = self.out(proc)
         self.assertEqual(out["action"], "block")
