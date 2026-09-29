@@ -133,18 +133,21 @@ class MultiagentTest(unittest.TestCase):
         self.commit(self.seed, "src/remote.txt", "R\n")
         sh("git", "push", "origin", "main", cwd=self.seed)
 
-        ib = self.call(ma.cmd_integrate, task_id="b")
-        self.assertTrue(ib["ok"], ib)
-        self.assertEqual(ib["files"], ["src/b/b.txt"])
-        self.assertEqual(Path(ma.INTEGRATION, "src", "b", "b.txt").read_text(), "B\n")
-        self.assertEqual(Path(ma.INTEGRATION, "src", "remote.txt").read_text(), "R\n")
-
-        # branch without commits -> rejected
+        # branch without commits -> rejected BEFORE fetch/merge: HEAD stays
+        # exactly at head_a and origin/main is not merged into integration
         pd = self.call(ma.cmd_provision, task_id="d", owner="src/d", goal="g")
         self.assertTrue(pd["ok"], pd)
         idd = self.call(ma.cmd_integrate, task_id="d")
         self.assertFalse(idd["ok"], idd)
         self.assertIn("has no commits since base", idd["error"])
+        self.assertEqual(sh("git", "rev-parse", "HEAD", cwd=ma.INTEGRATION), head_a)
+        self.assertFalse(Path(ma.INTEGRATION, "src", "remote.txt").exists())
+
+        ib = self.call(ma.cmd_integrate, task_id="b")
+        self.assertTrue(ib["ok"], ib)
+        self.assertEqual(ib["files"], ["src/b/b.txt"])
+        self.assertEqual(Path(ma.INTEGRATION, "src", "b", "b.txt").read_text(), "B\n")
+        self.assertEqual(Path(ma.INTEGRATION, "src", "remote.txt").read_text(), "R\n")
 
         # changes outside ownership -> rejected
         pe = self.call(ma.cmd_provision, task_id="e", owner="src/e", goal="g")
