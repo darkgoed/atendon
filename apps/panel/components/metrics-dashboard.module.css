@@ -41,18 +41,7 @@
   gap: var(--space-3);
   margin-block-end: var(--space-5);
   padding-block: var(--space-3);
-  background: var(--bg);
   border-block-end: 1px solid var(--border-subtle);
-}
-
-/* Safari antigo ignora backdrop-filter sem prefixo; o fundo sólido acima já é
-   o fallback, então a regra só enriquece quando há suporte. */
-@supports ((backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px))) {
-  .toolbar {
-    background: color-mix(in srgb, var(--bg) 82%, transparent);
-    -webkit-backdrop-filter: saturate(180%) blur(12px);
-    backdrop-filter: saturate(180%) blur(12px);
-  }
 }
 
 .toolbarTitle { display: grid; min-width: 0; gap: var(--space-1); }
