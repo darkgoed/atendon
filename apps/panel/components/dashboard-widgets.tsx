@@ -63,11 +63,14 @@ type LayoutResponse = { layout: { items: LayoutItem[]; source: "default" | "save
 type WidgetResponse = { key: WidgetKey; data: Record<string, unknown> };
 
 const fetcher = <T,>(url: string) => api<T>(url);
-/* Marca quem JÁ personalizou o board neste navegador: o backend só distingue
-   "saved" de "default", e layouts salvos antes da Visão geral de referência
-   não devem virar o board antigo por padrão. Escopo por usuário + workspace. */
-function customizedStorageKey(workspaceId: string, userId: string) {
-  return `atendon.dashboard.customized:${workspaceId}:${userId}`;
+/* Guarda qual tela o usuário escolheu para o dashboard: a referência (com o
+   funil) ou o board de widgets personalizado. Sem escolha, a referência é o
+   padrão — personalizar não pode esconder o funil permanentemente, nem um
+   layout salvo antes da Visão geral de referência deve virar o board antigo.
+   Escopo por usuário + workspace. */
+type DashboardView = "reference" | "board";
+function dashboardViewStorageKey(workspaceId: string, userId: string) {
+  return `atendon.dashboard.view:${workspaceId}:${userId}`;
 }
 const sizeClasses: Record<WidgetSize, string> = {
   small: "col-span-12 sm:col-span-6 xl:col-span-3",
@@ -452,16 +455,16 @@ export function DashboardWidgets() {
   const flash = useFlashToast();
   const { mutate: mutateCache } = useSWRConfig();
   const { data: session } = useSWR<PanelSession>("/me", fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
-  const customizedKey = session?.activeWorkspace?.id && session?.user.id ? customizedStorageKey(session.activeWorkspace.id, session.user.id) : null;
-  const [customized, setCustomized] = useState(false);
+  const viewKey = session?.activeWorkspace?.id && session?.user.id ? dashboardViewStorageKey(session.activeWorkspace.id, session.user.id) : null;
+  const [view, setView] = useState<DashboardView>("reference");
   const { data: catalog, error: catalogError } = useSWR<CatalogResponse>("/dashboard/widgets/catalog", fetcher);
   const { data: layout, error: layoutError, mutate: mutateLayout } = useSWR<LayoutResponse>("/dashboard/widgets/layout", fetcher);
 
   useEffect(() => { if (layout) setDraft(layout.layout.items); }, [layout]);
   useEffect(() => {
-    if (!customizedKey) return;
-    setCustomized(safeLocalStorage()?.getItem(customizedKey) === "1");
-  }, [customizedKey]);
+    if (!viewKey) return;
+    setView(safeLocalStorage()?.getItem(viewKey) === "board" ? "board" : "reference");
+  }, [viewKey]);
   const definitions = useMemo(() => new Map(catalog?.widgets.map((widget) => [widget.key, widget]) ?? []), [catalog]);
   const widgetAvailable = (key: WidgetKey) => {
     if (key === "pipeline") return leadsEnabled && pipelineEnabled;
@@ -513,7 +516,9 @@ export function DashboardWidgets() {
   const referenceReady = Boolean(appointmentsEnabled && catalog?.widgets.some((widget) => widget.key === "commercial_metrics"));
 
   // Board de widgets: pré-visualização durante a edição e tela efetiva quando
-  // há personalização salva por este usuário neste workspace (marcador local).
+  // o usuário escolhe "Meus widgets" na alternância da toolbar (escolha salva
+  // por workspace + usuário). Sem escolha explícita, a referência é a tela —
+  // personalizar salva o board, mas nunca é uma via de mão única.
   const boardView = !catalog || !layout ? (
     <div className={`${styles.widgets} grid grid-cols-12 gap-4`}>{[0, 1, 2, 3].map((index) => <div key={index} className={`${sizeClasses.small} ${styles.widgetCard}`} style={{ "--dash-index": index } as CSSProperties}><WidgetSkeleton /></div>)}</div>
   ) : !visible.length ? (
@@ -525,9 +530,9 @@ export function DashboardWidgets() {
   function patchItem(key: WidgetKey, patch: Partial<LayoutItem>) {
     setDraft((current) => current.map((item) => item.key === key ? { ...item, ...patch } : item));
   }
-  function markCustomized() {
-    if (customizedKey) safeLocalStorage()?.setItem(customizedKey, "1");
-    setCustomized(true);
+  function chooseView(next: DashboardView) {
+    setView(next);
+    if (viewKey) safeLocalStorage()?.setItem(viewKey, next);
   }
   function move(key: WidgetKey, direction: -1 | 1) {
     setDraft((current) => {
@@ -544,7 +549,7 @@ export function DashboardWidgets() {
     try {
       const response = await api<LayoutResponse>("/dashboard/widgets/layout", { method: "PUT", body: JSON.stringify({ items: draft }) });
       await mutateLayout(response, { revalidate: false });
-      markCustomized();
+      chooseView("board");
       setEditing(false);
       layoutSave.markDone();
     } finally { setSaving(false); }
@@ -554,8 +559,7 @@ export function DashboardWidgets() {
     try {
       const response = await api<LayoutResponse>("/dashboard/widgets/layout", { method: "DELETE" });
       await mutateLayout(response, { revalidate: false });
-      if (customizedKey) safeLocalStorage()?.removeItem(customizedKey);
-      setCustomized(false);
+      chooseView("reference");
       flash.show("Layout restaurado ao padrão");
     } finally { setSaving(false); }
   }
@@ -566,7 +570,7 @@ export function DashboardWidgets() {
       const nextLayout: LayoutResponse = { layout: { items: response.items, source: "saved" } };
       await mutateLayout(nextLayout, { revalidate: true });
       setDraft(response.items);
-      markCustomized();
+      chooseView("board");
       flash.show("Preset aplicado ao dashboard");
     } finally { setSaving(false); }
   }
@@ -584,6 +588,15 @@ export function DashboardWidgets() {
             <span className={styles.toolbarLive}><span aria-hidden="true" className={`${styles.liveDot} on-live`} />{periodSummary}</span>
           </div>
           <div className={styles.toolbarActions}>
+            {/* Alternância de tela: a referência (com o funil) e o board
+                personalizado convivem — salvar uma personalização não remove
+                o caminho de volta para a Visão geral. */}
+            {referenceReady && !editing ? (
+              <Segmented aria-label="Tela do dashboard" className={styles.toolbarSegmented}>
+                <button type="button" aria-pressed={view === "reference"} onClick={() => chooseView("reference")}>Visão geral</button>
+                <button type="button" aria-pressed={view === "board"} onClick={() => chooseView("board")}>Meus widgets</button>
+              </Segmented>
+            ) : null}
             <Segmented aria-label="Período" className={styles.toolbarSegmented}>
               {PERIOD_OPTIONS.map(([key, label]) => (
                 <button key={key} type="button" aria-pressed={period === key} onClick={() => setPeriod(key)}>{label}</button>
@@ -619,7 +632,7 @@ export function DashboardWidgets() {
           <div className={styles.libraryGroups}>{groupedDraft.map(([group, items]) => <section key={group} aria-labelledby={`dashboard-group-${group}`}><h3 id={`dashboard-group-${group}`} className={styles.libraryGroupTitle}>{groupTitle(group)}</h3>{items.map((item) => { const definition = definitions.get(item.key); if (!definition) return null; return <div key={item.key} className={`${styles.libraryItem} md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center`}><label className={styles.libraryItemLabel}><input type="checkbox" checked={item.visible} onChange={(event) => patchItem(item.key, { visible: event.target.checked })} className="mt-1" /><span><strong className={styles.libraryItemName}>{definition.label}</strong><span className={styles.libraryItemHint}>{definition.description}</span></span></label><label className={styles.libraryItemSize}><span>Tamanho</span><select className="input w-auto" value={item.size} onChange={(event) => patchItem(item.key, { size: event.target.value as WidgetSize })}>{definition.sizes.map((size) => <option key={size} value={size}>{sizeLabels[size]}</option>)}</select></label><div className={styles.libraryItemMove}><Button tone="quiet" className="min-h-11 min-w-11 px-2" disabled={item.order === 0} aria-label={`Mover ${definition.label} para cima`} title="Mover para cima" onClick={() => move(item.key, -1)}><CaretUp size={17} /></Button><Button tone="quiet" className="min-h-11 min-w-11 px-2" disabled={item.order === availableDraft.length - 1} aria-label={`Mover ${definition.label} para baixo`} title="Mover para baixo" onClick={() => move(item.key, 1)}><CaretDown size={17} /></Button></div></div>; })}</section>)}</div>
         </section> : null}
 
-        {catalogError || layoutError ? <div className="card" role="alert"><p className="error">Não foi possível carregar a configuração do dashboard.</p></div> : editing || (customized && layout?.layout.source === "saved") || !referenceReady ? boardView : <DashboardReferenceOverview periodQuery={periodQuery} />}
+        {catalogError || layoutError ? <div className="card" role="alert"><p className="error">Não foi possível carregar a configuração do dashboard.</p></div> : editing || !referenceReady || view === "board" ? boardView : <DashboardReferenceOverview periodQuery={periodQuery} />}
         <SaveToast show={layoutSave.done}>Layout salvo</SaveToast>
         {flash.toast}
       </div>
