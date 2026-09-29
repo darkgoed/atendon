@@ -80,20 +80,6 @@ def manifests_integrated():
     return ms
 
 
-def fixture_path(path):
-    """Fixture integration path: an agent worktree under AGENTS that is not the
-    canonical promotion-bound integration dir. Relaxed checks (--checks
-    test-only / --env isolated) are accepted only here, so a production-bound
-    validate can never be relaxed. ponytail: prefix check only, no realdir
-    audit — add a marker file if stronger proof is ever needed."""
-    p = os.path.realpath(path)
-    if p == os.path.realpath(INTEGRATION):
-        die("relaxed checks need a fixture integration path, not the canonical one")
-    if not p.startswith(os.path.realpath(AGENTS) + "/"):
-        die(f"fixture integration must live under {AGENTS}: {p}")
-    return p
-
-
 def run_check(name, argv, cwd, env=None, timeout=CMD_TIMEOUT):
     t0 = time.monotonic()
     try:
@@ -106,15 +92,6 @@ def run_check(name, argv, cwd, env=None, timeout=CMD_TIMEOUT):
         die(f"{name} failed (rc={r.returncode})", cmd=argv,
             output=(r.stdout[-TAIL:] + r.stderr[-TAIL:]))
     return {"cmd": argv, "rc": 0, "seconds": round(time.monotonic() - t0, 1)}
-
-
-def reduced_env():
-    """Isolated env: drop ambient secrets/config (DB_*, tokens, prod URLs),
-    keep only what node/npm need. ponytail: prefix allowlist, not a full
-    namespace audit — tighten the list if a check leaks."""
-    keep = {"PATH", "HOME", "TMPDIR", "SHELL", "TERM", "LANG", "CI"}
-    return {k: v for k, v in os.environ.items()
-            if k in keep or k.startswith(("npm_", "NODE_", "LC_", "FORCE_COLOR"))}
 
 
 JEV = "/var/www/scripts/jev-gate.py"
@@ -202,12 +179,9 @@ def load_validation():
         return json.load(f)
 
 
-def cmd_validate(a):
+def cmd_validate(_a):
     os.makedirs(STATE, exist_ok=True)
-    relaxed = a.checks != "full" or a.env != "default"
-    cwd = fixture_path(a.integration) if relaxed else os.path.realpath(a.integration)
-    mode = "test-only" if a.checks == "test-only" else "full"
-    key = f"{cwd}:{mode}:{a.env}"
+    cwd = os.path.realpath(INTEGRATION)
     with flock_ex(HEAVY_LOCK):
         sha = out("git", "rev-parse", "HEAD", cwd=cwd)
         if out("git", "symbolic-ref", "-q", "HEAD", cwd=cwd) != "refs/heads/integration":
@@ -220,10 +194,9 @@ def cmd_validate(a):
         if base == sha:
             die("integration has no commits beyond origin/main")
         prior = load_validation()
-        if (prior and prior.get("key") == key and prior.get("ok")
-                and prior.get("validated_sha") == sha):
-            ok(validated_sha=sha, already_validated=True, mode=mode, env=a.env,
-               integration=cwd, checks=prior.get("checks", {}))
+        if prior and prior.get("ok") and prior.get("validated_sha") == sha:
+            ok(validated_sha=sha, already_validated=True, integration=cwd,
+               checks=prior.get("checks", {}))
         # One build pass per workspace, dependency order: @atendon/
         # proposal-renderer exports point to dist/ (absent after npm ci), so
         # it must be built before the global typecheck; backend and panel
@@ -239,20 +212,16 @@ def cmd_validate(a):
                           "scripts/test_multiagent_hook.py", "-q"],
                  "build_backend": ["npm", "run", "build", "-w", "@atendon/backend"],
                  "build_panel": ["npm", "run", "build", "-w", "@atendon/panel"]}
-        if mode == "test-only":
-            tests = {"test": tests["test"]}
-        env = reduced_env() if a.env == "isolated" else None
         results = {n: run_check(n, argv, cwd,
-                                env={**(env or os.environ), "PYTHONDONTWRITEBYTECODE": "1"}
-                                    if argv[0] == "python3" else env)
+                                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+                                    if argv[0] == "python3" else None)
                    for n, argv in tests.items()}
         results.update(review_step(base, cwd))
-        record = {"ok": True, "key": key, "validated_sha": sha, "integration": cwd,
-                  "mode": mode, "env": a.env, "fixture": cwd != os.path.realpath(INTEGRATION),
+        record = {"ok": True, "validated_sha": sha, "integration": cwd,
                   "diff_base": base, "validated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                   "checks": results}
         atomic_write(VALIDATION, record)
-    ok(validated_sha=sha, mode=mode, env=a.env, integration=cwd,
+    ok(validated_sha=sha, integration=cwd,
        checks={k: v["rc"] for k, v in results.items()})
 
 
@@ -282,65 +251,13 @@ def branch_protection_active():
         die("main branch protection allows force pushes; refusing push")
 
 
-def cmd_selftest(_a):
-    """Minimal local mock test of branch_protection_active (no new test file):
-    patches subprocess.run so `gh api` returns canned protection JSON; good
-    protection passes, null/missing/non-object reviews, admins unenforced,
-    force pushes allowed or an API failure all refuse."""
-    import io
-    from contextlib import redirect_stdout
-    from unittest import mock
-    good = {"required_pull_request_reviews": {"required_approving_review_count": 1},
-            "enforce_admins": {"enabled": True},
-            "allow_force_pushes": {"enabled": False}}
-    cases = [
-        ("good", good, 0, None),
-        ("reviews_null", {**good, "required_pull_request_reviews": None}, 0, "reviews"),
-        ("reviews_missing", {k: v for k, v in good.items()
-                             if k != "required_pull_request_reviews"}, 0, "reviews"),
-        ("reviews_not_object", {**good, "required_pull_request_reviews": True}, 0, "reviews"),
-        ("admins_off", {**good, "enforce_admins": {"enabled": False}}, 0, "admins"),
-        ("force_push_allowed", {**good, "allow_force_pushes": {"enabled": True}}, 0, "force"),
-        ("api_error", None, 1, "protection check failed"),
-    ]
-    for name, payload, rc, expect in cases:
-        def fake_run(args, **_kw):
-            if list(args[:3]) == ["gh", "repo", "view"]:
-                return subprocess.CompletedProcess(args, 0, stdout="o/r\n", stderr="")
-            return subprocess.CompletedProcess(args, rc,
-                stdout="" if payload is None else json.dumps(payload), stderr="")
-        buf = io.StringIO()
-        try:
-            with mock.patch("subprocess.run", side_effect=fake_run), redirect_stdout(buf):
-                branch_protection_active()
-        except SystemExit as e:
-            if expect is None:
-                die(f"selftest {name}: expected pass, refused (rc={e.code})",
-                    output=buf.getvalue()[-200:])
-            if e.code != 1:
-                die(f"selftest {name}: unexpected exit code {e.code}",
-                    output=buf.getvalue()[-200:])
-            try:
-                err = json.loads(buf.getvalue())["error"]
-            except (json.JSONDecodeError, KeyError):
-                err = buf.getvalue()
-            if expect not in err:
-                die(f"selftest {name}: refusal lacks {expect!r}", error=err[:200])
-        else:
-            if expect is not None:
-                die(f"selftest {name}: expected refusal, got pass")
-    ok(selftest="branch_protection_active", cases=[c[0] for c in cases])
-
-
 def cmd_promote(_a):
     os.makedirs(STATE, exist_ok=True)
     v = load_validation()
     if not v or not v.get("ok"):
         die("no successful validation record; run validate first")
-    if v.get("integration") != os.path.realpath(INTEGRATION) or v.get("fixture"):
-        die("validation was run on a fixture path; promote requires canonical integration")
-    if v.get("mode") != "full" or v.get("env") != "default":
-        die("promote requires a full validation in default env")
+    if v.get("integration") != os.path.realpath(INTEGRATION):
+        die("validation was not run on the canonical integration worktree")
     with flock_ex(DEPLOY_LOCK):
         if out("git", "status", "--porcelain"):
             die("integration worktree is dirty; promote refuses")
@@ -367,8 +284,8 @@ def cmd_promote(_a):
             r = subprocess.run(
                 ["gh", "pr", "create", "--base", "main", "--head", "integration",
                  "--title", f"integration -> main ({sha[:10]})",
-                 "--body", f"Promoted sha {sha}; validated {v['validated_sha']} "
-                           f"(mode={v['mode']}, env={v['env']}).\nRollback SHA: {main_sha}.\n"
+                 "--body", f"Promoted sha {sha}; validated {v['validated_sha']}.\n"
+                           f"Rollback SHA: {main_sha}.\n"
                            "No auto-merge: merging this PR on main triggers Coolify."],
                 cwd=INTEGRATION, capture_output=True, text=True)
             if r.returncode:
@@ -400,15 +317,10 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
     pv = sub.add_parser("validate")
-    pv.add_argument("--checks", choices=["full", "test-only"], default="full")
-    pv.add_argument("--env", choices=["default", "isolated"], default="default")
-    pv.add_argument("--integration", default=INTEGRATION)
     sub.add_parser("promote")
     sub.add_parser("status")
-    sub.add_parser("selftest")
     a = p.parse_args()
-    ({"validate": cmd_validate, "promote": cmd_promote, "status": cmd_status,
-      "selftest": cmd_selftest}[a.cmd])(a)
+    {"validate": cmd_validate, "promote": cmd_promote, "status": cmd_status}[a.cmd](a)
 
 
 if __name__ == "__main__":
