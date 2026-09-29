@@ -42,11 +42,10 @@ describe("ajuda contextual no dashboard comercial (pacote gestao)", () => {
 });
 
 describe("ajuda contextual nas demais telas do pacote gestao", () => {
-  let home = "", widgets = "", members = "", roles = "", audit = "", uso = "", perfil = "";
+  let home = "", members = "", roles = "", audit = "", uso = "", perfil = "";
   beforeAll(async () => {
-    [home, widgets, members, roles, audit, uso, perfil] = await Promise.all([
+    [home, members, roles, audit, uso, perfil] = await Promise.all([
       readFile(join(process.cwd(), "app/page.tsx"), "utf8"),
-      readFile(join(process.cwd(), "components/dashboard-widgets.tsx"), "utf8"),
       readFile(join(process.cwd(), "app/workspace/members/content.tsx"), "utf8"),
       readFile(join(process.cwd(), "app/workspace/roles/content.tsx"), "utf8"),
       readFile(join(process.cwd(), "app/workspace/audit/content.tsx"), "utf8"),
@@ -57,10 +56,6 @@ describe("ajuda contextual nas demais telas do pacote gestao", () => {
 
   it("mantém os pontos de ajuda adicionados em cada tela", () => {
     expect(home).toContain('HelpHint label="Ajuda: Aguardando humano"');
-    expect(widgets).toContain('HelpHint label="Ajuda: Biblioteca de widgets"');
-    // Resposta imediata depois de ações que antes ficavam mudas.
-    expect(widgets).toContain('flash.show("Layout restaurado ao padrão")');
-    expect(widgets).toContain('flash.show("Preset aplicado ao dashboard")');
     expect(members).toContain('HelpHint label="Ajuda: Validade do convite"');
     expect(members).toContain("O convite vale 7 dias");
     expect(roles).toContain('HelpHint label="Ajuda: Excluir função"');

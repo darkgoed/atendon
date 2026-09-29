@@ -1,6 +1,6 @@
 {
   "name": "atendon",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "private": true,
   "packageManager": "npm@12.0.1",
   "workspaces": [

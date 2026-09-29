@@ -4,7 +4,6 @@ export * from "./badge";
 export * from "./card";
 export * from "./chart";
 export * from "./field";
-export * from "./funnel";
 export * from "./kpi";
 export * from "./layout";
 export * from "./status";
