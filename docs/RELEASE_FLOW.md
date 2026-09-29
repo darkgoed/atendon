@@ -49,8 +49,21 @@ Este documento substitui a seção "Release de versão e changelog" de
      (ou de staging, conforme o alvo do release).
    - Alternativa CI/host remoto: `RELEASE_ROOT=<dir> DATABASE_URL=… npm run release:prepare`.
 3. **Revisar** (`SELECT version,classification,technical_changelog FROM releases ORDER BY build_number DESC LIMIT 1;`) e **commitar** `package.json` + `package-lock.json` num commit `chore: release vX.Y.Z`.
-4. **Push** para `main` → Coolify deploya (build das imagens, migrations via job `database-migrate`, troca do stack). Nenhum Dockerfile executa git, IA ou o gerador.
-5. **Pós-deploy (automático)**: o worker encontra a release com `ai_status='pending'`, gera o changelog público com IA e publica (se `auto_publish_enabled`; caso contrário, ROOT publica em /root/versions).
+4. **Sincronizar a tag de imagem** (host ops): `npm run release:coolify-tag` —
+   grava `DEPLOY_VERSION=vX.Y.Z` nas env vars build-time da aplicação no
+   Coolify (leitura da tabela `releases`; o valor é cifrado pelo model do
+   Coolify). Executar ANTES do merge do graft, para que o deploy disparado pelo
+   push já construa e etiquete as imagens com a versão correta (não mais a tag
+   congelada antiga).
+5. **Graft + Push** para `main` → Coolify deploya (build das imagens, migrations
+   via job `database-migrate`, troca do stack). Nenhum Dockerfile executa git,
+   IA ou o gerador. `main` é protegida: publicar via PR com squash merge, cujo
+   commit carrega o marcador `(graft de <sha-mono>)`. O webhook do GitHub
+   (`webhooks/source/github/events/manual`) enfileira o deploy automaticamente
+   — o segredo do hook deve ser idêntico ao `manual_webhook_secret_github` da
+   aplicação; falhas de assinatura ficam em `storage/logs/audit-*.log`
+   (`webhook.github.signature_failed`).
+6. **Pós-deploy (automático)**: o worker encontra a release com `ai_status='pending'`, gera o changelog público com IA e publica (se `auto_publish_enabled`; caso contrário, ROOT publica em /root/versions).
 
 O `build.sh` permanece apenas como fluxo legado/emergencial;
 `ATENDON_BUMP_VERSION=1` agora chama o mesmo `release-record.mjs` (sem IA).
