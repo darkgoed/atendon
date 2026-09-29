@@ -89,6 +89,25 @@ class MultiagentTest(unittest.TestCase):
         sh("git", "add", "--", rel, cwd=wt)
         sh("git", "commit", "-m", f"add {rel}", cwd=wt)
 
+    def test_norm_owner_policy(self):
+        """Política de owner vive ÚNICamente no core (norm_owner): rejeita
+        absolutos, traversal, ~, NUL/backslash, globs e prefixo do monorepo."""
+        ma = self.ma
+        # aceitas: prefixo relativo de diretório no app root, canônico com '/'
+        self.assertEqual(ma.norm_owner("scripts"), "scripts/")
+        self.assertEqual(ma.norm_owner("apps/backend"), "apps/backend/")
+        # rejeitadas: cada uma morre com die() -> _Exit({"ok": False})
+        for bad in ("/etc/passwd", "~user", "scripts/../other", "a\\b", "a\x00b",
+                    "scripts/*", "sc*pts/foo", "scripts/foo[1]", "scripts/funil/**",
+                    "apps/atendon/scripts", ".", "..", "/", ""):
+            with self.subTest(owner=bad):
+                try:
+                    ma.norm_owner(bad)
+                except self._Exit as e:
+                    self.assertFalse(e.payload["ok"], f"norm_owner aceitou {bad!r}")
+                else:
+                    self.fail(f"norm_owner aceitou owner inseguro {bad!r}")
+
     def test_end_to_end(self):
         ma = self.ma
         # two disjoint-owner tasks provisioned in parallel

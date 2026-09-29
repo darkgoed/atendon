@@ -36,12 +36,22 @@ def ok(**kw):
 
 
 def norm_owner(owner):
-    """Validate owner as a safe relative directory prefix inside the canonical app."""
-    if owner in BAD_OWNERS or owner.startswith("/") or "\\" in owner or "\x00" in owner:
+    """Validate owner as a safe relative directory prefix inside the canonical app.
+
+    Complete owner policy lives HERE (single authority): rejects absolute/traversal
+    paths, backslash/NUL, glob characters (* ? [ ]), ~ prefixes and the legacy
+    monorepo prefix apps/atendon/ — provisioning refuses before any worktree is
+    created. The hook only validates the provision RESPONSE against this.
+    """
+    if owner in BAD_OWNERS or owner.startswith(("/", "~")) or "\\" in owner or "\x00" in owner:
         die(f"unsafe owner prefix: {owner!r}")
     parts = [p for p in owner.split("/") if p not in ("", ".")]
     if not parts or any(p == ".." for p in parts):
         die(f"unsafe owner prefix: {owner!r}")
+    if owner == "apps/atendon" or owner.startswith("apps/atendon/"):
+        die(f"owner must be relative to the app root (ex.: scripts/), not the monorepo: {owner!r}")
+    if any(c in owner for c in "*?[]"):
+        die(f"owner is a directory prefix; globs (* ? [ ]) are not accepted: {owner!r}")
     return "/".join(parts) + "/"
 
 

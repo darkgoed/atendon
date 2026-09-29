@@ -93,52 +93,20 @@ def run_check(name, argv, cwd, env=None, timeout=CMD_TIMEOUT):
     return {"cmd": argv, "rc": 0, "seconds": round(time.monotonic() - t0, 1)}
 
 
-JEV = "/var/www/scripts/jev-gate.py"
-
-
-def jev_gate(name, payload, task_id, cwd):
-    """Real JevGate CLI call, non-blocking audit (Ponytail: advisory findings
-    must never gate the verdict, and CLI failures must not either — they are
-    recorded verbatim in the validation record and validation proceeds)."""
-    try:
-        r = subprocess.run([sys.executable, JEV, name, "--task-id", task_id],
-                           cwd=cwd, input=json.dumps(payload), capture_output=True,
-                           text=True, timeout=120)
-    except subprocess.TimeoutExpired:
-        return {"cmd": [JEV, name], "rc": 1, "output": "jev timed out after 120s"}
-    except OSError as e:
-        return {"cmd": [JEV, name], "rc": 1, "output": f"jev failed to execute: {e}"}
-    txt = (r.stdout + r.stderr).strip()
-    return {"cmd": [JEV, name], "rc": r.returncode,
-            "output": txt[-TAIL:] or "<no output>"}
-
-
 def review_step(base, cwd):
-    """Real gates on the diff: JevGate CLI (intake/scope-drift/completeness,
-    advisory — findings recorded, never a verdict) then a Ponytail over-
-    engineering review via the hermes CLI with the real skill preloaded
-    (--skills ponytail), whose verdict must be exactly the final line
-    'VERDICT: PASS' — substring matches never count."""
-    if not os.path.exists(JEV):
-        die(f"review tool unavailable: {JEV} missing")
+    """Real gate on the diff: a Ponytail over-engineering review via the hermes
+    CLI with the real skill preloaded (--skills ponytail), whose verdict must be
+    exactly the final line 'VERDICT: PASS' — substring matches never count.
+
+    JevGate (intake/scope-drift/completeness) is an explicit integrator-side
+    audit run OUTSIDE this script at close-out: advisory findings can never
+    gate validation, so embedding subprocess calls here added latency and
+    failure handling without gating anything (Ponytail, round 4)."""
     if not shutil.which("hermes"):
         die("review tool unavailable: hermes CLI not on PATH")
     diff = out("git", "diff", f"{base}...HEAD", cwd=cwd)
     if len(diff) > 120_000:  # argv per-arg limit on Linux is ~128KB
         die(f"diff too large for one review round ({len(diff)} chars); split integration")
-    ms = manifests_integrated()
-    request = " | ".join(f"{m.get('task_id')}: {m.get('goal', '')}" for m in ms)
-    changed = out("git", "diff", "--name-only", f"{base}...HEAD", cwd=cwd).splitlines()
-    stat = out("git", "diff", "--stat", f"{base}...HEAD", cwd=cwd)
-    results = {
-        "jev_intake": jev_gate("intake", {"request": request}, ms[0]["task_id"], cwd),
-        "jev_scope_drift": jev_gate("scope-drift",
-            {"original_request": request, "changed_files": changed,
-             "diff_summary": stat[-TAIL:]}, ms[0]["task_id"], cwd),
-        "jev_completeness": jev_gate("completeness",
-            {"original_request": request, "evidence": stat[-TAIL:]},
-            ms[0]["task_id"], cwd),
-    }
     prompt = (
         "You are running the Ponytail skill (laziest solution that works: YAGNI, "
         "stdlib over custom code, deletion over addition, no unrequested "
@@ -163,10 +131,9 @@ def review_step(base, cwd):
     lines = txt.splitlines()
     if r.returncode != 0 or not lines or lines[-1] != REVIEW_VERDICT:
         die("ponytail review did not pass", rc=r.returncode, output=txt[-TAIL:])
-    results["ponytail"] = {"cmd": ["hermes", "--skills", "ponytail", "-z",
-                                   "<diff-review-prompt>"], "rc": 0,
-                           "verdict": "PASS", "seconds": round(time.monotonic() - t0, 1)}
-    return results
+    return {"ponytail": {"cmd": ["hermes", "--skills", "ponytail", "-z",
+                                 "<diff-review-prompt>"], "rc": 0,
+                         "verdict": "PASS", "seconds": round(time.monotonic() - t0, 1)}}
 
 
 def load_validation():

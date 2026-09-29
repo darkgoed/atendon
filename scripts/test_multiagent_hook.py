@@ -186,27 +186,16 @@ class HookTestCase(unittest.TestCase):
         self.assertIn("owner", out["message"])
         self.assertFalse(os.path.exists(self.record))  # validação ANTES de provision
 
-    def test_bad_owner_blocks_without_provision(self):
-        # contrato: owner é prefixo de diretório relativo ao app root — globs
-        # (* ? [ ]) nunca casam com f.startswith(owner) no core; caminhos inseguros
-        # do norm_owner (absoluto, traversal, monorepo) recusados ANTES de provision.
+    def test_provision_failure_blocks(self):
+        # owner inválido/sem-owner é rejeitado PELO CORE (norm_owner) antes de
+        # criar worktree; o hook bloqueia fail-closed quando o provision falha.
         self.write_response(self.ok_response())
-        cases = [
-            ("apps/atendon/scripts", "app root"),   # monorepo, não relativo ao app
-            ("/etc/passwd", "relativo ao app root"),
-            ("scripts/../other", "relativo ao app root"),
-            ("scripts/*", "glob"),
-            ("sc*pts/foo/*", "glob"),
-            ("scripts/foo[1]", "glob"),
-            ("scripts/funil/**", "glob"),
-        ]
-        for owner, fragment in cases:
-            with self.subTest(owner=owner):
-                proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9", owner=owner)]})
-                out = self.out(proc)
-                self.assertEqual(out["action"], "block")
-                self.assertIn(fragment, out["message"])
-                self.assertFalse(os.path.exists(self.record))  # sem provision
+        env = self.env()
+        env["MOCK_PROVISION_FAIL_IDS"] = "flow-9"
+        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]}, env=env)
+        out = self.out(proc)
+        self.assertEqual(out["action"], "block")
+        self.assertIn("fail closed", out["message"])
 
     def test_bad_slug_blocks_without_provision(self):
         # divergência fechada: core ID_RE = [a-z0-9-]+ — slug com . ou _ bloqueia

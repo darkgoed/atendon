@@ -61,7 +61,6 @@ MARKER = "[ATENDON-MULTIAGENT]"
 TASK_ID_RE = re.compile(r"\btask[-_ ]?id\s*[:=]\s*([^\s,;]+)", re.I)
 OWNER_RE = re.compile(r"\bowner\s*[:=]\s*([^\s,;]+)", re.I)
 SLUG_RE = re.compile(r"^[a-z0-9-]+$")   # alinhado ao core multiagent.py ID_RE (sem ._)
-GLOB_CHARS = "*?[]"
 
 WORKER_CONTRACT = (
     "[ATENDON-MULTIAGENT] Regras do worker:\n"
@@ -109,28 +108,6 @@ def _slug(raw):
     return slug if SLUG_RE.match(slug) else None
 
 
-def _check_owner(owner):
-    """Owner é PREFIXO DE DIRETÓRIO relativo à raiz do app, ex.: scripts/ ou apps/backend/.
-
-    O core casa ownership por prefixo de diretório (f.startswith(owner)); globs
-    (* ? [ ]) nunca casam com nenhum caminho, então rejeita QUALQUER glob ANTES
-    de provision. Recusa também os caminhos inseguros do norm_owner do core
-    (absoluto, '.', '..', '/', backslash, NUL) além de ~ e prefixo do monorepo
-    apps/atendon/. Levanta RuntimeError.
-    """
-    if not owner or owner in (".", "..", "/"):
-        raise RuntimeError("owner ausente ou inseguro: %r" % owner)
-    if owner.startswith(("/", "~")) or "\\" in owner or "\x00" in owner or ".." in owner.split("/"):
-        raise RuntimeError("owner deve ser caminho relativo ao app root, não %r" % owner)
-    if owner == "apps/atendon" or owner.startswith("apps/atendon/"):
-        raise RuntimeError("owner deve ser relativo ao app root (ex.: scripts/), não ao monorepo (%r)" % owner)
-    if any(c in owner for c in GLOB_CHARS):
-        raise RuntimeError("owner é prefixo de diretório; globs (* ? [ ]) não são aceitos (%r)" % owner)
-    segs = owner.split("/")
-    if not [p for p in segs if p not in ("", ".")]:
-        raise RuntimeError("owner inválido: %r" % owner)
-
-
 def _provision(task_id, owner, goal):
     """Roda provision; retorna dict JSON. Levanta RuntimeError com mensagem curta em qualquer falha."""
     cli = os.environ.get("ATENDON_MULTIAGENT_CLI")
@@ -163,9 +140,12 @@ def _provision(task_id, owner, goal):
 def _validate_response(task_id, owner, info):
     """Resposta do provision tem que BATER com o solicitado. Levanta RuntimeError.
 
-    Contrato core (multiagent.py): ownership canônico `owner.rstrip('/') + '/'`
-    (owner já validado por _check_owner), branch exatamente `agent/{task_id}`,
-    worktree exatamente `{CANONICAL_ROOT}/{task_id}` (comparação via realpath).
+    Trust boundary do hook: a política de owner (globs, ~, monorepo prefix,
+    traversal) vive ÚNICamente no core (multiagent.py norm_owner) e o provision
+    a aplica ANTES de criar worktree; o hook valida apenas a RESPOSTA do
+    subprocess: ownership canônico `owner.rstrip('/') + '/'`, branch exatamente
+    `agent/{task_id}`, worktree exatamente `{CANONICAL_ROOT}/{task_id}`
+    (comparação via realpath).
     """
     expected_owner = owner.rstrip("/") + "/"
     if info["task_id"].strip().lower() != task_id:
@@ -243,10 +223,9 @@ def handle(payload):
                           "(esperado `task_id: slug` em goal/context)")
         m = OWNER_RE.search(ttext)
         owner = m.group(1).strip("`\"'").strip() if m else None
-        try:
-            _check_owner(owner)
-        except RuntimeError as exc:
-            return _block("AtendON multiagent hook fail closed: %s" % exc)
+        if not owner:
+            return _block("AtendON multiagent hook fail closed: owner ausente em goal/context "
+                          "(esperado `owner: <prefixo dir relativo ao app root>`)")
         goal = (t.get("goal") if isinstance(t.get("goal"), str) else "") or ttext.strip()[:500]
         provisioned = False
         try:
