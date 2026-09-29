@@ -102,7 +102,14 @@ function payload(path, method, useRoot, auditRoute) {
   if (EXPECTED_PROVIDER_FAILURES.has(path)) return auditRoute?.endsWith("#sucesso") ? { body: meetAccess } : { status: 503, body: { error: "provider-unavailable", message: "Provedor de videochamada indisponível no ambiente de QA." } };
   if (method !== "GET" && method !== "HEAD") return null;
   if (path === "/me") return { body: ROOT_WORKSPACE_ROUTES.has(auditRoute) ? rootWorkspaceSession : (useRoot ? rootSession : session) };
-  if (path === "/feature-flags") return { body: { flags: Object.fromEntries(FEATURE_FLAG_KEYS.map((key) => [key, false])), featureFlags: CAPABILITY_CATALOG } };
+  // '/' audita a Visão geral de referência: app/page.tsx só monta
+  // DashboardWidgets com dashboard_widgets_v1 ativo. Na rota raiz (e variantes
+  // "/#…") a fixture liga EXATAMENTE essa flag; nas demais rotas o mapa segue
+  // todo-false (kill-switch legado preservado).
+  if (path === "/feature-flags") {
+    const rootOverview = auditRoute === "/" || (typeof auditRoute === "string" && auditRoute.startsWith("/#"));
+    return { body: { flags: Object.fromEntries(FEATURE_FLAG_KEYS.map((key) => [key, rootOverview && key === "dashboard_widgets_v1"])), featureFlags: CAPABILITY_CATALOG } };
+  }
   if (path === "/panel/version") return { body: { version: process.env.AUDIT_BUILD_MARKER ?? "baseline3499", changelog: [] } };
   if (path === "/panel/versions") return { body: { releases: [publicRelease] } };
   if (path.startsWith("/root/versions")) return { body: { releases: [rootRelease] } };

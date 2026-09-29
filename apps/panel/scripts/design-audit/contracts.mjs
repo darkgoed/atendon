@@ -1,5 +1,5 @@
 const entitySelectors = {
-  "/": "main > section",
+  "/": "main",
   "/agenda": "main [aria-label*='agenda' i], main [data-testid*='agenda' i]",
   "/conversas": "main [aria-label='Lista de conversas'], main [aria-label^='Histórico da conversa com']",
   "/contatos": "main .leads-table tbody tr",
@@ -17,7 +17,11 @@ const populated = (heading, marker, route) => ({ expectedPath: null, heading, ma
 // permanecem válidos dentro do wrapper section.settings-main; markers intactos.
 const nested = (heading, marker, entitySelector) => ({ expectedPath: null, heading, marker, headingRole: "heading", entitySelector, state: "populated" });
 export const ROUTE_CONTRACTS = {
-  "/": populated("Visão geral|Minha operação", "Dashboard de reuniões|Mariana Oliveira", "/"),
+  // Marker exclusivo da Visão geral de referência (subtítulo do funil em
+  // dashboard-reference-overview.tsx) — "Funil de conversão|Valor vendido"
+  // também casa no dashboard de reuniões legado e mascarava o fallback
+  // como PASSADO quando dashboard_widgets_v1 estava desligado.
+  "/": populated("Visão geral", "Da primeira conversa ao fechamento", "/"),
   "/agenda": populated("Agenda", "Reunião Cliente QA|qa-appt|Cliente QA", "/agenda"),
   "/agente": populated("Agente principal", "Agente QA|active", "/agente"),
   "/alertas": populated("Alertas operacionais", "Conexão verificada|qa-alert", "/alertas"),

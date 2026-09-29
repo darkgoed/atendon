@@ -1,0 +1,454 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  min-width: 0;
+}
+
+.topGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 1px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--border-subtle);
+  border: 1px solid var(--border-subtle);
+}
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 28px;
+  background: var(--surface-elevated, #161617);
+}
+
+.heroGlow {
+  position: absolute;
+  top: -120px;
+  left: -80px;
+  width: 360px;
+  height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(34, 211, 238, 0.12), transparent);
+  pointer-events: none;
+}
+
+.heroLabel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.heroIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(61, 220, 151, 0.1);
+  color: #3ddc97;
+  flex: none;
+}
+
+.heroBody {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.heroValue {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.heroCurrency {
+  font-size: 20px;
+  font-weight: 500;
+  color: #6e6e77;
+}
+
+.heroNumber {
+  font-size: 52px;
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  line-height: 1;
+  color: var(--text, #f5f5f5);
+}
+
+.heroMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.mono {
+  font-family: var(--font-mono, "Geist Mono", monospace);
+  color: var(--text-secondary);
+}
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px;
+  background: var(--surface-elevated, #161617);
+  transition: background 0.2s;
+}
+
+.kpi:hover { background: color-mix(in srgb, var(--text) 3%, var(--surface-elevated)); }
+
+.kpiLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.kpiIcon {
+  display: flex;
+  flex: none;
+}
+
+.kpiValue {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #f5f5f5);
+}
+
+.bottomRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.funnelCard {
+  flex: 3 1 560px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding: 26px 28px 28px;
+  border-radius: 18px;
+  background: var(--surface-elevated, #161617);
+  border: 1px solid var(--border-subtle);
+}
+
+.funnelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.funnelTitleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.funnelTitle {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text, #f5f5f5);
+}
+
+.funnelSubtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.funnelBadge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: rgba(34, 211, 238, 0.08);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.funnelBadgePct {
+  font-family: var(--font-mono, "Geist Mono", monospace);
+  font-weight: 500;
+  color: var(--primary-text);
+}
+
+.funnelRows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 0 2px;
+}
+
+.funnelRow {
+  display: grid;
+  grid-template-columns: minmax(96px, 150px) minmax(0, 1fr) minmax(96px, 150px);
+  align-items: center;
+  gap: 16px;
+  height: 66px;
+}
+
+.funnelLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.funnelN {
+  font-family: var(--font-mono, "Geist Mono", monospace);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.funnelName {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.funnelBar {
+  position: relative;
+  height: 100%;
+}
+
+.funnelFill {
+  position: absolute;
+  inset: 0;
+  transition: filter 0.2s;
+}
+
+.funnelFill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.25), transparent 30%, transparent 70%, rgba(0, 0, 0, 0.25));
+}
+
+.funnelBar:hover .funnelFill {
+  filter: brightness(1.35);
+}
+
+.funnelValue {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+}
+
+.funnelStep {
+  height: 100%;
+  position: relative;
+}
+
+.stepInner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -2px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.stepTick {
+  width: 14px;
+  height: 1px;
+  flex: none;
+  background: color-mix(in srgb, var(--text) 15%, transparent);
+}
+
+.stepText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.stepPct {
+  font-family: var(--font-mono, "Geist Mono", monospace);
+  font-size: 12px;
+  font-weight: 500;
+}
+/* Ciano/verde pastel como TEXTO falha AA no tema claro: os tokens -text
+   resolvem para os tons escuros certos em cada tema (handoff-fidelity). */
+.stepPctPrimary { color: var(--primary-text); }
+.stepPctSuccess { color: var(--success-text); }
+
+.stepLabel {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ringsCard {
+  flex: 1 1 260px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  background: var(--surface-elevated, #161617);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+.ring {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 26px 24px;
+}
+
+.ringBordered {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.ringHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ringLabel {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.ringIcon {
+  display: flex;
+  flex: none;
+}
+
+.ringBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ringValue {
+  font-size: 36px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: var(--text, #f5f5f5);
+}
+
+.ringTrack {
+  height: 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  overflow: hidden;
+}
+
+.ringFill {
+  height: 100%;
+  min-width: 4px;
+  border-radius: 4px;
+}
+
+.ringNote {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 48px 24px;
+  border-radius: 18px;
+  background: var(--surface-elevated, #161617);
+  border: 1px solid var(--border-subtle);
+  text-align: center;
+}
+
+.stateTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text, #f5f5f5);
+}
+
+.stateText {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.retry {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.retry:hover {
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+}
+
+@media (max-width: 700px) {
+  .funnelCard {
+    padding: 18px 12px;
+  }
+
+  .funnelRow {
+    grid-template-columns: minmax(70px, 100px) minmax(0, 1fr) minmax(66px, 90px);
+    gap: 6px;
+  }
+
+  .heroNumber {
+    font-size: clamp(2rem, 8vw, 52px);
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}

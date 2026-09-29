@@ -2,6 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { SWRConfig } from "swr";
@@ -39,6 +40,7 @@ describe("dashboard legacy renderers", () => {
     });
 
     render(<SWRConfig value={{ provider: () => new Map() }}><DashboardWidgets /></SWRConfig>);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Personalizar" }));
     expect(await screen.findByText("Contato da fila")).toBeInTheDocument();
     expect(await screen.findByText("Alerta operacional")).toBeInTheDocument();
     expect(screen.queryByText("Membro")).not.toBeInTheDocument();

@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { Sparkline } from "@/components/commercial-dashboard-charts";
 import { DashboardMetricWidget, DashboardTeamWidget, type DashboardMetricData, type DashboardTeamData } from "@/components/dashboard-metric-widget";
+import { DashboardReferenceOverview } from "@/components/dashboard-reference-overview";
 import { Shell } from "@/components/shell";
 import {
   Button,
@@ -37,7 +38,9 @@ import {
   type FunnelStage
 } from "@/components/ui";
 import { api } from "@/lib/api";
+import { safeLocalStorage } from "@/lib/compat";
 import { useCapabilities } from "@/lib/capabilities";
+import type { PanelSession } from "@/lib/session";
 import { trendDelta, type CommercialDashboardSeries } from "@/lib/commercial-dashboard";
 import { useRealtimeSignals } from "@/lib/realtime";
 import styles from "./metrics-dashboard.module.css";
@@ -60,6 +63,12 @@ type LayoutResponse = { layout: { items: LayoutItem[]; source: "default" | "save
 type WidgetResponse = { key: WidgetKey; data: Record<string, unknown> };
 
 const fetcher = <T,>(url: string) => api<T>(url);
+/* Marca quem JÁ personalizou o board neste navegador: o backend só distingue
+   "saved" de "default", e layouts salvos antes da Visão geral de referência
+   não devem virar o board antigo por padrão. Escopo por usuário + workspace. */
+function customizedStorageKey(workspaceId: string, userId: string) {
+  return `atendon.dashboard.customized:${workspaceId}:${userId}`;
+}
 const sizeClasses: Record<WidgetSize, string> = {
   small: "col-span-12 sm:col-span-6 xl:col-span-3",
   medium: "col-span-12 sm:col-span-6 xl:col-span-4",
@@ -442,10 +451,17 @@ export function DashboardWidgets() {
   const layoutSave = useSaveFeedback();
   const flash = useFlashToast();
   const { mutate: mutateCache } = useSWRConfig();
+  const { data: session } = useSWR<PanelSession>("/me", fetcher, { revalidateOnFocus: false, dedupingInterval: 10_000 });
+  const customizedKey = session?.activeWorkspace?.id && session?.user.id ? customizedStorageKey(session.activeWorkspace.id, session.user.id) : null;
+  const [customized, setCustomized] = useState(false);
   const { data: catalog, error: catalogError } = useSWR<CatalogResponse>("/dashboard/widgets/catalog", fetcher);
   const { data: layout, error: layoutError, mutate: mutateLayout } = useSWR<LayoutResponse>("/dashboard/widgets/layout", fetcher);
 
   useEffect(() => { if (layout) setDraft(layout.layout.items); }, [layout]);
+  useEffect(() => {
+    if (!customizedKey) return;
+    setCustomized(safeLocalStorage()?.getItem(customizedKey) === "1");
+  }, [customizedKey]);
   const definitions = useMemo(() => new Map(catalog?.widgets.map((widget) => [widget.key, widget]) ?? []), [catalog]);
   const widgetAvailable = (key: WidgetKey) => {
     if (key === "pipeline") return leadsEnabled && pipelineEnabled;
@@ -476,6 +492,8 @@ export function DashboardWidgets() {
   const periodSummary = period === "custom"
     ? `${new Date(`${customStart}T12:00:00.000Z`).toLocaleDateString("pt-BR", { timeZone: "UTC" })} — ${new Date(`${customEnd}T12:00:00.000Z`).toLocaleDateString("pt-BR", { timeZone: "UTC" })}`
     : PERIOD_OPTIONS.find(([key]) => key === period)?.[1] ?? "Hoje";
+  // Data do dia do cabeçalho da referência Painel.dc.html; caixa alta fica no CSS.
+  const toolbarDate = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Sao_Paulo" });
 
   useRealtimeSignals({
     onCatchUp: () => { if (document.visibilityState === "visible") void mutateCache((key) => typeof key === "string" && key.startsWith("/dashboard/widgets/")); },
@@ -486,8 +504,30 @@ export function DashboardWidgets() {
     }
   });
 
+  // A Visão geral de referência depende de commercial_metrics, que o backend só
+  // coloca no catálogo com leads.read + appointments.read e com o módulo de
+  // agendamentos ativo. Sem o widget no catálogo, o padrão volta ao board — que
+  // já renderiza apenas os widgets permitidos. Enquanto o catálogo não chega,
+  // referenceReady fica falso e o boardView mostra o esqueleto: a escolha só
+  // muda quando a fonte carrega, nunca no meio dela.
+  const referenceReady = Boolean(appointmentsEnabled && catalog?.widgets.some((widget) => widget.key === "commercial_metrics"));
+
+  // Board de widgets: pré-visualização durante a edição e tela efetiva quando
+  // há personalização salva por este usuário neste workspace (marcador local).
+  const boardView = !catalog || !layout ? (
+    <div className={`${styles.widgets} grid grid-cols-12 gap-4`}>{[0, 1, 2, 3].map((index) => <div key={index} className={`${sizeClasses.small} ${styles.widgetCard}`} style={{ "--dash-index": index } as CSSProperties}><WidgetSkeleton /></div>)}</div>
+  ) : !visible.length ? (
+    <div className="card"><EmptyWidget message="Nenhum widget está visível. Abra Personalizar para escolher o que acompanhar." /></div>
+  ) : (
+    <section className={`${styles.widgets} grid grid-cols-12 gap-4`} aria-label="Widgets do dashboard">{boardItems.map(({ item, definition }, index) => definition ? <WidgetCard key={item.key} item={item} definition={definition} periodQuery={periodQuery} index={index} /> : null)}</section>
+  );
+
   function patchItem(key: WidgetKey, patch: Partial<LayoutItem>) {
     setDraft((current) => current.map((item) => item.key === key ? { ...item, ...patch } : item));
+  }
+  function markCustomized() {
+    if (customizedKey) safeLocalStorage()?.setItem(customizedKey, "1");
+    setCustomized(true);
   }
   function move(key: WidgetKey, direction: -1 | 1) {
     setDraft((current) => {
@@ -504,6 +544,7 @@ export function DashboardWidgets() {
     try {
       const response = await api<LayoutResponse>("/dashboard/widgets/layout", { method: "PUT", body: JSON.stringify({ items: draft }) });
       await mutateLayout(response, { revalidate: false });
+      markCustomized();
       setEditing(false);
       layoutSave.markDone();
     } finally { setSaving(false); }
@@ -513,6 +554,8 @@ export function DashboardWidgets() {
     try {
       const response = await api<LayoutResponse>("/dashboard/widgets/layout", { method: "DELETE" });
       await mutateLayout(response, { revalidate: false });
+      if (customizedKey) safeLocalStorage()?.removeItem(customizedKey);
+      setCustomized(false);
       flash.show("Layout restaurado ao padrão");
     } finally { setSaving(false); }
   }
@@ -523,6 +566,7 @@ export function DashboardWidgets() {
       const nextLayout: LayoutResponse = { layout: { items: response.items, source: "saved" } };
       await mutateLayout(nextLayout, { revalidate: true });
       setDraft(response.items);
+      markCustomized();
       flash.show("Preset aplicado ao dashboard");
     } finally { setSaving(false); }
   }
@@ -535,11 +579,12 @@ export function DashboardWidgets() {
             fileira de controles — duas linhas de chrome antes do primeiro dado. */}
         <header className={styles.toolbar}>
           <div className={styles.toolbarTitle}>
+            <span className={styles.toolbarDate}>{toolbarDate}</span>
             <h1>Visão geral</h1>
-            <span className={styles.toolbarPeriod}>{periodSummary}</span>
+            <span className={styles.toolbarLive}><span aria-hidden="true" className={`${styles.liveDot} on-live`} />{periodSummary}</span>
           </div>
           <div className={styles.toolbarActions}>
-            <Segmented aria-label="Período">
+            <Segmented aria-label="Período" className={styles.toolbarSegmented}>
               {PERIOD_OPTIONS.map(([key, label]) => (
                 <button key={key} type="button" aria-pressed={period === key} onClick={() => setPeriod(key)}>{label}</button>
               ))}
@@ -552,7 +597,7 @@ export function DashboardWidgets() {
                 <Input id="dashboard-end" type="date" value={customEnd} min={customStart} onChange={(event) => setCustomEnd(event.target.value)} />
               </div>
             ) : null}
-            <IconButton label={editing ? "Fechar" : "Personalizar"} onClick={() => setEditing((value) => !value)}>{editing ? <X size={17} aria-hidden="true" /> : <SlidersHorizontal size={17} aria-hidden="true" />}</IconButton>
+            <IconButton label={editing ? "Fechar" : "Personalizar"} className={styles.toolbarIconDark} onClick={() => setEditing((value) => !value)}>{editing ? <X size={17} aria-hidden="true" /> : <SlidersHorizontal size={17} aria-hidden="true" />}</IconButton>
           </div>
         </header>
 
@@ -574,7 +619,7 @@ export function DashboardWidgets() {
           <div className={styles.libraryGroups}>{groupedDraft.map(([group, items]) => <section key={group} aria-labelledby={`dashboard-group-${group}`}><h3 id={`dashboard-group-${group}`} className={styles.libraryGroupTitle}>{groupTitle(group)}</h3>{items.map((item) => { const definition = definitions.get(item.key); if (!definition) return null; return <div key={item.key} className={`${styles.libraryItem} md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center`}><label className={styles.libraryItemLabel}><input type="checkbox" checked={item.visible} onChange={(event) => patchItem(item.key, { visible: event.target.checked })} className="mt-1" /><span><strong className={styles.libraryItemName}>{definition.label}</strong><span className={styles.libraryItemHint}>{definition.description}</span></span></label><label className={styles.libraryItemSize}><span>Tamanho</span><select className="input w-auto" value={item.size} onChange={(event) => patchItem(item.key, { size: event.target.value as WidgetSize })}>{definition.sizes.map((size) => <option key={size} value={size}>{sizeLabels[size]}</option>)}</select></label><div className={styles.libraryItemMove}><Button tone="quiet" className="min-h-11 min-w-11 px-2" disabled={item.order === 0} aria-label={`Mover ${definition.label} para cima`} title="Mover para cima" onClick={() => move(item.key, -1)}><CaretUp size={17} /></Button><Button tone="quiet" className="min-h-11 min-w-11 px-2" disabled={item.order === availableDraft.length - 1} aria-label={`Mover ${definition.label} para baixo`} title="Mover para baixo" onClick={() => move(item.key, 1)}><CaretDown size={17} /></Button></div></div>; })}</section>)}</div>
         </section> : null}
 
-        {catalogError || layoutError ? <div className="card" role="alert"><p className="error">Não foi possível carregar a configuração do dashboard.</p></div> : !catalog || !layout ? <div className={`${styles.widgets} grid grid-cols-12 gap-4`}>{[0, 1, 2, 3].map((index) => <div key={index} className={`${sizeClasses.small} ${styles.widgetCard}`} style={{ "--dash-index": index } as CSSProperties}><WidgetSkeleton /></div>)}</div> : !visible.length ? <div className="card"><EmptyWidget message="Nenhum widget está visível. Abra Personalizar para escolher o que acompanhar." /></div> : <section className={`${styles.widgets} grid grid-cols-12 gap-4`} aria-label="Widgets do dashboard">{boardItems.map(({ item, definition }, index) => definition ? <WidgetCard key={item.key} item={item} definition={definition} periodQuery={periodQuery} index={index} /> : null)}</section>}
+        {catalogError || layoutError ? <div className="card" role="alert"><p className="error">Não foi possível carregar a configuração do dashboard.</p></div> : editing || (customized && layout?.layout.source === "saved") || !referenceReady ? boardView : <DashboardReferenceOverview periodQuery={periodQuery} />}
         <SaveToast show={layoutSave.done}>Layout salvo</SaveToast>
         {flash.toast}
       </div>
