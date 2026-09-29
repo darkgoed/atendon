@@ -19,7 +19,6 @@ AGENTS = "/home/deploy/atendon-agents"
 INTEGRATION = f"{AGENTS}/integration"
 STATE = f"{AGENTS}/state"
 VALIDATION = f"{STATE}/validation.json"
-DEPLOY = f"{STATE}/deploy.json"
 INTEGRATION_LOCK = f"{STATE}/integration.lock"  # same lock multiagent.py integrate holds
 CMD_TIMEOUT = 1800
 REVIEW_TIMEOUT = 900
@@ -235,24 +234,17 @@ def cmd_promote(_a):
             if r.returncode:
                 die("gh pr create failed", output=(r.stdout[-TAIL:] + r.stderr[-TAIL:]))
             pr_url, created = r.stdout.strip(), True
-        atomic_write(DEPLOY, {"promoted_sha": sha, "rollback_sha": main_sha,
-                              "pr_url": pr_url, "promoted_at":
-                              time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
     ok(promoted_sha=sha, rollback_sha=main_sha, pr_url=pr_url, pr_created=created,
        note="no auto-merge, no deploy; merge the PR on main to trigger Coolify")
 
 
 def cmd_status(_a):
     v = load_validation()
-    d = None
-    if os.path.exists(DEPLOY):
-        with open(DEPLOY) as f:
-            d = json.load(f)
     info = {"integration": INTEGRATION,
             "head": out("git", "rev-parse", "HEAD", cwd=INTEGRATION) if os.path.isdir(INTEGRATION) else None,
             "clean": not out("git", "status", "--porcelain", cwd=INTEGRATION) if os.path.isdir(INTEGRATION) else None,
             "integrated_tasks": [m.get("task_id") for m in manifests_integrated()],
-            "validation": v, "last_promotion": d}
+            "validation": v}
     print(json.dumps(info, indent=2))
 
 

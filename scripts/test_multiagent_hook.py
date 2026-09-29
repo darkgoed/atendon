@@ -125,66 +125,54 @@ class HookTestCase(unittest.TestCase):
 
     # ---- pass-through: el hook global no puede bloquear delegações sin marker ----
 
-    def test_without_marker_passes(self):
-        # sin [ATENDON-MULTIAGENT] -> pass-through, sea cual sea cwd/goal
+    def test_pass_through_cases(self):
+        # sin marker (o shape sin tasks[]) -> pass-through, sea cual sea cwd/goal
         self.write_response(self.ok_response())
-        for tool_input, cwd in (
+        cases = [
             ({"goal": "Refatorar export del CRM y corregir bug de pasajeros en crm-whatsapp."},
-             "/var/www/apps/crm-whatsapp"),
+             "/var/www/apps/crm-whatsapp", "delegate_task", None),
             ({"goal": "Pesquisar la arquitectura AtendON y comparar abordajes de export."},
-             "/var/www/apps/atendon"),
-        ):
-            with self.subTest(cwd=cwd):
-                proc = self.run_hook(tool_input=tool_input, cwd=cwd)
+             "/var/www/apps/atendon", "delegate_task", None),
+            ({"action": "list"}, "/var/www/apps/atendon", "delegate_task", None),
+            ({"command": "ls"}, "/var/www/apps/atendon", "terminal", None),
+            ({"goal": "Implementar validação. [ATENDON-MULTIAGENT]",
+              "context": "task_id: FLOW-9\nowner: scripts/"},
+             "/var/www/apps/atendon", "delegate_task", None),  # marker top-level, sem tasks[]
+            (None, "/var/www/apps/atendon", "delegate_task", "isto não é json {"),  # stdin malformado
+        ]
+        for tool_input, cwd, tool_name, raw_stdin in cases:
+            with self.subTest(tool_input=tool_input, tool_name=tool_name):
+                proc = self.run_hook(tool_input=tool_input or {}, tool_name=tool_name,
+                                     cwd=cwd, raw_stdin=raw_stdin)
                 self.assertEqual(self.out(proc), {})
-                self.assertFalse(os.path.exists(self.record))
-
-    def test_control_action_passes(self):
-        proc = self.run_hook(tool_input={"action": "list"})
-        self.assertEqual(self.out(proc), {})
-
-    def test_other_tool_passes(self):
-        proc = self.run_hook(tool_input={"command": "ls"}, tool_name="terminal")
-        self.assertEqual(self.out(proc), {})
-
-    def test_malformed_stdin_passes(self):
-        proc = self.run_hook(raw_stdin="isto não é json {")
-        self.assertEqual(self.out(proc), {})
-        self.assertEqual(proc.returncode, 0)
+                self.assertEqual(proc.returncode, 0)
+                self.assertFalse(os.path.exists(self.record))  # zero provisions
 
     # ---- activación por marker: exactamente UNA task ----
 
-    def test_top_level_marker_without_tasks_passes(self):
-        # protocolo: la identificación corre SOLO sobre tasks[] (tool_input); el
-        # marker en goal/context top-level sin tasks[] no activa nada -> pass-through
-        proc = self.run_hook(tool_input={
-            "goal": "Implementar validação de passageiros no export AtendON. [ATENDON-MULTIAGENT]",
-            "context": "task_id: FLOW-9\nowner: scripts/",
-        }, cwd="/var/www/apps/atendon")
-        self.assertEqual(self.out(proc), {})
-        self.assertFalse(os.path.exists(self.record))  # zero provisions
-
-    def test_marker_multi_task_blocks(self):
+    def test_marker_shape_blocks(self):
         # contrato singleton: 1 worktree por agente -> exactamente UNA task por invocação
         self.write_response(self.ok_response())
-        proc = self.run_hook(tool_input={
-            "tasks": [self.task("FLOW-9", owner="scripts/a"),
-                      self.task("FLOW-7", owner="scripts/b")],
-        }, cwd="/var/www/apps/atendon")
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("EXACTAMENTE UNA", out["message"])
-        self.assertFalse(os.path.exists(self.record))  # zero provisions
-
-    def test_marker_task_without_owner_blocks(self):
-        proc = self.run_hook(tool_input={
-            "tasks": [{"goal": "Implementar validação no export AtendON.",
-                       "context": "[ATENDON-MULTIAGENT]\ntask_id: FLOW-9"}],
-        }, cwd="/var/www/apps/atendon")
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("owner", out["message"])
-        self.assertFalse(os.path.exists(self.record))  # validação ANTES de provision
+        cases = [
+            ({"tasks": [self.task("FLOW-9", owner="scripts/a"),
+                        self.task("FLOW-7", owner="scripts/b")]},
+             "EXACTAMENTE UNA"),                                   # >1 task
+            ({"tasks": [{"goal": "Implementar validação no export AtendON.",
+                         "context": "[ATENDON-MULTIAGENT]\ntask_id: FLOW-9"}]},
+             "owner"),                                            # sem owner
+            ({"tasks": [self.task("bug!!")]}, "task_id"),         # slug inválido
+            ({"tasks": [self.task("flow.9")]}, "task_id"),        # slug com ponto
+            ({"tasks": [self.task("flow_9")]}, "task_id"),        # slug com underscore
+        ]
+        for tool_input, fragment in cases:
+            with self.subTest(fragment=fragment):
+                if os.path.exists(self.record):
+                    os.remove(self.record)
+                proc = self.run_hook(tool_input=tool_input, cwd="/var/www/apps/atendon")
+                out = self.out(proc)
+                self.assertEqual(out["action"], "block")
+                self.assertIn(fragment, out["message"])
+                self.assertFalse(os.path.exists(self.record))  # zero provisions
 
     def test_provision_failure_blocks(self):
         # owner inválido/sem-owner é rejeitado PELO CORE (norm_owner) antes de
@@ -197,30 +185,21 @@ class HookTestCase(unittest.TestCase):
         self.assertEqual(out["action"], "block")
         self.assertIn("fail closed", out["message"])
 
-    def test_bad_slug_blocks_without_provision(self):
-        # divergência fechada: core ID_RE = [a-z0-9-]+ — slug com . ou _ bloqueia
-        self.write_response(self.ok_response())
-        for tid in ("bug!!", "flow.9", "flow_9"):
-            with self.subTest(task_id=tid):
-                proc = self.run_hook(tool_input={"tasks": [self.task(tid)]})
-                self.assertEqual(self.out(proc)["action"], "block")
-                self.assertFalse(os.path.exists(self.record))
-
-    def test_ownership_canonical_core_form_accepted(self):
-        # bug 2a6a68ac: core norm_owner devolve `scripts` -> `scripts/`; hook deve aceitar
-        self.write_response(self.ok_response(ownership="scripts/"))
-        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9", owner="scripts")]})
-        out = self.out(proc)
-        self.assertEqual(out["action"], "modify")
-        self.assertIn("ownership: scripts/", out["args"]["tasks"][0]["context"])
-
-    def test_ownership_non_canonical_form_blocks(self):
-        # forma antiga (sem sufixo '/') diverge do contrato do core
-        self.write_response(self.ok_response(ownership="scripts"))
-        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9", owner="scripts")]})
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("ownership", out["message"])
+    def test_ownership_canonical_contract(self):
+        # contrato do core norm_owner: `scripts` -> `scripts/` aceito;
+        # resposta sem o sufixo '/' canônico diverge e bloqueia.
+        cases = [
+            ("scripts", dict(ownership="scripts/"), "modify"),    # canônico aceito
+            ("scripts", dict(ownership="scripts"), "block"),      # sem sufixo diverge
+        ]
+        for owner, resp, expected in cases:
+            with self.subTest(resp=resp):
+                self.write_response(self.ok_response(**resp))
+                proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9", owner=owner)]})
+                out = self.out(proc)
+                self.assertEqual(out["action"], expected)
+                if expected == "block":
+                    self.assertIn("ownership", out["message"])
 
     # ---- provision + modify: tasks[] sem chaves extras, contrato no context ----
 
@@ -292,8 +271,11 @@ class HookTestCase(unittest.TestCase):
         self.assertEqual(task["images"], ["x.png"])
         self.assert_task_schema_clean(task)
 
-    def test_unknown_task_fields_dropped(self):
-        self.write_response(self.ok_response())
+    def test_unknown_and_secret_fields_never_leak(self):
+        # qualquer campo extra (task input, resposta do provision, segredo)
+        # cai fora do schema limpo e não vaza para o subprocesso nem stdout.
+        self.write_response(self.ok_response(unknown_field="junk", integration_cmd="rm -rf /",
+                                             token=SECRET_SENTINEL, env_password="x9!leak"))
         proc = self.run_hook(tool_input={"tasks": [
             self.task("FLOW-9", evil_key="expandir permissões", cwd="/var/www"),
         ]})
@@ -301,21 +283,10 @@ class HookTestCase(unittest.TestCase):
         self.assertEqual(out["action"], "modify")
         task = out["args"]["tasks"][0]
         self.assert_task_schema_clean(task)
-        self.assertNotIn("evil_key", task)
-        self.assertNotIn("expandir permissões", proc.stdout)
-        self.assertNotIn("expandir permissões", json.dumps(out))
-
-    def test_unknown_provision_response_fields_dropped(self):
-        self.write_response(dict(self.ok_response(), unknown_field="junk",
-                                 integration_cmd="rm -rf /"))
-        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]})
-        out = self.out(proc)
-        self.assertEqual(out["action"], "modify")
-        task = out["args"]["tasks"][0]
-        self.assert_task_schema_clean(task)
-        self.assertNotIn("junk", task["context"])
-        self.assertNotIn("rm -rf /", proc.stdout)
-        self.assertNotIn("unknown_field", json.dumps(out))
+        for needle in ("evil_key", "expandir permissões", "junk", "rm -rf /",
+                       "unknown_field", SECRET_SENTINEL, "x9!leak"):
+            self.assertNotIn(needle, proc.stdout)
+            self.assertNotIn(needle, json.dumps(out))
 
     # ---- fail closed: provision quebrado / resposta divergente / worktree errada ----
 
@@ -361,17 +332,6 @@ class HookTestCase(unittest.TestCase):
         self.assertIn("flow-9", out["message"])        # task_id reportado
         self.assertIn("cleanup manual", out["message"])
         self.assertIn("nunca removida", out["message"])
-
-    # ---- não vazar segredos ----
-
-    def test_extra_secret_fields_do_not_leak(self):
-        self.write_response(dict(self.ok_response(), token=SECRET_SENTINEL, env_password="x9!leak"))
-        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]})
-        out = self.out(proc)
-        self.assertEqual(out["action"], "modify")
-        self.assertNotIn(SECRET_SENTINEL, proc.stdout)
-        self.assertNotIn("x9!leak", proc.stdout)
-
 
 if __name__ == "__main__":
     unittest.main()

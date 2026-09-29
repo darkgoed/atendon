@@ -86,26 +86,8 @@ def _block(message):
     return 0
 
 
-def _args_text(args):
-    """Texto p/ identificación (marker): SOLO das entradas de tasks[] (contrato
-    delegate_task). goal/context top-level não faz parte do protocolo de
-    provisioning — a delegação multiagente passa SEMPRE por tasks[]."""
-    parts = []
-    tasks = args.get("tasks")
-    if isinstance(tasks, list):
-        parts.extend(_task_text(t) for t in tasks if isinstance(t, dict))
-    return "\n".join(parts)
-
-
-def _slug(raw):
-    """task_id case-normalized (lowercase) e validado como slug. None quando inválido/ausente."""
-    if not isinstance(raw, str):
-        return None
-    m = TASK_ID_RE.search(raw)
-    if not m:
-        return None
-    slug = m.group(1).strip("`\"'").strip().lower()
-    return slug if SLUG_RE.match(slug) else None
+def _task_text(t):
+    return "\n".join(t[k] for k in ("goal", "context") if isinstance(t.get(k), str))
 
 
 def _provision(task_id, owner, goal):
@@ -169,25 +151,6 @@ def _validate_response(task_id, owner, info):
         raise RuntimeError("provision worktree does not exist: %s" % worktree)
 
 
-def _new_task(t, info):
-    """Nova entrada de task com APENAS chaves aceitas pelo schema: goal, context
-    (+ output_schema/images se vierem) — nunca worktree/branch/task_id/owner como chaves."""
-    nt = {}
-    if isinstance(t.get("goal"), str) and t["goal"].strip():
-        nt["goal"] = t["goal"]
-    contract = WORKER_CONTRACT.format(**info)
-    ctx = t.get("context")
-    nt["context"] = (ctx + "\n\n" + contract) if isinstance(ctx, str) and ctx.strip() else contract
-    for key in TASK_PASSTHROUGH_KEYS:
-        if key in t:
-            nt[key] = t[key]
-    return nt
-
-
-def _task_text(t):
-    return "\n".join(t[k] for k in ("goal", "context") if isinstance(t.get(k), str))
-
-
 def handle(payload):
     """Um evento pre_tool_call -> (stdout_json, exit_code)."""
     if not isinstance(payload, dict):
@@ -201,14 +164,10 @@ def handle(payload):
     if str(args.get("action") or "").strip().lower() in ("list", "steer", "stop"):
         return _no_op()
     try:
-        # identificação: falha aqui NUNCA bloqueia (hook global — outras delegações devem passar)
-        try:
-            text = _args_text(args)
-        except Exception:
-            text = ""
-        if not (isinstance(text, str) and MARKER in text):
-            return _no_op()  # sin marker -> pass-through (pesquisa/análisis no-multiagente)
         tasks = args.get("tasks")
+        text = "\n".join(_task_text(t) for t in tasks if isinstance(t, dict)) if isinstance(tasks, list) else ""
+        if MARKER not in text:
+            return _no_op()  # sin marker -> pass-through (pesquisa/análisis no-multiagente)
         if not (isinstance(tasks, list) and len(tasks) == 1 and isinstance(tasks[0], dict)):
             return _block("AtendON multiagent hook fail closed: delegação [ATENDON-MULTIAGENT] "
                           "requiere EXACTAMENTE UNA task em tasks[] (1 worktree por agente; "
@@ -217,8 +176,9 @@ def handle(payload):
                               "tasks[] com %d entradas" % len(tasks)))
         t = tasks[0]
         ttext = _task_text(t)
-        task_id = _slug(ttext)
-        if not task_id:
+        m = TASK_ID_RE.search(ttext)
+        task_id = m.group(1).strip("`\"'").strip().lower() if m else None
+        if not (task_id and SLUG_RE.match(task_id)):
             return _block("AtendON multiagent hook fail closed: task_id ausente ou slug inválido "
                           "(esperado `task_id: slug` em goal/context)")
         m = OWNER_RE.search(ttext)
@@ -238,7 +198,16 @@ def handle(payload):
                 msg += (" | Worktree DEIXADA (cleanup manual — nunca removida "
                         "automáticamente): task_id=%s" % task_id)
             return _block(msg)
-        print(json.dumps({"action": "modify", "args": {"tasks": [_new_task(t, info)]}}))
+        nt = {}
+        if isinstance(t.get("goal"), str) and t["goal"].strip():
+            nt["goal"] = t["goal"]
+        contract = WORKER_CONTRACT.format(**info)
+        ctx = t.get("context")
+        nt["context"] = (ctx + "\n\n" + contract) if isinstance(ctx, str) and ctx.strip() else contract
+        for key in TASK_PASSTHROUGH_KEYS:
+            if key in t:
+                nt[key] = t[key]
+        print(json.dumps({"action": "modify", "args": {"tasks": [nt]}}))
         return 0
     except Exception as exc:  # fail closed no caminho identificado
         return _block("AtendON multiagent hook fail closed: %s" % exc)
