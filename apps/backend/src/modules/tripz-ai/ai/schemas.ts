@@ -160,6 +160,11 @@ export const tripzProposalPatchSchema = z.object({
     // of the {adults, children, infants} object despite the prompt. Coerce
     // rather than fail the whole turn.
     z.number().int().min(0).max(100).transform((adults) => ({ adults, children: 0, infants: 0 })),
+    // Providers sometimes summarize passengers as {count, description} (ex.:
+    // "duas pessoas casal") instead of the headcount object. Coerce count and
+    // drop the free-text description rather than fail the whole turn.
+    z.object({ count: z.coerce.number().int().min(0).max(100) }).passthrough()
+      .transform(({ count }) => ({ adults: count, children: 0, infants: 0 })),
     // Providers sometimes return a named passenger list instead of the
     // headcount object despite the prompt. Coerce to counts rather than fail
     // the whole turn.
@@ -272,20 +277,77 @@ export const tripzAiStructuredOutputSchema = z.object({
   }).strict()).max(50)
 }).strict();
 
-const serializedProposalPatchSchema = z.string().max(100_000).transform((value, context) => {
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "proposalPatch não contém JSON válido" });
-    return z.NEVER;
+type UnknownKeyRemoval = { path: (string | number)[]; keys: string[] };
+
+function collectUnknownKeyRemovals(error: z.ZodError): UnknownKeyRemoval[] {
+  const removals: UnknownKeyRemoval[] = [];
+  const visit = (issues: z.ZodIssue[]): void => {
+    for (const issue of issues) {
+      if (issue.code === "unrecognized_keys") {
+        removals.push({ path: [...issue.path], keys: [...issue.keys] });
+      } else if (issue.code === "invalid_union") {
+        for (const unionError of issue.unionErrors) visit(unionError.issues);
+      }
+    }
+  };
+  visit(error.issues);
+  return removals;
+}
+
+function removeUnknownKeysAt(value: unknown, path: readonly (string | number)[], keys: readonly string[]): void {
+  let cursor: unknown = value;
+  for (const segment of path) {
+    if (!cursor || typeof cursor !== "object") return;
+    cursor = (cursor as Record<string | number, unknown>)[segment];
   }
-}).pipe(tripzProposalPatchSchema);
+  if (cursor && typeof cursor === "object" && !Array.isArray(cursor)) {
+    for (const key of keys) delete (cursor as Record<string, unknown>)[key];
+  }
+}
+
+const PROVIDER_PATCH_SALVAGE_ROUNDS = 3;
+
+// Providers invent fields outside the grammar despite the strict JSON schema
+// (observed in production: unknown top-level keys and {count, description}
+// passengers). Unknown keys are inert downstream — the allowlisted applier
+// copies only known fields — so salvage the turn by stripping exactly the
+// keys Zod reports instead of failing it. Invalid VALUES are never salvaged.
+export const tripzProviderProposalPatchSchema = z.unknown().transform((value, context) => {
+  let candidate: unknown = value;
+  if (typeof candidate === "string") {
+    if (candidate.length > 100_000) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "proposalPatch excede o tamanho máximo" });
+      return z.NEVER;
+    }
+    try {
+      candidate = JSON.parse(candidate) as unknown;
+    } catch {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "proposalPatch não contém JSON válido" });
+      return z.NEVER;
+    }
+  }
+  for (let round = 0; round <= PROVIDER_PATCH_SALVAGE_ROUNDS; round += 1) {
+    const parsed = tripzProposalPatchSchema.safeParse(candidate);
+    if (parsed.success) return parsed.data;
+    const removals = collectUnknownKeyRemovals(parsed.error);
+    if (removals.length === 0 || round === PROVIDER_PATCH_SALVAGE_ROUNDS) {
+      for (const issue of parsed.error.issues.slice(0, 20)) context.addIssue(issue);
+      return z.NEVER;
+    }
+    candidate = structuredClone(candidate) as object;
+    for (const removal of removals) removeUnknownKeysAt(candidate, removal.path, removal.keys);
+  }
+  context.addIssue({ code: z.ZodIssueCode.custom, message: "proposalPatch inválido" });
+  return z.NEVER;
+});
 
 export const tripzAiProviderOutputSchema = tripzAiStructuredOutputSchema.extend({
   // Keep the provider grammar small while preserving the complete allowlisted
   // patch validation before any state is changed. Object input remains
-  // accepted for compatibility with deterministic tests and stored fixtures.
-  proposalPatch: z.union([tripzProposalPatchSchema, serializedProposalPatchSchema])
+  // accepted for compatibility with deterministic tests and stored fixtures,
+  // and unknown provider-invented keys are stripped instead of failing the
+  // turn (see tripzProviderProposalPatchSchema).
+  proposalPatch: tripzProviderProposalPatchSchema
 });
 
 export type TripzAiStructuredOutput = z.infer<typeof tripzAiStructuredOutputSchema>;

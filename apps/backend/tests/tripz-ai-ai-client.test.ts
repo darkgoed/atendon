@@ -457,8 +457,36 @@ describe("TripzOpenRouterClient transport", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it("drops provider-invented patch keys instead of failing the turn", async () => {
+    const content = JSON.stringify(validOutput({
+      proposalPatch: JSON.stringify({ status: "pdf_generated", destination: "Nova York", startDate: "2027-08-20" })
+    }));
+    const fetcher = vi.fn().mockResolvedValue(successResponse({ choices: [{ message: { content } }] }));
+    const client = new TripzOpenRouterClient(config(), { fetcher });
+    const result = await client.completeStructured({
+      conversationId: UUID_1,
+      systemPrompt: TRIPZ_AI_SYSTEM_PROMPT,
+      userContent: "Destino Nova York"
+    });
+    expect(result.output.proposalPatch).toEqual({ destination: "Nova York", startDate: "2027-08-20" });
+  });
+
+  it("coerces a {count, description} passengers summary into counts", async () => {
+    const content = JSON.stringify(validOutput({
+      proposalPatch: JSON.stringify({ passengers: { count: "2", description: "casal" } })
+    }));
+    const fetcher = vi.fn().mockResolvedValue(successResponse({ choices: [{ message: { content } }] }));
+    const client = new TripzOpenRouterClient(config(), { fetcher });
+    const result = await client.completeStructured({
+      conversationId: UUID_1,
+      systemPrompt: TRIPZ_AI_SYSTEM_PROMPT,
+      userContent: "Duas pessoas"
+    });
+    expect(result.output.proposalPatch).toEqual({ passengers: { adults: 2, children: 0, infants: 0 } });
+  });
+
   it("rejects malformed or expanded structured output", async () => {
-    const content = JSON.stringify(validOutput({ proposalPatch: { status: "pdf_generated" } }));
+    const content = JSON.stringify(validOutput({ proposalPatch: { startDate: "20/08/2027" } }));
     const fetcher = vi.fn().mockResolvedValue(successResponse({ choices: [{ message: { content } }] }));
     const onUsage = vi.fn().mockResolvedValue(undefined);
     const client = new TripzOpenRouterClient(config(), { fetcher });
@@ -482,7 +510,7 @@ describe("TripzOpenRouterClient transport", () => {
 
     const badPatch = JSON.stringify(validOutput({
       assistantMessage: `Confirmação ${marker}`,
-      proposalPatch: { status: "pdf_generated" }
+      proposalPatch: { startDate: "20/08/2027" }
     }));
     const mismatchClient = new TripzOpenRouterClient(config(), {
       fetcher: vi.fn().mockResolvedValue(successResponse({ choices: [{ message: { content: badPatch } }] })),
