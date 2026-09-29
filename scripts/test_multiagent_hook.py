@@ -5,7 +5,8 @@ O CLI de provision é mockado via ATENDON_MULTIAGENT_CLI: um script que grava o 
 recebido (acumulando por provision) e cospe um JSON canônico com substituição
 {task_id}/{owner} controlada pelo teste — ownership no formato CANÔNICO do core
 (`owner.rstrip('/') + '/'`, cf. norm_owner; owner é PREFIXO DE DIRETÓRIO, ex.:
-`scripts/` — globs (* ? [ ]) são rejeitados pelo hook ANTES de provision).
+`scripts/`; a política de owner — globs, ~, monorepo prefix — vive no core
+norm_owner e o hook valida só a RESPOSTA do provision).
 Rodar: python scripts/test_multiagent_hook.py   (ou python -m unittest)
 """
 import json

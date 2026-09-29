@@ -17,11 +17,14 @@ e delegações sem tasks[] nunca ativan provisioning.
 
 Fails closed no fluxo identificado (delegação marcada com [ATENDON-MULTIAGENT]):
 task sem task_id/owner, provision com erro, JSON inválido,
-resposta divergente do solicitado, slug/owner inválidos, ou worktree fora do
+resposta divergente do solicitado, slug inválido, ou worktree fora do
 root canônico /home/deploy/atendon-agents (nunca sob /var/www divergente).
-A worktree que um provision deixó atrás num fallo do validate é
-reportada no bloco para cleanup manual (nunca removida automáticamente).
-Delegações sem marker, controle (list/steer/stop) e tarefas de pesquisa passam.
+A política de owner (globs, ~, monorepo prefix, traversal) vive no core
+multiagent.py norm_owner — o provision a aplica antes de criar worktree; o hook
+valida só a RESPOSTA. A worktree que um provision deixó atrás num fallo do
+validate é reportada no bloco para cleanup manual (nunca removida
+automáticamente). Delegações sem marker, controle (list/steer/stop) e tarefas
+de pesquisa passam.
 
 Contrato com a API real: cada entrada de tasks[] do delegate_task aceita APENAS
 goal, context, output_schema, images. task_id/owner NÃO são chaves de task —
