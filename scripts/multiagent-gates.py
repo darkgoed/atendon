@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Central quality gates for the AtendON multi-agent integration flow.
 
-validate: flock(state/heavy.lock) -> lint, renderer build, typecheck, tests,
+validate: flock(state/integration.lock + state/heavy.lock) -> lint, renderer build, typecheck, tests,
 backend/panel builds + Jev/Ponytail
 review of the integration diff, one round per SHA; records state/validation.json
 atomically only after full success. No E2E.
 
-promote: flock(state/deploy.lock) -> push integration branch (NEVER main) and
+promote: flock(state/integration.lock + state/deploy.lock) -> push integration branch (NEVER main) and
 open a PR integration->main. Merge of that PR on main is what triggers Coolify.
 
 State schema shared with scripts/multiagent.py: state/{task_id}.json manifests
@@ -22,6 +22,7 @@ VALIDATION = f"{STATE}/validation.json"
 DEPLOY = f"{STATE}/deploy.json"
 HEAVY_LOCK = f"{STATE}/heavy.lock"
 DEPLOY_LOCK = f"{STATE}/deploy.lock"
+INTEGRATION_LOCK = f"{STATE}/integration.lock"  # same lock multiagent.py integrate holds
 CMD_TIMEOUT = 1800
 REVIEW_TIMEOUT = 900
 TAIL = 5000
@@ -182,7 +183,9 @@ def load_validation():
 def cmd_validate(_a):
     os.makedirs(STATE, exist_ok=True)
     cwd = os.path.realpath(INTEGRATION)
-    with flock_ex(HEAVY_LOCK):
+    # fixed lock order: integration.lock always first — multiagent.py takes only
+    # it, so no holder of heavy/deploy ever waits on integration: no deadlock.
+    with flock_ex(INTEGRATION_LOCK), flock_ex(HEAVY_LOCK):
         sha = out("git", "rev-parse", "HEAD", cwd=cwd)
         if out("git", "symbolic-ref", "-q", "HEAD", cwd=cwd) != "refs/heads/integration":
             die("integration worktree is not on branch integration")
@@ -221,6 +224,9 @@ def cmd_validate(_a):
         record = {"ok": True, "validated_sha": sha, "integration": cwd,
                   "diff_base": base, "validated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                   "checks": results}
+        # locks block the integrator, but verify anyway: never record a stale sha
+        if out("git", "rev-parse", "HEAD", cwd=cwd) != sha:
+            die("integration HEAD changed during validation; rerun validate")
         atomic_write(VALIDATION, record)
     ok(validated_sha=sha, integration=cwd,
        checks={k: v["rc"] for k, v in results.items()})
@@ -259,7 +265,9 @@ def cmd_promote(_a):
         die("no successful validation record; run validate first")
     if v.get("integration") != os.path.realpath(INTEGRATION):
         die("validation was not run on the canonical integration worktree")
-    with flock_ex(DEPLOY_LOCK):
+    # integration.lock first again: integrator cannot move HEAD between the
+    # validated_sha check, fetch, push and PR open.
+    with flock_ex(INTEGRATION_LOCK), flock_ex(DEPLOY_LOCK):
         if out("git", "status", "--porcelain"):
             die("integration worktree is dirty; promote refuses")
         sha = out("git", "rev-parse", "HEAD")
