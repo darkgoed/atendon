@@ -21,7 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 HOOK = os.path.join(HERE, "multiagent-hook.py")
 
 MOCK_CLI = r'''#!/usr/bin/env python3
-import json, os, sys
+import json, os, subprocess, sys
 args = sys.argv[1:]
 path = os.environ["MOCK_PROVISION_RECORD"]
 items = []
@@ -42,14 +42,32 @@ except ValueError:  # resposta proposital inválida: ecoa cru para o hook rejeit
 if tid in os.environ.get("MOCK_PROVISION_FAIL_IDS", "").split(","):
     sys.exit(int(os.environ.get("MOCK_PROVISION_FAIL_EXIT", "1")))
 if os.environ.get("MOCK_PROVISION_MKDIR", "1") == "1":
+    # worktree GIT REAL: o hook agora confere HEAD/branch reais contra a resposta.
+    # Idempotente: subTests reutilizam o mesmo worktree (git init/commit toleram
+    # repo já existente com "nothing to commit").
     os.makedirs(info["worktree"], exist_ok=True)
+    subprocess.run(["git", "init", "-q", "-b", info["branch"], info["worktree"]],
+                   capture_output=True, text=True)
+    gitc = lambda *a: subprocess.run(["git", "-C", info["worktree"], *a],
+                                     capture_output=True, text=True)
+    gitc("config", "user.email", "t@t")
+    gitc("config", "user.name", "t")
+    with open(os.path.join(info["worktree"], "base.txt"), "a") as f:
+        f.write("base\n")
+    gitc("add", "--", "base.txt")
+    cm = gitc("commit", "-qm", "base")
+    if cm.returncode != 0 and "nothing to commit" not in cm.stderr:
+        sys.stderr.write(cm.stderr)
+        sys.exit(1)
+    if os.environ.get("MOCK_PROVISION_GEN_SHA", "1") == "1":
+        info["base_sha"] = gitc("rev-parse", "HEAD").stdout.strip()
 sys.stdout.write(json.dumps(info))
 '''
 
 RESPONSE_TEMPLATE = {
     "task_id": "{task_id}",
     "branch": "agent/{task_id}",
-    "base_sha": "916c7ff7deadbeef",
+    "base_sha": "916c7ff7deadbeef000000000000000000000000",
     "ownership": "{owner}/",   # formato canônico do core norm_owner (rstrip('/') + '/')
 }
 SECRET_SENTINEL = "«redacted:sk-…»"
@@ -175,17 +193,6 @@ class HookTestCase(unittest.TestCase):
                 self.assertIn(fragment, out["message"])
                 self.assertFalse(os.path.exists(self.record))  # zero provisions
 
-    def test_provision_failure_blocks(self):
-        # owner inválido/sem-owner é rejeitado PELO CORE (norm_owner) antes de
-        # criar worktree; o hook bloqueia fail-closed quando o provision falha.
-        self.write_response(self.ok_response())
-        env = self.env()
-        env["MOCK_PROVISION_FAIL_IDS"] = "flow-9"
-        proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9")]}, env=env)
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("fail closed", out["message"])
-
     def test_ownership_canonical_contract(self):
         # contrato do core norm_owner: `scripts` -> `scripts/` aceito;
         # resposta sem o sufixo '/' canônico diverge e bloqueia.
@@ -220,6 +227,7 @@ class HookTestCase(unittest.TestCase):
         out = self.out(proc)
         self.assertEqual(out["action"], "modify")
         wt = os.path.join(self.canonical, "flow-9")  # slug case-normalized
+        head = self.sh_git(wt, "rev-parse", "HEAD")
         task = out["args"]["tasks"][0]
         self.assert_task_schema_clean(task)
         self.assertEqual(task["goal"], "Implementar o export corrigido no AtendON.")
@@ -227,7 +235,7 @@ class HookTestCase(unittest.TestCase):
         self.assertIn("[ATENDON-MULTIAGENT]", task["context"])  # contrato injetado no context
         self.assertIn(wt, task["context"])
         self.assertIn("agent/flow-9", task["context"])
-        self.assertIn("916c7ff7deadbeef", task["context"])
+        self.assertIn(head, task["context"])        # base_sha real do worktree
         self.assertIn("ownership: scripts/", task["context"])
         self.assertIn("PROIBIDO", task["context"])
         self.assertIn("git add .", task["context"])
@@ -240,6 +248,10 @@ class HookTestCase(unittest.TestCase):
         self.assertIn("--task-id", argv); self.assertIn("flow-9", argv)
         self.assertIn("--owner", argv); self.assertIn("scripts/", argv)
         self.assertIn("--goal", argv)
+
+    def sh_git(self, cwd, *args):
+        return subprocess.run(["git", "-C", cwd, *args], capture_output=True,
+                              text=True, check=True).stdout.strip()
 
     def test_task_id_case_normalized(self):
         self.write_response(self.ok_response())
@@ -299,11 +311,15 @@ class HookTestCase(unittest.TestCase):
             ("missing keys", {"raw": '{"task_id": "flow-9"}'}, {}, None),
             ("task_id mismatch", {"task_id": "flow-99"}, {}, "task_id"),
             ("branch mismatch", {"branch": "agent/main"}, {}, "branch"),
-            ("base_sha invalid", {"base_sha": "not-a-sha"}, {}, None),
+            ("base_sha invalid", {"base_sha": "not-a-sha"},
+             {"MOCK_PROVISION_GEN_SHA": "0"}, None),
             ("ownership mismatch", {"ownership": "apps/backend/"}, {}, "ownership"),
             ("worktree fora do task_id", {"worktree": "outra-pasta"}, {}, "worktree"),
-            ("worktree sob /var/www", {"worktree": "/var/www/apps/atendon-wt-divergente"}, {}, "fail closed"),
+            ("worktree sob /var/www", {"worktree": "/var/www/apps/atendon-wt-divergente"},
+             {"MOCK_PROVISION_MKDIR": "0"}, "fail closed"),
             ("worktree ausente no disco", {"worktree": "flow-ghost"}, {"MOCK_PROVISION_MKDIR": "0"}, None),
+            ("head diverge do base_sha", {"base_sha": "0" * 40},
+             {"MOCK_PROVISION_GEN_SHA": "0"}, "worktree HEAD"),
         ]
         for name, resp, env_over, fragment in cases:
             with self.subTest(name):

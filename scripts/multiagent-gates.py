@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """Central quality gates for the AtendON multi-agent integration flow.
 
-validate: flock(state/integration.lock + state/heavy.lock) -> lint, renderer build, typecheck, tests,
-backend/panel builds + Jev/Ponytail
-review of the integration diff, one round per SHA; records state/validation.json
-atomically only after full success. No E2E.
+validate: flock(state/integration.lock) -> lint, renderer build, typecheck, tests,
+backend/panel builds + review (Ponytail) of the integration diff, one round per
+SHA; records state/validation.json atomically only after full success. No E2E.
 
-promote: flock(state/integration.lock + state/deploy.lock) -> push integration branch (NEVER main) and
+promote: flock(state/integration.lock) -> push integration branch (NEVER main) and
 open a PR integration->main. Merge of that PR on main is what triggers Coolify.
 
 State schema shared with scripts/multiagent.py: state/{task_id}.json manifests
 with integrated / integrate_sha fields.
 """
-import argparse, fcntl, json, os, shutil, subprocess, sys, tempfile, time
+import argparse, fcntl, json, os, shutil, subprocess, sys, tempfile
 from typing import NoReturn
 
 AGENTS = "/home/deploy/atendon-agents"
@@ -131,7 +130,6 @@ def review_step(base, cwd):
         f"either '{REVIEW_VERDICT}' or 'VERDICT: FAIL - <reason>'.\n\n"
         f"DIFF:\n{diff}"
     )
-    t0 = time.monotonic()
     try:
         r = subprocess.run(["hermes", "--skills", "ponytail", "-z", prompt], cwd=cwd,
                            capture_output=True, text=True, timeout=REVIEW_TIMEOUT)
@@ -170,8 +168,7 @@ def cmd_validate(_a):
             die("integration has no commits beyond origin/main")
         prior = load_validation()
         if prior and prior.get("ok") and prior.get("validated_sha") == sha:
-            ok(validated_sha=sha, already_validated=True, integration=cwd,
-               checks=prior.get("checks", {}))
+            ok(validated_sha=sha, already_validated=True, integration=cwd)
         # One build pass per workspace, dependency order: @atendon/
         # proposal-renderer exports point to dist/ (absent after npm ci), so
         # it must be built before the global typecheck; backend and panel

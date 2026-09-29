@@ -147,6 +147,11 @@ class MultiagentTest(unittest.TestCase):
         # already integrated -> rejected
         ia2 = self.call(ma.cmd_integrate, task_id="a")
         self.assertFalse(ia2["ok"], ia2)
+        # integrated tasks RELEASE ownership: a is integrated, so src/a is free
+        # again for a new task (the merged code already lives in integration)
+        pa2 = self.call(ma.cmd_provision, task_id="a2", owner="src/a", goal="g")
+        self.assertTrue(pa2["ok"], pa2)
+        self.assertEqual(pa2["ownership"], "src/a/")
 
         # remote change on origin main before integrating B
         self.commit(self.seed, "src/remote.txt", "R\n")

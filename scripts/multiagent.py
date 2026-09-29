@@ -63,12 +63,17 @@ def load_manifest(tid):
         return json.load(f)
 
 
-def manifests(exclude=None):
+def manifests():
+    """Manifests de tasks ATIVAS (não integradas) — só elas reservam ownership.
+
+    Tasks integradas liberam o prefixo: depois do integrate, uma task nova pode
+    voltar a ser dona do mesmo diretório (o código já mesclado em integration
+    não precisa de reserva)."""
     ms = []
     for p in glob.glob(f"{STATE}/*.json"):
         with open(p) as f:
             m = json.load(f)
-        if m.get("task_id") != exclude:
+        if not m.get("integrated"):
             ms.append(m)
     return ms
 
@@ -131,14 +136,6 @@ def cmd_integrate(a):
         outside = [f for f in files if not f.startswith(owner)]
         if outside:
             die("changes outside ownership", files=outside)
-        clashing = []
-        for om in manifests(exclude=tid):
-            ofiles = om.get("files") or []
-            hit = set(files) & set(ofiles)
-            if hit or (not ofiles and overlaps(owner, om)):
-                clashing.append(om["task_id"])
-        if clashing:
-            die("overlap with integrated tasks", with_tasks=clashing)
         sh("git", "fetch", "origin", "main", cwd=INTEGRATION)
         # fail closed: if origin/main changed any file touched since merge-base by the
         # worker or by prior integrations now on integration HEAD, git would auto-merge

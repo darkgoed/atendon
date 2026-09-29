@@ -128,19 +128,20 @@ def _validate_response(task_id, owner, info):
     Trust boundary do hook: a política de owner (globs, ~, monorepo prefix,
     traversal) vive ÚNICamente no core (multiagent.py norm_owner) e o provision
     a aplica ANTES de criar worktree; o hook valida apenas a RESPOSTA do
-    subprocess: ownership canônico `owner.rstrip('/') + '/'`, branch exatamente
-    `agent/{task_id}`, worktree exatamente `{CANONICAL_ROOT}/{task_id}`
-    (comparação via realpath).
+    subprocess com comparação CANÔNICA EXATA (case-sensitive): ownership
+    `owner.rstrip('/') + '/'`, branch exatamente `agent/{task_id}`, worktree
+    exatamente `{CANONICAL_ROOT}/{task_id}` (realpath), e o HEAD real do
+    worktree (git rev-parse) confirmado no base_sha devolvido.
     """
     expected_owner = owner.rstrip("/") + "/"
-    if info["task_id"].strip().lower() != task_id:
+    if info["task_id"] != task_id:
         raise RuntimeError("provision devolveu task_id %r, solicitado %r" % (info["task_id"], task_id))
-    if info["ownership"].strip().lower() != expected_owner.lower():
+    if info["ownership"] != expected_owner:
         raise RuntimeError("provision devolveu ownership %r, solicitado %r" % (info["ownership"], expected_owner))
-    if info["branch"].lower() != ("agent/" + task_id):
+    if info["branch"] != ("agent/" + task_id):
         raise RuntimeError("branch %r não corresponde exatamente a %r" % (info["branch"], "agent/" + task_id))
-    if not re.fullmatch(r"[0-9a-f]{7,40}", info["base_sha"].lower()):
-        raise RuntimeError("base_sha %r não é um sha git válido" % info["base_sha"])
+    if not re.fullmatch(r"[0-9a-f]{40}", info["base_sha"].lower()):
+        raise RuntimeError("base_sha %r não é um sha git completo (40 hex)" % info["base_sha"])
     worktree = info["worktree"]
     if not os.path.isabs(worktree):
         raise RuntimeError("provision worktree is not absolute")
@@ -152,6 +153,15 @@ def _validate_response(task_id, owner, info):
         raise RuntimeError("refusing worktree under divergent %s" % FORBIDDEN_ROOT)
     if not os.path.isdir(real):
         raise RuntimeError("provision worktree does not exist: %s" % worktree)
+    # o worktree é canônico, mas tem que ESTAR no commit e na branch devolvidos:
+    head_sha = subprocess.run(["git", "-C", real, "rev-parse", "HEAD"],
+                              capture_output=True, text=True, timeout=30).stdout.strip()
+    if head_sha != info["base_sha"]:
+        raise RuntimeError("worktree HEAD %s != base_sha devolvido %s" % (head_sha, info["base_sha"]))
+    branch_now = subprocess.run(["git", "-C", real, "branch", "--show-current"],
+                                capture_output=True, text=True, timeout=30).stdout.strip()
+    if branch_now != info["branch"]:
+        raise RuntimeError("worktree branch %r != branch devolvida %r" % (branch_now, info["branch"]))
 
 
 def handle(payload):
