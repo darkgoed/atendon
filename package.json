@@ -1,6 +1,6 @@
 {
   "name": "atendon",
-  "version": "3.0.3",
+  "version": "2.2.9",
   "private": true,
   "packageManager": "npm@12.0.1",
   "workspaces": [
@@ -10,6 +10,7 @@
     "build": "npm run build --workspaces --if-present",
     "version:bump": "node scripts/release-record.mjs",
     "release:prepare": "node scripts/release-prepare.mjs",
+    "release:coolify-tag": "node scripts/update-coolify-deploy-tag.mjs",
     "version:sync-lock": "node scripts/sync-package-lock-version.mjs",
     "dev": "concurrently --kill-others --names api,panel,worker --prefix-colors blue,green,yellow \"npm run dev:api\" \"npm run dev:panel\" \"npm run dev:worker\"",
     "dev:api": "npm run dev -w @atendon/backend",
