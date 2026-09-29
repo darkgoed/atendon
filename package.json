@@ -1,10 +1,6 @@
 {
   "name": "atendon",
-<<<<<<< HEAD
   "version": "2.2.11",
-=======
-  "version": "2.2.11",
->>>>>>> 11f91a96 (feat(atendon): auditoria de produto 20260929 reconciliada com a produção)
   "private": true,
   "packageManager": "npm@12.0.1",
   "workspaces": [
