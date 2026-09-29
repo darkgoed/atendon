@@ -65,10 +65,7 @@ def manifests(exclude=None):
 
 def overlaps(prefix, m):
     own = m.get("ownership")
-    if not own:
-        return False
-    own = own if isinstance(own, list) else [own]
-    return any(prefix.startswith(o) or o.startswith(prefix) for o in (x if isinstance(x, str) else x.get("prefix", "") for x in own))
+    return bool(own) and (prefix.startswith(own) or own.startswith(prefix))
 
 
 def write_manifest(m):

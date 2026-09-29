@@ -9,19 +9,19 @@ Protocolo oficial (https://hermes-agent.nousresearch.com/docs/user-guide/feature
            {}                                 -> no-op (pass-through)
   exit 2 = block fallback (não usado; bloco sai sempre via stdout JSON).
 
-Activación EXPLÍCITA: a delegação deve llevar o marker literal [ATENDON-MULTIAGENT]
-en goal/context (top-level ou na task) para recibir provisioning. Sin marker ->
-pass-through. Un única task por invocación (1 worktree por agente): para N tareas
-paralelas lança N delegações separadas.
+Activación EXPLÍCITA: a delegação deve levar o marker literal [ATENDON-MULTIAGENT]
+en goal/context da task (tasks[] de tool_input) para recibir provisioning. Sin
+marker -> pass-through. Un única task por invocación (1 worktree por agente):
+para N tareas paralelas lança N delegações separadas. goal/context top-level
+e delegações sem tasks[] nunca ativan provisioning.
 
 Fails closed no fluxo identificado (delegação marcada com [ATENDON-MULTIAGENT]):
-spawn sem tasks[], tasks[] com != 1 entrada, task sem task_id/owner, provision
-com erro, JSON inválido, resposta divergente do solicitado, slug/owner inválidos,
-ou worktree fora do root canônico /home/deploy/atendon-agents (nunca sob
-/var/www divergente). A worktree que um provision deixó atrás num fallo do
-validate é reportada no bloco para cleanup manual (nunca removida
-automáticamente). Delegações sem marker, controle (list/steer/stop) e tarefas
-de pesquisa passam.
+task sem task_id/owner, provision com erro, JSON inválido,
+resposta divergente do solicitado, slug/owner inválidos, ou worktree fora do
+root canônico /home/deploy/atendon-agents (nunca sob /var/www divergente).
+A worktree que um provision deixó atrás num fallo do validate é
+reportada no bloco para cleanup manual (nunca removida automáticamente).
+Delegações sem marker, controle (list/steer/stop) e tarefas de pesquisa passam.
 
 Contrato com a API real: cada entrada de tasks[] do delegate_task aceita APENAS
 goal, context, output_schema, images. task_id/owner NÃO são chaves de task —
@@ -88,13 +88,10 @@ def _block(message):
 
 
 def _args_text(args):
-    """Texto p/ identificación (marker): goal/context do topo E das tasks[].\n
-    Topo é usado só para identificação — task_id/owner vêm EXCLUSIVAMENTE da task."""
+    """Texto p/ identificación (marker): SOLO das entradas de tasks[] (contrato
+    delegate_task). goal/context top-level não faz parte do protocolo de
+    provisioning — a delegação multiagente passa SEMPRE por tasks[]."""
     parts = []
-    for key in ("goal", "context"):
-        val = args.get(key)
-        if isinstance(val, str):
-            parts.append(val)
     tasks = args.get("tasks")
     if isinstance(tasks, list):
         parts.extend(_task_text(t) for t in tasks if isinstance(t, dict))
@@ -217,7 +214,7 @@ def handle(payload):
         return _no_op()
     if payload.get("tool_name") != "delegate_task":
         return _no_op()
-    args = payload.get("tool_input") or payload.get("args") or {}
+    args = payload.get("tool_input") or {}
     if not isinstance(args, dict):
         args = {}
     # delegação sem spawn (controle de subagentes vivos): não provisiona, não bloqueia
@@ -251,17 +248,16 @@ def handle(payload):
         except RuntimeError as exc:
             return _block("AtendON multiagent hook fail closed: %s" % exc)
         goal = (t.get("goal") if isinstance(t.get("goal"), str) else "") or ttext.strip()[:500]
-        provisioned = []
+        provisioned = False
         try:
             info = _provision(task_id, owner, goal)
-            provisioned.append(task_id)
+            provisioned = True
             _validate_response(task_id, owner, info)
         except Exception as exc:
             msg = "AtendON multiagent hook fail closed: %s" % exc
             if provisioned:
-                msg += (" | Provisions JÁ FEITOS nesta execução (cleanup manual: worktrees sob %s — "
-                        "NÃO removidos automaticamente): task_ids: %s"
-                        % (CANONICAL_ROOT, ", ".join(provisioned)))
+                msg += (" | Worktree DEIXADA (cleanup manual — nunca removida "
+                        "automáticamente): task_id=%s" % task_id)
             return _block(msg)
         print(json.dumps({"action": "modify", "args": {"tasks": [_new_task(t, info)]}}))
         return 0

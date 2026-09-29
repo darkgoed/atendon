@@ -12,7 +12,7 @@ open a PR integration->main. Merge of that PR on main is what triggers Coolify.
 State schema shared with scripts/multiagent.py: state/{task_id}.json manifests
 with integrated / integrate_sha fields.
 """
-import argparse, fcntl, json, os, re, shutil, subprocess, sys, tempfile, time
+import argparse, fcntl, json, os, shutil, subprocess, sys, tempfile, time
 from typing import NoReturn
 
 AGENTS = "/home/deploy/atendon-agents"
@@ -20,8 +20,6 @@ INTEGRATION = f"{AGENTS}/integration"
 STATE = f"{AGENTS}/state"
 VALIDATION = f"{STATE}/validation.json"
 DEPLOY = f"{STATE}/deploy.json"
-HEAVY_LOCK = f"{STATE}/heavy.lock"
-DEPLOY_LOCK = f"{STATE}/deploy.lock"
 INTEGRATION_LOCK = f"{STATE}/integration.lock"  # same lock multiagent.py integrate holds
 CMD_TIMEOUT = 1800
 REVIEW_TIMEOUT = 900
@@ -181,9 +179,8 @@ def load_validation():
 def cmd_validate(_a):
     os.makedirs(STATE, exist_ok=True)
     cwd = os.path.realpath(INTEGRATION)
-    # fixed lock order: integration.lock always first — multiagent.py takes only
-    # it, so no holder of heavy/deploy ever waits on integration: no deadlock.
-    with flock_ex(INTEGRATION_LOCK), flock_ex(HEAVY_LOCK):
+    # integration.lock serializes integrator (multiagent.py) and this gate.
+    with flock_ex(INTEGRATION_LOCK):
         sha = out("git", "rev-parse", "HEAD", cwd=cwd)
         if out("git", "symbolic-ref", "-q", "HEAD", cwd=cwd) != "refs/heads/integration":
             die("integration worktree is not on branch integration")
@@ -239,7 +236,7 @@ def cmd_promote(_a):
         die("validation was not run on the canonical integration worktree")
     # integration.lock first again: integrator cannot move HEAD between the
     # validated_sha check, fetch, push and PR open.
-    with flock_ex(INTEGRATION_LOCK), flock_ex(DEPLOY_LOCK):
+    with flock_ex(INTEGRATION_LOCK):
         if out("git", "status", "--porcelain"):
             die("integration worktree is dirty; promote refuses")
         sha = out("git", "rev-parse", "HEAD")
@@ -270,8 +267,7 @@ def cmd_promote(_a):
                 cwd=INTEGRATION, capture_output=True, text=True)
             if r.returncode:
                 die("gh pr create failed", output=(r.stdout[-TAIL:] + r.stderr[-TAIL:]))
-            m = re.search(r"https://\S+", r.stdout)
-            pr_url, created = (m.group(0) if m else ""), True
+            pr_url, created = r.stdout.strip(), True
         atomic_write(DEPLOY, {"promoted_sha": sha, "rollback_sha": main_sha,
                               "pr_url": pr_url, "promoted_at":
                               time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
@@ -296,7 +292,7 @@ def cmd_status(_a):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
-    pv = sub.add_parser("validate")
+    sub.add_parser("validate")
     sub.add_parser("promote")
     sub.add_parser("status")
     a = p.parse_args()

@@ -154,14 +154,14 @@ class HookTestCase(unittest.TestCase):
 
     # ---- activación por marker: exactamente UNA task ----
 
-    def test_marker_spawn_without_tasks_blocks(self):
+    def test_top_level_marker_without_tasks_passes(self):
+        # protocolo: la identificación corre SOLO sobre tasks[] (tool_input); el
+        # marker en goal/context top-level sin tasks[] no activa nada -> pass-through
         proc = self.run_hook(tool_input={
-            "goal": "Implementar validação de passageiros no export AtendON e testar. [ATENDON-MULTIAGENT]",
+            "goal": "Implementar validação de passageiros no export AtendON. [ATENDON-MULTIAGENT]",
             "context": "task_id: FLOW-9\nowner: scripts/",
         }, cwd="/var/www/apps/atendon")
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("tasks[]", out["message"])
+        self.assertEqual(self.out(proc), {})
         self.assertFalse(os.path.exists(self.record))  # zero provisions
 
     def test_marker_multi_task_blocks(self):
@@ -371,7 +371,7 @@ class HookTestCase(unittest.TestCase):
         self.assertIn("fail closed", out["message"])
         self.assertIn("flow-9", out["message"])        # task_id reportado
         self.assertIn("cleanup manual", out["message"])
-        self.assertIn("NÃO removidos automaticamente", out["message"])
+        self.assertIn("nunca removida", out["message"])
 
     # ---- não vazar segredos ----
 
