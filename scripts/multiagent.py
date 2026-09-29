@@ -133,6 +133,13 @@ def cmd_integrate(a):
         if clashing:
             die("overlap with integrated tasks", with_tasks=clashing)
         sh("git", "fetch", "origin", "main", cwd=INTEGRATION)
+        # fail closed: if origin/main changed a file the worker touched since merge-base,
+        # git would auto-merge without conflict and silently mix ownership
+        base = out("git", "merge-base", "HEAD", "origin/main", cwd=INTEGRATION)
+        remote_files = out("git", "diff", "--name-only", f"{base}..origin/main", cwd=INTEGRATION).splitlines()
+        overlap = sorted(set(files) & set(remote_files))
+        if overlap:
+            die("origin/main overlap", files=overlap)
         r = sh("git", "merge", "--no-edit", "origin/main", cwd=INTEGRATION, check=False)
         if r.returncode:
             sh("git", "merge", "--abort", cwd=INTEGRATION, check=False)
