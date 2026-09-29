@@ -9,7 +9,8 @@ Protocolo oficial (https://hermes-agent.nousresearch.com/docs/user-guide/feature
   exit 2 = block fallback (não usado; bloco sai sempre via stdout JSON).
 
 Fails closed no fluxo identificado (delegação AtendON + intenção de código):
-sem task_id/owner em ALGUMA task do batch, provision com erro, JSON inválido,
+spawn sem tasks[] (top-level goal/context não é mais suportado), task sem
+task_id/owner no batch, provision com erro, JSON inválido,
 resposta divergente do solicitado, slug/owner inválidos, ou worktree fora do
 root canônico /home/deploy/atendon-agents (nunca sob /var/www divergente).
 Um batch com QUALQUER task problemática é bloqueado inteiro; provisions já
@@ -87,7 +88,11 @@ def _block(message):
 
 
 def _args_text(args):
-    """Concatena goal/context (topo e por tarefa) numa só string para os filtros."""
+    """Texto p/ FILTROS (atendon + intenção de código): goal/context do topo E das tasks[].
+
+    Topo é usado só para identificação — spawn/extração de task_id/owner vem
+    EXCLUSIVAMENTE das entradas de tasks[].
+    """
     parts = []
     for key in ("goal", "context"):
         val = args.get(key)
@@ -95,12 +100,7 @@ def _args_text(args):
             parts.append(val)
     tasks = args.get("tasks")
     if isinstance(tasks, list):
-        for t in tasks:
-            if isinstance(t, dict):
-                for key in ("goal", "context"):
-                    val = t.get(key)
-                    if isinstance(val, str):
-                        parts.append(val)
+        parts.extend(_task_text(t) for t in tasks if isinstance(t, dict))
     return "\n".join(parts)
 
 
@@ -248,7 +248,8 @@ def _new_task(t, info):
 
 
 def handle_batch(args):
-    """Caminho tasks[]: extrai task_id/owner INDIVIDUAIS por task, provisiona uma a uma.
+    """Único caminho: extrai e valida TODOS os task_id/owner, duplicados e schema
+    ANTES de qualquer provision; depois provisiona um a um.
 
     Qualquer membro problemático (sem identificador, slug/owner inválido, provision com
     erro, resposta divergente, worktree errada, task_id duplicado) bloqueia o batch inteiro.
@@ -257,7 +258,7 @@ def handle_batch(args):
     tasks = args.get("tasks")
     provisioned = []
     try:
-        parsed = []
+        parsed = []   # validação total primeiro: nenhum provision com task inválida à frente
         seen = set()
         for idx, t in enumerate(tasks):
             if not isinstance(t, dict):
@@ -272,38 +273,24 @@ def handle_batch(args):
             owner = _extract_owner(ttext)
             _check_owner(owner)
             goal = (t.get("goal") if isinstance(t.get("goal"), str) else "") or ttext.strip()[:500]
+            parsed.append((idx, t, task_id, owner, goal))
+        results = []
+        for idx, t, task_id, owner, goal in parsed:
             try:
                 info = _provision(task_id, owner, goal)
                 _validate_response(task_id, owner, info)
                 provisioned.append(task_id)
             except Exception as exc:
                 raise RuntimeError("tasks[%d] (task_id=%s): %s" % (idx, task_id, exc))
-            parsed.append((t, info))
-        return _emit_modify({"tasks": [_new_task(t, info) for t, info in parsed]})
+            results.append((t, info))
+        print(json.dumps({"action": "modify", "args": {"tasks": [_new_task(t, info) for t, info in results]}}))
+        return 0
     except Exception as exc:  # fail closed no caminho identificado
         msg = "AtendON multiagent hook fail closed: %s" % exc
         if provisioned:
             msg += (" | Provisions JÁ FEITOS nesta execução (cleanup manual: worktrees sob %s — "
                     "NÃO removidos automaticamente): task_ids: %s" % (CANONICAL_ROOT, ", ".join(provisioned)))
         return _block(msg)
-
-
-def handle_single(args, text):
-    """Forma legacy single-goal: um provision só; task_id/owner do texto de topo."""
-    try:
-        task_id = _slug(text)
-        if not task_id:
-            raise RuntimeError("delegação de código requer task_id (ex.: `task_id: FLOW-123`)")
-        owner = _extract_owner(text)
-        _check_owner(owner)
-        goal = (args.get("goal") if isinstance(args.get("goal"), str) else "") or text.strip()[:500]
-        info = _provision(task_id, owner, goal)
-        _validate_response(task_id, owner, info)
-        ctx = args.get("context")
-        context = (ctx + "\n\n" + WORKER_CONTRACT.format(**info)) if isinstance(ctx, str) and ctx.strip() else WORKER_CONTRACT.format(**info)
-        return _emit_modify({"goal": args.get("goal"), "context": context})
-    except Exception as exc:  # fail closed no caminho identificado
-        return _block("AtendON multiagent hook fail closed: %s" % exc)
 
 
 def handle(payload):
@@ -338,14 +325,11 @@ def handle(payload):
             return _no_op()  # pesquisa/análise não-código passa
         if isinstance(args.get("tasks"), list) and args["tasks"]:
             return handle_batch(args)
-        return handle_single(args, text)
+        return _block("AtendON multiagent hook fail closed: delegação de código AtendON "
+                      "requer tasks[] com task_id/owner em cada task "
+                      "(spawn top-level goal/context não é suportado)")
     except Exception as exc:  # fail closed no caminho identificado
         return _block("AtendON multiagent hook fail closed: %s" % exc)
-
-
-def _emit_modify(modify_args):
-    print(json.dumps({"action": "modify", "args": modify_args}))
-    return 0
 
 
 def main():

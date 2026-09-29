@@ -189,25 +189,27 @@ class HookTestCase(unittest.TestCase):
         self.assertEqual(self.out(proc), {})
         self.assertEqual(proc.returncode, 0)
 
-    # ---- fail closed: código AtendON sem task_id/owner ----
+    # ---- fail closed: código AtendON sem tasks[] ou sem task_id/owner ----
 
-    def test_atendon_code_without_task_id_blocks(self):
+    def test_atendon_spawn_without_tasks_blocks(self):
         proc = self.run_hook(tool_input={
             "goal": "Implementar validação de passageiros no export AtendON e testar.",
-            "context": "owner: scripts/",
+            "context": "task_id: FLOW-9\nowner: scripts/",
         }, cwd="/var/www/apps/atendon")
         out = self.out(proc)
         self.assertEqual(out["action"], "block")
-        self.assertIn("task_id", out["message"])
+        self.assertIn("tasks[]", out["message"])
+        self.assertFalse(os.path.exists(self.record))  # zero provisions
 
-    def test_atendon_code_without_owner_blocks(self):
+    def test_atendon_task_without_owner_blocks(self):
         proc = self.run_hook(tool_input={
-            "goal": "Implementar validação de passageiros no export AtendON.",
-            "context": "task_id: FLOW-9",
+            "tasks": [{"goal": "Implementar validação no export AtendON.",
+                       "context": "task_id: FLOW-9"}],
         }, cwd="/var/www/apps/atendon")
         out = self.out(proc)
         self.assertEqual(out["action"], "block")
         self.assertIn("owner", out["message"])
+        self.assertFalse(os.path.exists(self.record))  # validação ANTES de provision
 
     def test_bad_owner_blocks_without_provision(self):
         # contrato: owner é prefixo de diretório relativo ao app root — globs
@@ -324,29 +326,16 @@ class HookTestCase(unittest.TestCase):
         self.assertEqual(self.task_ids_called(), ["flow-9"])
         self.assertIn(os.path.join(self.canonical, "flow-9"), out["args"]["tasks"][0]["context"])
 
-    def test_task_id_owner_from_text_fallback(self):
+    def test_task_id_owner_from_task_goal_text(self):
         self.write_response(self.ok_response())
         proc = self.run_hook(tool_input={
-            "goal": "Corrigir o bug do funil AtendON. task-id: FLOW-42 owner: scripts/funil",
+            "tasks": [{"goal": "Corrigir o bug do funil AtendON. task-id: FLOW-42 owner: scripts/funil"}],
         })
         out = self.out(proc)
         self.assertEqual(out["action"], "modify")
         argv = self.recorded_argv()[0]["argv"]
         self.assertIn("flow-42", argv)
         self.assertIn("scripts/funil", argv)
-
-    def test_single_goal_form_modify(self):
-        self.write_response(self.ok_response())
-        proc = self.run_hook(tool_input={
-            "goal": "Implementar teste do export AtendON.",
-            "context": "task_id: FLOW-9\nowner: scripts/",
-        })
-        out = self.out(proc)
-        self.assertEqual(out["action"], "modify")
-        self.assertEqual(out["args"]["goal"], "Implementar teste do export AtendON.")
-        self.assertNotIn("tasks", out["args"])
-        self.assertIn("[ATENDON-MULTIAGENT]", out["args"]["context"])
-        self.assertIn("Retorno obrigatório", out["args"]["context"])
 
     def test_batch_passthrough_output_schema_images(self):
         self.write_response(self.ok_response())
@@ -567,7 +556,7 @@ class HookTestCase(unittest.TestCase):
         out = self.out(proc)
         self.assertEqual(out["action"], "block")
         self.assertIn("tasks[1]", out["message"])
-        self.assertIn("task_ids: flow-9", out["message"])  # cleanup manual do primeiro
+        self.assertFalse(os.path.exists(self.record))  # validação total ANTES: zero provisions
         self.assertNotIn("action\": \"modify", proc.stdout)
 
     def test_duplicate_task_id_blocks(self):
@@ -579,7 +568,7 @@ class HookTestCase(unittest.TestCase):
         out = self.out(proc)
         self.assertEqual(out["action"], "block")
         self.assertIn("duplicado", out["message"])
-        self.assertEqual(self.task_ids_called(), ["flow-9"])  # 1 worktree por agente
+        self.assertFalse(os.path.exists(self.record))  # zero provisions: duplicado é validado ANTES
 
     # ---- não vazar segredos ----
 
