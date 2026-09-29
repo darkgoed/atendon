@@ -138,6 +138,20 @@ export function bumpVersion(current, classification) {
   return `${major}.${minor}.${patch + 1}`;
 }
 
+/** Saltos de major (X.0.0) nunca são automáticos: um RELEASE auto-classificado
+ *  empurrou o painel da casa 2.x.x para a 3.x.x sem intenção (2026-09-29,
+ *  revertido com renumbering manual no banco). O salto só passa com override
+ *  explícito. */
+export function guardMajorBump(classification, override) {
+  if (classification !== "RELEASE") return;
+  if (override === "RELEASE") return;
+  throw new Error(
+    "Classificação RELEASE salta o major (X.0.0). Se o salto é intencional, "
+    + "rode de novo com RELEASE_CLASSIFICATION_OVERRIDE=RELEASE; se o impacto é "
+    + "menor, force PATCH ou DROP pelo mesmo override."
+  );
+}
+
 export function resolveClassificationOverride(env = process.env) {
   const explicit = env.RELEASE_CLASSIFICATION_OVERRIDE?.trim().toUpperCase();
   if (explicit) {
@@ -251,6 +265,7 @@ async function main() {
     const override = resolveClassificationOverride();
     const auto = classifyRelease(files, commitMessages, migrationDiffText);
     const classification = override ?? auto.classification;
+    guardMajorBump(classification, override);
     const classificationReason = override ? `Override manual (${override})` : auto.reason;
     const bumpSource = override ? "manual_override" : "auto";
 

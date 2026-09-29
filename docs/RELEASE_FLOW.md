@@ -21,9 +21,13 @@ Este documento substitui a seção "Release de versão e changelog" de
   RELEASE; rotas/páginas novas dentro de módulo existente, migration aditiva
   ou mudança em ≥3 módulos com crescimento → DROP; caso contrário PATCH.
   Lockfiles, `dist/`, `.next/`, `graphify-out/`, logs, `data/`, baselines de
-  QA e artefatos gerados são excluídos do diff antes da análise. Override
-  manual: `RELEASE_CLASSIFICATION_OVERRIDE=PATCH|DROP|RELEASE` (o legado
-  `VERSION_BUMP=patch|minor|major` continua aceito como alias).
+  QA e artefatos gerados são excluídos do diff antes da análise.
+  **Um RELEASE automático falha o `release:prepare`** (guard
+  `guardMajorBump`): salto de major exige
+  `RELEASE_CLASSIFICATION_OVERRIDE=RELEASE` explícito. Override manual:
+  `RELEASE_CLASSIFICATION_OVERRIDE=PATCH|DROP|RELEASE` (o legado
+  `VERSION_BUMP=patch|minor|major` continua aceito como alias). Procedimentos
+  de rollback e correção de numeração: `docs/RUNBOOK_ROLLBACK.md`.
 - **IA fora do caminho crítico**: o deploy grava a release técnica e termina.
   O worker do backend roda `reconcileChangelogAiGeneration()` (a cada 2 min,
   `CHANGELOG_AI_RECONCILIATION_INTERVAL_MS`) e gera título, resumo e 1–6 itens
