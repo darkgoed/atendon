@@ -141,8 +141,9 @@ def jev_gate(name, payload, task_id, cwd):
 def review_step(base, cwd):
     """Real gates on the diff: JevGate CLI (intake/scope-drift/completeness,
     advisory — findings recorded, never a verdict) then a Ponytail over-
-    engineering review via the hermes CLI, whose verdict must be exactly the
-    final line 'VERDICT: PASS' — substring matches never count."""
+    engineering review via the hermes CLI with the real skill preloaded
+    (--skills ponytail), whose verdict must be exactly the final line
+    'VERDICT: PASS' — substring matches never count."""
     if not os.path.exists(JEV):
         die(f"review tool unavailable: {JEV} missing")
     if not shutil.which("hermes"):
@@ -177,7 +178,7 @@ def review_step(base, cwd):
     )
     t0 = time.monotonic()
     try:
-        r = subprocess.run(["hermes", "-z", prompt], cwd=cwd,
+        r = subprocess.run(["hermes", "--skills", "ponytail", "-z", prompt], cwd=cwd,
                            capture_output=True, text=True, timeout=REVIEW_TIMEOUT)
     except subprocess.TimeoutExpired:
         die(f"review timed out after {REVIEW_TIMEOUT}s")
@@ -187,7 +188,8 @@ def review_step(base, cwd):
     lines = txt.splitlines()
     if r.returncode != 0 or not lines or lines[-1] != REVIEW_VERDICT:
         die("ponytail review did not pass", rc=r.returncode, output=txt[-TAIL:])
-    results["ponytail"] = {"cmd": ["hermes", "-z", "<diff-review-prompt>"], "rc": 0,
+    results["ponytail"] = {"cmd": ["hermes", "--skills", "ponytail", "-z",
+                                   "<diff-review-prompt>"], "rc": 0,
                            "verdict": "PASS", "seconds": round(time.monotonic() - t0, 1)}
     return results
 
@@ -230,7 +232,10 @@ def cmd_validate(a):
         if mode == "test-only":
             tests = {"test": tests["test"]}
         env = reduced_env() if a.env == "isolated" else None
-        results = {n: run_check(n, argv, cwd, env=env) for n, argv in tests.items()}
+        results = {n: run_check(n, argv, cwd,
+                                env={**(env or os.environ), "PYTHONDONTWRITEBYTECODE": "1"}
+                                    if argv[0] == "python3" else env)
+                   for n, argv in tests.items()}
         results.update(review_step(base, cwd))
         record = {"ok": True, "key": key, "validated_sha": sha, "integration": cwd,
                   "mode": mode, "env": a.env, "fixture": cwd != os.path.realpath(INTEGRATION),
@@ -242,16 +247,79 @@ def cmd_validate(a):
 
 
 def branch_protection_active():
-    """gh api: main must still be protected with required pull-request reviews
-    before integration is pushed — PR-only promote is only guaranteed while
-    that protection is active. Real API output preserved on failure."""
+    """gh api: main must still be protected before integration is pushed —
+    PR-only promote is only guaranteed while that protection is active.
+    Parsed JSON (not substring sniffing): requires a truthy
+    required_pull_request_reviews object, enforce_admins.enabled true and
+    allow_force_pushes.enabled false. Real API output preserved on failure."""
     repo = out("gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner")
     r = sh("gh", "api", f"repos/{repo}/branches/main/protection", check=False)
     if r.returncode:
         die("main branch protection check failed; refusing push",
             output=(r.stdout[-TAIL:] + r.stderr[-TAIL:]))
-    if "required_pull_request_reviews" not in r.stdout:
-        die("main branch protection does not require PR reviews; refusing push")
+    try:
+        prot = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        die("main branch protection returned invalid JSON; refusing push",
+            output=r.stdout[-TAIL:])
+    reviews = prot.get("required_pull_request_reviews")
+    if not isinstance(reviews, dict) or not reviews:
+        die("main branch protection does not require PR reviews; refusing push",
+            required_pull_request_reviews=reviews)
+    if not prot.get("enforce_admins", {}).get("enabled"):
+        die("main branch protection does not enforce admins; refusing push")
+    if (prot.get("allow_force_pushes") or {}).get("enabled"):
+        die("main branch protection allows force pushes; refusing push")
+
+
+def cmd_selftest(_a):
+    """Minimal local mock test of branch_protection_active (no new test file):
+    patches subprocess.run so `gh api` returns canned protection JSON; good
+    protection passes, null/missing/non-object reviews, admins unenforced,
+    force pushes allowed or an API failure all refuse."""
+    import io
+    from contextlib import redirect_stdout
+    from unittest import mock
+    good = {"required_pull_request_reviews": {"required_approving_review_count": 1},
+            "enforce_admins": {"enabled": True},
+            "allow_force_pushes": {"enabled": False}}
+    cases = [
+        ("good", good, 0, None),
+        ("reviews_null", {**good, "required_pull_request_reviews": None}, 0, "reviews"),
+        ("reviews_missing", {k: v for k, v in good.items()
+                             if k != "required_pull_request_reviews"}, 0, "reviews"),
+        ("reviews_not_object", {**good, "required_pull_request_reviews": True}, 0, "reviews"),
+        ("admins_off", {**good, "enforce_admins": {"enabled": False}}, 0, "admins"),
+        ("force_push_allowed", {**good, "allow_force_pushes": {"enabled": True}}, 0, "force"),
+        ("api_error", None, 1, "protection check failed"),
+    ]
+    for name, payload, rc, expect in cases:
+        def fake_run(args, **_kw):
+            if list(args[:3]) == ["gh", "repo", "view"]:
+                return subprocess.CompletedProcess(args, 0, stdout="o/r\n", stderr="")
+            return subprocess.CompletedProcess(args, rc,
+                stdout="" if payload is None else json.dumps(payload), stderr="")
+        buf = io.StringIO()
+        try:
+            with mock.patch("subprocess.run", side_effect=fake_run), redirect_stdout(buf):
+                branch_protection_active()
+        except SystemExit as e:
+            if expect is None:
+                die(f"selftest {name}: expected pass, refused (rc={e.code})",
+                    output=buf.getvalue()[-200:])
+            if e.code != 1:
+                die(f"selftest {name}: unexpected exit code {e.code}",
+                    output=buf.getvalue()[-200:])
+            try:
+                err = json.loads(buf.getvalue())["error"]
+            except (json.JSONDecodeError, KeyError):
+                err = buf.getvalue()
+            if expect not in err:
+                die(f"selftest {name}: refusal lacks {expect!r}", error=err[:200])
+        else:
+            if expect is not None:
+                die(f"selftest {name}: expected refusal, got pass")
+    ok(selftest="branch_protection_active", cases=[c[0] for c in cases])
 
 
 def cmd_promote(_a):
@@ -327,8 +395,10 @@ def main():
     pv.add_argument("--integration", default=INTEGRATION)
     sub.add_parser("promote")
     sub.add_parser("status")
+    sub.add_parser("selftest")
     a = p.parse_args()
-    ({"validate": cmd_validate, "promote": cmd_promote, "status": cmd_status}[a.cmd])(a)
+    ({"validate": cmd_validate, "promote": cmd_promote, "status": cmd_status,
+      "selftest": cmd_selftest}[a.cmd])(a)
 
 
 if __name__ == "__main__":
