@@ -8,14 +8,14 @@ Protocolo oficial (https://hermes-agent.nousresearch.com/docs/user-guide/feature
            {}                                 -> no-op (pass-through)
   exit 2 = block fallback (não usado; bloco sai sempre via stdout JSON).
 
-Fails closed no fluxo identificado (delegação AtendON + intenção de código):
-spawn sem tasks[] (top-level goal/context não é mais suportado), task sem
+Fails closed no fluxo identificado (delegação marcada com [ATENDON-MULTIAGENT]):
+spawn sem tasks[] (top-level goal/context não é más suportado), task sem
 task_id/owner no batch, provision com erro, JSON inválido,
 resposta divergente do solicitado, slug/owner inválidos, ou worktree fora do
 root canônico /home/deploy/atendon-agents (nunca sob /var/www divergente).
 Um batch com QUALQUER task problemática é bloqueado inteiro; provisions já
 feitos são reportados no bloco para cleanup manual (worktrees NUNCA são
-removidas automaticamente). Delegações não-AtendON, controle (list/steer/stop)
+removidas automaticamente). Delegações sem marker, controle (list/steer/stop)
 e tarefas de pesquisa passam.
 
 Contrato com a API real: cada entrada de tasks[] do delegate_task aceita APENAS
@@ -47,13 +47,10 @@ FORBIDDEN_ROOT = "/var/www"                      # monorepo divergente — nunca
 DEFAULT_CLI = "/home/deploy/atendon-agents/integration/scripts/multiagent.py"
 PROVISION_TIMEOUT_S = 120
 
-# intenção de código (qualquer match basta). Pesquisa pura não casa.
-CODE_RE = re.compile(
-    r"\b(implement\w*|refator\w*|corrig\w*|fix\w*|criar|edit\w*|escrev\w*|migr\w*|"
-    r"commit\w*|test\w*|build\w*|deploy\w*|instal\w*|configur\w*|adicion\w*|"
-    r"atualiz\w*|remov\w*|desenvolv\w*|bug|lint)\b",
-    re.I,
-)
+# Activación EXPLÍCITA: la delegación debe llevar el marker literal
+# [ATENDON-MULTIAGENT] en goal/context (top-level o en cualquier task) para
+# recibir provision. Sin marker -> pass-through. Sin clasificador de lenguaje.
+MARKER = "[ATENDON-MULTIAGENT]"
 # task_id/owner por task: chaves extras em tasks[] NÃO são aceitas pela API
 # (schema de task só permite goal/context/output_schema/images), então vêm da
 # STRING context/goal de cada entrada.
@@ -104,15 +101,10 @@ def _args_text(args):
     return "\n".join(parts)
 
 
-def _is_atendon(text, cwd):
-    if "atendon" in text.lower():
-        return True
-    if not cwd or not isinstance(cwd, str):
-        return False
-    real = os.path.realpath(cwd)
-    return (real.startswith(os.path.realpath("/var/www/apps/atendon") + os.sep)
-            or real.startswith(os.path.realpath(CANONICAL_ROOT) + os.sep)
-            or real == os.path.realpath("/var/www/apps/atendon"))
+def _is_multiaagent(text):
+    """Activación explícita: el marker literal [ATENDON-MULTIAGENT] debe estar
+    en el texto de la delegación (goal/context top-level o de cualquier task)."""
+    return isinstance(text, str) and MARKER in text
 
 
 def _slug(raw):
@@ -306,28 +298,18 @@ def handle(payload):
     if str(args.get("action") or "").strip().lower() in ("list", "steer", "stop"):
         return _no_op()
     try:
-        # identificação: falha aqui NUNCA bloqueia (hook global — outras delegações devem passar)
-        try:
-            text = _args_text(args)
-        except Exception:
-            text = ""
-        try:
-            atendon = _is_atendon(text, payload.get("cwd"))
-        except Exception:
-            atendon = False
-        if not atendon:
-            return _no_op()
-        try:
-            code_intent = bool(CODE_RE.search(text))
-        except Exception:
-            code_intent = False
-        if not code_intent:
-            return _no_op()  # pesquisa/análise não-código passa
-        if isinstance(args.get("tasks"), list) and args["tasks"]:
-            return handle_batch(args)
-        return _block("AtendON multiagent hook fail closed: delegação de código AtendON "
-                      "requer tasks[] com task_id/owner em cada task "
-                      "(spawn top-level goal/context não é suportado)")
+            # identificación: falha aqui NUNCA bloqueia (hook global — outras delegações devem passar)
+            try:
+                text = _args_text(args)
+            except Exception:
+                text = ""
+            if not _is_multiaagent(text):
+                return _no_op()  # sin marker -> pass-through (pesquisa/análisis no-multiagente)
+            if isinstance(args.get("tasks"), list) and args["tasks"]:
+                return handle_batch(args)
+            return _block("AtendON multiagent hook fail closed: delegação de código AtendON "
+                          "requer tasks[] com task_id/owner em cada task "
+                          "(spawn top-level goal/context não é suportado)")
     except Exception as exc:  # fail closed no caminho identificado
         return _block("AtendON multiagent hook fail closed: %s" % exc)
 

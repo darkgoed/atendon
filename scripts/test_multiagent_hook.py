@@ -119,27 +119,25 @@ class HookTestCase(unittest.TestCase):
     def task(self, tid, owner="scripts/", goal=None, **extra):
         d = {"goal": goal or "Implementar o export corrigido no AtendON.",
              "context": "Arquivo: scripts/verify-blockers.ts\n"
-                        "task_id: %s\nowner: %s" % (tid, owner)}
+                        "task_id: %s\nowner: %s\n[ATENDON-MULTIAGENT]" % (tid, owner)}
         d.update(extra)
         return d
 
-    # ---- pass-through: o hook global não pode bloquear outras delegações ----
+    # ---- pass-through: el hook global no puede bloquear delegações sin marker ----
 
-    def test_non_atendon_delegation_passes(self):
+    def test_without_marker_passes(self):
+        # sin [ATENDON-MULTIAGENT] -> pass-through, sea cual sea cwd/goal
         self.write_response(self.ok_response())
-        proc = self.run_hook(tool_input={
-            "goal": "Refatorar export do CRM e corrigir bug de passageiros no crm-whatsapp.",
-        }, cwd="/var/www/apps/crm-whatsapp")
-        self.assertEqual(self.out(proc), {})
-        self.assertFalse(os.path.exists(self.record))
-
-    def test_atendon_research_non_code_passes(self):
-        self.write_response(self.ok_response())
-        proc = self.run_hook(tool_input={
-            "goal": "Pesquisar a arquitetura AtendON, investigar o funil e comparar abordagens de export.",
-        }, cwd="/var/www/apps/atendon")
-        self.assertEqual(self.out(proc), {})
-        self.assertFalse(os.path.exists(self.record))
+        for tool_input, cwd in (
+            ({"goal": "Refatorar export del CRM y corregir bug de pasajeros en crm-whatsapp."},
+             "/var/www/apps/crm-whatsapp"),
+            ({"goal": "Pesquisar la arquitectura AtendON y comparar abordajes de export."},
+             "/var/www/apps/atendon"),
+        ):
+            with self.subTest(cwd=cwd):
+                proc = self.run_hook(tool_input=tool_input, cwd=cwd)
+                self.assertEqual(self.out(proc), {})
+                self.assertFalse(os.path.exists(self.record))
 
     def test_control_action_passes(self):
         proc = self.run_hook(tool_input={"action": "list"})
@@ -158,7 +156,7 @@ class HookTestCase(unittest.TestCase):
 
     def test_atendon_spawn_without_tasks_blocks(self):
         proc = self.run_hook(tool_input={
-            "goal": "Implementar validação de passageiros no export AtendON e testar.",
+            "goal": "Implementar validação de passageiros no export AtendON e testar. [ATENDON-MULTIAGENT]",
             "context": "task_id: FLOW-9\nowner: scripts/",
         }, cwd="/var/www/apps/atendon")
         out = self.out(proc)
@@ -169,7 +167,7 @@ class HookTestCase(unittest.TestCase):
     def test_atendon_task_without_owner_blocks(self):
         proc = self.run_hook(tool_input={
             "tasks": [{"goal": "Implementar validação no export AtendON.",
-                       "context": "task_id: FLOW-9"}],
+                       "context": "[ATENDON-MULTIAGENT]\ntask_id: FLOW-9"}],
         }, cwd="/var/www/apps/atendon")
         out = self.out(proc)
         self.assertEqual(out["action"], "block")
@@ -294,7 +292,7 @@ class HookTestCase(unittest.TestCase):
     def test_task_id_owner_from_task_goal_text(self):
         self.write_response(self.ok_response())
         proc = self.run_hook(tool_input={
-            "tasks": [{"goal": "Corrigir o bug do funil AtendON. task-id: FLOW-42 owner: scripts/funil"}],
+            "tasks": [{"goal": "Corrigir o bug do funil AtendON. task-id: FLOW-42 owner: scripts/funil [ATENDON-MULTIAGENT]"}],
         })
         out = self.out(proc)
         self.assertEqual(out["action"], "modify")
