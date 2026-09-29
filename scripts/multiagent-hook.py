@@ -62,9 +62,6 @@ SLUG_RE = re.compile(r"^[a-z0-9-]+$")   # alinhado ao core multiagent.py ID_RE (
 GLOB_CHARS = "*?[]"
 
 
-def _owner_segments(owner):
-    return owner.split("/")
-
 WORKER_CONTRACT = (
     "[ATENDON-MULTIAGENT] Regras do worker:\n"
     "Worktree: {worktree} (branch {branch}, base {base_sha}). Trabalhe APENAS neste worktree.\n"
@@ -155,7 +152,7 @@ def _check_owner(owner):
         raise RuntimeError("owner deve ser relativo ao app root (ex.: scripts/), não ao monorepo (%r)" % owner)
     if any(c in owner for c in GLOB_CHARS):
         raise RuntimeError("owner é prefixo de diretório; globs (* ? [ ]) não são aceitos (%r)" % owner)
-    segs = _owner_segments(owner)
+    segs = owner.split("/")
     if not [p for p in segs if p not in ("", ".")]:
         raise RuntimeError("owner inválido: %r" % owner)
 
@@ -235,36 +232,19 @@ def _validate_response(task_id, owner, info):
         raise RuntimeError("provision worktree does not exist: %s" % worktree)
 
 
-def _contract(info):
-    return WORKER_CONTRACT.format(**info)
-
-
 def _new_task(t, info):
     """Nova entrada de task com APENAS chaves aceitas pelo schema: goal, context
     (+ output_schema/images se vierem) — nunca worktree/branch/task_id/owner como chaves."""
     nt = {}
     if isinstance(t.get("goal"), str) and t["goal"].strip():
         nt["goal"] = t["goal"]
-    contract = _contract(info)
+    contract = WORKER_CONTRACT.format(**info)
     ctx = t.get("context")
     nt["context"] = (ctx + "\n\n" + contract) if isinstance(ctx, str) and ctx.strip() else contract
     for key in TASK_PASSTHROUGH_KEYS:
         if key in t:
             nt[key] = t[key]
     return nt
-
-
-def _modify_batch_args(args, parsed):
-    """parsed: lista de (task_original, info). Retorna {"tasks": [...]} sem chaves extras."""
-    return {"tasks": [_new_task(t, info) for t, info in parsed]}
-
-
-def _provision_one(task_id, owner, goal, provisioned):
-    """Provisiona + valida; registra task_id em provisioned (para cleanup manual em erro)."""
-    info = _provision(task_id, owner, goal)
-    _validate_response(task_id, owner, info)
-    provisioned.append(task_id)
-    return info
 
 
 def handle_batch(args):
@@ -293,11 +273,13 @@ def handle_batch(args):
             _check_owner(owner)
             goal = (t.get("goal") if isinstance(t.get("goal"), str) else "") or ttext.strip()[:500]
             try:
-                info = _provision_one(task_id, owner, goal, provisioned)
+                info = _provision(task_id, owner, goal)
+                _validate_response(task_id, owner, info)
+                provisioned.append(task_id)
             except Exception as exc:
                 raise RuntimeError("tasks[%d] (task_id=%s): %s" % (idx, task_id, exc))
             parsed.append((t, info))
-        return _emit_modify(_modify_batch_args(args, parsed))
+        return _emit_modify({"tasks": [_new_task(t, info) for t, info in parsed]})
     except Exception as exc:  # fail closed no caminho identificado
         msg = "AtendON multiagent hook fail closed: %s" % exc
         if provisioned:
@@ -315,10 +297,10 @@ def handle_single(args, text):
         owner = _extract_owner(text)
         _check_owner(owner)
         goal = (args.get("goal") if isinstance(args.get("goal"), str) else "") or text.strip()[:500]
-        info = _provision_one(task_id, owner, goal, [])
-        contract = _contract(info)
+        info = _provision(task_id, owner, goal)
+        _validate_response(task_id, owner, info)
         ctx = args.get("context")
-        context = (ctx + "\n\n" + contract) if isinstance(ctx, str) and ctx.strip() else contract
+        context = (ctx + "\n\n" + WORKER_CONTRACT.format(**info)) if isinstance(ctx, str) and ctx.strip() else WORKER_CONTRACT.format(**info)
         return _emit_modify({"goal": args.get("goal"), "context": context})
     except Exception as exc:  # fail closed no caminho identificado
         return _block("AtendON multiagent hook fail closed: %s" % exc)

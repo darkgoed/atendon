@@ -209,52 +209,36 @@ class HookTestCase(unittest.TestCase):
         self.assertEqual(out["action"], "block")
         self.assertIn("owner", out["message"])
 
-    def test_owner_monorepo_prefix_blocks(self):
-        proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="apps/atendon/scripts"),
-        ]})
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("app root", out["message"])
-        self.assertFalse(os.path.exists(self.record))
+    def test_bad_owner_blocks_without_provision(self):
+        # contrato: owner é prefixo de diretório relativo ao app root — globs
+        # (* ? [ ]) nunca casam com f.startswith(owner) no core; caminhos inseguros
+        # do norm_owner (absoluto, traversal, monorepo) recusados ANTES de provision.
+        self.write_response(self.ok_response())
+        cases = [
+            ("apps/atendon/scripts", "app root"),   # monorepo, não relativo ao app
+            ("/etc/passwd", "relativo ao app root"),
+            ("scripts/../other", "relativo ao app root"),
+            ("scripts/*", "glob"),
+            ("sc*pts/foo/*", "glob"),
+            ("scripts/foo[1]", "glob"),
+            ("scripts/funil/**", "glob"),
+        ]
+        for owner, fragment in cases:
+            with self.subTest(owner=owner):
+                proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9", owner=owner)]})
+                out = self.out(proc)
+                self.assertEqual(out["action"], "block")
+                self.assertIn(fragment, out["message"])
+                self.assertFalse(os.path.exists(self.record))  # sem provision
 
-    def test_owner_absolute_blocks(self):
-        proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="/etc/passwd"),
-        ]})
-        self.assertEqual(self.out(proc)["action"], "block")
-
-    def test_owner_traversal_blocks(self):
-        proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="scripts/../other"),
-        ]})
-        self.assertEqual(self.out(proc)["action"], "block")
-
-    def test_task_id_invalid_slug_blocks(self):
-        proc = self.run_hook(tool_input={"tasks": [
-            self.task("bug!!"),
-        ]})
-        self.assertEqual(self.out(proc)["action"], "block")
-        self.assertFalse(os.path.exists(self.record))
-
-    def test_task_id_slug_aligned_with_core_id_re(self):
+    def test_bad_slug_blocks_without_provision(self):
         # divergência fechada: core ID_RE = [a-z0-9-]+ — slug com . ou _ bloqueia
         self.write_response(self.ok_response())
-        for tid in ("flow.9", "flow_9"):
-            proc = self.run_hook(tool_input={"tasks": [self.task(tid)]})
-            self.assertEqual(self.out(proc)["action"], "block", msg=tid)
-            self.assertFalse(os.path.exists(self.record), msg=tid)
-
-    def test_owner_glob_rejected_without_provision(self):
-        # contrato: owner é prefixo de diretório — globs (* ? [ ]) rejeitados ANTES
-        # de provision (o core nunca casaria: f.startswith('scripts/*') é falso)
-        self.write_response(self.ok_response())
-        for owner in ("scripts/*", "sc*pts/foo/*", "scripts/foo[1]", "scripts/funil/**"):
-            proc = self.run_hook(tool_input={"tasks": [self.task("FLOW-9", owner=owner)]})
-            out = self.out(proc)
-            self.assertEqual(out["action"], "block", msg=owner)
-            self.assertIn("glob", out["message"], msg=owner)
-            self.assertFalse(os.path.exists(self.record), msg=owner)  # sem provision
+        for tid in ("bug!!", "flow.9", "flow_9"):
+            with self.subTest(task_id=tid):
+                proc = self.run_hook(tool_input={"tasks": [self.task(tid)]})
+                self.assertEqual(self.out(proc)["action"], "block")
+                self.assertFalse(os.path.exists(self.record))
 
     def test_ownership_canonical_core_form_accepted(self):
         # bug 2a6a68ac: core norm_owner devolve `scripts` -> `scripts/`; hook deve aceitar
