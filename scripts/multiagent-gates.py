@@ -209,7 +209,8 @@ def cmd_validate(_a):
                  # relevant tests for this flow only: the multiagent integration
                  # suite, not the full `npm run test` (shared test DB)
                  "test": ["python3", "-m", "unittest", "scripts/test_multiagent.py",
-                          "scripts/test_multiagent_hook.py", "-q"],
+                          "scripts/test_multiagent_hook.py", "scripts/test_multiagent_gates.py",
+                          "-q"],
                  "build_backend": ["npm", "run", "build", "-w", "@atendon/backend"],
                  "build_panel": ["npm", "run", "build", "-w", "@atendon/panel"]}
         results = {n: run_check(n, argv, cwd,
