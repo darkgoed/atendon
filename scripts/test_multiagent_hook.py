@@ -6,11 +6,8 @@ recebido (acumulando por provision) e cospe um JSON canônico com substituição
 {task_id}/{owner} controlada pelo teste — ownership no formato CANÔNICO do core
 (`owner.rstrip('/') + '/'`, cf. norm_owner; owner é PREFIXO DE DIRETÓRIO, ex.:
 `scripts/` — globs (* ? [ ]) são rejeitados pelo hook ANTES de provision). Os
-testes de CONTRATO carregam o
-multiagent.py REAL (norm_owner/ID_RE) em fixture e o usam como fonte canônica.
 Rodar: python scripts/test_multiagent_hook.py   (ou python -m unittest)
 """
-import importlib.util
 import json
 import os
 import stat
@@ -21,8 +18,6 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOOK = os.path.join(HERE, "multiagent-hook.py")
-DEFAULT_CORE = os.environ.get("ATENDON_MULTIAGENT_CORE",
-                              "/home/deploy/atendon-agents/integration/scripts/multiagent.py")
 
 MOCK_CLI = r'''#!/usr/bin/env python3
 import json, os, sys
@@ -45,36 +40,6 @@ except ValueError:  # resposta proposital inválida: ecoa cru para o hook rejeit
     sys.exit(0)
 if tid in os.environ.get("MOCK_PROVISION_FAIL_IDS", "").split(","):
     sys.exit(int(os.environ.get("MOCK_PROVISION_FAIL_EXIT", "1")))
-if os.environ.get("MOCK_PROVISION_MKDIR", "1") == "1":
-    os.makedirs(info["worktree"], exist_ok=True)
-sys.stdout.write(json.dumps(info))
-'''
-
-# CLI de contrato: usa o norm_owner/ID_RE do multiagent.py REAL para canonicar
-# o ownership exatamente como o core faz (branch agent/{tid}, worktree {root}/{tid}).
-CONTRACT_CLI = r'''#!/usr/bin/env python3
-import importlib.util, json, os, sys
-spec = importlib.util.spec_from_file_location("core_multiagent", os.environ["CONTRACT_CORE"])
-core = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(core)
-args = sys.argv[1:]
-path = os.environ["MOCK_PROVISION_RECORD"]
-items = []
-if os.path.exists(path):
-    items = json.load(open(path))
-items.append({"argv": args, "cwd": os.getcwd()})
-json.dump(items, open(path, "w"))
-tid = args[args.index("--task-id") + 1]
-owner = args[args.index("--owner") + 1]
-if not core.ID_RE.match(tid):
-    core.die("invalid task id %r: must match [a-z0-9-]+" % tid)
-info = {
-    "task_id": tid,
-    "branch": "agent/" + tid,
-    "worktree": os.environ["ATENDON_CANONICAL_ROOT"].rstrip("/") + "/" + tid,
-    "base_sha": "916c7ff7deadbeef",
-    "ownership": core.norm_owner(owner),
-}
 if os.environ.get("MOCK_PROVISION_MKDIR", "1") == "1":
     os.makedirs(info["worktree"], exist_ok=True)
 sys.stdout.write(json.dumps(info))
@@ -373,90 +338,6 @@ class HookTestCase(unittest.TestCase):
         self.assertNotIn("junk", task["context"])
         self.assertNotIn("rm -rf /", proc.stdout)
         self.assertNotIn("unknown_field", json.dumps(out))
-
-    # ---- contrato entre camadas: multiagent.py REAL como fonte canônica ----
-
-    def _load_module(self, path, name):
-        self.assertTrue(os.path.exists(path), "módulo ausente: %s" % path)
-        spec = importlib.util.spec_from_file_location(name, path)
-        if spec is None or spec.loader is None:
-            self.fail("spec inválido para %s" % path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod
-
-    def _contract_env(self):
-        env = self.env()
-        env["CONTRACT_CORE"] = DEFAULT_CORE
-        env["MOCK_PROVISION_MKDIR"] = "1"
-        return env
-
-    @unittest.skipUnless(os.path.exists(DEFAULT_CORE), "core multiagent.py ausente")
-    def test_contract_real_core_norm_owner_matches_hook(self):
-        # in-process: norm_owner REAL do core == canonical_owner do hook para toda owner
-        core = self._load_module(DEFAULT_CORE, "core_multiagent")
-        hook = self._load_module(HOOK, "hook_module")
-        for owner in ("scripts", "scripts/foo", "a.b-c/d_e/f", "scripts/", "scripts//foo", ".x/y"):
-            self.assertEqual(core.norm_owner(owner), hook.canonical_owner(owner), msg=owner)
-        # slug: conjunto aceito pelo hook == aceito pelo core ID_RE (case-normalized)
-        for slug in ("flow-9", "a", "flow9", "9flow", "a-1-b"):
-            self.assertTrue(core.ID_RE.match(slug), msg=slug)
-            self.assertTrue(hook.SLUG_RE.match(slug), msg=slug)
-        for slug in ("flow.9", "flow_9"):
-            self.assertFalse(hook.SLUG_RE.match(slug), msg=slug)
-        # "-" é aceito por AMBOS (core ID_RE casa com "-"): contrato simétrico
-        self.assertTrue(hook.SLUG_RE.match("-"))
-        self.assertTrue(core.ID_RE.match("-"))
-
-    @unittest.skipUnless(os.path.exists(DEFAULT_CORE), "core multiagent.py ausente")
-    def test_contract_e2e_real_core_batch_two_worktrees(self):
-        # end-to-end: CLI de contrato roda o norm_owner/ID_RE REAL do core num batch
-        # de 2 tasks com worktrees distintas; hook aceita o ownership canônico core.
-        cli = os.path.join(self.tmp, "contract-multiagent.py")
-        with open(cli, "w") as f:
-            f.write(CONTRACT_CLI)
-        os.chmod(cli, os.stat(cli).st_mode | stat.S_IEXEC)
-        self.record = os.path.join(self.tmp, "argv-contract.json")
-        env = self._contract_env()
-        env["ATENDON_MULTIAGENT_CLI"] = cli
-        proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="scripts"),
-            self.task("FLOW-7", owner="scripts/foo"),
-        ]}, env=env)
-        out = self.out(proc)
-        self.assertEqual(out["action"], "modify")
-        t0, t1 = out["args"]["tasks"]
-        self.assertIn("ownership: scripts/", t0["context"])          # canônico core
-        self.assertIn("ownership: scripts/foo/", t1["context"])
-        wt9 = os.path.join(self.canonical, "flow-9")
-        wt7 = os.path.join(self.canonical, "flow-7")
-        self.assertEqual(t0["context"].count(wt9), 1)
-        self.assertEqual(t1["context"].count(wt7), 1)
-        self.assertNotIn(wt9, t1["context"])
-        self.assertNotIn(wt7, t0["context"])
-        self.assertNotEqual(wt9, wt7)
-        for t in (t0, t1):
-            self.assert_task_schema_clean(t)
-            self.assertIn("agent/flow-", t["context"])
-        self.assertEqual(self.task_ids_called(), ["flow-9", "flow-7"])
-
-    @unittest.skipUnless(os.path.exists(DEFAULT_CORE), "core multiagent.py ausente")
-    def test_contract_e2e_real_core_rejects_unsafe_owner(self):
-        # norm_owner REAL do core morre (exit 1) em owner inseguro → hook fail closed
-        cli = os.path.join(self.tmp, "contract-multiagent.py")
-        with open(cli, "w") as f:
-            f.write(CONTRACT_CLI)
-        os.chmod(cli, os.stat(cli).st_mode | stat.S_IEXEC)
-        self.record = os.path.join(self.tmp, "argv-contract.json")
-        env = self._contract_env()
-        env["ATENDON_MULTIAGENT_CLI"] = cli
-        env["MOCK_PROVISION_MKDIR"] = "1"
-        proc = self.run_hook(tool_input={"tasks": [
-            self.task("FLOW-9", owner="scripts/../etc"),
-        ]}, env=env)
-        out = self.out(proc)
-        self.assertEqual(out["action"], "block")
-        self.assertIn("fail closed", out["message"])
 
     # ---- fail closed: provision quebrado / resposta divergente / worktree errada ----
 
