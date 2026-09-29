@@ -87,7 +87,7 @@ function ConversationEmpty() {
       <div className="max-w-[34rem] border-l-2 border-[var(--primary)] pl-6 sm:pl-8">
         <span className="text-[length:var(--text-meta)] text-[var(--primary-text)]">Comece pela informação mais fácil</span>
         <h2 className="mb-0 mt-3 text-xl font-semibold leading-tight tracking-[var(--tracking-title)] text-[var(--text)] sm:text-2xl">Conte o destino.<br />A proposta toma forma na conversa.</h2>
-        <p className="mb-0 mt-4 max-w-[48ch] text-[13px] leading-6 text-[var(--text-secondary)]">Envie uma frase, prints dos voos, imagens da hospedagem ou um PDF. A Tripz IA organiza os dados e pergunta apenas o próximo ponto necessário.</p>
+        <p className="mb-0 mt-4 max-w-[48ch] text-[13px] leading-6 text-[var(--text-secondary)]">Envie uma frase, prints dos voos, imagens da hospedagem ou um PDF. O assistente organiza os dados e pergunta apenas o próximo ponto necessário.</p>
         <div className="mt-5 grid gap-2 border-t border-[var(--border)] pt-4 text-[11px] text-[var(--text-muted)] sm:grid-cols-2">
           <span>“Aruba para duas pessoas em outubro.”</span>
           <span>“Vou enviar os voos e o hotel agora.”</span>

@@ -46,7 +46,7 @@ export async function registerBillingRoutes(app:FastifyInstance, dependencies: B
  // vazio rejeita price/credits). O DELETE só interrompe NOVAS cobranças locais:
  // a API da Efí não expõe cancelamento do `rec`, então a resposta diz que a
  // revogação da autorização permanece com o pagador (app do banco).
- app.get("/billing/ai-credit-packs/pix-automatic",async r=>{const s=await requirePermission(r,"usage.read");return {mandate:await getMonthlyPixMandate(s.tenantId)}});
+ app.get("/billing/ai-credit-packs/pix-automatic",async r=>{const s=await requirePermission(r,"usage.read");return {mandate:await getMonthlyPixMandate(s.tenantId),sku:{sku:AI_CREDIT_PACK_SKU,credits:AI_CREDIT_PACK_CREDITS,priceCents:AI_CREDIT_PACK_PRICE_CENTS,currency:"BRL"}}});
  app.post("/billing/ai-credit-packs/pix-automatic",async r=>{const s=await requirePermission(r,"billing.manage");z.object({}).strict().nullish().parse(r.body);return {mandate:await startMonthlyPixMandate(s.tenantId,s.userId)}});
  app.delete("/billing/ai-credit-packs/pix-automatic",async r=>{const s=await requirePermission(r,"billing.manage");const mandate=await stopMonthlyPixMandate(s.tenantId,s.userId);return {mandate,remoteRevocation:"A Efí não oferece API documentada para cancelar a recorrência. O AtendON não emite novas cobranças e cancelou as futuras já agendadas; uma cobrança com vencimento hoje já está em liquidação e ainda pode ser debitada (os créditos dela são concedidos). Para revogar a autorização, o pagador deve cancelar o Pix Automático no app do banco."}});
  app.get("/billing/usage-dashboard",async r=>{const s=await requirePermission(r,"usage.read");const c=await db.connect();try{return {dashboard:await getUsageDashboard(c,s.tenantId)}}finally{c.release()}});

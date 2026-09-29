@@ -7,6 +7,7 @@ import { ModalDialog } from "@/components/modal-dialog";
 import { pipelineStageAutomationLabel } from "@/components/pipeline-board";
 import { api } from "@/lib/api";
 import { instantFromLocalMinute } from "@/lib/timezone";
+import { DEFAULT_CLOSING_REQUIREMENTS, useClosingRequirements, type ClosingRequirements } from "@/lib/closing-requirements";
 import { lossReasonRequiresNote, useLossReasons } from "@/lib/loss-reasons";
 import {
   pipelineStatusLabel,
@@ -91,6 +92,9 @@ export function PipelineTransitionDialog({
     : targets;
   const target = useMemo(() => effectiveTargets.find((stage) => stage.id === targetId) ?? null, [targetId, effectiveTargets]);
   const requirement = pipelineTransitionRequirement(target?.technical_status ?? "");
+  // Requisitos de fechamento são configuração por empresa: um negócio de
+  // suporte fecha "fechado" sem valor/produto/origem/modalidade/responsável.
+  const closingRequirements: ClosingRequirements = useClosingRequirements() ?? DEFAULT_CLOSING_REQUIREMENTS;
   const firstTargetId = effectiveTargets[0]?.id;
   const noteRequired = lossReasonRequiresNote(reasons, lossReason);
 
@@ -124,16 +128,38 @@ export function PipelineTransitionDialog({
     setValidationError("");
     let commercial: PipelineCommercialInput | undefined;
     if (requirement === "sale") {
-      const parsed = Number(saleValue.replace(",", "."));
-      if (!Number.isFinite(parsed) || parsed <= 0) {
+      // Só o que a empresa configurou como obrigatório bloqueia o movimento;
+      // campos opcionais preenchidos seguem para o backend para não perder dado.
+      const missing: string[] = [];
+      const saleValueNumber = Number(saleValue.replace(",", "."));
+      const hasSaleValue = saleValue.trim() !== "" && Number.isFinite(saleValueNumber) && saleValueNumber > 0;
+      if (closingRequirements.requireSaleValue && !hasSaleValue) missing.push("valor da venda");
+      if (closingRequirements.requireSaleProduct && !saleProduct.trim()) missing.push("produto");
+      if (closingRequirements.requireSaleSource && !saleSource.trim()) missing.push("origem");
+      if (closingRequirements.requireSaleChannel && !saleChannel.trim()) missing.push("modalidade");
+      if (closingRequirements.requireResponsavel && !responsibleMemberId) missing.push("responsável");
+      if (saleValue.trim() !== "" && !hasSaleValue) {
         setValidationError("Informe um valor de venda maior que zero.");
         return;
       }
-      if (!saleProduct.trim() || !saleSource.trim() || !saleChannel.trim() || !responsibleMemberId) {
-        setValidationError("Informe produto, responsável, origem e modalidade da venda.");
+      if (missing.length) {
+        setValidationError(`Informe ${missing.join(", ")} para fechar o lead.`);
         return;
       }
-      commercial = { sale_value: parsed, sale_product: saleProduct.trim(), sale_source: saleSource.trim(), sale_channel: saleChannel.trim(), responsavel_member_id: responsibleMemberId };
+      if (!hasSaleValue && !saleProduct.trim() && !saleSource.trim() && !saleChannel.trim() && !responsibleMemberId) {
+        // Fechamento sem dado comercial algum (config liberada pela empresa):
+        // objeto vazio, não undefined — o backend espera o payload comercial
+        // presente para etapas de fechamento (validação fica por config).
+        commercial = {};
+      } else {
+        commercial = {
+          ...(hasSaleValue ? { sale_value: saleValueNumber } : {}),
+          ...(saleProduct.trim() ? { sale_product: saleProduct.trim() } : {}),
+          ...(saleSource.trim() ? { sale_source: saleSource.trim() } : {}),
+          ...(saleChannel.trim() ? { sale_channel: saleChannel.trim() } : {}),
+          ...(responsibleMemberId ? { responsavel_member_id: responsibleMemberId } : {})
+        };
+      }
     } else if (requirement === "next_action") {
       if (!nextAction.trim() || !nextActionAt) {
         setValidationError("Informe a próxima ação e sua data e hora.");
@@ -199,11 +225,11 @@ export function PipelineTransitionDialog({
 
         {requirement === "sale" ? (
           <>
-            <label className="field"><span className="label">Produto</span><input className="input" value={saleProduct} onChange={(event) => setSaleProduct(event.target.value)} disabled={pending} required /></label>
-            <label className="field"><span className="label">Valor da venda</span><input className="input" type="number" inputMode="decimal" min="0.01" step="0.01" value={saleValue} onChange={(event) => setSaleValue(event.target.value)} placeholder="0,00" disabled={pending} required /></label>
-            <label className="field"><span className="label">Responsável</span><select className="input" value={responsibleMemberId} onChange={(event) => setResponsibleMemberId(event.target.value)} disabled={pending} required><option value="">Selecione um responsável</option>{members.map((member) => <option key={member.id} value={member.id}>{member.name ?? member.email}</option>)}{lead.responsavel_member_id && !members.some((member) => member.id === lead.responsavel_member_id) ? <option value={lead.responsavel_member_id}>{lead.responsavel_email ?? "Responsável atual"}</option> : null}</select></label>
-            <label className="field"><span className="label">Origem</span><input className="input" value={saleSource} onChange={(event) => setSaleSource(event.target.value)} disabled={pending} required /></label>
-            <label className="field"><span className="label">Modalidade</span><input className="input" value={saleChannel} onChange={(event) => setSaleChannel(event.target.value)} disabled={pending} required /></label>
+            <label className="field"><span className="label">Produto{closingRequirements.requireSaleProduct ? "" : " (opcional)"}</span><input className="input" value={saleProduct} onChange={(event) => setSaleProduct(event.target.value)} disabled={pending} required={closingRequirements.requireSaleProduct} /></label>
+            <label className="field"><span className="label">Valor da venda{closingRequirements.requireSaleValue ? "" : " (opcional)"}</span><input className="input" type="number" inputMode="decimal" min="0.01" step="0.01" value={saleValue} onChange={(event) => setSaleValue(event.target.value)} placeholder="0,00" disabled={pending} required={closingRequirements.requireSaleValue} /></label>
+            <label className="field"><span className="label">Responsável{closingRequirements.requireResponsavel ? "" : " (opcional)"}</span><select className="input" value={responsibleMemberId} onChange={(event) => setResponsibleMemberId(event.target.value)} disabled={pending} required={closingRequirements.requireResponsavel}><option value="">Selecione um responsável</option>{members.map((member) => <option key={member.id} value={member.id}>{member.name ?? member.email}</option>)}{lead.responsavel_member_id && !members.some((member) => member.id === lead.responsavel_member_id) ? <option value={lead.responsavel_member_id}>{lead.responsavel_email ?? "Responsável atual"}</option> : null}</select></label>
+            <label className="field"><span className="label">Origem{closingRequirements.requireSaleSource ? "" : " (opcional)"}</span><input className="input" value={saleSource} onChange={(event) => setSaleSource(event.target.value)} disabled={pending} required={closingRequirements.requireSaleSource} /></label>
+            <label className="field"><span className="label">Modalidade{closingRequirements.requireSaleChannel ? "" : " (opcional)"}</span><input className="input" value={saleChannel} onChange={(event) => setSaleChannel(event.target.value)} disabled={pending} required={closingRequirements.requireSaleChannel} /></label>
           </>
         ) : null}
 

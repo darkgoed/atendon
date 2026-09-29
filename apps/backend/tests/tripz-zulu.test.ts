@@ -2,17 +2,20 @@ import { describe, expect, it } from "vitest";
 import { protectedSystemPrompt } from "../src/modules/ai-router/prompt-guard.js";
 import { REQUIRED_ZULU_TOOLS as TRIPZ_ZULU_TOOLS } from "../src/db/provision-tripz.js";
 import {
-  appendTripzOffersInvitation,
+  appendOffersInvitation,
   isTripzZuluAgent,
-  TRIPZ_DEFAULT_OFFERS_GROUP_LINK,
-  TRIPZ_ZULU_OWNER_REFERRAL_REPLY,
-  TRIPZ_ZULU_SYSTEM_PROMPT,
   tripzZuluDetectsBoletoPayment,
   tripzZuluDetectsExclusiveOffers,
   tripzZuluDetectsOwnerNameReferral,
   tripzZuluRequestsOwnerHandoff,
   tripzZuluTurnSignals
 } from "../src/modules/tripz-ai/zulu.js";
+import {
+  TRIPZ_ZULU_OFFERS_GROUP_LINK,
+  TRIPZ_ZULU_OWNER_NAME,
+  TRIPZ_ZULU_OWNER_REFERRAL_REPLY,
+  TRIPZ_ZULU_SYSTEM_PROMPT
+} from "../src/db/zulu-provision.js";
 
 describe("Tripz Zulu instruction and deterministic signals", () => {
   it("contains the complete triage principles and the configured offers link policy", () => {
@@ -21,8 +24,8 @@ describe("Tripz Zulu instruction and deterministic signals", () => {
     expect(TRIPZ_ZULU_SYSTEM_PROMPT).toContain("Lead D");
     expect(TRIPZ_ZULU_SYSTEM_PROMPT).toContain("boleto bancário");
     expect(TRIPZ_ZULU_SYSTEM_PROMPT).toContain("grupo de ofertas");
-    expect(TRIPZ_DEFAULT_OFFERS_GROUP_LINK).toBe("https://chat.whatsapp.com/F2XZvKQaToNFf6cDFYKPDL");
-    expect(TRIPZ_ZULU_SYSTEM_PROMPT).toContain(TRIPZ_DEFAULT_OFFERS_GROUP_LINK);
+    // O link do grupo é configuração do tenant/provisionamento, não constante do produto.
+    expect(TRIPZ_ZULU_SYSTEM_PROMPT).not.toContain("chat.whatsapp.com");
     expect(TRIPZ_ZULU_SYSTEM_PROMPT).toContain("ausência de abertura para alternativas");
     expect(TRIPZ_ZULU_SYSTEM_PROMPT).toContain("confirmar se são todos adultos ou se há criança");
   });
@@ -37,12 +40,13 @@ describe("Tripz Zulu instruction and deterministic signals", () => {
     expect(tripzZuluTurnSignals("Aceito analisar opções", ["Só quero promoções e viagens baratas"]).exclusiveOffers).toBe(false);
     expect(tripzZuluTurnSignals(
       "Só quero promoções e viagens baratas",
-      [`Confira nosso grupo de ofertas da Tripz: ${TRIPZ_DEFAULT_OFFERS_GROUP_LINK}`],
-      TRIPZ_DEFAULT_OFFERS_GROUP_LINK
+      [`Confira nosso grupo de ofertas da Tripz: ${TRIPZ_ZULU_OFFERS_GROUP_LINK}`],
+      TRIPZ_ZULU_OFFERS_GROUP_LINK,
+      "da Tripz"
     ).exclusiveOffers).toBe(false);
-    const invitation = appendTripzOffersInvitation("Entendi 😊", TRIPZ_DEFAULT_OFFERS_GROUP_LINK);
-    expect(invitation).toContain(TRIPZ_DEFAULT_OFFERS_GROUP_LINK);
-    expect(appendTripzOffersInvitation(invitation, TRIPZ_DEFAULT_OFFERS_GROUP_LINK)).toBe(invitation);
+    const invitation = appendOffersInvitation("Entendi 😊", TRIPZ_ZULU_OFFERS_GROUP_LINK, "da Tripz");
+    expect(invitation).toContain(TRIPZ_ZULU_OFFERS_GROUP_LINK);
+    expect(appendOffersInvitation(invitation, TRIPZ_ZULU_OFFERS_GROUP_LINK, "da Tripz")).toBe(invitation);
   });
 
   it("classifies boleto/bank-slip intent as a Tripz disqualifying signal", () => {
@@ -53,22 +57,27 @@ describe("Tripz Zulu instruction and deterministic signals", () => {
     expect(tripzZuluDetectsBoletoPayment("Prefiro cartão, sem boleto")).toBe(false);
   });
 
-  it("detects a first message that already names the owner and carries the fixed handoff reply", () => {
-    expect(tripzZuluDetectsOwnerNameReferral("Oi Lucas, tudo bem?")).toBe(true);
-    expect(tripzZuluDetectsOwnerNameReferral("O Lucas me passou esse número")).toBe(true);
-    expect(tripzZuluDetectsOwnerNameReferral("LUCAS, você tem um tempo?")).toBe(true);
-    expect(tripzZuluDetectsOwnerNameReferral("Oi, gostaria de saber sobre viagens para Cancún")).toBe(false);
-    expect(tripzZuluDetectsOwnerNameReferral("Vi o anúncio de vocês no Instagram")).toBe(false);
+  it("detects a first message that already names the configured owner and carries the handoff reply", () => {
+    const owner = TRIPZ_ZULU_OWNER_NAME;
+    expect(tripzZuluDetectsOwnerNameReferral(`Oi ${owner}, tudo bem?`, owner)).toBe(true);
+    expect(tripzZuluDetectsOwnerNameReferral(`O ${owner} me passou esse número`, owner)).toBe(true);
+    expect(tripzZuluDetectsOwnerNameReferral("LUCAS, você tem um tempo?", "Lucas")).toBe(true);
+    // Fail-closed: sem responsável configurado, o guard não dispara.
+    expect(tripzZuluDetectsOwnerNameReferral("Oi Lucas, tudo bem?", "")).toBe(false);
+    expect(tripzZuluDetectsOwnerNameReferral("Oi, gostaria de saber sobre viagens para Cancún", owner)).toBe(false);
+    expect(tripzZuluDetectsOwnerNameReferral("Vi o anúncio de vocês no Instagram", owner)).toBe(false);
     expect(TRIPZ_ZULU_OWNER_REFERRAL_REPLY).toBe(
       "Olá, tudo bem? No momento o Lucas está em atendimento, vou transferir o chamado e em breve ele irá te responder."
     );
   });
 
-  it("detects an explicit request for Lucas without treating a bare mention as a request", () => {
-    expect(tripzZuluRequestsOwnerHandoff("Gostaria de falar com o Lucas")).toBe(true);
-    expect(tripzZuluRequestsOwnerHandoff("Pode me passar para o Lucas?")).toBe(true);
-    expect(tripzZuluRequestsOwnerHandoff("O Lucas me passou esse número")).toBe(false);
-    expect(tripzZuluRequestsOwnerHandoff("Você é o Lucas?")).toBe(false);
+  it("detects an explicit request for the owner without treating a bare mention as a request", () => {
+    const owner = TRIPZ_ZULU_OWNER_NAME;
+    expect(tripzZuluRequestsOwnerHandoff(`Gostaria de falar com o ${owner}`, owner)).toBe(true);
+    expect(tripzZuluRequestsOwnerHandoff(`Pode me passar para o ${owner}?`, owner)).toBe(true);
+    expect(tripzZuluRequestsOwnerHandoff(`O ${owner} me passou esse número`, owner)).toBe(false);
+    expect(tripzZuluRequestsOwnerHandoff(`Você é o ${owner}?`, owner)).toBe(false);
+    expect(tripzZuluRequestsOwnerHandoff(`Gostaria de falar com o ${owner}`, "")).toBe(false);
   });
 
   it("delivers Zulu a prompt free of other verticals", () => {

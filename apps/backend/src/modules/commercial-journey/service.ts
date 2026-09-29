@@ -4,6 +4,7 @@ import { db } from "../../db/client.js";
 import { APPOINTMENT_STATUS_REACTIONS } from "../scheduling/status-reaction.js";
 import { OUTCOME_PIPELINE_STAGE, STAGES_REQUIRING_NEXT_ACTION, type CommercialOutcome } from "./domain.js";
 import { resolveLossReason } from "./loss-reasons.js";
+import { getClosingRequirements } from "./closing-requirements.js";
 import type {
   CancellationInput,
   CommercialTransitionPayload,
@@ -367,13 +368,26 @@ export async function applyStructuredStageEffects(
   let nextActionAt: Date | null = null;
   const hasSaleMetadata = Boolean(payload?.sale_product || payload?.sale_channel || payload?.sale_source);
   if (targetStatus === "fechado") {
-    if (!payload?.sale_value || !payload.sale_product?.trim() || !payload.sale_source?.trim() || !payload.sale_channel?.trim() || !payload.responsavel_member_id || payload.loss_reason || payload.loss_reason_note || payload.next_action || payload.next_action_at) throw httpError(400,"Informe valor, produto, origem, modalidade e responsável para fechar o lead");
-    const responsible = await client.query<{ id: string }>(
-      "SELECT id FROM workspace_members WHERE workspace_id=$1 AND id=$2 AND status='active'",
-      [input.tenantId,payload.responsavel_member_id]
-    );
-    if (!responsible.rows[0]) throw httpError(400,"Responsável deve ser um membro ativo do workspace");
-    outcome="fechado"; saleValue=payload.sale_value;
+    // Requisitos de fechamento são configuração por empresa
+    // (tenant_closing_requirements): um negócio de suporte/atendimento fecha
+    // o ciclo sem dados de venda; por padrão tudo continua obrigatório.
+    if (payload?.loss_reason || payload?.loss_reason_note || payload?.next_action || payload?.next_action_at) throw httpError(400,"Fechamento não aceita motivo de perda nem próxima ação");
+    const requirements = await getClosingRequirements(client,input.tenantId);
+    const missing: string[] = [];
+    if (requirements.requireSaleValue && !payload?.sale_value) missing.push("valor");
+    if (requirements.requireSaleProduct && !payload?.sale_product?.trim()) missing.push("produto");
+    if (requirements.requireSaleSource && !payload?.sale_source?.trim()) missing.push("origem");
+    if (requirements.requireSaleChannel && !payload?.sale_channel?.trim()) missing.push("modalidade");
+    if (requirements.requireResponsavel && !payload?.responsavel_member_id) missing.push("responsável");
+    if (missing.length) throw httpError(400,`Informe ${missing.join(", ")} para fechar o lead`);
+    if (payload?.responsavel_member_id) {
+      const responsible = await client.query<{ id: string }>(
+        "SELECT id FROM workspace_members WHERE workspace_id=$1 AND id=$2 AND status='active'",
+        [input.tenantId,payload.responsavel_member_id]
+      );
+      if (!responsible.rows[0]) throw httpError(400,"Responsável deve ser um membro ativo do workspace");
+    }
+    outcome="fechado"; saleValue=payload?.sale_value ?? null;
     // Troca de responsável no fechamento move o CASO inteiro (conversas,
     // histórico) na mesma transação do fechamento. Antes o painel fazia um
     // PATCH /follow-up separado ANTES: fechamento que falhava deixava o dono
@@ -416,7 +430,12 @@ export async function applyStructuredStageEffects(
        status=$3,pipeline_stage_id=$4,
        commercial_outcome=$5,sale_value=$6,loss_reason=$7,loss_reason_note=$11,outcome_metadata=$12::jsonb,
        next_action=$8,next_action_at=$9,
-       assigned_member_id=CASE WHEN $3='fechado' THEN $13::uuid ELSE assigned_member_id END,
+       -- Regra canônica lead↔conversa: fechar a venda NUNCA apaga o histórico
+       -- de responsabilidade. O responsável atual só muda quando um novo
+       -- responsável é explicitamente informado no fechamento; sem um novo
+       -- responsável, assigned_member_id é preservado (sdr_member_id e
+       -- closer_member_id já carregam a origem e o vendedor do agendamento).
+       assigned_member_id=CASE WHEN $3='fechado' AND $13::uuid IS NOT NULL THEN $13::uuid ELSE assigned_member_id END,
        commercial_updated_at=CASE WHEN $5::text IS NULL THEN commercial_updated_at ELSE now() END,
        commercial_updated_by_user_id=CASE WHEN $5::text IS NULL THEN commercial_updated_by_user_id ELSE $10 END,
        recovery_required=CASE WHEN $3='follow_up' THEN recovery_required ELSE false END,
@@ -453,6 +472,9 @@ export async function concludeAppointmentJourney(
     const nextAction = "next_action" in input ? input.next_action : null;
     const nextActionAt = "next_action_at" in input ? assertFuture(input.next_action_at) : null;
     const saleValue = "sale_value" in input ? input.sale_value : null;
+    if (input.outcome === "fechado" && (await getClosingRequirements(client,tenantId)).requireSaleValue && !saleValue) {
+      throw httpError(400,"Informe o valor para fechar o lead");
+    }
     const resolvedLoss = "loss_reason" in input
       ? await resolveLossReason(client,tenantId,input.loss_reason,"loss_reason_note" in input ? input.loss_reason_note : null)
       : null;

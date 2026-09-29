@@ -234,7 +234,7 @@ test("authenticated Tripz IA covers flag-on create/upload/poll/retry/revision/pr
   await expect(page.locator(".action-overlay")).toHaveCount(0);
   // Desktop usa o rail: páginas fora dos primários ficam no popover "Mais itens do menu".
   await page.getByRole("button", { name: "Mais itens do menu" }).click();
-  await expect(page.getByRole("link", { name: "Tripz IA" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("link", { name: "Documentos IA" })).toHaveAttribute("aria-current", "page");
   await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Nova proposta", exact: true }).click();

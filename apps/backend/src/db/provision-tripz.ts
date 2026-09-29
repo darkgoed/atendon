@@ -1,7 +1,12 @@
 import type { Pool } from "pg";
 import { db } from "./client.js";
 import { config } from "../config.js";
-import { TRIPZ_ZULU_SYSTEM_PROMPT } from "../modules/tripz-ai/zulu.js";
+import {
+  TRIPZ_ZULU_OFFERS_GROUP_LINK,
+  TRIPZ_ZULU_OWNER_NAME,
+  TRIPZ_ZULU_OWNER_REFERRAL_REPLY,
+  TRIPZ_ZULU_SYSTEM_PROMPT
+} from "./zulu-provision.js";
 
 /** Stable public identifier; UUIDs remain tenant-owned and are resolved at runtime. */
 export const TRIPZ_TENANT_SLUG = "tripzturismo-a44ab4";
@@ -146,11 +151,20 @@ export async function provisionTripzZulu(pool: Pool, tenantSlug = config.TRIPZ_T
       "WHERE agent_config_id=$1 AND status='active'",
       [current.id]
     );
+    // Guardrails do agente são configuração do tenant: os valores operacionais
+    // do Zulu acompanham cada versão publicada (motor do produto, dados daqui).
+    const zuluGuardrails = JSON.stringify({
+      enabled: true,
+      owner_name: TRIPZ_ZULU_OWNER_NAME,
+      owner_referral_reply: TRIPZ_ZULU_OWNER_REFERRAL_REPLY,
+      offers_group_link: TRIPZ_ZULU_OFFERS_GROUP_LINK,
+      offers_group_label: "da Tripz"
+    });
     const inserted = await client.query<{ id: string }>(
       "INSERT INTO agent_config_versions(" +
       "tenant_id,agent_config_id,version_number,source,status,system_prompt,ai_model," +
-      "model_params,enabled_tools,created_by_user_id,activated_at) " +
-      "VALUES($1,$2,$3,'manual','active',$4,$5,$6::jsonb,$7::jsonb,NULL,now()) RETURNING id",
+      "model_params,enabled_tools,guardrails,created_by_user_id,activated_at) " +
+      "VALUES($1,$2,$3,'manual','active',$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,NULL,now()) RETURNING id",
       [
         tenantId,
         current.id,
@@ -158,7 +172,8 @@ export async function provisionTripzZulu(pool: Pool, tenantSlug = config.TRIPZ_T
         TRIPZ_ZULU_SYSTEM_PROMPT,
         current.ai_model,
         JSON.stringify(current.model_params ?? {}),
-        JSON.stringify(nextEnabledTools)
+        JSON.stringify(nextEnabledTools),
+        zuluGuardrails
       ]
     );
     await client.query(

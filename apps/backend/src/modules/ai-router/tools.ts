@@ -41,7 +41,7 @@ function tool(
 
 const META_CELL_TOOL_DEFINITIONS: ToolDefinition[] = [
   tool("consultar_categorias", "Lista as categorias de interesse ativas cadastradas para este tenant, com id e nome.", {}, [], READ_ONLY),
-  tool("consultar_parceiros", "Lista os parceiros de financiamento/proposta ativos, em ordem de prioridade (tentar o primeiro antes de cair para o próximo).", {}, [], READ_ONLY),
+  tool("consultar_parceiros", "Lista os parceiros ativos configurados para proposta, em ordem de prioridade (tentar o primeiro antes de cair para o próximo).", {}, [], READ_ONLY),
   tool("consultar_unidades", "Lista as unidades ativas, com id, nome e horário de funcionamento.", {}, [], READ_ONLY),
   tool(
     "registrar_lead",
@@ -67,7 +67,7 @@ const META_CELL_TOOL_DEFINITIONS: ToolDefinition[] = [
   ),
   tool(
     "agendar_visita",
-    "Confirma o agendamento de uma visita/retirada para o lead atual em um horário disponível.",
+    "Confirma o agendamento de um compromisso do lead atual na unidade escolhida, em um horário disponível.",
     {
       unidade_id: { type: "string", description: "Id de uma unidade retornada por consultar_unidades." },
       start: { type: "string", description: "Início do horário escolhido, em ISO 8601 (ex: 2026-07-08T15:00:00.000Z), como retornado por verificar_horarios." }
@@ -76,7 +76,7 @@ const META_CELL_TOOL_DEFINITIONS: ToolDefinition[] = [
   ),
   tool(
     "reagendar_visita",
-    "Move o agendamento ativo mais recente do lead atual para um novo horário.",
+    "Move o compromisso ativo mais recente do lead atual na unidade para um novo horário.",
     {
       unidade_id: { type: "string", description: "Nova unidade, se estiver mudando; omitir para manter a mesma." },
       start: { type: "string", description: "Novo horário em ISO 8601." }
@@ -98,8 +98,8 @@ const META_CELL_TOOL_DEFINITIONS: ToolDefinition[] = [
   ),
   tool(
     "pesquisar_modelo",
-    "Pesquisa na web se um modelo específico de produto (celular, TV, tablet etc.) existe. Use SEMPRE que o contato citar qualquer modelo específico, mesmo que você ache que reconhece, incluindo correções ou mensagens curtas como '18 Pro Max', '17 Pro Max', 'iPhone 17 Pro Max' ou 'Galaxy S26'. Use antes de elogiar, confirmar, comparar ou conduzir o fluxo sobre esse modelo. Nunca diga que um modelo existe ou não existe sem usar esta ferramenta. O resultado é informação interna sua: NUNCA repita ao contato que o modelo existe, nem fabricante, especificações ou dados de lançamento. Se o resultado for 'não encontrado', não elogie nem valide o modelo; diga apenas que esse você não conhece e que o time da loja confirma no estoque. Ela não consulta o estoque da loja — disponibilidade e preço continuam com o time da loja.",
-    { modelo: { type: "string", description: "Nome do modelo citado pelo contato, ex: Samsung Galaxy S26 Pro." } },
+    "Pesquisa na web se um modelo específico de produto citado pelo contato existe. Use SEMPRE que o contato citar um modelo específico, mesmo que você ache que reconhece, incluindo mensagens curtas ou parciais. Use antes de elogiar, confirmar, comparar ou conduzir o fluxo sobre esse modelo. Nunca diga que um modelo existe ou não existe sem usar esta ferramenta. O resultado é informação interna sua: NUNCA repita ao contato que o modelo existe, nem fabricante, especificações ou dados de lançamento. Se o resultado for 'não encontrado', não elogie nem valide o modelo; diga apenas que esse você não conhece e que a equipe confirma a disponibilidade. Ela não consulta estoque — disponibilidade e preço ficam com a equipe.",
+    { modelo: { type: "string", description: "Modelo citado pelo contato, com marca quando informada." } },
     ["modelo"],
     // Read-only web lookup; result can vary between identical calls, so not idempotent.
     { readOnly: true, idempotent: false, parallelSafe: true }
@@ -142,10 +142,10 @@ const QUALIFICATION_TOOL_DEFINITIONS: ToolDefinition[] = [
     },
     ["estrelas", "respostas", "resumo", "justificativa"]
   ),
-  tool("consultar_agendas", "Lista as agendas comerciais disponíveis para reuniões, com id, nome, funcionamento e duracao_slot_min canônica.", {}, [], READ_ONLY),
+  tool("consultar_agendas", "Lista as agendas disponíveis para agendamentos, com id, nome, funcionamento e duracao_slot_min canônica.", {}, [], READ_ONLY),
   tool(
     "verificar_horarios_reuniao",
-    "Consulta horários disponíveis de uma agenda comercial. Uma única chamada basta: o sistema já respeita fuso, horário de funcionamento, conflitos e horários passados, e avança sozinho para os próximos dias quando a data pedida não tem vaga. Envie periodo somente quando o contato tiver pedido explicitamente manhã ou tarde; nunca escolha um período por iniciativa própria nem com base na hora atual. O resultado traz data (a data realmente disponível, que pode ser posterior a data), periodo_atendido e horarios com hora local pronta para uso. Em cada horário, vagas é a quantidade de closers ainda livres naquele mesmo horário: 2 closers permitem 2 reuniões simultâneas, 3 closers permitem 3, e o horário só fica indisponível quando vagas chega a zero. Nunca converta fuso, nunca calcule outra data e nunca ofereça horário que não esteja em horarios. Se o contato pedir um horário exato, envie horario_solicitado no formato HH:mm.",
+    "Consulta horários disponíveis de uma agenda comercial. Uma única chamada basta: o sistema já respeita fuso, horário de funcionamento, conflitos e horários passados, e avança sozinho para os próximos dias quando a data pedida não tem vaga. Envie periodo somente quando o contato tiver pedido explicitamente manhã ou tarde; nunca escolha um período por iniciativa própria nem com base na hora atual. O resultado traz data (a data realmente disponível, que pode ser posterior a data), periodo_atendido e horarios com hora local pronta para uso. Em cada horário, vagas é a quantidade de atendentes ainda livres naquele mesmo horário: 2 atendentes permitem 2 compromissos simultâneos, 3 atendentes permitem 3, e o horário só fica indisponível quando vagas chega a zero. Nunca converta fuso, nunca calcule outra data e nunca ofereça horário que não esteja em horarios. Se o contato pedir um horário exato, envie horario_solicitado no formato HH:mm.",
     {
       agenda_id: { type: "string", description: "Id retornado por consultar_agendas." },
       data: { type: "string", description: "Data inicial da busca no formato YYYY-MM-DD." },
@@ -157,7 +157,7 @@ const QUALIFICATION_TOOL_DEFINITIONS: ToolDefinition[] = [
   ),
   tool(
     "agendar_reuniao",
-    "Agenda uma reunião para o lead atual após registrar a qualificação. Toda nota de 1 a 5 estrelas pode avançar. A duração retornada é apenas operacional e nunca deve ser informada ao contato. Quando o resultado trouxer meet_link, confirme de forma curta e natural o dia e o horário e envie exatamente esse link.",
+    "Agenda um compromisso para o lead atual na agenda escolhida. A duração retornada é apenas operacional e nunca deve ser informada ao contato. Quando o resultado trouxer meet_link, confirme de forma curta e natural o dia e o horário e envie exatamente esse link.",
     {
       agenda_id: { type: "string", description: "Id retornado por consultar_agendas." },
       start: { type: "string", description: "Início ISO 8601 retornado por verificar_horarios_reuniao." }
@@ -187,8 +187,6 @@ export const QUALIFICATION_ENABLED_TOOL_NAMES = [
   "reagendar_reuniao",
   "cancelar_reuniao"
 ] as const;
-/** @deprecated Provisioning compatibility alias. */
-export const NEWAVE_ENABLED_TOOL_NAMES = QUALIFICATION_ENABLED_TOOL_NAMES;
 
 export const SCHEDULING_TOOL_DEFINITIONS: ToolDefinition[] = [
   ...META_CELL_TOOL_DEFINITIONS,

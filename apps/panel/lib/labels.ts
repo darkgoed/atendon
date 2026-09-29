@@ -25,7 +25,8 @@ const handoffReasons: Record<string, string> = {
   commercial_handoff: "Em processo comercial",
   agent_requested: "Transferido pela IA",
   rate_limited: "Limite de mensagens atingido",
-  agent_disabled: "IA desativada pela empresa"
+  agent_disabled: "IA desativada pela empresa",
+  quota_exhausted: "Créditos de IA esgotados"
 };
 
 const accessStatuses: Record<string, string> = {

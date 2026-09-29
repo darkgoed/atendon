@@ -32,7 +32,10 @@ describe("commercial journey contract",()=>{
   });
 
   it("requires the outcome-specific commercial fields",()=>{
-    expect(()=>concludeAppointmentSchema.parse({ outcome: "fechado" })).toThrow();
+    // sale_value virou opcional no schema: a obrigatoriedade é validada em
+    // runtime conforme tenant_closing_requirements da empresa (suporte fecha
+    // sem valor). Formato inválido (0) continua rejeitado.
+    expect(concludeAppointmentSchema.parse({ outcome: "fechado" })).toEqual({ outcome: "fechado" });
     expect(()=>concludeAppointmentSchema.parse({ outcome: "fechado",sale_value: 0 })).toThrow();
     expect(concludeAppointmentSchema.parse({ outcome: "fechado",sale_value: 1250 })).toMatchObject({ sale_value: 1250 });
     expect(()=>concludeAppointmentSchema.parse({ outcome: "follow_up",next_action: "Ligar" })).toThrow();

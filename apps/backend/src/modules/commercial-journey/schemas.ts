@@ -28,9 +28,11 @@ export const commercialTransitionPayloadSchema = z.object({
   outcome_metadata: metadata
 }).strict();
 
+// sale_value é validado em runtime contra tenant_closing_requirements:
+// empresas de suporte/atendimento fecham o ciclo sem valor de venda.
 const closedOutcomeSchema = z.object({
   outcome: z.literal("fechado"),
-  sale_value: z.number().positive().finite(),
+  sale_value: z.number().positive().finite().optional(),
   outcome_metadata: metadata
 }).strict();
 
