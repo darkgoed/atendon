@@ -7,7 +7,6 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { Sparkline } from "@/components/commercial-dashboard-charts";
 import { KpiCard } from "@/components/ui/kpi";
-import { Funnel } from "@/components/ui/funnel";
 
 // O arquivo é .test.ts (contrato da SPEC), então JSX não está disponível —
 // os componentes são montados com React.createElement.
@@ -62,65 +61,35 @@ describe("KpiCard", () => {
   });
 });
 
-describe("Funnel", () => {
-  it("renderiza role=img com ariaLabel e os estágios; vazio cai no empty state", () => {
-    const first = render(
-      h(Funnel, {
-        ariaLabel: "Funil de conversão: contatos, agendamentos, calls e vendas",
-        stages: [
-          { label: "Novos contatos", value: 100, tone: "primary" },
-          { label: "Agendamentos", value: 42, tone: "primary", conversionLabel: "Lead → Agendamento · 42%" },
-          { label: "Calls realizadas", value: 30, tone: "success", conversionLabel: "Agendamento → Comparecimento · 71%" },
-          { label: "Vendas", value: 9, tone: "success", conversionLabel: "Call → Venda · 30%" }
-        ]
-      })
-    );
-    expect(screen.getByRole("img", { name: "Funil de conversão: contatos, agendamentos, calls e vendas" })).toBeInTheDocument();
-    expect(first.container.querySelectorAll("polygon").length).toBe(4);
-    expect(first.container.textContent).toContain("Lead → Agendamento · 42%");
-    expect(first.container.textContent).toContain("100");
-    cleanup();
-
-    const empty = render(h(Funnel, { ariaLabel: "Funil", stages: [] }));
-    expect(empty.container.querySelector('[role="img"]')).toBeNull();
-    expect(empty.container.textContent).not.toContain("Novos contatos");
-  });
-});
-
-describe("source assertions — call sites do dashboard", () => {
+describe("source assertions — Visão geral de referência", () => {
   let source = "";
 
   beforeAll(async () => {
     // Em jsdom o import.meta.url é http — resolve pelo cwd do painel.
-    source = await readFile(resolve(process.cwd(), "components/dashboard-widgets.tsx"), "utf8");
+    source = await readFile(resolve(process.cwd(), "components/dashboard-reference-overview.tsx"), "utf8");
   });
 
-  it("mantém os call sites exatos de Sparkline e Funnel", () => {
-    expect(source).toContain("<Sparkline values={series.map((item) => item[kpi.spark as SparkKey])}");
-    expect(source).toContain("<Funnel stages={stages}");
-    expect(source).toContain("<LineAreaChart");
-    expect(source).toContain("trendDelta(series, kpi.spark)");
-  });
-
-  it("mantém os rótulos comerciais e as taxas do funil", () => {
-    for (const label of ["Novos contatos", "Agendamentos", "Calls realizadas", "No-show", "Vendas", "Valor vendido"]) {
-      expect(source).toContain(label);
+  it("mantém o funil definitivo com os estágios e as taxas do funil", () => {
+    expect(source).toContain("Funil de conversão");
+    for (const stage of ["Novos contatos", "Agendamentos", "Calls realizadas", "Vendas"]) {
+      expect(source).toContain(stage);
     }
     for (const step of ["Lead → Agendamento", "Agendamento → Comparecimento", "Call → Venda", "Lead → Venda", "Taxa de no-show"]) {
       expect(source).toContain(step);
     }
   });
 
-  it("codifica o grupo do widget na cor do acento, sem faixa de título no board", () => {
-    // O board é um fluxo contínuo de cards: o grupo se lê na cor do fio de
-    // acento, não numa linha de texto entre blocos (que quebrava a grade e
-    // empurrava o dado para baixo da dobra).
-    expect(source).not.toContain("showGroupHeader");
-    expect(source).toContain("GROUP_ACCENTS");
-    expect(source).toContain("groupAccent(definition.group)");
-    expect(source).toContain('"--dash-accent": accent');
-    // GROUP_LABELS continua governando a biblioteca de widgets (Personalizar).
-    expect(source).toContain("groupTitle(group)");
-    expect(source).toContain("col-span-12");
+  it("cobre os grupos do board antigo com seções próprias", () => {
+    for (const section of ["Atendimento", "Agenda de hoje", "Handoffs aguardando", "Alertas recentes", "Pipeline", "Origem dos leads", "Vendas por origem", "Equipe"]) {
+      expect(source).toContain(section);
+    }
+  });
+
+  it("não depende mais do funil antigo nem da biblioteca de widgets", async () => {
+    expect(source).not.toContain("components/ui/funnel");
+    const widgetsPage = await readFile(resolve(process.cwd(), "components/dashboard-widgets.tsx"), "utf8");
+    expect(widgetsPage).toContain("<DashboardReferenceOverview");
+    expect(widgetsPage).not.toContain("Biblioteca de widgets");
+    expect(widgetsPage).not.toContain("Personalizar");
   });
 });
