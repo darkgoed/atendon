@@ -47,6 +47,9 @@ class MultiagentTest(unittest.TestCase):
         sh("git", "remote", "add", "origin", self.bare, cwd=seed)
         sh("git", "push", "-u", "origin", "main", cwd=seed)
         sh("git", "clone", self.bare, self.ma.INTEGRATION)
+        # core guard: provision refuses unless the integration worktree is on a
+        # branch literally named "integration"
+        sh("git", "checkout", "-b", "integration", cwd=self.ma.INTEGRATION)
         sh("git", "config", "user.email", "t@t", cwd=self.ma.INTEGRATION)
         sh("git", "config", "user.name", "t", cwd=self.ma.INTEGRATION)
         self.seed = str(seed)
