@@ -92,6 +92,11 @@ def cmd_provision(a):
         clash = [m["task_id"] for m in manifests() if overlaps(owner, m)]
         if clash:
             die("ownership overlap", with_tasks=clash)
+        cur = out("git", "branch", "--show-current", cwd=INTEGRATION)
+        if cur != "integration":
+            die(f"integration branch is {cur!r}, refusing provision")
+        if sh("git", "status", "--porcelain", cwd=INTEGRATION, check=False).stdout.strip():
+            die("integration worktree is dirty")
         base_sha = out("git", "rev-parse", "HEAD", cwd=INTEGRATION)
         sh("git", "worktree", "add", "-b", branch, wt, base_sha, cwd=INTEGRATION)
         write_manifest({"task_id": tid, "branch": branch, "worktree": wt,
@@ -102,19 +107,20 @@ def cmd_provision(a):
 
 def cmd_integrate(a):
     tid = a.task_id
-    m = load_manifest(tid)
-    if m.get("integrated"):
-        die(f"task {tid} already integrated")
-    branch, base_sha, owner, wt = m["branch"], m["base_sha"], m["ownership"], m["worktree"]
     with open(LOCK, "a") as lf:
         fcntl.flock(lf, fcntl.LOCK_EX)
+        m = load_manifest(tid)
+        if m.get("integrated"):
+            die(f"task {tid} already integrated")
+        branch, base_sha, owner, wt = m["branch"], m["base_sha"], m["ownership"], m["worktree"]
+        if out("git", "status", "--porcelain", cwd=wt):
+            die(f"worker worktree {wt} is dirty")
         if sh("git", "status", "--porcelain", cwd=INTEGRATION, check=False).stdout.strip():
             die("integration worktree is dirty")
         sh("git", "fetch", "origin", "main", cwd=INTEGRATION)
         r = sh("git", "merge", "--no-edit", "origin/main", cwd=INTEGRATION, check=False)
         if r.returncode:
             sh("git", "merge", "--abort", cwd=INTEGRATION, check=False)
-            sh("git", "reset", "--hard", cwd=INTEGRATION)
             die("origin/main merge conflicted; integration restored")
         if not out("git", "rev-list", f"{base_sha}..{branch}", cwd=INTEGRATION):
             die(f"branch {branch} has no commits since base")
@@ -133,12 +139,12 @@ def cmd_integrate(a):
         r = sh("git", "merge", "--squash", branch, cwd=INTEGRATION, check=False)
         if r.returncode:
             sh("git", "merge", "--abort", cwd=INTEGRATION, check=False)
-            sh("git", "reset", "--hard", cwd=INTEGRATION)
             die("squash merge conflicted; integration restored")
         rc = subprocess.run(["git", "commit", "-m", f"integrate {tid}"], cwd=INTEGRATION,
                             capture_output=True, text=True)
         if rc.returncode:
-            sh("git", "reset", "--hard", cwd=INTEGRATION)
+            # ponytail: restore clears the failed squash without git reset; no reset ever in this shared checkout
+            sh("git", "restore", "--staged", "--worktree", "--", ".", cwd=INTEGRATION)
             die(f"squash commit failed: {rc.stderr.strip()}")
         sha = out("git", "rev-parse", "HEAD", cwd=INTEGRATION)
         m.update(integrated=True, integrate_sha=sha, files=files)
