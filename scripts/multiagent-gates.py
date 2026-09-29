@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Central quality gates for the AtendON multi-agent integration flow.
 
-validate: flock(state/heavy.lock) -> lint/typecheck/tests/build + Jev/Ponytail
+validate: flock(state/heavy.lock) -> lint, renderer build, typecheck, tests,
+backend/panel builds + Jev/Ponytail
 review of the integration diff, one round per SHA; records state/validation.json
 atomically only after full success. No E2E.
 
@@ -223,12 +224,21 @@ def cmd_validate(a):
                 and prior.get("validated_sha") == sha):
             ok(validated_sha=sha, already_validated=True, mode=mode, env=a.env,
                integration=cwd, checks=prior.get("checks", {}))
-        tests = {"lint": ["npm", "run", "lint"], "typecheck": ["npm", "run", "typecheck"],
+        # One build pass per workspace, dependency order: @atendon/
+        # proposal-renderer exports point to dist/ (absent after npm ci), so
+        # it must be built before the global typecheck; backend and panel
+        # (which import it) are built after tests. The root `npm run build`
+        # is dropped: it would emit renderer again.
+        tests = {"lint": ["npm", "run", "lint"],
+                 "build_renderer": ["npm", "run", "build", "-w",
+                                    "@atendon/proposal-renderer"],
+                 "typecheck": ["npm", "run", "typecheck"],
                  # relevant tests for this flow only: the multiagent integration
                  # suite, not the full `npm run test` (shared test DB)
                  "test": ["python3", "-m", "unittest", "scripts/test_multiagent.py",
                           "scripts/test_multiagent_hook.py", "-q"],
-                 "build": ["npm", "run", "build"]}
+                 "build_backend": ["npm", "run", "build", "-w", "@atendon/backend"],
+                 "build_panel": ["npm", "run", "build", "-w", "@atendon/panel"]}
         if mode == "test-only":
             tests = {"test": tests["test"]}
         env = reduced_env() if a.env == "isolated" else None
