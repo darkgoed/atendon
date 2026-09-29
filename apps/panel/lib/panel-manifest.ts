@@ -78,7 +78,7 @@ export const panelManifest: readonly PanelManifestItem[] = [
   { href: "/tarefas", label: "Tarefas", group: "Atendimento", Icon: ListChecks, requiredPermissions: ["tasks.read"], menu: true, match: startsAt("/tarefas") },
   { href: "/pos-venda", label: "Carteira", group: "Pós-venda", Icon: HandHeart, requiredPermissions: ["post_sales.use"], capability: "post_sales_v1", menu: true, match: (path) => path === "/pos-venda" || path.startsWith("/pos-venda/cobranca") },
   { href: "/pos-venda/configurar", label: "Configurar checklist", group: "Pós-venda", Icon: ClipboardText, requiredPermissions: ["post_sales.manage"], capability: "post_sales_v1", menu: true, match: startsAt("/pos-venda/configurar") },
-  { href: "/tripz-ai", label: "Tripz IA", group: "Copiloto", Icon: Sparkle, requiredPermissions: ["tripz_ai.use"], capability: "tripz_ai_v1", menu: true, match: startsAt("/tripz-ai") },
+  { href: "/tripz-ai", label: "Documentos IA", group: "Copiloto", Icon: Sparkle, requiredPermissions: ["tripz_ai.use"], capability: "tripz_ai_v1", menu: true, match: startsAt("/tripz-ai") },
   { href: "/fluxos", label: "Fluxos (robô)", group: "Copiloto", Icon: FlowArrow, requiredPermissions: ["agent.read"], menu: true, match: startsAt("/fluxos") },
   { href: "/alertas", label: "Alertas", group: "Administração", Icon: Watch, capability: "workspace_admin_v1", rootOnly: true, match: startsAt("/alertas") },
   { href: "/follow-ups", label: "Follow-ups", group: "Administração", Icon: Clock, rootWorkspaceOnly: true, requiredFeature: "AI_FOLLOWUP", menu: true, match: startsAt("/follow-ups") },

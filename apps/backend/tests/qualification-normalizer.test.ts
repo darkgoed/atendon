@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { activationIssues, assertPublicWebhookUrl, flowDefinitionSchema, NEWAVE_FLOW, renderFinalMessage, renderQuestion, totalQuestions, webhookUrlSchema } from "../src/modules/qualification/flow.js";
+import { activationIssues, assertPublicWebhookUrl, flowDefinitionSchema, renderFinalMessage, renderQuestion, totalQuestions, webhookUrlSchema } from "../src/modules/qualification/flow.js";
+import { NEWAVE_QUALIFICATION_FLOW as NEWAVE_FLOW } from "../src/db/newave-flow-template.js";
 import { classifyBoolean, classifyRevenue, classifyYears, matchAnswer, matchAnswerCandidates, normalizeInstagram } from "../src/modules/qualification/normalizer.js";
 
 const FLOW = flowDefinitionSchema.parse({

@@ -11,6 +11,7 @@ import { db } from "../../db/client.js";
 import { getEmailProvider } from "../../mail/index.js";
 import { buildInvitationAcceptUrl, createInvitationToken, sendWorkspaceInvitationEmail, shouldExposeInvitationToken } from "../../mail/invitations.js";
 import { DEFAULT_MEDIA_FALLBACK } from "../ai-router/defaults.js";
+import { SEGMENT_PRESETS, findSegmentPreset } from "../organization/presets.js";
 import { DEFAULT_HUMANIZER_CONFIG } from "../messages/humanizer.js";
 import { collectOperationalSnapshot } from "../operations/operational-snapshot.js";
 import { listEffectiveCapabilities } from "../operations/feature-flags.js";
@@ -41,9 +42,11 @@ const workspaceBody = z.object({
   preset_source_tenant_id: uuid.optional(),
   preset: workspacePresetBody.optional(),
   planId: z.string().uuid().optional(),
-  planCode: z.string().trim().min(1).max(80).optional()
+  planCode: z.string().trim().min(1).max(80).optional(),
+  segmentPreset: z.string().trim().max(80).optional()
 }).refine((value) => !(value.planId && value.planCode), "Informe planId ou planCode, não ambos")
-  .refine((value) => !value.preset || value.preset_source_tenant_id, "preset exige preset_source_tenant_id");
+  .refine((value) => !value.preset || value.preset_source_tenant_id, "preset exige preset_source_tenant_id")
+  .refine((value) => !value.segmentPreset || findSegmentPreset(value.segmentPreset) !== undefined, "segmentPreset desconhecido");
 const workspaceUpdateBody = z.object({
   name: z.string().trim().min(2).max(200).optional(),
   status: z.enum(["trial", "active", "suspended"]).optional(),
@@ -256,6 +259,17 @@ export async function registerRootRoutes(app: FastifyInstance) {
     return { workspaces: result.rows };
   });
 
+  app.get("/root/segment-presets", async (request) => {
+    await requireRoot(request);
+    return {
+      presets: SEGMENT_PRESETS.map((preset) => ({
+        slug: preset.slug,
+        label: preset.label,
+        description: preset.description
+      }))
+    };
+  });
+
   app.post("/root/workspaces", { config: { rateLimit: HTTP_RATE_LIMITS.sensitiveWrite } }, async (request, reply) => {
     const root = await requireRoot(request);
     const body = workspaceBody.parse(request.body);
@@ -341,10 +355,30 @@ export async function registerRootRoutes(app: FastifyInstance) {
         "INSERT INTO whatsapp_sessions(tenant_id,label,is_primary) VALUES($1,'Principal',true) RETURNING id",
         [workspace.rows[0].id]
       );
+      // Preset de segmento define o prompt inicial e o fluxo de qualificação
+      // inicial do tenant (configuração editável no painel; sem dev no dia 1).
+      const segmentPreset = findSegmentPreset(body.segmentPreset);
+      const initialPrompt = segmentPreset?.systemPrompt?.trim()
+        ? segmentPreset.systemPrompt
+        : config.DEFAULT_SYSTEM_PROMPT;
       await client.query(
-        "INSERT INTO agent_configs(tenant_id,system_prompt,ai_model,model_params) VALUES($1,$2,$3,$4)",
-        [workspace.rows[0].id, config.DEFAULT_SYSTEM_PROMPT, config.DEFAULT_AI_MODEL, { temperature: 0.4, max_tokens: 512 }]
+        "INSERT INTO agent_configs(tenant_id,system_prompt,ai_model,model_params,enabled_tools) VALUES($1,$2,$3,$4,$5)",
+        [
+          workspace.rows[0].id,
+          initialPrompt,
+          config.DEFAULT_AI_MODEL,
+          { temperature: 0.4, max_tokens: 512 },
+          JSON.stringify(segmentPreset?.enabledTools ?? [])
+        ]
       );
+      if (segmentPreset) {
+        await client.query(
+          `INSERT INTO qualification_flows(tenant_id,id,name,active,definition)
+           VALUES($1,'fluxo-inicial',$2,false,$3::jsonb)
+           ON CONFLICT (tenant_id,id) DO NOTHING`,
+          [workspace.rows[0].id, `Fluxo inicial — ${segmentPreset.label}`, JSON.stringify(segmentPreset.qualificationFlow)]
+        );
+      }
       await client.query(
         `INSERT INTO tenant_ai_settings(tenant_id,media_fallback_audio,media_fallback_image,media_fallback_document,humanizer_config)
          VALUES($1,$2,$3,$4,$5)

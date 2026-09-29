@@ -177,6 +177,78 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
     return { workspace: result.rows[0] };
   });
 
+  const closingRequirementsBody = z.object({
+    requireSaleValue: z.boolean().optional(),
+    requireSaleProduct: z.boolean().optional(),
+    requireSaleChannel: z.boolean().optional(),
+    requireSaleSource: z.boolean().optional(),
+    requireResponsavel: z.boolean().optional()
+  }).strict().refine((value) => Object.keys(value).length > 0, "Informe ao menos um requisito");
+
+  // CRM não obrigatoriamente comercial: quais dados o fechamento exige nesta
+  // empresa. Sem linha na tabela valem os defaults do produto (tudo
+  // obrigatório) — a tabela só registra desvios de configuração.
+  app.get("/workspaces/current/closing-requirements", async (request) => {
+    const session = await requirePermission(request, "workspace.read");
+    const result = await db.query(
+      `SELECT require_sale_value "requireSaleValue",
+              require_sale_product "requireSaleProduct",
+              require_sale_channel "requireSaleChannel",
+              require_sale_source "requireSaleSource",
+              require_responsavel "requireResponsavel"
+       FROM tenant_closing_requirements WHERE tenant_id=$1`,
+      [session.tenantId]
+    );
+    return {
+      closingRequirements: result.rows[0] ?? {
+        requireSaleValue: true,
+        requireSaleProduct: true,
+        requireSaleChannel: true,
+        requireSaleSource: true,
+        requireResponsavel: true
+      }
+    };
+  });
+
+  app.patch("/workspaces/current/closing-requirements", async (request) => {
+    const session = await requirePermission(request, "workspace.update");
+    const body = closingRequirementsBody.parse(request.body);
+    const result = await db.query(
+      `INSERT INTO tenant_closing_requirements(tenant_id,require_sale_value,require_sale_product,require_sale_channel,require_sale_source,require_responsavel)
+       VALUES($1,
+         COALESCE($2,true),
+         COALESCE($3,true),
+         COALESCE($4,true),
+         COALESCE($5,true),
+         COALESCE($6,true))
+       ON CONFLICT (tenant_id) DO UPDATE SET
+         require_sale_value=COALESCE($2,tenant_closing_requirements.require_sale_value),
+         require_sale_product=COALESCE($3,tenant_closing_requirements.require_sale_product),
+         require_sale_channel=COALESCE($4,tenant_closing_requirements.require_sale_channel),
+         require_sale_source=COALESCE($5,tenant_closing_requirements.require_sale_source),
+         require_responsavel=COALESCE($6,tenant_closing_requirements.require_responsavel),
+         updated_at=now()
+       RETURNING require_sale_value "requireSaleValue",
+                 require_sale_product "requireSaleProduct",
+                 require_sale_channel "requireSaleChannel",
+                 require_sale_source "requireSaleSource",
+                 require_responsavel "requireResponsavel"`,
+      [session.tenantId,
+        body.requireSaleValue ?? null,
+        body.requireSaleProduct ?? null,
+        body.requireSaleChannel ?? null,
+        body.requireSaleSource ?? null,
+        body.requireResponsavel ?? null]
+    );
+    await audit(request, {
+      action: "workspace.closing_requirements.update",
+      resourceType: "workspace",
+      resourceId: session.tenantId,
+      metadata: body
+    });
+    return { closingRequirements: result.rows[0] };
+  });
+
   app.patch("/workspaces/current/timezone", async (request) => {
     const session = await requirePermission(request, "workspace.update");
     const body = timezoneBody.parse(request.body);

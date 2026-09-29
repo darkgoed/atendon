@@ -2,6 +2,7 @@
 
 import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui";
+import { useClosingRequirements } from "@/lib/closing-requirements";
 import { lossReasonRequiresNote, useLossReasons } from "@/lib/loss-reasons";
 import {
   buildCancellationPayload,
@@ -98,9 +99,11 @@ export function AppointmentOutcomeForm({ timezone, submitting, serverError, onBa
   const requiresNextAction = draft.outcome === "proposta_enviada" || draft.outcome === "em_negociacao" || draft.outcome === "follow_up";
   const clearError = () => { setError(""); onClearError(); };
 
+  const closingRequirements = useClosingRequirements();
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const result = buildOutcomePayload(draft, timezone, Date.now(), lossReasonRequiresNote(reasons, draft.lossReason));
+    const result = buildOutcomePayload(draft, timezone, Date.now(), lossReasonRequiresNote(reasons, draft.lossReason), closingRequirements.requireSaleValue);
     if (!result.ok) {
       setError(result.error);
       return;
@@ -127,8 +130,8 @@ export function AppointmentOutcomeForm({ timezone, submitting, serverError, onBa
       </fieldset>
       {draft.outcome === "fechado" ? (
         <label className="field">
-          <span className="label">Valor da venda</span>
-          <input className="input" type="number" inputMode="decimal" min="0.01" step="0.01" value={draft.saleValue} disabled={submitting} onChange={(event) => { setDraft((current) => ({ ...current, saleValue: event.target.value })); clearError(); }} placeholder="0,00" required />
+          <span className="label">Valor da venda{closingRequirements.requireSaleValue ? "" : " (opcional)"}</span>
+          <input className="input" type="number" inputMode="decimal" min="0.01" step="0.01" value={draft.saleValue} disabled={submitting} onChange={(event) => { setDraft((current) => ({ ...current, saleValue: event.target.value })); clearError(); }} placeholder="0,00" required={closingRequirements.requireSaleValue} />
         </label>
       ) : null}
       {requiresNextAction ? (

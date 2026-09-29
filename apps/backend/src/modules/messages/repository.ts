@@ -21,6 +21,7 @@ import { isCapabilityEnabled, isFeatureFlagEnabled, type CapabilityKey } from ".
 import { isWhatsAppSendRejectedError } from "../whatsapp/errors.js";
 import { enqueueAiFollowUp } from "../../queue/ai-follow-up-queue.js";
 import { assignConversationToNamedAttendant, ensureCaseAssignment } from "../assignments/service.js";
+import { normalizeAgentGuardrails, type AgentGuardrails } from "../tripz-ai/zulu.js";
 import { extractPrefilledFields } from "./prefilled-context-policy.js";
 
 function canonicalMessageAddress<T extends InboundMessage | HumanMessage>(message: T): T {
@@ -77,6 +78,8 @@ export interface ConversationContext {
   model: string;
   provider?: string;
   systemPrompt: string;
+  /** Guardrails operacionais do agente (config do tenant, versão ativa). */
+  guardrails?: AgentGuardrails;
   offersGroupLink?: string;
   tripzZuluEnabled?: boolean;
   temperature: number;
@@ -215,6 +218,7 @@ interface AgentSettingsRow {
   system_prompt: string;
   ai_model: string;
   model_params: { temperature?: number; max_tokens?: number; reasoning_effort?: ReasoningEffort };
+  guardrails?: unknown;
   updated_at: Date;
   openrouter_provider: string | null;
   openrouter_api_key_encrypted: string | null;
@@ -506,6 +510,7 @@ export class MessageRepository {
     const snapshot = await this.db.query<{
       ai_active: boolean; contact_name: string | null; instagram_username: string | null;
       facebook_attribution: Record<string, unknown>; timezone: string;
+      guardrails?: unknown;
       agent_config_version_id: string | null; system_prompt: string | null; ai_model: string | null;
       model_params: { temperature?: number; max_tokens?: number; reasoning_effort?: ReasoningEffort } | null;
       enabled_tools: string[] | null; agent_is_active: boolean | null;
@@ -536,7 +541,7 @@ export class MessageRepository {
        LEFT JOIN scheduling_leads lead ON lead.id=c.lead_id AND lead.tenant_id=c.tenant_id AND lead.deleted_at IS NULL
        LEFT JOIN tenant_ai_settings settings ON settings.tenant_id=c.tenant_id
        LEFT JOIN LATERAL (
-         SELECT v.id agent_config_version_id,v.system_prompt,v.ai_model,v.model_params,v.enabled_tools,
+         SELECT v.id agent_config_version_id,v.system_prompt,v.ai_model,v.model_params,v.enabled_tools,v.guardrails,
                 cfg.is_active agent_is_active
          FROM agent_configs cfg JOIN agent_config_versions v
            ON v.id=cfg.active_version_id AND v.tenant_id=cfg.tenant_id
@@ -583,7 +588,8 @@ export class MessageRepository {
       model: row.ai_model ?? "",
       provider: row.openrouter_provider ?? undefined,
       systemPrompt: row.system_prompt ?? "",
-      offersGroupLink: this.config?.TRIPZ_OFFERS_GROUP_LINK,
+      guardrails: normalizeAgentGuardrails(row.guardrails),
+      offersGroupLink: normalizeAgentGuardrails(row.guardrails).offersGroupLink ?? this.config?.TRIPZ_OFFERS_GROUP_LINK,
       tripzZuluEnabled: input.tripzAiEnabled,
       temperature: row.model_params?.temperature ?? 0.4,
       maxTokens: row.model_params?.max_tokens ?? 512,
@@ -768,7 +774,7 @@ export class MessageRepository {
         RETURNING id, processed_at
       ),
       agent AS (
-        SELECT v.id agent_config_version_id,v.system_prompt,v.ai_model,v.model_params,v.enabled_tools,
+        SELECT v.id agent_config_version_id,v.system_prompt,v.ai_model,v.model_params,v.enabled_tools,v.guardrails,
                a.is_active AS agent_is_active,
                t.timezone,
                s.openrouter_provider, s.openrouter_api_key_encrypted,
@@ -978,6 +984,7 @@ export class MessageRepository {
         aiActiveColumn: row.ai_active,
         model: "",
         systemPrompt: "",
+        guardrails: normalizeAgentGuardrails(undefined),
         offersGroupLink: this.config?.TRIPZ_OFFERS_GROUP_LINK,
         tripzZuluEnabled: false,
         temperature: 0,
@@ -998,6 +1005,7 @@ export class MessageRepository {
       system_prompt: row.system_prompt,
       ai_model: row.ai_model,
       model_params: row.model_params,
+      guardrails: row.guardrails,
       updated_at: row.updated_at,
       openrouter_provider: row.openrouter_provider,
       openrouter_api_key_encrypted: row.openrouter_api_key_encrypted,
@@ -1033,7 +1041,8 @@ export class MessageRepository {
       model: settings.ai_model,
       provider: settings.openrouter_provider ?? undefined,
       systemPrompt: settings.system_prompt,
-      offersGroupLink: this.config?.TRIPZ_OFFERS_GROUP_LINK,
+      guardrails: normalizeAgentGuardrails(settings.guardrails),
+      offersGroupLink: normalizeAgentGuardrails(settings.guardrails).offersGroupLink ?? this.config?.TRIPZ_OFFERS_GROUP_LINK,
       tripzZuluEnabled: tripzAiEnabled,
       temperature: settings.model_params.temperature ?? 0.4,
       maxTokens: settings.model_params.max_tokens ?? 512,
@@ -1658,6 +1667,79 @@ export class MessageRepository {
       await client.query("COMMIT");
       const row = notification.rows[0];
       return { id: row.id, sessionId: row.session_id, attendantPhone: row.attendant_phone, message: row.message };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Pausa a IA da conversa porque a franquia/créditos de IA do tenant acabou
+   * (consumo negado por QUOTA_EXCEEDED/CREDIT_CAP_REACHED). Estado explícito
+   * e observável: `handoff_reason='quota_exhausted'` torna a conversa visível
+   * no filtro humano do inbox, gera ping de handoff para o time (mesmo outbox
+   * dos demais handoffs, idempotente por conversa) e o alerta do sistema é
+   * deduplicado pelo chamador. Recuperação: não há retorno automático — o
+   * atendente reassume a conversa (reactivate) e novas conversas nascem com
+   * IA assim que a franquia voltar.
+   */
+  async pauseForQuotaExhaustion(input: {
+    tenantId: string;
+    conversationId: string;
+    sessionId: string;
+    notificationText: string;
+  }): Promise<HandoffNotification | null> {
+    const client = await this.db.connect();
+    try {
+      await client.query("BEGIN");
+      const conversation = await client.query<{ attendant_phone: string | null }>(
+        `UPDATE conversations c
+         SET ai_active = false,
+             handoff_reason = 'quota_exhausted',
+             handoff_error_code = NULL
+         FROM tenants t
+         WHERE c.id = $1 AND c.tenant_id = $2 AND c.session_id = $3 AND t.id = c.tenant_id
+         RETURNING t.attendant_phone`,
+        [input.conversationId, input.tenantId, input.sessionId]
+      );
+      if (!conversation.rows[0]) throw new Error("Conversation not found for workspace and WhatsApp session");
+      const phone = conversation.rows[0]?.attendant_phone?.trim();
+      if (!phone || !/^\d{10,15}$/.test(phone)) {
+        const alertMessage = "A franquia de IA do workspace se esgotou e a conversa foi pausada, mas não existe telefone de atendente válido configurado para receber o aviso.";
+        await client.query(
+          `INSERT INTO system_alerts(tenant_id,message)
+           SELECT $1,$2
+           WHERE NOT EXISTS (
+             SELECT 1 FROM system_alerts
+             WHERE tenant_id=$1 AND message=$2 AND created_at >= now()-interval '1 hour'
+           )`,
+          [input.tenantId, alertMessage]
+        );
+        await client.query("COMMIT");
+        return null;
+      }
+      // Um aviso de WhatsApp por conversa durante o esgotamento: conflito com
+      // o idempotency_key devolve vazio e o chamador NÃO despacha de novo
+      // (o reconciliador de outbox cuida de retries da row pendente).
+      const notification = await client.query<{
+        id: string;
+        session_id: string;
+        attendant_phone: string;
+        message: string;
+      }>(
+        `INSERT INTO handoff_notifications
+           (tenant_id, conversation_id, session_id, idempotency_key, attendant_phone, message)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
+         RETURNING id, session_id, attendant_phone, message`,
+        [input.tenantId, input.conversationId, input.sessionId,
+          `${input.sessionId}:quota_exhausted`, phone, input.notificationText]
+      );
+      await client.query("COMMIT");
+      const row = notification.rows[0];
+      return row ? { id: row.id, sessionId: row.session_id, attendantPhone: row.attendant_phone, message: row.message } : null;
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

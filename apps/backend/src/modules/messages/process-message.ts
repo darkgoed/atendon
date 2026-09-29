@@ -48,14 +48,13 @@ import {
 } from "./state-tool-gating.js";
 import { runAgentTurn } from "./agent-turn-runner.js";
 import {
-  appendTripzOffersInvitation,
+  appendOffersInvitation,
   isTripzZuluAgent,
   tripzZuluDetectsOwnerNameReferral,
   tripzZuluRequestsOwnerHandoff,
   tripzZuluTurnInstruction,
   tripzZuluTurnSignals,
-  TRIPZ_ZULU_OWNER_NAME,
-  TRIPZ_ZULU_OWNER_REFERRAL_REPLY
+  normalizeAgentGuardrails
 } from "../tripz-ai/zulu.js";
 import { extractSchedulingTimes, hasSchedulingTime } from "./scheduling-time.js";
 import { workspaceClockNote } from "./turn-clock.js";
@@ -193,6 +192,7 @@ export function refreshContextWithinTurn(
     provider: frozen.provider,
     systemPrompt: frozen.systemPrompt,
     offersGroupLink: frozen.offersGroupLink,
+    guardrails: frozen.guardrails,
     tripzZuluEnabled: frozen.tripzZuluEnabled,
     temperature: frozen.temperature,
     maxTokens: frozen.maxTokens,
@@ -1205,6 +1205,7 @@ export class MessageProcessor {
     }, 20_000);
     let aiReservation: Promise<ConsumeResult> | undefined;
     let aiTurnReconciled = false;
+    let quotaPauseHandled = false;
     try {
     if (config) await sleep(humanizedDelay(randomBetween(config.readDelay), config));
 
@@ -1220,6 +1221,27 @@ export class MessageProcessor {
         });
       const consumption = await aiReservation;
       if (consumption.reason === "BILLING_UNAVAILABLE") throw new BillingUnavailableRetryError();
+      if (!consumption.allowed && (consumption.reason === "QUOTA_EXCEEDED" || consumption.reason === "CREDIT_CAP_REACHED")) {
+        // Esgotamento de franquia NÃO pode ser silencioso (C5): pausa explícita
+        // com motivo observável no inbox + handoff para o time (idempotente
+        // por conversa) + alerta deduplicado no sistema. BILLING_UNAVAILABLE
+        // segue como retentativa: indisponibilidade transitória do billing
+        // não cria estado permanente de pausa.
+        if (!quotaPauseHandled) {
+          quotaPauseHandled = true;
+          const quotaNotification = await this.repository.pauseForQuotaExhaustion({
+            tenantId: message.tenantId,
+            conversationId: context.conversationId,
+            sessionId: message.sessionId,
+            notificationText: `A franquia de IA do workspace se esgotou e a conversa de ${message.contactName ?? context.contactIdentifier ?? message.contactPhone} foi pausada. Compre ou renove os créditos e reative o atendimento.`
+          });
+          if (quotaNotification) await this.dispatchHandoff(quotaNotification);
+          await this.repository.createSystemAlertOnce(
+            message.tenantId,
+            "Franquia de IA esgotada: a IA parou de responder e as conversas afetadas foram pausadas com motivo quota_exhausted. Acompanhe em Uso e cobrança."
+          );
+        }
+      }
       return consumption.allowed;
     };
     const reconcileAiTurn = () => {
@@ -1495,28 +1517,31 @@ export class MessageProcessor {
     // context.history always includes the current inbound turn (repository.ts
     // unions in the just-inserted row), so a brand-new conversation has
     // length 1, never 0 — this never fired in production before.
+    const agentGuardrails = normalizeAgentGuardrails(context.guardrails);
     const freshTripzOwnerReferral = context.history.length <= 1
       && tripzZuluAgent
-      && tripzZuluDetectsOwnerNameReferral(effectiveMessage.text);
+      && agentGuardrails.enabled
+      && tripzZuluDetectsOwnerNameReferral(effectiveMessage.text, agentGuardrails.ownerName);
     const tripzOwnerRequested = tripzZuluAgent
-      && tripzZuluRequestsOwnerHandoff(effectiveMessage.text);
+      && agentGuardrails.enabled
+      && tripzZuluRequestsOwnerHandoff(effectiveMessage.text, agentGuardrails.ownerName);
     if (freshTripzOwnerReferral || tripzOwnerRequested) {
-      const sent = await sendToContact(TRIPZ_ZULU_OWNER_REFERRAL_REPLY);
+      const sent = await sendToContact(agentGuardrails.ownerReferralReply);
       await this.repository.recordAgentReply({
         tenantId: message.tenantId, sessionId: message.sessionId, conversationId: context.conversationId,
-        agentConfigVersionId: context.agentConfigVersionId, text: TRIPZ_ZULU_OWNER_REFERRAL_REPLY,
+        agentConfigVersionId: context.agentConfigVersionId, text: agentGuardrails.ownerReferralReply,
         model: "owner-referral-guard", externalId: sent.externalId,
         inboundExternalId: message.externalId, inboundExternalIds: processingExternalIds
       });
       const notificationText = tripzOwnerRequested
-        ? `AtendON: ${message.contactName ?? context.contactIdentifier ?? message.contactPhone} pediu para falar com o Lucas, assuma o atendimento.`
-        : `AtendON: ${message.contactName ?? context.contactIdentifier ?? message.contactPhone} chegou já falando o nome do Lucas, assuma o atendimento.`;
+        ? `AtendON: ${message.contactName ?? context.contactIdentifier ?? message.contactPhone} pediu para falar com ${agentGuardrails.ownerName}, assuma o atendimento.`
+        : `AtendON: ${message.contactName ?? context.contactIdentifier ?? message.contactPhone} chegou já falando o nome de ${agentGuardrails.ownerName}, assuma o atendimento.`;
       const notification = await this.repository.pauseForHandoff({
         tenantId: message.tenantId,
         conversationId: context.conversationId,
         sessionId: message.sessionId,
         reason: "contact_requested",
-        assigneeName: TRIPZ_ZULU_OWNER_NAME,
+        assigneeName: agentGuardrails.ownerName,
         idempotencyKey: `${message.sessionId}:${message.externalId}:${tripzOwnerRequested ? "owner_requested" : "owner_referral"}`,
         notificationText
       });
@@ -1880,7 +1905,8 @@ export class MessageProcessor {
       ? tripzZuluTurnSignals(
         effectiveMessage.text,
         context.history.map((item) => item.content),
-        context.offersGroupLink
+        context.offersGroupLink,
+        normalizeAgentGuardrails(context.guardrails).offersGroupLabel
       )
       : { exclusiveOffers: false, boletoPayment: false };
     const tripzZuluNote = tripzZulu
@@ -2497,7 +2523,7 @@ export class MessageProcessor {
         if (tripzZulu && tripzZuluSignals.exclusiveOffers) {
           parsed = {
             handoff: false,
-            text: appendTripzOffersInvitation(parsed.text, context.offersGroupLink)
+            text: appendOffersInvitation(parsed.text, context.offersGroupLink, normalizeAgentGuardrails(context.guardrails).offersGroupLabel)
           };
         }
         replyText = parsed.text;

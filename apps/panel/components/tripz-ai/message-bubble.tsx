@@ -17,13 +17,13 @@ export function TripzMessageBubble({
   return (
     <article
       className={`${styles.message} ${fromUser ? styles.messageUser : styles.messageAi}`}
-      aria-label={fromUser ? "Mensagem enviada por você" : "Resposta da Tripz IA"}
+      aria-label={fromUser ? "Mensagem enviada por você" : "Resposta do assistente"}
     >
       <header className={`flex items-center gap-2 px-1 text-[10px] font-medium ${fromUser ? "flex-row-reverse text-[var(--text-muted)]" : "text-[var(--primary-text)]"}`}>
         <span className={`grid h-5 w-5 place-items-center border ${fromUser ? "border-[var(--border-strong)] bg-[var(--surface)]" : "border-[var(--primary-border)] bg-[var(--primary-subtle)]"}`} aria-hidden="true">
           {fromUser ? <User size={11} weight="bold" /> : <Robot size={12} weight="duotone" />}
         </span>
-        <span>{fromUser ? "Você" : "Tripz IA"}</span>
+        <span>{fromUser ? "Você" : "Assistente"}</span>
         <time className="font-mono font-normal text-[var(--text-muted)]" dateTime={message.createdAt}>
           {formatTripzTimestamp(message.createdAt)}
         </time>

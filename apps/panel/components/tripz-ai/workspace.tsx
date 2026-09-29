@@ -34,7 +34,7 @@ function readableError(error: unknown, fallback: string): string {
 
 function WorkspaceEmpty({ creating, onCreate, onOpenHistory }: { creating: boolean; onCreate: () => void; onOpenHistory: (event: React.MouseEvent<HTMLElement>) => void }) {
   return (
-    <section className="relative grid min-h-0 min-w-0 place-items-center overflow-y-auto bg-[var(--bg)] px-5 py-8" aria-label="Tripz IA sem proposta selecionada">
+    <section className="relative grid min-h-0 min-w-0 place-items-center overflow-y-auto bg-[var(--bg)] px-5 py-8" aria-label="Documentos IA sem proposta selecionada">
       <button type="button" className="absolute left-3 top-3 grid h-10 w-10 place-items-center border rounded-[var(--radius-md)] border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] transition-[background,transform] hover:bg-[var(--surface-active)] active:translate-y-px lg:hidden" onClick={onOpenHistory} aria-label="Abrir histórico">
         <AirplaneTilt size={18} aria-hidden="true" />
       </button>
@@ -48,7 +48,7 @@ function WorkspaceEmpty({ creating, onCreate, onOpenHistory }: { creating: boole
         </div>
         <div className="hidden border-t border-[var(--border)] pt-4 text-[10px] leading-5 text-[var(--text-muted)] md:block">
           <Sparkle size={18} className="mb-3 text-[var(--primary)]" weight="duotone" aria-hidden="true" />
-          Envie somente os materiais fornecidos pelo cliente. A Tripz IA não pesquisa preços nem serviços externos.
+          Envie somente os materiais fornecidos pelo cliente. O assistente de documentos não pesquisa preços nem serviços externos.
         </div>
       </div>
     </section>
@@ -327,7 +327,7 @@ export function TripzWorkspace() {
         <section className="grid min-h-0 place-items-center p-4 text-center" role="alert">
           <div className="max-w-sm">
             <WarningCircle size={28} weight="duotone" className="mx-auto text-[var(--warning-text)]" aria-hidden="true" />
-            <h1 className="mb-0 mt-4 text-base text-[var(--text)]">Não foi possível abrir a Tripz IA</h1>
+            <h1 className="mb-0 mt-4 text-base text-[var(--text)]">Não foi possível abrir o Documentos IA</h1>
             <p className="mb-0 mt-2 text-xs leading-5 text-[var(--text-secondary)]">{readableError(historyError, "Falha ao carregar as propostas.")}</p>
             <button type="button" className="btn mt-5" onClick={() => void mutateHistory()}><ArrowClockwise size={14} aria-hidden="true" />Tentar novamente</button>
           </div>

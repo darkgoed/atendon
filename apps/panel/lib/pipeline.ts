@@ -313,7 +313,9 @@ export function normalizePipelinePreferences(value: unknown): PipelinePreference
 }
 
 export type PipelineCommercialInput =
-  | { sale_value: number; sale_product?: string; sale_source?: string; sale_channel?: string; responsavel_member_id?: string }
+  // sale_value é opcional no fechamento quando a empresa libera
+  // (tenant_closing_requirements); o backend valida a combinação exata.
+  | { sale_value?: number; sale_product?: string; sale_source?: string; sale_channel?: string; responsavel_member_id?: string }
   | { next_action: string; next_action_at: string }
   | { loss_reason: string; loss_reason_note?: string };
 

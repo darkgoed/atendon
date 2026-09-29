@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { provisionTripzZulu } from "../src/db/provision-tripz.js";
-import { TRIPZ_ZULU_SYSTEM_PROMPT } from "../src/modules/tripz-ai/zulu.js";
+import { TRIPZ_ZULU_SYSTEM_PROMPT } from "../src/db/zulu-provision.js";
 
 function fakePool(responses: Array<{ rows?: unknown[]; rowCount?: number }> | ((sql: string) => { rows?: unknown[]; rowCount?: number })): {
   calls: string[];

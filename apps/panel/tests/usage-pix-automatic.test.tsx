@@ -39,7 +39,7 @@ function mockApi() {
         return { mandate };
       }
       pixGets += 1;
-      return { mandate };
+      return { mandate, sku };
     }
     return {};
   });
@@ -54,7 +54,7 @@ describe("uso — Pix Automático mensal", () => {
     mandate = { id: "m-1", status: "PENDING", firstDueOn: "2026-11-10", pixCopiaECola: "PIX-AUTO-CODE" };
     render(<UsoBody />);
     expect(await screen.findByText(/Status da autorização: Pendente/)).toBeTruthy();
-    expect(screen.getByText(/50 milhões de créditos por R\$157 via Pix Automático/)).toBeTruthy();
+    expect(screen.getByText(/1\.000 créditos por R\$\s?50,00 via Pix Automático/)).toBeTruthy();
     expect(screen.getByText(/Primeira cobrança prevista: 10\/11\/2026/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Copiar PIX Automático" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Parar cobranças futuras" })).toBeTruthy();
@@ -152,7 +152,7 @@ describe("uso — Pix Automático mensal", () => {
       if (path === "/billing/ai-credit-packs/balance") return { balance: { availableCredits: 0, grants: [] } };
       if (path.startsWith("/billing/ai-usage")) return { summary: {} };
       if (path === "/billing/ai-credit-packs") return { sku, purchases: [] };
-      return {};
+        return {};
     });
     render(<UsoBody />);
     expect(await screen.findByText("Falha de rede")).toBeTruthy();

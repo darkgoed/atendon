@@ -9,7 +9,7 @@ export type LossReason = string;
 export type AppointmentOutcome = "fechado" | "proposta_enviada" | "em_negociacao" | "follow_up" | "nao_avancou";
 
 export type AppointmentOutcomePayload =
-  | { outcome: "fechado"; sale_value: number }
+  | { outcome: "fechado"; sale_value?: number }
   | { outcome: "proposta_enviada" | "em_negociacao" | "follow_up"; next_action: string; next_action_at: string }
   | { outcome: "nao_avancou"; loss_reason: LossReason; loss_reason_note?: string };
 
@@ -54,10 +54,17 @@ export function buildOutcomePayload(
   draft: OutcomeDraft,
   timezone: string,
   now = Date.now(),
-  requiresNote = false
+  requiresNote = false,
+  /** Requisito configurável por empresa (tenant_closing_requirements). */
+  requireSaleValue = true
 ): ValidationResult<AppointmentOutcomePayload> {
   if (!draft.outcome) return { ok: false, error: "Selecione o resultado da reunião." };
   if (draft.outcome === "fechado") {
+    // Valor é obrigatório apenas quando a empresa exige (padrão do produto);
+    // preenchido, sempre precisa ser um valor válido.
+    if (draft.saleValue.trim() === "" && !requireSaleValue) {
+      return { ok: true, payload: { outcome: "fechado" } };
+    }
     const saleValue = Number(draft.saleValue.replace(",", "."));
     if (!Number.isFinite(saleValue) || saleValue <= 0) return { ok: false, error: "Informe um valor de venda maior que zero." };
     return { ok: true, payload: { outcome: "fechado", sale_value: saleValue } };

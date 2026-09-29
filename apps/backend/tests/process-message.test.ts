@@ -9,7 +9,7 @@ import { ChannelOperationUnsupportedError } from "../src/modules/messages/channe
 import { WhatsAppSendRejectedError } from "../src/modules/whatsapp/errors.js";
 import { UnrecoverableError } from "bullmq";
 import { meetingInvitationContextCorrection, schedulingPeriodQuestionCorrection } from "../src/modules/messages/prefilled-context.js";
-import { TRIPZ_DEFAULT_OFFERS_GROUP_LINK, TRIPZ_ZULU_OWNER_NAME, TRIPZ_ZULU_OWNER_REFERRAL_REPLY, TRIPZ_ZULU_SYSTEM_PROMPT } from "../src/modules/tripz-ai/zulu.js";
+import { TRIPZ_ZULU_OFFERS_GROUP_LINK, TRIPZ_ZULU_OWNER_NAME, TRIPZ_ZULU_OWNER_REFERRAL_REPLY, TRIPZ_ZULU_SYSTEM_PROMPT } from "../src/db/zulu-provision.js";
 
 type ChatHistory = Array<{ role: "user" | "assistant"; content: string }>;
 
@@ -165,7 +165,8 @@ function setup(contextOverrides = {}, aiTurnProgress?: ConstructorParameters<typ
     listAiStickerCatalog: vi.fn().mockResolvedValue([]),
     findEnabledAiSticker: vi.fn().mockResolvedValue(null),
     recordAiStickerSend: vi.fn().mockResolvedValue(undefined),
-    markAiUnavailable: vi.fn().mockResolvedValue(undefined)
+    markAiUnavailable: vi.fn().mockResolvedValue(undefined),
+    pauseForQuotaExhaustion: vi.fn().mockResolvedValue(null)
   };
   const gateway = {
     sendText: vi.fn().mockResolvedValue({ externalId: "sent-1" }),
@@ -239,13 +240,13 @@ describe("MessageProcessor", () => {
     const { processor, gateway, ai } = setup({
       systemPrompt: TRIPZ_ZULU_SYSTEM_PROMPT,
       tripzZuluEnabled: true,
-      offersGroupLink: TRIPZ_DEFAULT_OFFERS_GROUP_LINK,
+      offersGroupLink: TRIPZ_ZULU_OFFERS_GROUP_LINK,
       enabledToolNames: [],
       history: []
     });
     ai.complete.mockImplementationOnce(async (input) => {
       expect(input.systemContext).toContain("SINAL INTERNO ZULU");
-      expect(input.systemContext).toContain(TRIPZ_DEFAULT_OFFERS_GROUP_LINK);
+      expect(input.systemContext).toContain(TRIPZ_ZULU_OFFERS_GROUP_LINK);
       return { text: "Entendi a sua preferência 😊", inputTokens: 5, outputTokens: 5, costUsd: 0.001 };
     });
 
@@ -253,8 +254,8 @@ describe("MessageProcessor", () => {
       .resolves.toBe("answered");
 
     const delivered = gateway.sendText.mock.calls.map((call) => String(call[2])).join("\n");
-    expect(delivered).toContain(TRIPZ_DEFAULT_OFFERS_GROUP_LINK);
-    expect(delivered.match(new RegExp(TRIPZ_DEFAULT_OFFERS_GROUP_LINK.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")))
+    expect(delivered).toContain(TRIPZ_ZULU_OFFERS_GROUP_LINK);
+    expect(delivered.match(new RegExp(TRIPZ_ZULU_OFFERS_GROUP_LINK.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")))
       .toHaveLength(1);
   });
 
@@ -310,14 +311,14 @@ describe("MessageProcessor", () => {
     const { processor, gateway } = setup({
       systemPrompt: TRIPZ_ZULU_SYSTEM_PROMPT,
       tripzZuluEnabled: false,
-      offersGroupLink: TRIPZ_DEFAULT_OFFERS_GROUP_LINK,
+      offersGroupLink: TRIPZ_ZULU_OFFERS_GROUP_LINK,
       enabledToolNames: [],
       history: []
     });
     await expect(processor.process({ ...message, text: "Só quero promoções e viagens baratas" }))
       .resolves.toBe("answered");
     expect(gateway.sendText.mock.calls.map((call) => String(call[2])).join("\n"))
-      .not.toContain(TRIPZ_DEFAULT_OFFERS_GROUP_LINK);
+      .not.toContain(TRIPZ_ZULU_OFFERS_GROUP_LINK);
     expect(markLeadDisqualifiedMock).not.toHaveBeenCalled();
   });
 
@@ -3661,6 +3662,53 @@ Full name: Renan de Carvalho`;
     expect(repository.markAiUnavailable).not.toHaveBeenCalled();
   });
 
+  it("pauses the conversation with quota_exhausted and alerts instead of staying silent when the quota is denied", async () => {
+    const notification = { id: "hn-1", sessionId: "session-1", attendantPhone: "5511777777777", message: "franquia esgotada" };
+    const { processor, repository, gateway, ai } = setup();
+    repository.pauseForQuotaExhaustion.mockResolvedValue(notification);
+    consumeAiInteractionMock.mockResolvedValue({ allowed: false, reason: "QUOTA_EXCEEDED" });
+
+    await expect(processor.process(message)).resolves.toBe("fallback");
+
+    expect(ai.complete).not.toHaveBeenCalled();
+    // Nenhuma resposta ao contato; o único envio é o ping de handoff ao time.
+    expect(gateway.sendText).not.toHaveBeenCalledWith(message.sessionId, message.contactPhone, expect.any(String));
+    expect(gateway.sendText).toHaveBeenCalledWith("session-1", "5511777777777", "franquia esgotada");
+    expect(repository.markHandoffNotificationSent).toHaveBeenCalledWith("hn-1", "sent-1");
+    expect(repository.pauseForQuotaExhaustion).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: message.tenantId,
+      conversationId: "conversation-1",
+      sessionId: message.sessionId
+    }));
+    expect(repository.createSystemAlertOnce).toHaveBeenCalledWith(
+      message.tenantId,
+      expect.stringContaining("Franquia de IA esgotada")
+    );
+    expect(repository.markInboundProcessed).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not re-ping the team when the quota handoff was already dispatched for the conversation", async () => {
+    const { processor, repository, gateway } = setup();
+    repository.pauseForQuotaExhaustion.mockResolvedValue(null);
+    consumeAiInteractionMock.mockResolvedValue({ allowed: false, reason: "QUOTA_EXCEEDED" });
+
+    await expect(processor.process(message)).resolves.toBe("fallback");
+
+    expect(gateway.sendText).not.toHaveBeenCalled();
+    expect(repository.markHandoffNotificationSent).not.toHaveBeenCalled();
+    expect(repository.createSystemAlertOnce).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not pause the conversation for a transient billing unavailability", async () => {
+    // A produção trata indisponibilidade transitória como retentativa do job
+    // (BillingUnavailableRetryError) — sem criar estado permanente de pausa.
+    const { processor, repository } = setup();
+    consumeAiInteractionMock.mockResolvedValue({ allowed: false, reason: "BILLING_UNAVAILABLE" });
+    await expect(processor.process(message)).rejects.toThrow(/billing/i);
+    expect(repository.pauseForQuotaExhaustion).not.toHaveBeenCalled();
+    expect(repository.createSystemAlertOnce).not.toHaveBeenCalled();
+  });
+
   it("does not process a duplicate external message", async () => {
     const { processor, repository, gateway } = setup();
     repository.recordInboundAndLoadContext.mockResolvedValue(null);
@@ -3680,6 +3728,7 @@ Full name: Renan de Carvalho`;
     const { processor, repository, gateway, ai } = setup({
       systemPrompt: TRIPZ_ZULU_SYSTEM_PROMPT,
       tripzZuluEnabled: true,
+      guardrails: { enabled: true, owner_name: TRIPZ_ZULU_OWNER_NAME, owner_referral_reply: TRIPZ_ZULU_OWNER_REFERRAL_REPLY },
       history: []
     });
 
@@ -3695,13 +3744,14 @@ Full name: Renan de Carvalho`;
   });
 
   it("does not short-circuit the owner-name referral outside a fresh Tripz Zulu conversation", async () => {
-    const nonTripz = setup({ systemPrompt: TRIPZ_ZULU_SYSTEM_PROMPT, tripzZuluEnabled: false, history: [] });
+    const nonTripz = setup({ systemPrompt: TRIPZ_ZULU_SYSTEM_PROMPT, tripzZuluEnabled: false, guardrails: { enabled: true, owner_name: TRIPZ_ZULU_OWNER_NAME, owner_referral_reply: TRIPZ_ZULU_OWNER_REFERRAL_REPLY }, history: [] });
     await expect(nonTripz.processor.process({ ...message, text: "Oi, o Lucas me passou esse contato" })).resolves.toBe("answered");
     expect(nonTripz.repository.pauseForHandoff).not.toHaveBeenCalled();
 
     const midConversation = setup({
       systemPrompt: TRIPZ_ZULU_SYSTEM_PROMPT,
       tripzZuluEnabled: true,
+      guardrails: { enabled: true, owner_name: TRIPZ_ZULU_OWNER_NAME, owner_referral_reply: TRIPZ_ZULU_OWNER_REFERRAL_REPLY },
       history: [
         { role: "user", content: "Oi" },
         { role: "assistant", content: "Olá, seja bem-vindo(a)! Obrigado pelo seu contato, qual o seu nome, por gentileza?" }
@@ -3715,6 +3765,7 @@ Full name: Renan de Carvalho`;
     const { processor, repository, gateway, ai } = setup({
       systemPrompt: TRIPZ_ZULU_SYSTEM_PROMPT,
       tripzZuluEnabled: true,
+      guardrails: { enabled: true, owner_name: TRIPZ_ZULU_OWNER_NAME, owner_referral_reply: TRIPZ_ZULU_OWNER_REFERRAL_REPLY },
       history: [
         { role: "user", content: "Olá, tudo bem?" },
         { role: "assistant", content: "Tudo certo, como posso te ajudar?" }
