@@ -172,6 +172,36 @@ describe("personalização da Visão geral (referência)", () => {
     expect(screen.queryByText("Funil de conversão")).not.toBeInTheDocument();
   });
 
+  it("com board salvo, a alternância traz a Visão geral de volta e persiste", async () => {
+    const state: MockState = { savedLayout: allVisible, layoutSource: "saved" };
+    installFetchMock(state);
+    mountDashboard();
+
+    expect(await screen.findByText("Funil de conversão")).toBeInTheDocument();
+    await savePersonalization();
+    expect(await screen.findByText("Contato da fila")).toBeInTheDocument();
+
+    // Um clique na alternância devolve a referência (com o funil) sem
+    // descartar a personalização salva.
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Visão geral" }));
+    expect(await screen.findByText("Funil de conversão")).toBeInTheDocument();
+    expect(screen.queryByText("Contato da fila")).not.toBeInTheDocument();
+
+    // Reload: a escolha persiste — a referência segue na tela.
+    cleanup();
+    installFetchMock(state);
+    mountDashboard();
+    expect(await screen.findByText("Funil de conversão")).toBeInTheDocument();
+    expect(screen.queryByText("Contato da fila")).not.toBeInTheDocument();
+
+    // E o board continua alcançável, com o layout salvo preservado.
+    const userReloaded = userEvent.setup();
+    await userReloaded.click(screen.getByRole("button", { name: "Meus widgets" }));
+    expect(await screen.findByText("Contato da fila")).toBeInTheDocument();
+    expect(screen.queryByText("Alerta operacional")).not.toBeInTheDocument();
+  });
+
   it("Restaurar padrão volta para a referência e limpa a marca", async () => {
     const state: MockState = { savedLayout: allVisible, layoutSource: "saved" };
     installFetchMock(state);
