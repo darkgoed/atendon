@@ -152,6 +152,34 @@ describe("TripzOpenRouterClient config", () => {
 });
 
 describe("TripzOpenRouterClient transport", () => {
+  it("corrects malformed output once on the same model without logging or replaying raw PII", async () => {
+    const marker = "SYNTHETIC-PRIVATE-KEY";
+    const bad = successResponse({ choices: [{ message: { content: JSON.stringify(validOutput({ proposalPatch: { pricing: { totalPrice: marker } } })) } }] });
+    const fetcher = vi.fn().mockResolvedValueOnce(bad).mockResolvedValueOnce(successResponse());
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const onUsage = vi.fn();
+    const result = await new TripzOpenRouterClient(config(), { fetcher, logger, sleep: vi.fn() }).completeStructured({ conversationId: UUID_1, systemPrompt: TRIPZ_AI_SYSTEM_PROMPT, userContent: "Dados sintéticos", onUsage });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(result.budget.providerRequests).toBe(2);
+    expect(result.budget.costUsd).toBe(0.024);
+    expect(onUsage).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetcher.mock.calls[1][1].body).model).toBe("configured/model");
+    expect(JSON.stringify(fetcher.mock.calls[1])).not.toContain(marker);
+    expect(JSON.stringify([logger.info.mock.calls, logger.warn.mock.calls, logger.error.mock.calls])).not.toContain(marker);
+  });
+
+  it("stops after one corrective response and enforces the remaining budgets", async () => {
+    const invalid = () => successResponse({ choices: [{ message: { content: JSON.stringify(validOutput({ proposalPatch: { flights: "bad-array" } })) } }] });
+    const fetcher = vi.fn().mockImplementation(async () => invalid());
+    await expect(new TripzOpenRouterClient(config({ maxRetries: 3 }), { fetcher, sleep: vi.fn() }).completeStructured({ conversationId: UUID_1, systemPrompt: "s", userContent: "u" })).rejects.toMatchObject({ code: "TRIPZ_AI_INVALID_STRUCTURED_OUTPUT", budget: { providerRequests: 2 } });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    for (const overrides of [{ maxProviderRequestsPerTurn: 1 }, { maxCostUsdPerTurn: 0.01 }, { maxOutputTokensPerTurn: 25 }]) {
+      const limited = vi.fn().mockImplementation(async () => invalid());
+      await expect(new TripzOpenRouterClient(config(overrides), { fetcher: limited, sleep: vi.fn() }).completeStructured({ conversationId: UUID_1, systemPrompt: "s", userContent: "u" })).rejects.toBeInstanceOf(TripzOpenRouterError);
+      expect(limited).toHaveBeenCalledTimes(1);
+    }
+  });
+
   it("sends several images and PDFs, strict schema and no web-capable tools", async () => {
     const fetcher = vi.fn().mockResolvedValue(successResponse());
     const onUsage = vi.fn().mockResolvedValue(undefined);
@@ -341,7 +369,7 @@ describe("TripzOpenRouterClient transport", () => {
       proposalPatch: JSON.stringify({ passengers: [{ name: "Rex", type: "pet" }] })
     }));
     const fetcher = vi.fn().mockResolvedValue(successResponse({ choices: [{ message: { content } }] }));
-    const client = new TripzOpenRouterClient(config(), { fetcher });
+    const client = new TripzOpenRouterClient(config({ maxRetries: 0 }), { fetcher });
     await expect(client.completeStructured({
       conversationId: UUID_1,
       systemPrompt: TRIPZ_AI_SYSTEM_PROMPT,
@@ -489,7 +517,7 @@ describe("TripzOpenRouterClient transport", () => {
     const content = JSON.stringify(validOutput({ proposalPatch: { startDate: "20/08/2027" } }));
     const fetcher = vi.fn().mockResolvedValue(successResponse({ choices: [{ message: { content } }] }));
     const onUsage = vi.fn().mockResolvedValue(undefined);
-    const client = new TripzOpenRouterClient(config(), { fetcher });
+    const client = new TripzOpenRouterClient(config({ maxRetries: 0 }), { fetcher });
     await expect(client.completeStructured({
       conversationId: UUID_1,
       systemPrompt: TRIPZ_AI_SYSTEM_PROMPT,
@@ -512,7 +540,7 @@ describe("TripzOpenRouterClient transport", () => {
       assistantMessage: `Confirmação ${marker}`,
       proposalPatch: { startDate: "20/08/2027" }
     }));
-    const mismatchClient = new TripzOpenRouterClient(config(), {
+    const mismatchClient = new TripzOpenRouterClient(config({ maxRetries: 0 }), {
       fetcher: vi.fn().mockResolvedValue(successResponse({ choices: [{ message: { content: badPatch } }] })),
       logger
     });
@@ -522,7 +550,7 @@ describe("TripzOpenRouterClient transport", () => {
       userContent: "Teste"
     })).rejects.toMatchObject({ code: "TRIPZ_AI_INVALID_STRUCTURED_OUTPUT" });
 
-    const notJsonClient = new TripzOpenRouterClient(config(), {
+    const notJsonClient = new TripzOpenRouterClient(config({ maxRetries: 0 }), {
       fetcher: vi.fn().mockResolvedValue(successResponse({
         choices: [{ message: { content: `{"assistantMessage":"${marker}"` } }]
       })),
@@ -569,7 +597,7 @@ describe("TripzOpenRouterClient transport", () => {
         editorial: { narrative: { destinationCopy: { [marker]: { headline: "ok" } } } }
       })
     }));
-    const client = new TripzOpenRouterClient(config(), {
+    const client = new TripzOpenRouterClient(config({ maxRetries: 0 }), {
       fetcher: vi.fn().mockResolvedValue(successResponse({ choices: [{ message: { content: badPatch } }] })),
       logger
     });

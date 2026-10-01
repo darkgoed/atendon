@@ -21,6 +21,7 @@ import type {
 } from "../src/modules/tripz-ai/repository.js";
 import { registerTripzAiRoutes } from "../src/modules/tripz-ai/routes.js";
 import type { TripzFileStore } from "../src/modules/tripz-ai/storage.js";
+import { tripzProposalContentFingerprint } from "../src/modules/tripz-ai/ai/proposal-validator.js";
 
 const now = new Date().toISOString();
 const conversationId = randomUUID();
@@ -47,10 +48,11 @@ const proposal: TripzProposal = {
   conversationId,
   schemaVersion: 1,
   revision: 2,
-  state: { ...createEmptyTripzProposalState(), destination: "Aruba", status: "ready_for_pdf" },
+  state: { ...createEmptyTripzProposalState(), destination: "Aruba", hotel: { name: "Hotel sintético" }, status: "ready_for_pdf" },
   createdAt: now,
   updatedAt: now
 };
+proposal.state.reviewConfirmation = { proposalFingerprint: tripzProposalContentFingerprint(proposal.state), confirmed: true };
 const message: TripzMessage = {
   id: messageId,
   conversationId,
@@ -173,6 +175,16 @@ async function appWith(input: {
 }
 
 describe("Tripz AI routes", () => {
+  it("rejects legacy ready_for_pdf and edited stale confirmations", async () => {
+    for (const state of [{ ...proposal.state, reviewConfirmation: undefined }, { ...proposal.state, title: "Editado" }]) {
+      const repository = new FakeRepository();
+      repository.proposal = { ...proposal, state };
+      const { app } = await appWith({ repository, render: true });
+      const pdf = await app.inject({ method: "POST", url: `/tripz-ai/conversations/${conversationId}/pdf`, payload: { expectedRevision: 2 } });
+      expect(pdf.statusCode).toBe(409);
+      expect(repository.savedKinds).toEqual([]);
+    }
+  });
   it("fails closed at the feature gate before exposing conversations", async () => {
     const repository = new FakeRepository();
     const { app } = await appWith({ repository, featureGate: async () => {

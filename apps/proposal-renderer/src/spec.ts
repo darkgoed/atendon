@@ -144,7 +144,7 @@ export const paymentTermEntrySchema = z.object({
 }).strict();
 
 export const commercialSchema = z.object({
-  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).default("BRL"),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional(),
   total: money.optional(),
   perPerson: money.optional(),
   boardingTax: money.optional(),
@@ -237,7 +237,7 @@ export const proposalSpecSchema = z.object({
   baggage: z.array(shortText).max(20).default([]),
   cancellationPolicies: z.array(cancellationPolicySchema).max(10).default([]),
   itinerary: z.array(itineraryDaySchema).max(365).default([]),
-  commercial: commercialSchema.default({ currency: "BRL", priceNotes: [], paymentEntries: [] }),
+  commercial: commercialSchema.default({ priceNotes: [], paymentEntries: [] }),
   consultant: consultantSchema.default({}),
   narrative: narrativeSchema.default({ destinationCopy: {} }),
   /** Referências de imagem por papel; mediaId resolve no render (assets map).

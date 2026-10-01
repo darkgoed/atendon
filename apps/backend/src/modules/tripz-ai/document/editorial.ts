@@ -324,11 +324,11 @@ function mapCommercial(state: TripzProposalState, extras: EditorialStateV2): Rec
   const v2 = extras.editorial?.commercial;
   if (v2 && Object.keys(v2).length > 0) {
     return {
-      currency: str(v2.currency),
-      total: num(v2.total),
-      perPerson: num(v2.perPerson),
-      boardingTax: num(v2.boardingTax),
-      priceNotes: cleanStrings(v2.priceNotes),
+      currency: str(v2.currency) ?? str(state.pricing?.currency),
+      total: num(v2.total) ?? num(state.pricing?.totalPrice),
+      perPerson: num(v2.perPerson) ?? num(state.pricing?.pricePerPerson),
+      boardingTax: num(v2.boardingTax) ?? num(state.pricing?.boardingTax),
+      priceNotes: cleanStrings(v2.priceNotes) ?? (state.pricing?.notes ? [state.pricing.notes] : undefined),
       paymentSummary: str(v2.paymentSummary),
       paymentEntries: Array.isArray(v2.paymentEntries)
         ? v2.paymentEntries.map((entry) => {
@@ -414,8 +414,8 @@ export function stateToSpec(
   const nights = nightsBetween(str(state.startDate), str(state.endDate));
   const candidate = {
     schemaVersion: 2,
-    tripTitle: str(state.title),
-    origin: str((extras as Record<string, unknown>).origin),
+    tripTitle: str(state.editorial?.tripTitle) ?? str(state.title),
+    origin: str(state.editorial?.origin),
     startDate: str(state.startDate),
     endDate: str(state.endDate),
     departureDate: str(state.startDate),
@@ -428,7 +428,7 @@ export function stateToSpec(
     transfers: mapTransfers(state, extras),
     experiences: mapExperiences(extras, destinationIds),
     inclusions: mapInclusions(state, extras),
-    exclusions: mapExclusions(state),
+    exclusions: state.editorial?.exclusions ?? mapExclusions(state),
     baggage: Array.isArray(extras.editorial?.baggage)
       ? extras.editorial?.baggage.map((item) => str(item)).filter((item): item is string => Boolean(item))
       : [...new Set(flights.map((flight) => flight.baggage).filter((baggage): baggage is string => Boolean(baggage)))],
@@ -438,16 +438,17 @@ export function stateToSpec(
     })),
     itinerary,
     commercial: mapCommercial(state, extras),
-    consultant: context.consultant?.name || context.consultant?.phone || context.consultant?.email
+    consultant: state.editorial?.consultant ?? (context.consultant?.name || context.consultant?.phone || context.consultant?.email
       ? {
         name: context.consultant?.name,
         role: context.consultant?.role,
         phone: context.consultant?.phone,
         email: context.consultant?.email
       }
-      : undefined,
+      : undefined),
     narrative,
-    imageAssignments: mapImageAssignments(state, destinations, hotels),
+    imageAssignments: state.editorial?.imageAssignments ?? mapImageAssignments(state, destinations, hotels),
+    pageOverrides: state.editorial?.pageOverrides,
     sources: (extras.editorial?.sources ?? []).map((source) => ({
       label: str(source.label),
       url: str(source.url),

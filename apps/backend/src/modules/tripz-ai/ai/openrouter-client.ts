@@ -481,6 +481,7 @@ export class TripzOpenRouterClient {
     }
 
     let lastError: TripzOpenRouterError | undefined;
+    let structuredCorrectionUsed = false;
     for (let attempt = 0; attempt <= this.config.maxRetries; attempt += 1) {
       this.assertBudgetAllowsRequest(budget);
       budget.providerRequests += 1;
@@ -608,6 +609,8 @@ export class TripzOpenRouterClient {
         }
         const output = tripzAiProviderOutputSchema.safeParse(json);
         if (!output.success) {
+          const annotations = providerResponse.data.choices[0].message.annotations;
+          if (annotations?.length) messages.push({ role: "assistant", content: "", annotations });
           // Path do issue é controlado pelo provedor (chaves de z.record) e pode conter
           // conteúdo do usuário: logar apenas o primeiro segmento, se allowlisted.
           const topLevelKeys = new Set([
@@ -668,6 +671,14 @@ export class TripzOpenRouterClient {
           retryable: normalized.retryable,
           durationMs: Math.round(performance.now() - startedAt)
         }, "[TripzAI] OpenRouter request failed");
+        if (normalized.code === "TRIPZ_AI_INVALID_STRUCTURED_OUTPUT" && !structuredCorrectionUsed && attempt < this.config.maxRetries) {
+          structuredCorrectionUsed = true;
+          const correction = "A resposta anterior não obedeceu ao contrato. Refaça o JSON completo usando as mesmas fontes e o contrato do system prompt. Corrija tipos e formatos; não invente valores, não apague listas inválidas e não inclua campos de confirmação ou status.";
+          const nextCharacters = messages.reduce((total, message) => total + textCharacters(message.content), 0) + correction.length;
+          if (nextCharacters > this.config.maxContextCharacters) throw normalized;
+          messages.push({ role: "system", content: correction });
+          continue;
+        }
         if (!normalized.retryable || attempt >= this.config.maxRetries) throw normalized;
         await this.sleep(Math.min(250 * (2 ** attempt), 2_000));
       }

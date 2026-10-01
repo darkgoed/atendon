@@ -63,6 +63,7 @@ export type TripzProposal = {
   startDate?: string;
   endDate?: string;
   missingInformation: string[];
+  recommendedInformation?: string[];
   inconsistencies: string[];
   state: Record<string, unknown>;
   updatedAt?: string;
@@ -260,6 +261,7 @@ export function normalizeTripzProposal(payload: unknown): TripzProposal {
   const envelope = unwrapRecord(payload, "proposal");
   const state = nestedRecord(envelope, "state", "proposalState", "proposal_state", "data") ?? envelope;
   const client = nestedRecord(state, "client");
+  const missing = state.missingInformation ?? state.missing_information ?? envelope.missingInformation ?? envelope.missing_information;
   return {
     id: stringValue(envelope, "id", "proposalId", "proposal_id"),
     revision: numberValue(envelope, "revision", "version") ?? 0,
@@ -269,9 +271,8 @@ export function normalizeTripzProposal(payload: unknown): TripzProposal {
     destination: stringValue(state, "destination"),
     startDate: stringValue(state, "startDate", "start_date"),
     endDate: stringValue(state, "endDate", "end_date"),
-    missingInformation: normalizeIssueList(
-      state.missingInformation ?? state.missing_information ?? envelope.missingInformation ?? envelope.missing_information
-    ),
+    missingInformation: normalizeIssueList(Array.isArray(missing) ? missing.filter((field) => !isRecord(field) || field.required !== false) : missing),
+    recommendedInformation: normalizeIssueList(Array.isArray(missing) ? missing.filter((field) => isRecord(field) && field.required === false) : []),
     inconsistencies: normalizeIssueList(state.inconsistencies ?? envelope.inconsistencies),
     state,
     updatedAt: stringValue(envelope, "updatedAt", "updated_at")

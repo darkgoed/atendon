@@ -159,15 +159,6 @@ export function applyEditorialBlock(
     if (e.tripTitle === null) delete next.title;
     else next.title = e.tripTitle;
   }
-  if (e.origin !== undefined) {
-    if (e.origin === null) delete next.destination;
-    else if (next.destination === undefined) next.destination = e.origin;
-  }
-  if (e.consultant !== undefined) {
-    if (e.consultant === null) {
-      // consultant vive apenas no spec; não há campo de estado a apagar.
-    }
-  }
 
   const upsertById = <T extends { id: string }>(currentItems: T[] | undefined, incoming: Array<Partial<T> & { id: string }>): T[] => {
     const merged = [...(currentItems ?? [])];
@@ -180,6 +171,9 @@ export function applyEditorialBlock(
   };
 
   const editorial: TripzEditorialBlock = { ...(next.editorial ?? {}) };
+  if (e.tripTitle === null) delete editorial.tripTitle;
+  if (e.origin === null) delete editorial.origin;
+  if (e.consultant === null) delete editorial.consultant;
   if (e.tripTitle !== undefined && e.tripTitle !== null) editorial.tripTitle = e.tripTitle;
   if (e.origin !== undefined && e.origin !== null) editorial.origin = e.origin;
   if (e.consultant !== undefined && e.consultant !== null) editorial.consultant = { ...editorial.consultant, ...e.consultant };
@@ -360,17 +354,17 @@ function applyMediaUpdates(
 }
 
 function requestedActionFromMessage(
-  message: string,
-  currentStatus: TripzProposalState["status"]
+  message: string
 ): "none" | "show_summary" | "preview" | "pdf" {
   const text = message.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const compactText = text.trim().replace(/[.!?]+$/g, "").trim();
-  if ((/\bpdf\b/.test(text) && /ger|cri|faz|export|baix|pode/.test(text))
-    || (currentStatus === "ready_for_pdf" && /^(?:sim|confirmo|pode\s+gerar|gera|gerar|pode)$/i.test(compactText))) {
+  if (/\b(?:nao|nunca|jamais|cancele|cancelar)\b/.test(text)) return "none";
+  if ((/\bpdf\b/.test(text) && /\b(?:ger\w*|cri\w*|fa[zc]\w*|export\w*|baix\w*|pode)\b/.test(text))
+    || /^(?:sim|confirmo|confirmado|pode\s+gerar|gera|gerar|gere|pode)(?:\s+(?:a\s+)?proposta)?$/i.test(compactText)) {
     return "pdf";
   }
   if (/\b(?:preview|previa|visualiz)/.test(text)) return "preview";
-  if (/\b(?:resumo|revisao|mostr|exib)/.test(text) && /entend|proposta|antes|tudo|dados/.test(text)) return "show_summary";
+  if (/\b(?:resumo|revisao)\b/.test(text) && /mostr|exib|quero|revis|resumo|entend/.test(text)) return "show_summary";
   return "none";
 }
 
@@ -482,6 +476,7 @@ function compactProposal(proposal: TripzProposalState): Record<string, unknown> 
     })),
     includedItems: proposal.includedItems.slice(0, 50),
     pricing: proposal.pricing,
+    editorial: proposal.editorial,
     itinerary: proposal.itinerary.slice(0, 60),
     notes: proposal.notes.slice(-50),
     generationRequirements: proposal.generationRequirements,
@@ -540,9 +535,6 @@ function selectRecentHistory(
   return selected;
 }
 
-function hasMaterialPatch(patch: TripzAiProposalPatch): boolean {
-  return Object.keys(patch).length > 0;
-}
 
 function issueResolvedBy(issue: TripzProposalIssue, corrections: readonly TripzExplicitCorrectionPath[]): boolean {
   const issuePath = issue.path;
@@ -600,15 +592,21 @@ export function formatTripzProposalSummary(proposal: TripzProposalState): string
     + (proposal.passengers?.infants ?? 0);
   const lines = [
     "Proposta pronta para revisão",
+    `Cliente: ${proposal.client?.name ?? "não informado"}`,
     `Destino: ${proposal.destination ?? "não informado"}`,
+    `Período: ${proposal.startDate ?? "não informado"} a ${proposal.endDate ?? "não informado"}`,
     `Passageiros: ${passengerCount || "não informado"}`,
     `Voos: ${proposal.flights.length} trecho(s)`,
     `Hotel: ${proposal.hotel?.name ?? "não informado"}`,
     `Acomodação: ${proposal.hotel?.roomType ?? "não informada"}`,
     `Regime: ${proposal.hotel?.mealPlan ?? "não informado"}`,
     `Imagens selecionadas: ${proposal.media.filter((media) => media.selectedForPdf).length}`,
+    `Valor total: ${proposal.editorial?.commercial?.total ?? proposal.pricing?.totalPrice ?? "não informado"} ${proposal.editorial?.commercial?.currency ?? proposal.pricing?.currency ?? ""}`.trim(),
     `Valor por pessoa: ${proposal.pricing?.pricePerPerson ?? "não informado"} ${proposal.pricing?.currency ?? ""}`.trim(),
     `Taxa de embarque: ${proposal.pricing?.boardingTax ?? "não informada"} ${proposal.pricing?.currency ?? ""}`.trim(),
+    `Hotel (total): ${proposal.hotel?.totalRate ?? "não informado"} ${proposal.hotel?.currency ?? ""}`.trim(),
+    `Pagamento: ${proposal.editorial?.commercial?.paymentSummary ?? proposal.editorial?.commercial?.paymentEntries?.map((entry) => `${entry.label}: ${entry.value}`).join("; ") ?? "não informado"}`,
+    ...(proposal.pricing?.notes ? [proposal.pricing.notes] : []),
     `Roteiro: ${proposal.itinerary.length ? `${proposal.itinerary.length} dia(s)` : "não informado"}`
   ];
   return lines.join("\n");
@@ -627,13 +625,22 @@ export class TripzConversationOrchestrator {
   }
 
   async processTurn(input: TripzAiTurnInput): Promise<TripzAiTurnResult> {
+    const requestedAction = requestedActionFromMessage(input.userMessage);
+    const controlText = normalizedWords(input.userMessage).trim().replace(/[.!?]+$/g, "").trim();
+    const deterministic = !(input.attachments?.length) && requestedAction !== "none"
+      && /^(?:(?:sim|confirmo|confirmado|pode)|(?:(?:pode\s+)?(?:gerar|gera|gere|crie|criar|exporte|baixar)|(?:mostre|mostrar|exiba|quero))\s*(?:(?:o|a|uma|um)\s+)?(?:pdf|proposta|resumo|resumo\s+da\s+proposta|previa|preview)?)$/.test(controlText);
     const userContent = buildUserContext(input, this.contextBudgetCharacters);
     const history = selectRecentHistory(
       input.recentMessages ?? [],
       this.maxHistoryMessages,
       Math.max(0, this.contextBudgetCharacters - userContent.length - TRIPZ_AI_SYSTEM_PROMPT.length)
     );
-    const completion = await this.client.completeStructured({
+    const completion: TripzStructuredCompletion = deterministic ? {
+      output: { assistantMessage: "", summary: input.sessionSummary ?? "", proposalPatch: {}, mediaUpdates: [], explicitCorrections: [], requestedAction: "none", missingInformation: [], issues: [] },
+      usage: { model: "deterministic", inputTokens: 0, outputTokens: 0, costUsd: 0, durationMs: 0, providerRequestIndex: input.budget?.providerRequests ?? 0 },
+      budget: input.budget ?? { providerRequests: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 },
+      fileAnnotations: []
+    } : await this.client.completeStructured({
       conversationId: input.conversationId,
       userContent,
       history,
@@ -653,7 +660,8 @@ export class TripzConversationOrchestrator {
       input.requiredFields,
       input.userMessage
     );
-    const materialChange = hasMaterialPatch(output.proposalPatch) || mediaResult.changed;
+    const materialChange = tripzProposalContentFingerprint(input.proposal) !== tripzProposalContentFingerprint(next);
+    if (materialChange) delete next.reviewConfirmation;
 
     const carriedIssues = input.proposal.inconsistencies
       .filter((issue) =>
@@ -705,8 +713,10 @@ export class TripzConversationOrchestrator {
         next = validation.proposal;
       }
     }
-    const requestedAction = requestedActionFromMessage(input.userMessage, input.proposal.status);
-    let assistantMessage = output.assistantMessage;
+    const fingerprint = tripzProposalContentFingerprint(next);
+    const reviewed = next.reviewConfirmation?.proposalFingerprint === fingerprint;
+    if (validation.canGenerate && reviewed && next.reviewConfirmation?.confirmed) next.status = "ready_for_pdf";
+    let assistantMessage = output.assistantMessage || "Confira os dados da proposta.";
     let documentGenerationAllowed = false;
     let generationBlockedReason: TripzAiTurnResult["generationBlockedReason"];
 
@@ -719,7 +729,8 @@ export class TripzConversationOrchestrator {
     }
     if (requestedAction === "show_summary") {
       if (validation.canGenerate) {
-        next.status = "ready_for_pdf";
+        next.status = "ready_for_review";
+        next.reviewConfirmation = { proposalFingerprint: fingerprint, confirmed: false };
         assistantMessage = `${formatTripzProposalSummary(next)}\n\nQuer alterar alguma coisa ou posso gerar a prévia?`;
       } else {
         generationBlockedReason = "missing_or_conflicting_information";
@@ -731,13 +742,16 @@ export class TripzConversationOrchestrator {
         generationBlockedReason = "missing_or_conflicting_information";
         const first = validation.blockingReasons[0] ?? "informações críticas";
         assistantMessage = `Ainda não posso gerar ${requestedAction === "pdf" ? "o PDF" : "a prévia"}. Primeiro, preciso confirmar ${first}.`;
-      } else if (input.proposal.status !== "ready_for_pdf" || materialChange) {
-        next.status = "ready_for_pdf";
+      } else if (!reviewed || materialChange) {
+        next.status = "ready_for_review";
+        next.reviewConfirmation = { proposalFingerprint: fingerprint, confirmed: false };
         generationBlockedReason = "summary_confirmation_required";
         assistantMessage = `${formatTripzProposalSummary(next)}\n\nConfira o resumo e confirme se posso gerar ${requestedAction === "pdf" ? "o PDF" : "a prévia"}.`;
       } else {
         next.status = "ready_for_pdf";
+        next.reviewConfirmation = { proposalFingerprint: fingerprint, confirmed: true };
         documentGenerationAllowed = true;
+        assistantMessage = "Resumo confirmado. Abra Revisar proposta, gere e confira a prévia desta revisão e depois use Gerar PDF. Nenhum PDF foi gerado ainda.";
       }
     }
 

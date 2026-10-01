@@ -20,6 +20,14 @@ import {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Tripz AI panel contract", () => {
+  it("separates recommended missing fields from generation blockers", () => {
+    const proposal = normalizeTripzProposal({ state: { missingInformation: [
+      { label: "Data do voo", required: false }, { label: "Cliente", required: true }
+    ] } });
+    expect(proposal.missingInformation).toEqual(["Cliente"]);
+    expect(proposal.recommendedInformation).toEqual(["Data do voo"]);
+  });
+
   it("prefers the freshest proposal revision across detail and proposal polling", () => {
     const stale = normalizeTripzProposal({ revision: 3, state: { status: "collecting" } });
     const fresh = normalizeTripzProposal({ revision: 4, state: { status: "ready_for_review" } });

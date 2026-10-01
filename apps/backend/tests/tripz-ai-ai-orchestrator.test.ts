@@ -358,7 +358,7 @@ describe("TripzConversationOrchestrator safeguards", () => {
     });
     expect(first.documentGenerationAllowed).toBe(false);
     expect(first.generationBlockedReason).toBe("summary_confirmation_required");
-    expect(first.proposal.status).toBe("ready_for_pdf");
+    expect(first.proposal.status).toBe("ready_for_review");
     expect(first.assistantMessage).toContain("Proposta pronta para revisão");
 
     const confirmed = await new TripzConversationOrchestrator(clientWith(output({ requestedAction: "pdf" }))).processTurn({

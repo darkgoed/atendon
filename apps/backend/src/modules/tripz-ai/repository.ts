@@ -23,7 +23,7 @@ import {
   type TripzProposalState
 } from "./domain.js";
 import { tripzProposalStateSchema } from "./schemas.js";
-import { validateTripzProposal } from "./ai/proposal-validator.js";
+import { validateTripzProposal, tripzProposalContentFingerprint } from "./ai/proposal-validator.js";
 
 const TRIPZ_COST_BUDGET_EXCEEDED = "TRIPZ_AI_COST_BUDGET_EXCEEDED";
 
@@ -705,7 +705,11 @@ export class TripzAiRepository implements TripzRepositoryPort {
         throw tripzConflict("TRIPZ_REVISION_CONFLICT", "A proposta foi alterada; recarregue antes de salvar");
       }
       const merged = tripzProposalStateSchema.parse(mergeTripzProposalPatch(current.state, input.patch));
-      const state = validateTripzProposal(merged, { requiredFields: merged.generationRequirements }).proposal;
+      const validation = validateTripzProposal(merged, { requiredFields: merged.generationRequirements, additionalIssues: current.state.inconsistencies });
+      const state = validation.proposal;
+      const fingerprint = tripzProposalContentFingerprint(state);
+      if (fingerprint !== tripzProposalContentFingerprint(current.state)) delete state.reviewConfirmation;
+      else if (validation.canGenerate && state.reviewConfirmation?.confirmed && state.reviewConfirmation.proposalFingerprint === fingerprint) state.status = "ready_for_pdf";
       const attachmentIds = [...new Set(state.media.map((media) => media.attachmentId))];
       if (attachmentIds.length > 0) {
         const validMedia = await client.query<{ count: number }>(
@@ -719,11 +723,11 @@ export class TripzAiRepository implements TripzRepositoryPort {
       }
       const updated = await client.query<ProposalRow>(
         `UPDATE tripz_ai_proposals SET
-           revision=revision+1,state=$3,missing_information=$4,issues=$5
+           revision=revision+1,state=$3,missing_information=$4,issues=$5,schema_version=$6
          WHERE tenant_id=$1 AND conversation_id=$2
          RETURNING id,conversation_id,schema_version,revision,state,created_at,updated_at`,
         [scope.tenantId, input.conversationId, state,
-          JSON.stringify(state.missingInformation), JSON.stringify(state.inconsistencies)]
+          JSON.stringify(state.missingInformation), JSON.stringify(state.inconsistencies), state.schemaVersion]
       );
       await client.query(
         `UPDATE tripz_ai_conversations SET
@@ -1274,11 +1278,11 @@ export class TripzAiRepository implements TripzRepositoryPort {
 
       const updated = await client.query<ProposalRow>(
         `UPDATE tripz_ai_proposals SET
-           revision=revision+1,state=$3,missing_information=$4,issues=$5
+           revision=revision+1,state=$3,missing_information=$4,issues=$5,schema_version=$6
          WHERE tenant_id=$1 AND conversation_id=$2
          RETURNING id,conversation_id,schema_version,revision,state,created_at,updated_at`,
         [scope.tenantId, input.conversationId, state,
-          JSON.stringify(state.missingInformation), JSON.stringify(state.inconsistencies)]
+          JSON.stringify(state.missingInformation), JSON.stringify(state.inconsistencies), state.schemaVersion]
       );
       const proposal = proposalFromRow(updated.rows[0]);
 

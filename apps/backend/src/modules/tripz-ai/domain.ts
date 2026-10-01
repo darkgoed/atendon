@@ -178,6 +178,8 @@ export interface TripzProposalState {
   status: TripzConversationStatus;
   /** Proposta aprovada/finalizada: impede sobrescrita silenciosa (reconfirm exigido). */
   finalized?: boolean;
+  /** Server-owned review gate; never accepted from provider or editor patches. */
+  reviewConfirmation?: { proposalFingerprint: string; confirmed: boolean };
 }
 
 export type TripzProposalPatch = Partial<Omit<TripzProposalState, "schemaVersion">> & {
@@ -195,7 +197,6 @@ export type TripzProposalPatch = Partial<Omit<TripzProposalState, "schemaVersion
  */
 export type TripzEditorialBlock = Partial<Pick<
   ProposalSpec,
-  | "narrative"
   | "destinations"
   | "hotels"
   | "experiences"
@@ -204,7 +205,6 @@ export type TripzEditorialBlock = Partial<Pick<
   | "baggage"
   | "cancellationPolicies"
   | "transfers"
-  | "commercial"
   | "imageAssignments"
   | "pageOverrides"
   | "sources"
@@ -212,6 +212,8 @@ export type TripzEditorialBlock = Partial<Pick<
   tripTitle?: string;
   origin?: string;
   consultant?: { name?: string; role?: string; email?: string; phone?: string };
+  commercial?: Partial<ProposalSpec["commercial"]>;
+  narrative?: Partial<ProposalSpec["narrative"]>;
 };
 
 export type TripzProposalStateV2 = TripzProposalState & { editorial?: TripzEditorialBlock };
@@ -327,7 +329,13 @@ export function mergeTripzProposalPatch(
     ...(patch.client ? { client: { ...current.client, ...patch.client } } : {}),
     ...(patch.passengers ? { passengers: { ...current.passengers, ...patch.passengers } } : {}),
     ...(patch.hotel ? { hotel: { ...current.hotel, ...patch.hotel } } : {}),
-    ...(patch.pricing ? { pricing: { ...current.pricing, ...patch.pricing } } : {})
+    ...(patch.pricing ? { pricing: { ...current.pricing, ...patch.pricing } } : {}),
+    ...(patch.editorial ? { editorial: {
+      ...current.editorial,
+      ...patch.editorial,
+      ...(patch.editorial.commercial ? { commercial: { ...current.editorial?.commercial, ...patch.editorial.commercial } } : {}),
+      ...(patch.editorial.narrative ? { narrative: { ...current.editorial?.narrative, ...patch.editorial.narrative } } : {})
+    } } : {})
   };
 }
 

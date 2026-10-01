@@ -79,8 +79,10 @@ export function tripzProposalContentFingerprint(proposal: TripzProposalState): s
     missingInformation: undefined,
     inconsistencies: undefined,
     issueAcknowledgements: undefined,
+    reviewConfirmation: undefined,
     status: undefined
-  })).digest("hex");
+  }, (_key, value) => value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, value[key]])) : value)).digest("hex");
 }
 
 function pushUniqueIssue(issues: TripzProposalIssue[], issue: TripzProposalIssue): void {
