@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import type { Pool } from "pg";
 import { ensurePermissionCatalog, ensureWorkspaceDefaultRoles } from "../auth/rbac.js";
 import { DEFAULT_MEDIA_FALLBACK } from "../modules/ai-router/defaults.js";
-import { NEWAVE_ENABLED_TOOL_NAMES } from "../modules/ai-router/tools.js";
+import { QUALIFICATION_ENABLED_TOOL_NAMES } from "../modules/ai-router/tools.js";
 import { DEFAULT_HUMANIZER_CONFIG } from "../modules/messages/humanizer.js";
 import { db } from "./client.js";
 import { loadNewavePromptTemplate } from "./newave-template.js";
@@ -83,7 +83,7 @@ export async function provisionNewave(pool: Pool) {
         `INSERT INTO agent_configs(tenant_id,name,system_prompt,ai_model,model_params,enabled_tools,is_active)
          VALUES($1,'Representante Newave',$2,'openai/gpt-5.4-mini',$3,$4::jsonb,true)
          RETURNING id`,
-        [tenantId, prompt, { temperature: 0.7, max_tokens: 1024, reasoning_effort: "medium" }, JSON.stringify(NEWAVE_ENABLED_TOOL_NAMES)]
+        [tenantId, prompt, { temperature: 0.7, max_tokens: 1024, reasoning_effort: "medium" }, JSON.stringify(QUALIFICATION_ENABLED_TOOL_NAMES)]
       );
       agentId = insertedAgent.rows[0].id;
     }

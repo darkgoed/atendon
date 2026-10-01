@@ -141,9 +141,17 @@ export function TripzProposalReview({
               ) : null}
               {proposal.missingInformation.length > 0 ? (
                 <div className="mt-5 border-t border-[var(--border)] pt-4">
-                  <strong className="text-[length:var(--text-meta)] text-[var(--text-secondary)]">Ainda falta</strong>
+                  <strong className="text-[length:var(--text-meta)] text-[var(--text-secondary)]">Dados obrigatórios pendentes</strong>
                   <ul className="mb-0 mt-2 grid gap-1.5 pl-4 text-[10px] leading-4 text-[var(--text-muted)]">
                     {proposal.missingInformation.map((item) => <li key={item}>{item}</li>)}
+                  </ul>
+                </div>
+              ) : null}
+              {proposal.recommendedInformation?.length ? (
+                <div className="mt-5 border-t border-[var(--border)] pt-4">
+                  <strong className="text-[length:var(--text-meta)] text-[var(--text-secondary)]">Recomendações (não impedem a geração)</strong>
+                  <ul className="mb-0 mt-2 grid gap-1.5 pl-4 text-[10px] leading-4 text-[var(--text-muted)]">
+                    {proposal.recommendedInformation.map((item) => <li key={item}>{item}</li>)}
                   </ul>
                 </div>
               ) : null}

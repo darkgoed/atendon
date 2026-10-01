@@ -668,6 +668,7 @@ export class MessageRepository {
       system_prompt: string;
       ai_model: string;
       model_params: { temperature?: number; max_tokens?: number; reasoning_effort?: ReasoningEffort };
+      guardrails?: AgentSettingsRow["guardrails"];
       updated_at: Date;
       openrouter_provider: string | null;
       openrouter_api_key_encrypted: string | null;

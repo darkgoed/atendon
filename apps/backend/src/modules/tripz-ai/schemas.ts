@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { commercialSchema, narrativeSchema, proposalSpecSchema, consultantSchema } from "@atendon/proposal-renderer";
 import {
   TRIPZ_CONVERSATION_STATUSES,
   TRIPZ_MEDIA_CATEGORIES,
@@ -25,7 +26,7 @@ const limitedMetadataSchema = z.record(z.string().max(100), z.unknown())
   .refine((value) => Buffer.byteLength(JSON.stringify(value), "utf8") <= 32_768, "Metadados excedem 32 KiB");
 const shortText = z.string().trim().min(1).max(500);
 const optionalShortText = z.string().trim().min(1).max(500).optional();
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const isoDate = z.string().date();
 const clockTime = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
 const money = z.number().finite().nonnegative().max(1_000_000_000);
 const currency = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/);
@@ -158,12 +159,29 @@ const proposalFields = {
   status: z.enum(TRIPZ_CONVERSATION_STATUSES)
 };
 
-export const tripzProposalStateSchema: z.ZodType<TripzProposalState> = z.object({
-  schemaVersion: z.literal(1),
+// Partial blocks must not manufacture currency or payment defaults while saving.
+export const tripzEditorialStateSchema = proposalSpecSchema.pick({
+  tripTitle: true, origin: true, destinations: true, hotels: true, experiences: true,
+  inclusions: true, exclusions: true, baggage: true, cancellationPolicies: true,
+  transfers: true, imageAssignments: true, pageOverrides: true, sources: true
+}).partial().extend({
+  narrative: narrativeSchema.partial().optional(),
+  commercial: commercialSchema.partial().optional(),
+  consultant: consultantSchema.optional()
+}).strict();
+
+export const tripzProposalStateSchema: z.ZodType<TripzProposalState, z.ZodTypeDef, unknown> = z.object({
+  schemaVersion: z.union([z.literal(1), z.literal(2)]),
+  editorial: tripzEditorialStateSchema.optional(),
+  finalized: z.boolean().optional(),
+  reviewConfirmation: z.object({
+    proposalFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    confirmed: z.boolean()
+  }).strict().optional(),
   ...proposalFields
 }).strict();
 
-export const tripzProposalPatchSchema: z.ZodType<TripzProposalPatch> = z.object({
+export const tripzProposalPatchSchema: z.ZodType<TripzProposalPatch, z.ZodTypeDef, unknown> = z.object({
   title: proposalFields.title,
   client: z.object({ name: optionalShortText }).strict().optional(),
   destination: proposalFields.destination,
@@ -180,7 +198,8 @@ export const tripzProposalPatchSchema: z.ZodType<TripzProposalPatch> = z.object(
   includedItems: proposalFields.includedItems.optional(),
   pricing: tripzPricingSchema.partial().strict().optional(),
   itinerary: proposalFields.itinerary.optional(),
-  notes: proposalFields.notes.optional()
+  notes: proposalFields.notes.optional(),
+  editorial: tripzEditorialStateSchema.optional()
 }).strict().refine((value) => Object.keys(value).length > 0, "Informe ao menos uma alteração");
 
 export const tripzConversationCreateSchema = z.object({

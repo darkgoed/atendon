@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { db } from "../../db/client.js";
 import { HTTP_RATE_LIMITS } from "../../security/http-rate-limit.js";
 import { createTripzFeatureGate, requireTripzAiPermission, type TripzAuthorizer, type TripzFeatureGate } from "./authorization.js";
-import { validateTripzProposal } from "./ai/proposal-validator.js";
+import { validateTripzProposal, tripzProposalContentFingerprint } from "./ai/proposal-validator.js";
 import { getBrandSettings, tripzBrandDatabase, upsertTripzBrandSettings } from "./document/brand-settings.js";
 import {
   tripzBrandSettingsPutSchema,
@@ -73,6 +73,11 @@ function responseError(statusCode: number, code: string, message: string): Tripz
 
 function rendererReady(proposal: TripzProposal, kind: "preview" | "pdf"): void {
   const state = proposal.state;
+  const validation = validateTripzProposal(state, { requiredFields: state.generationRequirements, additionalIssues: state.inconsistencies });
+  if (!validation.canGenerate) throw responseError(409, "TRIPZ_PROPOSAL_NOT_READY", "Resolva os dados obrigatórios antes de gerar");
+  if (kind === "pdf" && (!state.reviewConfirmation?.confirmed || state.reviewConfirmation.proposalFingerprint !== tripzProposalContentFingerprint(state))) {
+    throw responseError(409, "TRIPZ_SUMMARY_CONFIRMATION_REQUIRED", "Confirme o resumo desta versão antes de gerar o PDF");
+  }
   if (state.inconsistencies.some((issue) => issue.severity === "critical")) {
     throw responseError(409, "TRIPZ_CRITICAL_ISSUES", "Resolva as inconsistências críticas antes de gerar");
   }

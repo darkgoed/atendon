@@ -398,9 +398,9 @@ export async function applyStructuredStageEffects(
     );
     const inPool = await client.query(
       "SELECT 1 FROM scheduling_google_meet_closers WHERE tenant_id=$1 AND member_id=$2",
-      [input.tenantId,payload.responsavel_member_id]
+      [input.tenantId,payload?.responsavel_member_id]
     );
-    if (input.actor.userId && inPool.rows[0] && current.rows[0]?.assigned_member_id !== payload.responsavel_member_id) {
+    if (payload?.responsavel_member_id && input.actor.userId && inPool.rows[0] && current.rows[0]?.assigned_member_id !== payload.responsavel_member_id) {
       await transferCaseAssignment(client,{
         tenantId: input.tenantId,
         selector: { leadId: input.lead.id },

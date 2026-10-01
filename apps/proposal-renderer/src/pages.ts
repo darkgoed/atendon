@@ -311,7 +311,7 @@ function buildClosingData(spec: ProposalSpec, index: PhotoIndex): PageData & { k
   const investment = typeof commercial.total === "number"
     ? {
       label: "INVESTIMENTO TOTAL",
-      value: moneyValue(commercial.total, commercial.currency || "BRL"),
+      value: commercial.currency ? moneyValue(commercial.total, commercial.currency) : commercial.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
       sub: spec.travellers.length === 2 ? "VALOR TOTAL PARA O CASAL" : "VALOR TOTAL DA VIAGEM",
       notes: (commercial.priceNotes ?? []).slice()
     }
