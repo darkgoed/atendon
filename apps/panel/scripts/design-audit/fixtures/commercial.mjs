@@ -67,7 +67,7 @@ const savedViews = [
   { id: "qa-view-0001", name: "Leads quentes desta semana — comercial", resource: "leads", filters: { status: "qualificado", estrelas: 5 }, shared: true, owner_user_id: IDS.user },
   { id: "qa-view-0002", name: "Follow-ups prioritários com ação pendente", resource: "leads", filters: { status: "follow_up", fila_humana: "true" }, shared: false, owner_user_id: IDS.user }
 ];
-const metricResult = { new_contacts: 12, due_meetings: 5, appointments: 6, calls: 4, no_show: 1, sales: 2, sold_value: 18500, average_ticket: 9250 };
+const metricResult = { new_contacts: 12, due_meetings: 5, appointments: 6, calls: 4, no_show: 1, sales: 2, sold_value: 18500, average_ticket: 9250, upcoming: 2, result_pending: 1 };
 const metricFunnel = { lead_to_appointment: 50, appointment_to_attendance: 80, call_to_sale: 50, lead_to_sale: 16.7, no_show_rate: 20 };
 const series = [1, 2, 3, 4, 5, 6, 7].map((day, i) => ({ day: `2026-08-${String(13 + day).padStart(2, "0")}`, scheduled: i + 1, completed: Math.max(0, i - 1), no_show: i === 3 ? 1 : 0, cancelled: i === 2 ? 1 : 0 }));
 const widgetCatalog = [{ key: "commercial_metrics", label: "Métricas comerciais", description: "Indicadores de vendas e reuniões.", group: "vendas", sizes: ["medium", "wide", "full"], default_size: "wide", selectable: true }, { key: "new_leads", label: "Novos leads", description: "Leads criados no período.", group: "atendimento", sizes: ["small", "medium"], default_size: "small", selectable: true }, { key: "sales_value", label: "Valor vendido", description: "Receita fechada.", group: "vendas", sizes: ["small", "medium"], default_size: "small", selectable: true }];
@@ -78,11 +78,63 @@ const qaPipelines = [
   { id: "qa-pipeline-0002", name: "Pipeline — À Vista", color: "#22C55E", position: 1, is_default: false, enforce_transitions: false, stage_count: 5, lead_count: 0, channel_ids: ["qa-session-0002"] }
 ];
 
-export function commercialFixture(path) {
+// GET /dashboard/widgets/:key: `data` na forma exata de dashboard-widgets/routes.ts (loadWidgetData)
+// e metrics.ts (NumericMetric), para cada chave que a Visão geral de referência consulta
+// (components/dashboard-reference-overview.tsx). Sem fallback genérico: chave sem fixture vira
+// fixture-gap. O `{ value }` anterior deixava `handoffs` sem `items` e derrubava a página inteira.
+// Denominadores reais, como rate() de dashboard/service.ts (1 casa decimal, 0 sem base):
+//   conversion_rate = vendas ÷ conversas iniciadas; lead_to_sale = vendas ÷ novos contatos;
+//   attendance_rate = calls ÷ reuniões vencidas; origens são exclusivas e somam o total do grupo;
+//   a equipe soma exatamente o resultado comercial.
+const rate = (part, total) => (total ? Math.round((part / total) * 1000) / 10 : 0);
+const dashPeriod = { key: "today", start: "2026-08-20", end: "2026-08-20", timezone: workspace.timezone };
+const dashTeam = [
+  { member_id: member.id, user_id: member.user_id, email: member.email, name: member.name, active: 1, period: 4, completed: 3, no_show: 1, sales: 1, sold_value: 12000, last_assigned_at: NOW, availability_status: "available", is_current: true, is_next: false },
+  { member_id: "qa-member-0002", user_id: "qa-member-user-2", email: "bruno.comercial@example.test", name: "Bruno Comercial", active: 0, period: 2, completed: 1, no_show: 0, sales: 1, sold_value: 6500, last_assigned_at: "2026-08-19T11:00:00.000Z", availability_status: "available", is_current: false, is_next: true }
+].map((row) => ({ ...row, closing_rate: rate(row.sales, row.completed) }));
+// metrics / sdr_metrics / commercial_metrics: mesmos blocos do GET /dashboard (mesmo loadCommercialDashboard).
+const { metrics: dashMetrics, sdr_metrics: dashSdrMetrics, commercial_metrics: dashCommercialMetrics } = commercialFixture("/dashboard").commercial;
+const dashboardWidgetData = {
+  commercial_metrics: { result: metricResult, funnel: metricFunnel, metrics: dashMetrics, sdr_metrics: dashSdrMetrics, commercial_metrics: dashCommercialMetrics, series, period: dashPeriod },
+  conversations_started: { value: 14 },
+  conversion_rate: { value: rate(metricResult.sales, 14) },
+  operations_summary: { operations: { inbound_messages: 94, open_conversations: 8, handoffs: 2, average_first_response_minutes: 8, overdue_follow_ups: 1, unassigned_leads: 3 }, period: dashPeriod },
+  open_conversations: { open: 8, ai_open: 5, resolved_today: 11 },
+  whatsapp_connection: { status: "connected", last_connected_at: NOW, total: 2, connected: 1 },
+  today_agenda: { items: [
+    { id: "qa-agenda-0001", start_at: "2026-08-20T13:00:00.000Z", end_at: "2026-08-20T13:45:00.000Z", status: "confirmado", lead_name: lead.nome, lead_phone: lead.telefone, unit_name: units[0].nome, meet_url: null, assigned_user_email: member.email, assigned_availability_status: "available" },
+    { id: "qa-agenda-0002", start_at: "2026-08-20T15:30:00.000Z", end_at: "2026-08-20T16:00:00.000Z", status: "reagendado", lead_name: lead2.nome, lead_phone: lead2.telefone, unit_name: units[1].nome, meet_url: null, assigned_user_email: "bruno.comercial@example.test", assigned_availability_status: "available" }
+  ], period: dashPeriod },
+  handoffs: { total: 2, unassigned: 1, over_sla: 1, oldest_minutes: 27, items: [
+    { id: "qa-handoff-0001", contact_name: "Mariana Oliveira", contact_phone: lead2.telefone, waiting_minutes: 27 },
+    { id: "qa-handoff-0002", contact_name: "Rafael Souza", contact_phone: "+55 11 96666-0003", waiting_minutes: 8 }
+  ] },
+  recent_alerts: { items: [
+    { id: "qa-alert-0001", kind: "operational", message: "Conexão verificada para a operação comercial.", created_at: NOW },
+    { id: "qa-alert-0002", kind: "meeting", message: "Reunião com Cliente QA começa em 30 minutos.", created_at: "2026-08-20T11:30:00.000Z" }
+  ] },
+  attendance_rate: { value: rate(metricResult.calls, metricResult.due_meetings) },
+  reschedules: { value: 1 },
+  pipeline: { stages: stages.map((stage, index) => ({ id: stage.id, name: stage.name, color: stage.color, position: stage.position, capacity_target: stage.capacity_target, status: stage.technical_status, pipeline_id: qaPipelines[0].id, pipeline_name: qaPipelines[0].name, count: [7, 3, 2][index] })) },
+  new_leads: { value: 12 },
+  pending_follow_ups: { value: 4 },
+  leads_paid_traffic: { value: 5 },
+  leads_referral: { value: 2 },
+  leads_organic: { value: 4 },
+  leads_other_sources: { value: 1 },
+  lost_sales: { value: 1 },
+  sales_paid_traffic: { value: 1 },
+  sales_referral: { value: 0 },
+  sales_organic: { value: 1 },
+  team_load: { members: dashTeam, scope: { type: "workspace", member_id: null, email: member.email, is_closer: true, is_attendant: true, availability_status: "available" }, period: dashPeriod }
+};
+
+export function commercialFixture(path, includeWidgets = false) {
+  if (path === "/dashboard" && includeWidgets) return { ...commercialFixture(path), widgets: Object.fromEntries(Object.entries(dashboardWidgetData).map(([key, data]) => [key, { key, data }])) };
   if (path === "/dashboard") return { connection: { status: "connected" }, counts: { handoff: 2, handoff_unassigned: 1, handoff_over_sla: 1, oldest_handoff_minutes: 27, open: 8, ai_open: 5, resolved_today: 11, messagesToday: 126 }, agent: { is_active: true, ai_model: "gpt-5.6-luna" }, handoffs: [{ id: "qa-handoff-0001", contact_name: "Mariana Oliveira", contact_phone: lead2.telefone, avatar_url: null, handoff_reason: "decision_human", waiting_minutes: 27, assigned_user_email: member.email }, { id: "qa-handoff-0002", contact_name: "Rafael Souza", contact_phone: "+55 11 96666-0003", avatar_url: null, handoff_reason: "complex_question", waiting_minutes: 8, assigned_user_email: null }], commercial: { scope: { type: "workspace", member_id: member.id, email: member.email, is_closer: true, is_attendant: true, availability_status: "available" }, result: metricResult, series, period: { key: "today", start: "2026-08-20", end: "2026-08-20", timezone: workspace.timezone }, metrics: { created: 12, scheduled: 6, completed: 4, no_show: 1, cancelled: 1, upcoming: 2, overdue: 0, result_pending: 1, rescheduled: 0, proposals: 3, negotiations: 2, sales: 2, closing_rate: 16.7, sold_value: 18500, average_ticket: 9250, overdue_follow_ups: 1, attendance_rate: 66.7, no_show_rate: 16.7, average_quality: null }, sdr_metrics: { received: 12, attended: 8, qualified: 5, scheduled: 6, qualification_rate: 41.7, scheduling_rate: 50, average_first_response_minutes: 8, overdue_follow_ups: 1, recovered_no_shows: 1 }, commercial_metrics: { scheduled: 6, completed: 4, attended: 4, no_show: 1, rescheduled: 0, cancelled: 1, result_pending: 1, proposals: 3, negotiations: 2, sales: 2, attendance_rate: 66.7, closing_rate: 16.7, sold_value: 18500, average_ticket: 9250, overdue_follow_ups: 1 }, today_agenda: [], team: [] } };
   if (path === "/dashboard/widgets/catalog") return { widgets: widgetCatalog, default_layout: widgetLayout.layout.items };
   if (path === "/dashboard/widgets/layout") return widgetLayout;
-  if (path.startsWith("/dashboard/widgets/")) { const key = path.split("/").at(-1); return { key, data: key === "commercial_metrics" ? { result: metricResult, funnel: metricFunnel, series } : key === "conversations_started" ? { value: 14 } : key === "conversion_rate" ? { value: 14.3 } : key === "new_leads" ? { value: 12 } : { value: 18500, currency: "BRL" } }; }
+  if (path.startsWith("/dashboard/widgets/")) { const key = path.split("/").at(-1); return Object.hasOwn(dashboardWidgetData, key) ? { key, data: dashboardWidgetData[key] } : undefined; }
   if (path === "/leads" || path.startsWith("/leads?")) return { leads: [lead, lead2], total: 2, next_cursor: null, stages };
   if (path === `/contatos/${IDS.lead}` || path === `/scheduling/leads/${IDS.lead}`) return leadDetail;
   if (path === `/contatos/${IDS.lead}/follow-up` || path === `/scheduling/leads/${IDS.lead}/follow-up`) return followUp;
@@ -103,7 +155,8 @@ export function commercialFixture(path) {
   if (path === "/scheduling/config/atendon-meet") return { enabled: false };
   if (path === "/scheduling/config/google-meet") return { connected: false, email: null, calendar_id: null, calendar_name: null, timezone: workspace.timezone };
   if (path === "/scheduling/attendants/me/time-blocks") return { blocks: [{ id: BLOCK_ID, member_id: member.id, start: "2026-08-21T16:00:00.000Z", end: "2026-08-21T17:00:00.000Z", reason: "Bloqueio reservado para revisão de propostas", created_at: NOW }] };
-  if (path === "/scheduling/attendants/me/recurring-time-blocks") return { blocks: [{ id: "qa-recurring-0001", member_id: member.id, start_local_time: "12:00", end_local_time: "13:00", weekdays: [1, 3, 5], starts_on: "2026-08-01", ends_on: null, timezone: workspace.timezone, reason: "Almoço comercial", active: true }] };
+  // GET returns occurrences, not rule definitions (use-agenda-data.ts).
+  if (path === "/scheduling/attendants/me/recurring-time-blocks") return { blocks: [{ id: "qa-recurring-0001", rule_id: "qa-recurring-0001", member_id: member.id, start: "2026-08-21T15:00:00.000Z", end: "2026-08-21T16:00:00.000Z", reason: "Almoço comercial", created_at: NOW }] };
   if (path.startsWith("/scheduling/availability")) return { data: "2026-08-21", timezone: workspace.timezone, horarios: slots };
   if (path === "/scheduling/appointment-assignees") return { assignees: attendees.map((a, i) => ({ member_id: a.member_id, user_id: a.user_id, name: i ? "Bruno Comercial" : "Ana QA", email: a.email, online: true, availability_status: a.availability_status, future_meetings_count: a.active_appointments, conflicts: [], selectable: true, suggested: i === 0 })), can_select_assignee: true, suggested_member_id: member.id };
 }

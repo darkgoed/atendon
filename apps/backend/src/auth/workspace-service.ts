@@ -91,8 +91,8 @@ export async function buildMePayload(session: {
       "SELECT id,name,COALESCE(slug,id::text) slug,status,timezone,logo_data FROM tenants WHERE id=$1",
       [session.tenantId]
     ),
-    db.query<{ name: string | null; must_change_password: boolean }>(
-      "SELECT name,must_change_password FROM users WHERE id=$1",
+    db.query<{ name: string | null; must_change_password: boolean; totp_enabled: boolean }>(
+      "SELECT name,must_change_password,totp_enabled_at IS NOT NULL AS totp_enabled FROM users WHERE id=$1",
       [session.userId]
     )
   ]);
@@ -102,7 +102,8 @@ export async function buildMePayload(session: {
       email: session.email,
       isRoot: session.isRoot,
       name: user.rows[0]?.name ?? null,
-      mustChangePassword: user.rows[0]?.must_change_password ?? false
+      mustChangePassword: user.rows[0]?.must_change_password ?? false,
+      totpEnabled: user.rows[0]?.totp_enabled ?? false
     },
     activeWorkspace: active.rows[0] ? { ...active.rows[0], role: session.role } : null,
     workspaces,

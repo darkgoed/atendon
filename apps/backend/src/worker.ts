@@ -3,7 +3,6 @@ import { logger } from "./logger.js";
 import { createWhatsAppRuntime } from "./runtime.js";
 import { redisConnection } from "./queue/connection.js";
 import { deferBusyInboundJob, enqueueInbound, ensureInboundAiTurn, INBOUND_QUEUE, inboundTerminalFailureAlert, type InboundJobData } from "./queue/message-queue.js";
-import { HUMAN_OUTBOUND_QUEUE, type HumanOutboundJob } from "./queue/human-message-queue.js";
 import { db } from "./db/client.js";
 import { publishScheduledChangelogPosts } from "./modules/changelog/repository.js";
 import { ConversationBusyRetryError, isAutomaticAiRecoveryError } from "./modules/messages/process-message.js";
@@ -158,17 +157,6 @@ const worker = new Worker<InboundJobData>(INBOUND_QUEUE, async (job, token) => {
   concurrency: 5,
   metrics: workerMetrics
 });
-const humanWorker = new Worker<HumanOutboundJob>(HUMAN_OUTBOUND_QUEUE, async (job) => {
-  const destination = job.data.contactJid ?? job.data.contactPhone;
-  const sent = await gateway.sendText(job.data.sessionId, destination, job.data.text);
-  const instagramContactId = destination.startsWith("ig:") ? destination.slice(3) : undefined;
-  await messageRepository.recordHuman({
-    kind: "human", externalId: sent.externalId, tenantId: job.data.tenantId,
-    sessionId: job.data.sessionId, contactPhone: destination, contactJid: job.data.contactJid, text: job.data.text,
-    ...(instagramContactId ? { channel: "instagram" as const, instagramContactId } : {})
-  });
-  return sent.externalId;
-}, { connection: redisConnection, concurrency: 5, metrics: workerMetrics });
 const handoffWorker = new Worker<HandoffNotificationJob>(HANDOFF_NOTIFICATION_QUEUE, async (job) => {
   const notification = await messageRepository.getPendingHandoffNotification(job.data.notificationId);
   if (!notification) return "already_delivered";
@@ -330,13 +318,6 @@ worker.on("failed", (job, error) => {
   if (job?.data.tenantId) void db.query(
     "INSERT INTO system_alerts(tenant_id,message) VALUES($1,$2)",
     [job.data.tenantId, alert]
-  ).catch((alertError) => logger.error({ err: alertError, jobId: job.id }, "Failed to persist message alert"));
-});
-humanWorker.on("failed", (job, error) => {
-  logger.error({ jobId: job?.id, err: error }, "Human message failed");
-  if (job?.data.tenantId) void db.query(
-    "INSERT INTO system_alerts(tenant_id,message) VALUES($1,$2)",
-    [job.data.tenantId, "A mensagem do atendente não foi enviada. Verifique a conexão e tente novamente."]
   ).catch((alertError) => logger.error({ err: alertError, jobId: job.id }, "Failed to persist message alert"));
 });
 handoffWorker.on("failed", (job, error) => {
@@ -828,7 +809,6 @@ async function shutdown(): Promise<void> {
   }
   await manager.stopAll();
   await worker.close();
-  await humanWorker.close();
   await handoffWorker.close();
   await schedulingNotificationWorker.close();
   await followUpWorker.close();

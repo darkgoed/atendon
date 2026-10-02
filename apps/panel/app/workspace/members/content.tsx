@@ -15,6 +15,7 @@ import {
 } from "./member-profile-dialog";
 import { AdminField, AdminPage, AdminPageHeader, AdminTableScroll } from "@/components/admin";
 import { IconButton, HelpHint, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
+import { TeamsManager, useTeams } from "@/components/teams-manager";
 
 
 type Role = {
@@ -68,6 +69,8 @@ export function WorkspaceMembersContent() {
   const { data: membersData, error: membersError, mutate: mutateMembers } = useSWR<{ members: WorkspaceMember[] }>("/workspaces/current/members", fetcher, { revalidateOnFocus: false });
   const { data: rolesData, error: rolesError, mutate: mutateRoles } = useSWR<{ roles: Role[] }>("/workspaces/current/member-roles", fetcher, { revalidateOnFocus: false });
   const { data: invitationsData, error: invitationsError, mutate: mutateInvitations } = useSWR<{ invitations: Invitation[] }>("/workspaces/current/invitations", fetcher, { revalidateOnFocus: false });
+  // B6 Times: estrutura de equipes do workspace (leitura ampla no backend).
+  const { teams, error: teamsError, mutate: mutateTeams } = useTeams(true);
 
   const [error, setError] = useState("");
   const save = useSaveFeedback();
@@ -114,7 +117,7 @@ export function WorkspaceMembersContent() {
     }
   }
 
-  async function updateMember(memberId: string, payload: { roleId?: string; status?: "active" | "suspended" }) {
+  async function updateMember(memberId: string, payload: { roleId?: string; status?: "active" | "suspended"; team_id?: string | null }) {
     setBusyMemberId(memberId);
     setError("");
     try {
@@ -227,6 +230,7 @@ export function WorkspaceMembersContent() {
                       <tr>
                         <th>E-mail</th>
                         <th>Função</th>
+                        <th>Equipe</th>
                         <th>Status</th>
                         <th>Entrada</th>
                         <th>Ações</th>
@@ -257,6 +261,22 @@ export function WorkspaceMembersContent() {
                                 </select>
                               ) : (
                                 <span className="admin-pill">{workspaceRoleLabel(member.role_name)}</span>
+                              )}
+                            </td>
+                            <td data-label="Equipe">
+                              {canUpdateMembers && !member.is_owner_role ? (
+                                <select
+                                  className="input"
+                                  aria-label={`Equipe de ${member.name || member.email}`}
+                                  value={member.team_id ?? ""}
+                                  disabled={locked}
+                                  onChange={(event) => void updateMember(member.id, { team_id: event.target.value || null })}
+                                >
+                                  <option value="">Sem equipe</option>
+                                  {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+                                </select>
+                              ) : (
+                                <span className="admin-pill">{member.team_name ?? "Sem equipe"}</span>
                               )}
                             </td>
                             <td data-label="Status">
@@ -362,6 +382,14 @@ export function WorkspaceMembersContent() {
                   </dl>
                 </div>
               ) : null}
+
+              <TeamsManager
+                teams={teams}
+                isLoading={false}
+                loadFailed={Boolean(teamsError)}
+                canManage={canUpdateMembers}
+                onChanged={async () => { await Promise.all([mutateTeams(), mutateMembers()]); }}
+              />
             </aside>
           </section>
 

@@ -11,7 +11,7 @@ import { db } from "../../db/client.js";
 import { getEmailProvider } from "../../mail/index.js";
 import { buildInvitationAcceptUrl, createInvitationToken, sendWorkspaceInvitationEmail, shouldExposeInvitationToken } from "../../mail/invitations.js";
 import { DEFAULT_MEDIA_FALLBACK } from "../ai-router/defaults.js";
-import { SEGMENT_PRESETS, findSegmentPreset } from "../organization/presets.js";
+import { findSegmentPreset } from "../organization/presets.js";
 import { DEFAULT_HUMANIZER_CONFIG } from "../messages/humanizer.js";
 import { collectOperationalSnapshot } from "../operations/operational-snapshot.js";
 import { listEffectiveCapabilities } from "../operations/feature-flags.js";
@@ -257,17 +257,6 @@ export async function registerRootRoutes(app: FastifyInstance) {
        LIMIT 500`
     );
     return { workspaces: result.rows };
-  });
-
-  app.get("/root/segment-presets", async (request) => {
-    await requireRoot(request);
-    return {
-      presets: SEGMENT_PRESETS.map((preset) => ({
-        slug: preset.slug,
-        label: preset.label,
-        description: preset.description
-      }))
-    };
   });
 
   app.post("/root/workspaces", { config: { rateLimit: HTTP_RATE_LIMITS.sensitiveWrite } }, async (request, reply) => {

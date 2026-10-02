@@ -14,7 +14,9 @@ export const SETTINGS_OPTIONAL_CONTRACTS = {
   "/humanizacao": populated("Humanização", "900|2600", "form .line-section, form"),
   "/alertas": populated("Alertas operacionais(?: ?\\?)?", "Conexão verificada", "section[aria-label='Histórico de alertas']"),
   "/perfil": populated("Perfil", "qa@example.test|QA Operador", "input[type=email], form"),
-  "/pos-venda": populated("Carteira de pós-venda", "Marina QA · Cliente de implantação empresarial|Confirmar treinamento de implantação", ".post-sales-client-row"),
+  // h1 = título + HelpHint: textContent ganha " ?" e o nome acessível "Ajuda: o que é a carteira" (app/pos-venda/page.tsx).
+  // Este override vence contracts.mjs; o sufixo aceito é só o do próprio h1.
+  "/pos-venda": populated("Carteira de pós-venda(?: ?\\?)?(?:\\s*Ajuda: o que é a carteira)?", "Marina QA · Cliente de implantação empresarial|Confirmar treinamento de implantação", ".post-sales-client-row"),
   "/pos-venda/configurar": populated("Configurar checklist", "Confirmar cadastro e dados da empresa|Agendar treinamento de implantação para a equipe", ".post-sales-template-section, .post-sales-template-main"),
   "/pos-venda/cobranca": populated("Cobranças de crediário", "Cliente QA|199", "table tbody tr, article"),
   "/uso": populated("Uso", "Total usado|42|Histórico mensal", "[role=tab], table tbody tr, .card")

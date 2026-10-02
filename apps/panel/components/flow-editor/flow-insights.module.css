@@ -1,0 +1,4 @@
+/* Drawer de desempenho (C1-d): largura maior para a lista de execuções. */
+.insightsDialog {
+  --action-dialog-width: 720px;
+}

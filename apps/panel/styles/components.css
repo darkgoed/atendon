@@ -358,7 +358,9 @@
 .field--error { color: var(--danger-text); }
 .field--row { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-2); }
 
-/* Um seletor para todo controle de texto: input, select, textarea. */
+/* Um seletor para todo controle de texto: input, select, textarea.
+   Altura e padding passam pelos ganchos --input-* (tokens.css). O seletor-base mantém os 5 :not()
+   e as variantes só trocam valores de gancho, então nenhum modificador briga por especificidade. */
 .input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="range"]):not([type="file"]),
 .field input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="range"]):not([type="file"]),
 .field select,
@@ -367,8 +369,8 @@
 .textarea {
   width: 100%;
   min-width: 0;
-  min-height: var(--control-height-md);
-  padding: var(--space-2) var(--space-3);
+  min-height: var(--input-min-height);
+  padding: var(--input-pad-y) var(--input-pad-x);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
@@ -377,7 +379,10 @@
   font-weight: var(--weight-regular);
   transition: var(--transition-control);
 }
-.input--sm:not([type="checkbox"]):not([type="radio"]) { min-height: var(--control-height); padding: var(--space-1) var(--space-2); }
+.input--sm { --input-min-height: var(--control-height); --input-pad-y: var(--space-0); --input-pad-x: var(--space-2); }
+/* Multilinha e cor nativa mantêm o respiro vertical de 8px; dentro de .field o textarea ganha o piso de 2 × --control-height-lg. */
+textarea.input, select[multiple].input, input[type="color"].input { --input-pad-y: var(--space-2); }
+.field textarea.input { --input-min-height: calc(var(--control-height-lg) * 2); }
 .input:hover:not(:disabled), .field input:hover:not(:disabled), .field select:hover:not(:disabled), .field textarea:hover:not(:disabled) {
   border-color: var(--border-strong);
 }

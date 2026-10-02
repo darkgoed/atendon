@@ -23,7 +23,50 @@ const connections = [
   { id: secondConnectionId, label: secondLongLabel, channel: "whatsapp", is_primary: false, status: "qr_pending", phone_number: null, qr_code: "data:image/png;base64,QA", last_connected_at: null, disconnected_reason: null, created_at: "2026-08-02T12:00:00.000Z" }
 ];
 
+// /uso e /configuracoes/uso: cada GET na forma devolvida por billing/routes.ts, billing/alerts.ts
+// (getUsageDashboard), billing/credit-packs.ts e billing/ai-usage-routes.ts (buildReport).
+// Coerência: totalAvailable = franquia + acumulado + bônus; o pacote comprado no ciclo já está no
+// bônus (concedido e consumido iguais ao saldo de pacotes); summary.calls = soma dos buckets;
+// normalizedCredits do ledger = total usado. O roteador do harness só enxerga o pathname, então
+// groupBy=model e groupBy=agent recebem o mesmo relatório (o "Por agente" fica fechado na tela).
+const PACK = { sku: "AI_CREDITS_50M", credits: 50_000_000, priceCents: 15_700, currency: "BRL" };
+const packConsumed = 3_000_000;
+const cycle = { start: "2026-08-01T03:00:00.000Z", end: "2026-09-01T03:00:00.000Z" };
+const usageDashboard = (() => {
+  const base = { includedLimit: 100_000_000, includedUsage: 42_500_000, rolloverGranted: 12_000_000, rolloverUsage: 0, bonusGranted: PACK.credits, bonusUsage: packConsumed };
+  const totalAvailable = base.includedLimit + base.rolloverGranted + base.bonusGranted;
+  const totalUsed = base.includedUsage + base.rolloverUsage + base.bonusUsage;
+  return { planName: "Profissional", ...base, totalAvailable, totalUsed, usedPercentBps: Math.floor((totalUsed * 10000) / totalAvailable), usageUnit: "CREDIT", periodStart: cycle.start, periodEnd: cycle.end, daysUntilRenewal: Math.max(0, Math.ceil((Date.parse(cycle.end) - Date.parse("2026-08-20T12:00:00.000Z")) / 86_400_000)), creditEnabled: true, creditLimitCents: 10_000, creditUsedCents: 0, balanceLabel: "Creditos de IA (tokens normalizados)", usageLabel: "Tokens normalizados consumidos" };
+})();
+const packGrant = { id: "qa-grant-0001", amount: PACK.credits, consumedAmount: packConsumed, remaining: PACK.credits - packConsumed, active: true, expiresAt: null, createdAt: "2026-08-10T12:00:00.000Z", invoiceId: "qa-invoice-0002", purchaseStatus: "GRANTED" };
+const creditBalance = { availableCredits: packGrant.remaining, grantedCredits: PACK.credits, consumedCredits: packConsumed, grants: [packGrant] };
+const creditPurchases = { sku: PACK, purchases: [{ id: "qa-purchase-0001", tenant_id: workspace.id, idempotency_key: "0f5d3c1e-7a4b-4c39-9d2a-5b6e8f1a2c3d", sku: PACK.sku, credits: String(PACK.credits), price_cents: String(PACK.priceCents), currency: PACK.currency, invoice_id: "qa-invoice-0002", grant_id: packGrant.id, status: "GRANTED", granted_at: "2026-08-10T12:05:00.000Z", revoked_credits: "0", revoked_at: null, created_at: "2026-08-10T12:00:00.000Z", updated_at: "2026-08-10T12:05:00.000Z", invoice_status: "paid" }], page: 1, limit: 25 };
+const pixAutomatic = { mandate: { id: "qa-mandate-0001", status: "APPROVED", firstDueOn: "2026-09-01", pixCopiaECola: null }, sku: PACK };
+const invoiceLine = (id, invoiceId, kind, description, cents, createdAt) => ({ id, invoice_id: invoiceId, kind, description, quantity: 1, unit_amount_cents: cents, amount_cents: cents, usage_period_id: null, metadata: {}, created_at: createdAt });
+const billingHistory = [
+  { id: "qa-invoice-0002", tenant_id: workspace.id, subscription_id: null, amount_cents: String(PACK.priceCents), currency: "BRL", status: "paid", kind: "credit_package", period_start: "2026-08-10T12:00:00.000Z", period_end: "2026-08-10T12:00:00.000Z", monthly: false, line_items: [invoiceLine("qa-line-0002", "qa-invoice-0002", "ADDON", "Pacote de 50.000.000 créditos de IA", PACK.priceCents, "2026-08-10T12:00:00.000Z")], provider_code: null },
+  { id: "qa-invoice-0001", tenant_id: workspace.id, subscription_id: "qa-subscription-0001", amount_cents: "19900", currency: "BRL", status: "paid", kind: "subscription", period_start: "2026-07-01T03:00:00.000Z", period_end: cycle.start, monthly: true, line_items: [invoiceLine("qa-line-0001", "qa-invoice-0001", "PLAN", "Plano contratado", 19_900, "2026-07-01T03:00:00.000Z")], provider_code: null }
+];
+const aiBuckets = [
+  { key: "openai/gpt-4o-mini", calls: 1012, inputTokens: 14_000_000, outputTokens: 1_700_000, cachedInputTokens: 7_600_000, cacheWriteInputTokens: 480_000, reasoningTokens: 0, costUsd: 9.35 },
+  { key: "google/gemini-2.5-flash", calls: 272, inputTokens: 4_400_000, outputTokens: 450_000, cachedInputTokens: 2_200_000, cacheWriteInputTokens: 140_000, reasoningTokens: 410_000, costUsd: 28.07 }
+];
+const bucketTotal = (field) => aiBuckets.reduce((total, bucket) => total + bucket[field], 0);
+const aiCall = (n, model, provider, minutesAgo) => ({ id: `qa-call-000${n}`, createdAt: new Date(Date.parse("2026-08-20T12:00:00.000Z") - minutesAgo * 60_000).toISOString(), model, provider, inputTokens: 18_200, outputTokens: 1_450, cachedInputTokens: 9_000, cacheWriteInputTokens: 0, reasoningTokens: 0, costUsd: 0.0123, costSource: "provider", requestId: `qa-turn-000${n}`, conversationId: IDS.conversation, messageId: `qa-message-000${n}`, callReason: null, agentConfigVersionId: "qa-agent-version-0002", turn: { providerCostUsdMicros: 12_300, providerCostBrlCents: 7, billableBrlCents: 12, normalizedCredits: 71_000, reconciled: true } });
+const aiUsageReport = {
+  summary: {
+    window: { from: cycle.start, to: cycle.end, source: "billing_period", timezone: "America/Sao_Paulo" },
+    calls: { count: bucketTotal("calls"), inputTokens: bucketTotal("inputTokens"), outputTokens: bucketTotal("outputTokens"), cachedInputTokens: bucketTotal("cachedInputTokens"), cacheWriteInputTokens: bucketTotal("cacheWriteInputTokens"), reasoningTokens: bucketTotal("reasoningTokens"), costUsd: Math.round(bucketTotal("costUsd") * 100) / 100 },
+    turns: { count: 640, reconciledTurns: 640, providerCostUsdMicros: 37_420_000, providerCostBrlCents: 20_600, billableBrlCents: 35_400, normalizedCredits: usageDashboard.totalUsed },
+    pagination: { limit: 50, offset: 0, hasMore: false, nextOffset: null }
+  },
+  buckets: aiBuckets,
+  calls: [aiCall(3, "openai/gpt-4o-mini", "openai", 2), aiCall(2, "google/gemini-2.5-flash", "google", 14), aiCall(1, "openai/gpt-4o-mini", "openai", 31)]
+};
+
 const settingsResponse = (path) => {
+  if (path === "/organization/teams") return { teams: [{ id: "qa-team-0001", name: "Atendimento QA", created_at: "2026-08-20T12:00:00.000Z", updated_at: "2026-08-20T12:00:00.000Z", member_count: 1, active_member_count: 1 }] };
+  if (path === "/me/messaging-capabilities") return { sessions: connections.map(({ id, label, phone_number, status }) => ({ session_id: id, label, phone_number, status, capabilities: { reactions: false, forward_media: false, interactive: false } })) };
   if (path === "/scheduling/config/categorias") return { categorias: [category] };
   if (path === "/scheduling/config/parceiros") return { parceiros: [partner] };
   if (path === "/scheduling/config/unidades") return { unidades: [unit] };
@@ -50,9 +93,13 @@ const settingsResponse = (path) => {
   if (path === "/post-sales/debts") return { summary: { total: 1, paid: 0, amount_open_total: 19900, amount_recovered_total: 0 }, debts: [debt] };
   if (path === "/post-sales/checklist-template/items") return { items: templateItems };
   if (path === "/billing/my-plan") return { tenantId: workspace.id, plan: { code: "professional", name: "Profissional" }, status: "active", features: { AI_FOLLOWUP: true, POST_SALES: true, HUMANIZER: true }, limits: { MAX_WHATSAPP_CONNECTIONS: 3 }, usage: { ai_followups: 2, whatsapp_connections: 2 } };
-  if (path === "/billing/usage-dashboard") return { dashboard: { month: "2026-08", total_cost_cents: 4200, total_tokens: 12000, conversations: 24, messages: 80 } };
+  if (path === "/billing/usage-dashboard") return { dashboard: usageDashboard };
   if (path === "/billing/usage-credit") return { setting: { enabled: true, limit_type: "FIXED", monthly_spending_limit_cents: 10000, confirmed_unlimited_at: null }, allowed: { suggested: 10000, min: 1000, max: 100000, allowCustom: true, allowUnlimited: false } };
-  if (path === "/billing/history") return { history: [{ id: "qa-invoice-0001", status: "paid", amount_cents: 19900, created_at: "2026-08-01T12:00:00.000Z" }] };
+  if (path === "/billing/history") return { history: billingHistory };
+  if (path === "/billing/ai-credit-packs/balance") return { balance: creditBalance };
+  if (path === "/billing/ai-credit-packs/pix-automatic") return pixAutomatic;
+  if (path === "/billing/ai-credit-packs") return creditPurchases;
+  if (path === "/billing/ai-usage") return aiUsageReport;
 };
 
 export function settingsFixture(path) {

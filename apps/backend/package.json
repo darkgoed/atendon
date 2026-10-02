@@ -17,7 +17,6 @@
     "remediate:phone-e164": "tsx scripts/remediate-legacy-phone-e164.ts",
     "recover:newave-technical": "tsx scripts/recover-newave-technical-handoffs.ts",
     "snapshot:deploy": "tsx scripts/record-deployment-snapshot.ts",
-    "experiment:newave-replay": "tsx scripts/run-newave-replay-experiment.ts",
     "rotate:data-key": "tsx src/db/rotate-data-encryption.ts",
     "seed": "tsx src/db/seed.ts",
     "provision:newave": "tsx src/db/provision-newave.ts",
@@ -60,7 +59,6 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.7",
     "@types/web-push": "^3.6.4",
-    "@types/xlsx": "^0.0.36",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"

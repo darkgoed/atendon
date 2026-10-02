@@ -8,6 +8,7 @@ import { BulkLeadActions } from "@/components/bulk-lead-actions";
 import { ContactChatLink } from "@/components/contact-chat-link";
 import { ContactAvatar } from "@/components/contact-avatar";
 import { NewLeadDialog } from "@/components/new-lead-dialog";
+import { LeadMergeDialog, type LeadMergePairItem } from "@/components/lead-merge-dialog";
 import { LeadTagChips, LeadTagMenuItems, type LeadTag } from "@/components/lead-tag-picker";
 import { PopoverMenu } from "@/components/popover-menu";
 import { SavedViewsControl } from "@/components/saved-views-control";
@@ -56,6 +57,9 @@ export default function LeadsPage() {
   const canReadFollowUp = usePermission("leads.follow_up.read");
   const canQualifyLeads = usePermission("leads.update_status");
   const canCreateLeads = usePermission("leads.create");
+  // Merge de contatos (B5): mesma autorização da exclusão — o contato
+  // absorvido é removido das listas.
+  const canMergeLeads = usePermission("leads.delete");
   const organizationEnabled = useCaseOrganizationEnabled();
   const [filters, setFilters] = useState<LeadFilters>({
     status: "", unidade_id: "", categoria_id: "", parceiro_id: "", busca: "", estrelas: "", fila_humana: ""
@@ -85,6 +89,8 @@ export default function LeadsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [createToast, setCreateToast] = useState(false);
+  const [mergePair, setMergePair] = useState<[LeadMergePairItem, LeadMergePairItem] | null>(null);
+  const [mergeToast, setMergeToast] = useState(false);
   const { data: session } = useSWR<PanelSession>("/me", fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 10_000
@@ -145,6 +151,13 @@ export default function LeadsPage() {
   const timezone = data?.timezone ?? "UTC";
   const loading = !data && !swrError;
   const selectedItems = useMemo(() => leads.filter((lead) => selectedIds.has(lead.id)).map((lead) => ({ id: lead.id, expected_updated_at: lead.atualizado_em })), [leads, selectedIds]);
+  // Par fixado na abertura do dialog: mutação da lista (poll de 15s) não muda
+  // o conteúdo do merge no meio do fluxo.
+  const selectedMergePair = useMemo<[LeadMergePairItem, LeadMergePairItem] | null>(() => {
+    if (selectedIds.size !== 2) return null;
+    const pair = leads.filter((lead) => selectedIds.has(lead.id)).map((lead) => ({ id: lead.id, nome: lead.nome ?? null, telefone: lead.telefone }));
+    return pair.length === 2 ? [pair[0], pair[1]] : null;
+  }, [leads, selectedIds]);
   const applySavedFilters = (saved: Record<string, unknown>) => setFilters((current) => applyLeadSavedViewFilters(current, saved));
 
   useRealtimeSignals({
@@ -241,6 +254,7 @@ export default function LeadsPage() {
         <span className="leads-page__count" role="status" aria-live="polite">{loading ? "carregando…" : `${total} resultado(s)`}</span>
       </div>
       <div className="leads-page__actions flex min-h-8 flex-wrap items-center gap-2">
+
         <label className="field leads-page__search m-0">
           <span className="sr-only">Buscar contato</span>
           <span className="search-field"><MagnifyingGlass size={14} aria-hidden="true" /><input className="input" type="search" value={filters.busca} onChange={(event) => setFilter("busca", event.target.value)} placeholder="Nome ou telefone" /></span>
@@ -249,6 +263,12 @@ export default function LeadsPage() {
         <SavedViewsControl resource="leads" filters={leadFiltersForSavedView(filters)} onApply={applySavedFilters} />
         <TagCatalogSettings />
         <span className="leads-page__divider" aria-hidden="true" />
+        {canMergeLeads && organizationEnabled === true && selectedMergePair ? (
+          <Button className="crm-compact-button" onClick={() => setMergePair(selectedMergePair)}>
+            Mesclar 2 selecionados
+          </Button>
+        ) : null}
+
         {canReadFollowUp ? (
           <IconButton
             label="Exportar CSV"
@@ -353,7 +373,16 @@ export default function LeadsPage() {
         onCreated={async () => { await mutate(); setCreateToast(true); window.setTimeout(() => setCreateToast(false), 2600); }}
       />
     ) : null}
+    {canMergeLeads && mergePair ? (
+      <LeadMergeDialog
+        open={Boolean(mergePair)}
+        pair={mergePair}
+        onClose={() => setMergePair(null)}
+        onMerged={async () => { await mutate(); setSelectedIds(new Set()); setMergeToast(true); window.setTimeout(() => setMergeToast(false), 2600); }}
+      />
+    ) : null}
     <SaveToast show={createToast}>Contato criado</SaveToast>
+    <SaveToast show={mergeToast}>Contatos mesclados</SaveToast>
     </div>
   </Shell>;
 }

@@ -59,14 +59,23 @@ const endpoints: Record<string, unknown> = {
   team_load: { data: { members: [{ member_id: 'm1', name: 'Closer Um', availability_status: 'available', completed: 15, no_show: 1, sales: 7, closing_rate: 50, sold_value: 9800 }] } },
 }
 
+// Corpo do bundle consolidado: cada widget vira { key, data } com o mesmo
+// payload que o endpoint individual devolvia.
+const bundleBody = (keys?: string[]) => ({
+  widgets: Object.fromEntries(
+    Object.entries(endpoints)
+      .filter(([key]) => !keys || keys.includes(key))
+      .map(([key, body]) => [key, { key, data: (body as { data: unknown }).data }]),
+  ),
+})
+
 describe('DashboardReferenceOverview', () => {
   it('renderiza hero, funil, conversões e as seções que substituem o board', async () => {
     const calls: string[] = []
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       calls.push(url)
-      const key = Object.keys(endpoints).find((endpoint) => url.includes(`/dashboard/widgets/${endpoint}?`))
-      if (key) return respond(endpoints[key])
+      if (url.includes('/dashboard?include=widgets')) return respond(bundleBody())
       return respond({ data: {} })
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -119,11 +128,10 @@ describe('DashboardReferenceOverview', () => {
     expect(screen.getByText('Closer Um')).toBeInTheDocument()
     expect(screen.getByText('R$ 9.800,00')).toBeInTheDocument()
 
-    // Cada endpoint do catálogo é consultado exatamente uma vez com o período
-    for (const key of Object.keys(endpoints)) {
-      expect(calls.filter((url) => url.includes(`/dashboard/widgets/${key}?`))).toHaveLength(1)
-    }
+    // Uma única request consolidada alimenta todas as seções, com o período.
+    expect(calls.filter((url) => url.includes('/dashboard?include=widgets'))).toHaveLength(1)
     expect(calls.some((url) => url.includes('period=today'))).toBe(true)
+    expect(calls.some((url) => url.includes('/dashboard/widgets/'))).toBe(false)
   })
 
   it('com agendamentos desativado, mostra o aviso do funil e mantém as seções de operação', async () => {
@@ -132,11 +140,11 @@ describe('DashboardReferenceOverview', () => {
     caps.pipeline = false;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
-      if (url.includes('operations_summary')) return respond(endpoints.operations_summary)
-      if (url.includes('open_conversations')) return respond(endpoints.open_conversations)
-      if (url.includes('whatsapp_connection')) return respond(endpoints.whatsapp_connection)
-      if (url.includes('handoffs')) return respond(endpoints.handoffs)
-      if (url.includes('recent_alerts')) return respond(endpoints.recent_alerts)
+      // O servidor inclui no bundle apenas widgets liberados pelo catálogo:
+      // com agendamentos desativado, os comerciais não aparecem no payload.
+      if (url.includes('/dashboard?include=widgets')) {
+        return respond(bundleBody(['operations_summary', 'open_conversations', 'whatsapp_connection', 'handoffs', 'recent_alerts']))
+      }
       return forbidden()
     })
     vi.stubGlobal('fetch', fetchMock)

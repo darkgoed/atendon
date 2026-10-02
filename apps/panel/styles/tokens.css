@@ -67,6 +67,7 @@
   --gutter: clamp(12px, 1.4vw, 20px);
   --content-max: 1160px;
   --prose-max: 68ch;
+  --content-form-max: 48rem;   /* formulário curto (Configurações/Geral); opt-in por painel, não é teto global */
 
   /* Raios discretos (B2B minimalista): painéis 12, cards 10, controles 8 */
   --radius-xs: 4px;
@@ -83,6 +84,11 @@
   --control-height-lg: 38px;
   --control-height-touch: 44px;
   --control-min: var(--control-height-md);
+  /* Ganchos de campo (input, select, textarea). O seletor-base de components.css os consome; variantes
+     só trocam estes valores. A altura de uma linha vem do token, não do padding (36 padrão, 30 compact). */
+  --input-min-height: var(--control-height-md);
+  --input-pad-y: var(--space-1);
+  --input-pad-x: var(--space-3);
   --icon-sm: 14px;
   --icon: 16px;
   --icon-lg: 18px;

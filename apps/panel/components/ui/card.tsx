@@ -9,7 +9,7 @@ export type PanelProps = HTMLAttributes<HTMLElement> & {
 
 /**
  * Superfície do design system. Um painel NÃO contém outro painel com borda —
- * seções internas usam `PanelSection` (divisor de 1px) ou apenas spacing.
+ * seções internas separam por spacing.
  */
 export const Panel = forwardRef<HTMLElement, PanelProps>(function Panel(
   { variant = "default", pad = false, className, ...props },
@@ -32,9 +32,6 @@ export const PanelBody = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElemen
 });
 export const PanelFooter = forwardRef<HTMLElement, HTMLAttributes<HTMLElement>>(function PanelFooter({ className, ...props }, ref) {
   return <footer {...props} ref={ref} className={cn("panel__footer", className)} />;
-});
-export const PanelSection = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(function PanelSection({ className, ...props }, ref) {
-  return <div {...props} ref={ref} className={cn("panel__section", className)} />;
 });
 
 /** Nome herdado do painel padrão; mantido para não reescrever ~200 call sites. */
@@ -67,11 +64,4 @@ export const Section = forwardRef<HTMLElement, SectionProps>(function Section(
       {children}
     </section>
   );
-});
-
-export const Divider = forwardRef<HTMLHRElement, HTMLAttributes<HTMLHRElement> & { strong?: boolean }>(function Divider(
-  { strong = false, className, ...props },
-  ref
-) {
-  return <hr {...props} ref={ref} className={cn("divider", strong && "divider--strong", className)} />;
 });

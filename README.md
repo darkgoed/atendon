@@ -18,24 +18,7 @@ npm run seed -w @atendon/backend
 npm run dev
 ```
 
-O painel abre em `http://localhost:3200`; a API em `http://localhost:3110`. Na primeira inicialização do volume, o Compose cria `atendon` e o banco isolado `atendon_test`. O seed cria o usuário definido por `PANEL_SEED_EMAIL`/`PANEL_SEED_PASSWORD` e registra `TENANT_API_KEY` para o mesmo tenant.
-
-## Autenticação e API de agendamento
-
-As rotas chamadas pela IA aceitam `X-API-Key: <TENANT_API_KEY>` ou `Authorization: Bearer <TENANT_API_KEY>`. O tenant é obtido da chave; quando `tenant` é informado na query, ele deve coincidir com ela.
-
-Cada chave tem scopes por operação. A gestão fica restrita ao ROOT em acesso assistido ao workspace, em **Configurações → Chaves de API**. O segredo é exibido uma única vez. A rotação é feita em duas fases: a chave anterior continua ativa até a integração nova ser validada e sua revogação ser confirmada explicitamente.
-
-- `POST /leads`
-- `GET /categorias?tenant=<uuid>`
-- `GET /parceiros?tenant=<uuid>`
-- `POST /leads/:id/proposta-parceiro`
-- `GET /unidades/:unidade_id/horarios?data=YYYY-MM-DD`
-- `POST /agendamentos`
-- `PATCH /agendamentos/:id/reagendar`
-- `DELETE /agendamentos/:id`
-- `PATCH /leads/:id/status`
-- `POST /leads/:id/transferir`
+O painel abre em `http://localhost:3200`; a API em `http://localhost:3110`. Na primeira inicialização do volume, o Compose cria `atendon` e o banco isolado `atendon_test`. O seed cria o usuário definido por `PANEL_SEED_EMAIL`/`PANEL_SEED_PASSWORD`.
 
 Datas de agendamento são ISO 8601 com offset, por exemplo `2030-01-07T09:00:00-03:00`. Horários de funcionamento e disponibilidade usam o fuso IANA configurado no workspace e são persistidos como instantes UTC; transições de horário de verão inválidas são rejeitadas. Categoria, parceiro e unidade são cadastros por tenant; nenhum nome comercial é fixado no código.
 
@@ -64,7 +47,7 @@ A integração usa OAuth 2.0 com consentimento individual e armazena somente o r
 Veja [.env.example](.env.example). Em produção, defina pelo menos:
 
 - `NODE_ENV=production`, `HOST=127.0.0.1`, `DATABASE_URL` e `REDIS_URL`;
-- `JWT_SECRET`, `DATA_ENCRYPTION_KEY`, `TENANT_API_KEY`, `PANEL_SEED_PASSWORD`, `PANEL_ORIGIN=https://atendon.alpdash.com.br` e `PANEL_PUBLIC_URL=https://atendon.alpdash.com.br`;
+- `JWT_SECRET`, `DATA_ENCRYPTION_KEY`, `PANEL_SEED_PASSWORD`, `PANEL_ORIGIN=https://atendon.alpdash.com.br` e `PANEL_PUBLIC_URL=https://atendon.alpdash.com.br`;
 - `EVOLUTION_API_KEY`, `EVOLUTION_WEBHOOK_SECRET`, `EVOLUTION_DB_PASSWORD` e `EVOLUTION_PUBLIC_URL` quando a Evolution local for usada;
 - `WHATSAPP_ENABLED=true` para habilitar o envio automático da IA e o worker do WhatsApp;
 - `BACKEND_URL=http://127.0.0.1:3110` para o rewrite local do Next;

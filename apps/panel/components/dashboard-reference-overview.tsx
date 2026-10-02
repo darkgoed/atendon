@@ -27,6 +27,7 @@ type MetricsFunnel = {
 
 type CommercialMetricsPayload = { result: MetricsResult; funnel: MetricsFunnel };
 type CommercialMetricsResponse = { data: CommercialMetricsPayload };
+type DashboardBundleResponse = { widgets: Record<string, { key: string; data: unknown }> };
 type WidgetValueResponse = { data: { value: number } };
 
 /* Payloads das seções que substituem o board de widgets — mesmos endpoints do
@@ -223,83 +224,54 @@ export function DashboardReferenceOverview({ periodQuery }: { periodQuery: strin
   const appointmentsEnabled = isEnabled("appointments_v1");
   const leadsEnabled = isEnabled("leads_v1");
   const pipelineEnabled = isEnabled("pipeline_v1");
-  const swrOptions = { refreshInterval: 15_000, revalidateOnFocus: true };
-  const commercial = useSWR<CommercialMetricsResponse>(
-    appointmentsEnabled ? `/dashboard/widgets/commercial_metrics?${periodQuery}` : null,
-    fetcher,
-    swrOptions
-  );
-  const started = useSWR<WidgetValueResponse>(
-    appointmentsEnabled ? `/dashboard/widgets/conversations_started?${periodQuery}` : null,
-    fetcher,
-    swrOptions
-  );
-  const conversion = useSWR<WidgetValueResponse>(
-    appointmentsEnabled ? `/dashboard/widgets/conversion_rate?${periodQuery}` : null,
-    fetcher,
-    swrOptions
-  );
+  // Uma única requisição consolidada (backend deriva todos os widgets de
+  // agregados compartilhados) alimenta a visão inteira — em vez de ~23 requests
+  // simultâneas com a mesma autenticação, gates e períodos.
+  const bundle = useSWR<DashboardBundleResponse>(`/dashboard?include=widgets&${periodQuery}`, fetcher, {
+    refreshInterval: 15_000,
+    revalidateOnFocus: true
+  });
+  const widgetOf = <T,>(key: string) => ({
+    // Cada entrada do bundle é { key, data } — o mesmo corpo do endpoint
+    // individual. Os tipos históricos (T) modelam esse corpo sem a chave `key`,
+    // então o cast é direto na entrada inteira.
+    data: bundle.data?.widgets?.[key] as T | undefined,
+    error: undefined as unknown
+  });
+  const commercial = {
+    ...widgetOf<CommercialMetricsResponse>("commercial_metrics"),
+    error: bundle.error,
+    mutate: () => bundle.mutate()
+  };
+  const started = widgetOf<WidgetValueResponse>("conversations_started");
+  const conversion = widgetOf<WidgetValueResponse>("conversion_rate");
 
-  // Seções que substituem o board: mesmos endpoints do catálogo, apresentação
-  // da referência. Cada seção só entra na tela quando seus dados carregam —
-  // 403 (módulo/permission ausente) esconde, nunca quebra a página.
-  const operations = useSWR<OperationsResponse>(`/dashboard/widgets/operations_summary?${periodQuery}`, fetcher, swrOptions);
-  const openConversations = useSWR<OpenConversationsResponse>(`/dashboard/widgets/open_conversations?${periodQuery}`, fetcher, swrOptions);
-  const whatsapp = useSWR<WhatsappResponse>(`/dashboard/widgets/whatsapp_connection?${periodQuery}`, fetcher, swrOptions);
-  const agenda = useSWR<AgendaResponse>(
-    appointmentsEnabled ? `/dashboard/widgets/today_agenda?${periodQuery}` : null,
-    fetcher,
-    swrOptions
-  );
-  const handoffs = useSWR<HandoffsResponse>(`/dashboard/widgets/handoffs?${periodQuery}`, fetcher, swrOptions);
-  const alerts = useSWR<AlertsResponse>(`/dashboard/widgets/recent_alerts?${periodQuery}`, fetcher, swrOptions);
-  const attendanceRate = useSWR<WidgetValueResponse>(
-    appointmentsEnabled ? `/dashboard/widgets/attendance_rate?${periodQuery}` : null,
-    fetcher,
-    swrOptions
-  );
-  const reschedules = useSWR<WidgetValueResponse>(
-    appointmentsEnabled ? `/dashboard/widgets/reschedules?${periodQuery}` : null,
-    fetcher,
-    swrOptions
-  );
-  const pipeline = useSWR<PipelineResponse>(
-    leadsEnabled && pipelineEnabled ? `/dashboard/widgets/pipeline?${periodQuery}` : null,
-    fetcher,
-    swrOptions
-  );
-  const newLeads = useSWR<WidgetValueResponse>(leadsEnabled ? `/dashboard/widgets/new_leads?${periodQuery}` : null, fetcher, swrOptions);
-  const pendingFollowUps = useSWR<WidgetValueResponse>(leadsEnabled ? `/dashboard/widgets/pending_follow_ups?${periodQuery}` : null, fetcher, swrOptions);
-  const leadsPaid = useSWR<WidgetValueResponse>(leadsEnabled ? `/dashboard/widgets/leads_paid_traffic?${periodQuery}` : null, fetcher, swrOptions);
-  const leadsReferral = useSWR<WidgetValueResponse>(leadsEnabled ? `/dashboard/widgets/leads_referral?${periodQuery}` : null, fetcher, swrOptions);
-  const leadsOrganic = useSWR<WidgetValueResponse>(leadsEnabled ? `/dashboard/widgets/leads_organic?${periodQuery}` : null, fetcher, swrOptions);
-  const leadsOther = useSWR<WidgetValueResponse>(leadsEnabled ? `/dashboard/widgets/leads_other_sources?${periodQuery}` : null, fetcher, swrOptions);
-  const lostSales = useSWR<WidgetValueResponse>(
-    leadsEnabled && appointmentsEnabled ? `/dashboard/widgets/lost_sales?${periodQuery}` : null,
-    fetcher,
-    swrOptions
-  );
-  const salesPaid = useSWR<WidgetValueResponse>(
-    leadsEnabled && appointmentsEnabled ? `/dashboard/widgets/sales_paid_traffic?${periodQuery}` : null,
-    fetcher,
-    swrOptions
-  );
-  const salesReferral = useSWR<WidgetValueResponse>(
-    leadsEnabled && appointmentsEnabled ? `/dashboard/widgets/sales_referral?${periodQuery}` : null,
-    fetcher,
-    swrOptions
-  );
-  const salesOrganic = useSWR<WidgetValueResponse>(
-    leadsEnabled && appointmentsEnabled ? `/dashboard/widgets/sales_organic?${periodQuery}` : null,
-    fetcher,
-    swrOptions
-  );
-  const team = useSWR<TeamLoadResponse>(appointmentsEnabled ? `/dashboard/widgets/team_load?${periodQuery}` : null, fetcher, swrOptions);
+  // Seções que substituem o board: mesmos payloads do catálogo, apresentação
+  // da referência. Widget ausente do bundle (capability/permission ausente no
+  // catálogo do servidor) esconde a própria seção — nunca quebra a página.
+  const operations = widgetOf<OperationsResponse>("operations_summary");
+  const openConversations = widgetOf<OpenConversationsResponse>("open_conversations");
+  const whatsapp = widgetOf<WhatsappResponse>("whatsapp_connection");
+  const agenda = widgetOf<AgendaResponse>("today_agenda");
+  const handoffs = widgetOf<HandoffsResponse>("handoffs");
+  const alerts = widgetOf<AlertsResponse>("recent_alerts");
+  const attendanceRate = widgetOf<WidgetValueResponse>("attendance_rate");
+  const reschedules = widgetOf<WidgetValueResponse>("reschedules");
+  const pipeline = widgetOf<PipelineResponse>("pipeline");
+  const newLeads = widgetOf<WidgetValueResponse>("new_leads");
+  const pendingFollowUps = widgetOf<WidgetValueResponse>("pending_follow_ups");
+  const leadsPaid = widgetOf<WidgetValueResponse>("leads_paid_traffic");
+  const leadsReferral = widgetOf<WidgetValueResponse>("leads_referral");
+  const leadsOrganic = widgetOf<WidgetValueResponse>("leads_organic");
+  const leadsOther = widgetOf<WidgetValueResponse>("leads_other_sources");
+  const lostSales = widgetOf<WidgetValueResponse>("lost_sales");
+  const salesPaid = widgetOf<WidgetValueResponse>("sales_paid_traffic");
+  const salesReferral = widgetOf<WidgetValueResponse>("sales_referral");
+  const salesOrganic = widgetOf<WidgetValueResponse>("sales_organic");
+  const team = widgetOf<TeamLoadResponse>("team_load");
 
   const retryAll = () => {
-    void commercial.mutate();
-    void started.mutate();
-    void conversion.mutate();
+    void bundle.mutate();
   };
 
   const blockingError = appointmentsEnabled

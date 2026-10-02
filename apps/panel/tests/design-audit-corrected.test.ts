@@ -2,14 +2,47 @@
 // Runtime ESM modules are covered by a local declaration in scripts/design-audit/fixtures.d.ts.
 import { describe, expect, it } from "vitest";
 import { chromium } from "playwright";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
 import { CAPABILITY_CATALOG, CAPABILITY_KEYS, PERMISSION_KEYS, sessionFor } from "../scripts/design-audit/catalog.mjs";
 import { ROUTE_CONTRACTS } from "../scripts/design-audit/contracts.mjs";
-import { mergeRecords, validateRecord } from "../scripts/design-audit/validate.mjs";
+import { fontFixture, mergeRecords, validateRecord } from "../scripts/design-audit/validate.mjs";
 import { classifyControlReachability, geometrySelfTestVectors } from "../scripts/design-audit/geometry.mjs";
 // @ts-expect-error The audit entrypoint is runtime-only ESM.
 import { measure } from "../scripts/design-audit.mjs";
 
 describe("corrected browser audit contracts", () => {
+  it("serves only integrity-checked font cache entries and fails closed", () => {
+    const directory = mkdtempSync(join(tmpdir(), "audit-font-test-"));
+    const url = "https://fonts.googleapis.com/css2?family=Geist";
+    const body = Buffer.from("@font-face { font-family: Geist; }");
+    const manifest = join(directory, "manifest.json");
+    try {
+      writeFileSync(join(directory, "font.css"), body);
+      writeFileSync(manifest, JSON.stringify({ [url]: { path: "font.css", contentType: "text/css", sha256: createHash("sha256").update(body).digest("hex") } }));
+      expect(fontFixture(url, manifest)?.body).toEqual(body);
+      expect(fontFixture("https://production.example/api", manifest)).toBeNull();
+      expect(() => fontFixture("https://fonts.gstatic.com/missing.woff2", manifest)).toThrow("font cache missing");
+      writeFileSync(join(directory, "font.css"), "corrupted");
+      expect(() => fontFixture(url, manifest)).toThrow("integrity mismatch");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+  it("validates the current semantic theme backgrounds without hiding errors", () => {
+    const contract = ROUTE_CONTRACTS["/login"];
+    const record = { route: "/login", requested: "/login", finalUrl: "/login", theme: { requested: "dark", dataset: "dark", background: "rgb(14, 15, 17)" }, heading: { matched: true }, entity: { matched: true }, loading: false, gaps: [], consoleErrors: [] as string[], pageErrors: [], axe: { violations: [] }, metrics: { horizontalOverflow: false, clippedButtons: false }, httpStatus: 200, assets: { js: ["x"], css: ["y"] } };
+    expect(validateRecord(record, contract).valid).toBe(true);
+    expect(validateRecord({ ...record, theme: { requested: "light", dataset: "light", background: "#f4f5f7" } }, contract).valid).toBe(true);
+    expect(validateRecord({ ...record, theme: { ...record.theme, background: "#123456" } }, contract).errors).toContain("missing computed theme background");
+    expect(validateRecord({ ...record, theme: { ...record.theme, background: "#f4f5f7" } }, contract).errors).toContain("missing computed theme background");
+    expect(validateRecord({ ...record, consoleErrors: ["Failed to load resource: net::ERR_INTERNET_DISCONNECTED"] }, contract).errors).toContain("console/page errors");
+  });
+  it("matches only the seeded trash count and its own help suffix", () => {
+    const pattern = new RegExp(`^(?:${ROUTE_CONTRACTS["/contatos/lixeira"].heading})$`, "i");
+    for (const text of ["Lixeira 1", "Lixeira 1?", "Lixeira 1 Ajuda: Lixeira"]) expect(pattern.test(text), text).toBe(true);
+    for (const text of ["Lixeira", "Lixeira 2", "Lixeira 1+", "Lixeira 10", "Lixeira 1 Ajuda: Contatos"]) expect(pattern.test(text), text).toBe(false);
+  });
   it("uses only catalogued permissions and capabilities", () => {
     const session = sessionFor(false);
     expect(session.permissions).toEqual(PERMISSION_KEYS);

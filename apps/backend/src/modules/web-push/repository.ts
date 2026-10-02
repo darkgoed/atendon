@@ -361,20 +361,34 @@ export class WebPushRepository {
   }
 
   async findPendingJobs(limit = 200): Promise<Array<{ tenantId: string; outboxId: string }>> {
-    await this.pool.query(
-      `UPDATE web_push_outbox
-       SET status='sent',processing_started_at=NULL,sent_at=now(),
-           last_error='suppressed_by_membership',updated_at=now()
-       WHERE status IN ('pending','processing')
-         AND NOT web_push_recipient_active(tenant_id,user_id)`
+    // A reconciliação roda a cada 15s e, no repouso (a esmagadora maioria dos
+    // ticks), os dois UPDATEs de manutenção abaixo só pagam roundtrip+COMMIT
+    // para devolver 0 linhas (~10ms de DB por tick). Um EXISTS barato — sem
+    // escrita, sem COMMIT — decide se eles precisam rodar.
+    const candidates = await this.pool.query<{ has_candidates: boolean }>(
+      `SELECT EXISTS(
+         SELECT 1 FROM web_push_outbox WHERE status IN ('pending','processing')
+       ) has_candidates`
     );
-    const result = await this.pool.query<{ id: string; tenant_id: string }>(
-      `UPDATE web_push_outbox
-       SET status='pending',processing_started_at=NULL,updated_at=now()
-       WHERE status='processing' AND processing_started_at<now()-interval '10 minutes'
-         AND web_push_recipient_active(tenant_id,user_id)
-       RETURNING id,tenant_id`
-    );
+    const hasCandidates = candidates.rows[0]?.has_candidates === true;
+    if (hasCandidates) {
+      await this.pool.query(
+        `UPDATE web_push_outbox
+         SET status='sent',processing_started_at=NULL,sent_at=now(),
+             last_error='suppressed_by_membership',updated_at=now()
+         WHERE status IN ('pending','processing')
+           AND NOT web_push_recipient_active(tenant_id,user_id)`
+      );
+    }
+    const result = hasCandidates
+      ? (await this.pool.query<{ id: string; tenant_id: string }>(
+          `UPDATE web_push_outbox
+           SET status='pending',processing_started_at=NULL,updated_at=now()
+           WHERE status='processing' AND processing_started_at<now()-interval '10 minutes'
+             AND web_push_recipient_active(tenant_id,user_id)
+           RETURNING id,tenant_id`
+        )).rows
+      : [];
     const pending = await this.pool.query<{ id: string; tenant_id: string }>(
       `SELECT id,tenant_id FROM web_push_outbox
        WHERE status='pending' AND available_at<=now()
@@ -384,7 +398,7 @@ export class WebPushRepository {
       [limit]
     );
     const jobs = new Map<string, { tenantId: string; outboxId: string }>();
-    for (const row of [...result.rows, ...pending.rows]) {
+    for (const row of [...result, ...pending.rows]) {
       jobs.set(`${row.tenant_id}:${row.id}`, { tenantId: row.tenant_id, outboxId: row.id });
     }
     return [...jobs.values()];

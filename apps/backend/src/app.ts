@@ -60,7 +60,7 @@ import { decodeFollowUpMedia, FollowUpMediaRepository } from "./modules/messages
 import { decodeOutboundMedia, safeMediaResponseMime } from "./modules/messages/outbound-media.js";
 import { registerStickerRoutes } from "./modules/stickers/routes.js";
 import { loadCommercialDashboard } from "./modules/dashboard/service.js";
-import { registerDashboardWidgetRoutes } from "./modules/dashboard-widgets/routes.js";
+import { registerDashboardWidgetRoutes, loadDashboardWidgetBundle } from "./modules/dashboard-widgets/routes.js";
 import { registerOrganizationRoutes } from "./modules/organization/routes.js";
 import { registerTeamsRoutes } from "./modules/organization/teams-routes.js";
 import { registerLeadMergeRoutes } from "./modules/organization/lead-merge-routes.js";
@@ -247,7 +247,11 @@ function featureFlagDisabled(key: FeatureFlagKey, fallback: string) {
 const dashboardQuerySchema = z.object({
   period: z.enum(["today", "week", "month", "custom"]).catch("today"),
   start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+  end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  // Opt-in: acrescenta `widgets` (payload derivado de agregados compartilhados,
+  // 1 request em vez de ~20) à resposta. Contrato existente inalterado sem o
+  // parâmetro — endpoints individuais de widget continuam válidos.
+  include: z.enum(["widgets"]).optional()
 });
 const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional();
 const rangeSchema = z.object({ min: z.number().int().min(0), max: z.number().int().min(0) }).refine((value) => value.max >= value.min, "Máximo deve ser maior ou igual ao mínimo");
@@ -1073,7 +1077,10 @@ export function buildApp(options: {
           average_first_response_minutes: commercial.sdr_metrics.average_first_response_minutes,
           overdue_follow_ups: commercial.sdr_metrics.overdue_follow_ups
         }
-      }
+      },
+      ...(dashboardQuery.include === "widgets"
+        ? { widgets: await loadDashboardWidgetBundle(session, dashboardQuery) }
+        : {})
     };
   });
 

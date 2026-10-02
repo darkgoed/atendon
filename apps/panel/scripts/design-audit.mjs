@@ -15,7 +15,7 @@ import { panelsV6Fixture } from "./design-audit/fixtures/panels-v6.mjs";
 import { CAPABILITY_CATALOG, ENTITLEMENTS, FEATURE_FLAG_KEYS } from "./design-audit/catalog.mjs";
 import { loadInventory } from "./design-audit/inventory.mjs";
 import { contractFor, ROUTE_CONTRACTS } from "./design-audit/contracts.mjs";
-import { benignExternal, validateRecord, summarize } from "./design-audit/validate.mjs";
+import { benignExternal, fontFixture, validateRecord, summarize } from "./design-audit/validate.mjs";
 import { classifyControlReachability } from "./design-audit/geometry.mjs";
 
 const baseURL = process.env.BASE_URL ?? process.env.PANEL_E2E_BASE_URL ?? "http://127.0.0.1:3499";
@@ -123,6 +123,7 @@ function payload(path, method, useRoot, auditRoute) {
   if (path === "/events") return { status: 204 };
   if (path === "/capabilities") return { body: { capabilities: CAPABILITY_CATALOG } };
   if (path === "/billing/my-plan") return { body: ENTITLEMENTS };
+  if (path === "/dashboard") return { body: commercialFixture(path, true) };
   // panels-v6 primeiro: endpoints hidratados pelo Shell em todas as rotas
   // (aparência/sino/preferências) precisam existir antes dos fixtures por domínio.
   for (const fixture of [panelsV6Fixture, conversationFixture, commercialFixture, settingsFixture, rootFixture, publicTripzFixture]) { const value = fixture(path); if (value !== undefined) return { body: value }; }
@@ -160,7 +161,7 @@ async function measure(page, requestedTheme, contract) {
         if (["auto", "scroll", "hidden", "clip"].includes(style.overflowX) || ["auto", "scroll", "hidden", "clip"].includes(style.overflowY)) {
           const a = ancestor.getBoundingClientRect();
           ancestorNodes.push(ancestor);
-          ancestors.push({ left: a.left, top: a.top, right: a.right, bottom: a.bottom, overflowX: style.overflowX, overflowY: style.overflowY, clientWidth: ancestor.clientWidth, clientHeight: ancestor.clientHeight, scrollWidth: ancestor.scrollWidth, scrollHeight: ancestor.scrollHeight, scrollLeft: ancestor.scrollLeft, scrollTop: ancestor.scrollTop, className: String(ancestor.className), establishesFixedContainingBlock: [style.transform, style.perspective, style.filter].some((value) => value && value !== "none") });
+          ancestors.push({ left: a.left, top: a.top, right: a.right, bottom: a.bottom, position: style.position, clip: style.clip, overflowX: style.overflowX, overflowY: style.overflowY, clientWidth: ancestor.clientWidth, clientHeight: ancestor.clientHeight, scrollWidth: ancestor.scrollWidth, scrollHeight: ancestor.scrollHeight, scrollLeft: ancestor.scrollLeft, scrollTop: ancestor.scrollTop, className: String(ancestor.className), establishesFixedContainingBlock: [style.transform, style.perspective, style.filter].some((value) => value && value !== "none") });
         }
         ancestor = ancestor.parentElement;
       }
@@ -226,8 +227,12 @@ async function measure(page, requestedTheme, contract) {
     const text = document.body?.innerText ?? "";
     return { heading: { matched: Boolean(heading), text: heading?.textContent?.trim() ?? null, count: headings.length }, entity: { matched: !(marker.entitySelector && marker.marker) ? true : entity }, textLength: text.trim().length, loading: Boolean(document.querySelector("[aria-busy=true], .loading-state, [data-loading=true], [role=status][aria-label*='carreg' i]")), theme: { dataset: document.documentElement.dataset.theme ?? null, background: rootStyle.getPropertyValue("--bg").trim() || bodyStyle.backgroundColor, requested }, errorText: /application error|internal server error|fixture-gap/i.test(text) ? text.match(/.{0,40}(application error|internal server error|fixture-gap).{0,80}/i)?.[0] ?? null : null, viewport: { width: innerWidth, height: innerHeight }, controls, rootGeometry, metrics: { clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth, horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1, clippedButtons: clippedButtonDetails.length > 0, clippedButtonDetails } };
   }, { requested: requestedTheme, marker: contract });
-  const classified = (measured.controls ?? []).map((item) => ({ ...item, result: classifyControlReachability(item.control, measured.viewport, item.ancestors, item.hitTests, item.proof, measured.rootGeometry) })).filter((item) => item.result.clipped);
-  return { ...measured, metrics: { ...measured.metrics, clippedButtons: classified.length > 0, clippedButtonDetails: classified.map(({ text, selector, control, result }) => ({ text, selector, rect: [control.left, control.top, control.right, control.bottom], reason: result.reason, ancestor: result.ancestor ?? null })) } };
+  const results = (measured.controls ?? []).map((item) => ({ ...item, result: classifyControlReachability(item.control, measured.viewport, item.ancestors, item.hitTests, item.proof, measured.rootGeometry) }));
+  const detail = ({ text, selector, control, result }) => ({ text, selector, rect: [control.left, control.top, control.right, control.bottom], reason: result.reason, ancestor: result.ancestor ?? null });
+  const classified = results.filter((item) => item.result.clipped);
+  // Fora do gate de "clipped buttons", mas registrado: controle em contêiner .sr-only continua focável por teclado.
+  const visuallyHidden = results.filter((item) => item.result.reason === "visually-hidden-ancestor");
+  return { ...measured, metrics: { ...measured.metrics, clippedButtons: classified.length > 0, clippedButtonDetails: classified.map(detail), visuallyHiddenControls: visuallyHidden.map(detail) } };
 }
 async function provePostSalesDisclosure(page) {
   const target = page.getByRole("button", { name: /Dados, observação e próxima ação/i }).first();
@@ -321,7 +326,7 @@ async function main() {
       const recordRoute = entry.variant ? `${route}#${entry.variant}` : route;
       const contract = allContracts[recordRoute] ?? allContracts[route];
       const context = await browser.newContext({ viewport, locale: "pt-BR" }); const page = await context.newPage();
-      const gaps = [], consoleErrors = [], pageErrors = [], failedRequests = [], assets = { js: [], css: [] };
+      const gaps = [], consoleErrors = [], pageErrors = [], failedRequests = [], fonts = [], assets = { js: [], css: [] };
       let document404Filtered = 0;
       await page.addInitScript((value) => { localStorage.setItem("atendon_last_seen_version", value.version); localStorage.setItem("atendon-theme", value.theme); const RealDate = Date; const frozen = new RealDate(value.now).getTime(); class FrozenDate extends RealDate { constructor(...args) { super(args.length ? args[0] : frozen); } static now() { return frozen; } } globalThis.Date = FrozenDate; const applyTheme = () => { document.documentElement.dataset.theme = value.theme; }; if (document.documentElement) applyTheme(); else document.addEventListener("DOMContentLoaded", applyTheme, { once: true }); }, { version: process.env.AUDIT_BUILD_MARKER ?? "baseline3499", theme, now: process.env.AUDIT_FIXTURE_NOW ?? "2026-08-20T12:00:00.000Z" });
       await context.route("**/*", async (intercept) => {
@@ -329,14 +334,24 @@ async function main() {
         const isApi = url.pathname.startsWith("/api/") || url.pathname.startsWith("/backend/");
         if (isApi) { const path = routePath(req.url()), answer = payload(path, method, requested.startsWith("/root"), recordRoute); if (!answer) { const gap = `${method} ${path}`; gaps.push(gap); unknown.add(gap); return intercept.fulfill({ status: 599, contentType: "application/json", body: JSON.stringify({ error: "fixture-gap", request: gap }) }); } return answer.status === 204 ? intercept.fulfill({ status: 204, body: "" }) : json(intercept, answer.body, answer.status ?? 200); }
         if (url.pathname === "/external_api.js" && recordRoute.endsWith("#sucesso")) return intercept.fulfill({ status: 200, contentType: "text/javascript", body: MEET_PROVIDER_STUB_SCRIPT });
-        if (url.origin !== new URL(baseURL).origin) { if (method === "GET" && benignExternal(req.url())) return intercept.continue(); failedRequests.push(`blocked external ${req.url()}`); return intercept.abort(); }
+        if (url.origin !== new URL(baseURL).origin) {
+          if (method === "GET" && benignExternal(req.url())) {
+            try {
+              const font = fontFixture(req.url());
+              if (!font) return intercept.continue();
+              fonts.push({ url: req.url(), sha256: font.headers["x-audit-font-sha256"], bytes: font.body.length });
+              return intercept.fulfill(font);
+            } catch (error) { gaps.push(String(error)); return intercept.abort(); }
+          }
+          failedRequests.push(`blocked external ${req.url()}`); return intercept.abort();
+        }
         return intercept.continue();
       });
       page.on("response", (response) => { const u = response.url(); if (response.status() < 400) { if (u.includes("/_next/") && u.endsWith(".js")) assets.js.push(u); if (u.endsWith(".css")) assets.css.push(u); } });
       page.on("console", (msg) => { if (msg.type() !== "error") return; if (route === "/__not-found" && DOCUMENT_404_TEXT.test(msg.text())) { const locUrl = msg.location?.()?.url ?? null; if (locUrl && new URL(locUrl).pathname === requested) { document404Filtered += 1; return; } } if (!(EXPECTED_PROVIDER_FAILURES.has(route === "/meet/[roomId]" ? "/meet/rooms/qa-room/token" : route === "/reuniao/[code]" ? "/meet/join/qa-code" : "") && /503 \(Service Unavailable\)/.test(msg.text()))) consoleErrors.push(msg.text()); }); page.on("pageerror", (error) => pageErrors.push(String(error)));
       page.on("requestfailed", (req) => { if (!benignExternal(req.url())) failedRequests.push(`${req.method()} ${req.url()} ${req.failure()?.errorText ?? "failed"}`); });
       const key = `${recordRoute}|${theme}|${viewport.name}`; if (seen.has(key)) throw new Error(`duplicate audit record key: ${key}`); seen.add(key);
-      const record = { version: "design-audit-v2", baseline: process.env.AUDIT_PHASE !== "final", buildMarker: process.env.AUDIT_BUILD_MARKER ?? "baseline3499", route: recordRoute, requested, theme: { requested: theme }, viewport, status: "failed", finalUrl: null, httpStatus: null, screenshot: null, assets, gaps, consoleErrors, pageErrors, failedRequests, axe: null, metrics: null, heading: null, entity: null, loading: false, errorText: null, reason: null };
+      const record = { version: "design-audit-v2", baseline: process.env.AUDIT_PHASE !== "final", buildMarker: process.env.AUDIT_BUILD_MARKER ?? "baseline3499", route: recordRoute, requested, theme: { requested: theme }, viewport, status: "failed", finalUrl: null, httpStatus: null, screenshot: null, assets, fonts, gaps, consoleErrors, pageErrors, failedRequests, axe: null, metrics: null, heading: null, entity: null, loading: false, errorText: null, reason: null };
       try {
         const response = await page.goto(new URL(requested, baseURL).toString(), { waitUntil: "domcontentloaded", timeout: 20_000 });
         await boundedFontsReady(page); if (contract?.entitySelector) await page.locator(contract.entitySelector).first().waitFor({ state: "visible", timeout: 3000 }).catch(() => {}); await boundedEntityReady(page, contract); await page.waitForFunction(() => !document.querySelector("[aria-busy=true], .loading-state, [data-loading=true], [role=status][aria-label*='carreg' i]"), { timeout: 5000 }).catch(() => {});

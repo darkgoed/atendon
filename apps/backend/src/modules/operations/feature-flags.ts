@@ -1,5 +1,6 @@
 import pg from "pg";
 import { z } from "zod";
+import { config } from "../../config.js";
 
 export const FEATURE_FLAG_KEYS = [
   "ai_turn_visibility_v1", "conversations_delta_v2", "alerts_delivery_v2",
@@ -195,6 +196,66 @@ export async function listGlobalFeatureFlags(client: FeatureFlagQueryable): Prom
 }
 
 export async function listEffectiveFeatureFlags(
+  client: FeatureFlagQueryable,
+  tenantId: string
+): Promise<EffectiveFeatureFlag[]> {
+  // Flags mudam raramente (toggles admin, kill switch), mas eram recarregadas
+  // do zero em CADA checagem — duas queries por checagem, ~13 por widget do
+  // dashboard e ~63k cargas em 10 dias em produção. Cache curto por tenant,
+  // no padrão do cache de unread-counts: o TTL é fallback de consistência —
+  // as rotas administrativas que alteram flags chamam
+  // invalidateEffectiveFlagsCache() após o COMMIT. Em teste/dev o cache fica
+  // desligado porque os testes mutam as tabelas direto no banco. Leituras
+  // dentro de transação (PoolClient) nunca passam pelo cache — precisam ver
+  // o estado não commitado.
+  if (!effectiveFlagsCacheAllowed() || !(client instanceof pg.Pool)) {
+    return loadEffectiveFeatureFlags(client, tenantId);
+  }
+  const cached = effectiveFlagsCache.get(tenantId);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now) return cached.promise;
+  const promise = loadEffectiveFeatureFlags(client, tenantId);
+  effectiveFlagsCache.set(tenantId, { expiresAt: now + EFFECTIVE_FLAGS_CACHE_TTL_MS, promise });
+  void promise.catch(() => {
+    const current = effectiveFlagsCache.get(tenantId);
+    if (current?.promise === promise) effectiveFlagsCache.delete(tenantId);
+  });
+  return promise;
+}
+
+const EFFECTIVE_FLAGS_CACHE_TTL_MS = 3_000;
+const effectiveFlagsCache = new Map<string, {
+  expiresAt: number;
+  promise: Promise<EffectiveFeatureFlag[]>;
+}>();
+// null = segue NODE_ENV (produção liga, testes/dev desligam).
+let effectiveFlagsCacheOverrideForTests: boolean | null = null;
+
+function effectiveFlagsCacheAllowed(): boolean {
+  return effectiveFlagsCacheOverrideForTests ?? config.NODE_ENV === "production";
+}
+
+/**
+ * Invalida o cache pós-COMMIT de escritas administrativas. Sem tenantId,
+ * limpa todos os tenants (mudanças globais/kill switch afetam todos).
+ */
+export function invalidateEffectiveFlagsCache(tenantId?: string): void {
+  if (tenantId) effectiveFlagsCache.delete(tenantId);
+  else effectiveFlagsCache.clear();
+}
+
+/** Hooks de teste: os testes rodam fora de produção e mutam flags via SQL. */
+export function setEffectiveFlagsCacheOverrideForTests(enabled: boolean | null): void {
+  effectiveFlagsCacheOverrideForTests = enabled;
+}
+export function clearEffectiveFlagsCacheForTests(): void {
+  effectiveFlagsCache.clear();
+}
+export function effectiveFlagsCacheKeysForTests(): string[] {
+  return [...effectiveFlagsCache.keys()];
+}
+
+async function loadEffectiveFeatureFlags(
   client: FeatureFlagQueryable,
   tenantId: string
 ): Promise<EffectiveFeatureFlag[]> {

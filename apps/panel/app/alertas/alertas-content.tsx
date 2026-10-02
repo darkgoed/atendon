@@ -171,6 +171,17 @@ export function AlertasBody() {
     }
   };
 
+  const [markingAll, setMarkingAll] = useState(false);
+  const markAllRead = async () => {
+    setMarkingAll(true);
+    try {
+      await api("/alerts/read-all", { method: "PATCH" });
+      await mutate();
+    } finally {
+      setMarkingAll(false);
+    }
+  };
+
   const alerts = data?.alerts ?? [];
 
   return (
@@ -185,6 +196,11 @@ export function AlertasBody() {
             <strong className="mono block text-xl leading-none text-[var(--text)]">{data?.unread ?? 0}</strong>
             <span className="text-xs text-[var(--text-secondary)]">não lidos</span>
           </div>
+          {data && data.unread > 0 ? (
+            <button className="btn channels-ai-touch" disabled={markingAll} onClick={() => void markAllRead()} type="button">
+              {markingAll ? "Marcando…" : "Marcar todas como lidas"}
+            </button>
+          ) : null}
         </div>
       </header>
 

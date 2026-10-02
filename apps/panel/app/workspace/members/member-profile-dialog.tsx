@@ -23,6 +23,9 @@ export type WorkspaceMember = {
   role_id: string;
   role_name: string;
   is_owner_role: boolean;
+  // B6 Times: vínculo do membro com a equipe do workspace (opcional).
+  team_id?: string | null;
+  team_name?: string | null;
 };
 
 export function canManageMemberProfile(session: PanelSession, member: WorkspaceMember) {

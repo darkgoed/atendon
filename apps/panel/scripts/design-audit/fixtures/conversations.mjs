@@ -1,5 +1,5 @@
 import { IDS, member } from "./session.mjs";
-export const conversation = { id: IDS.conversation, contact_name: "Marina QA", contact_phone: "+55 11 99999-0001", status: "open", last_message: "Preciso confirmar o atendimento.", last_message_at: "2026-08-20T16:10:00.000Z", assigned_user_id: member.id, assigned_user_first_name: "Ana", unread_count: 2, tags: [], ai_active: false };
+export const conversation = { id: IDS.conversation, contact_name: "Marina QA", contact_phone: "+55 11 99999-0001", status: "open", last_message: "Preciso confirmar o atendimento.", last_message_at: "2026-08-20T16:10:00.000Z", assigned_user_id: member.id, assigned_user_first_name: "Ana", unread_count: 2, tags: [], ai_active: false, waiting_minutes: 8 };
 export const messages = [{ id: "qa-msg-1", sender: "contact", content: "Preciso confirmar o atendimento.", status: "read", created_at: "2026-08-20T16:00:00.000Z", media_type: null }, { id: "qa-msg-2", sender: "human", sender_name: "Ana QA", content: "Claro, posso ajudar.", status: "sent", created_at: "2026-08-20T16:02:00.000Z", media_type: null }];
 export function conversationFixture(path) {
   if (path === "/conversations") return { conversations: [conversation], total: 1 };

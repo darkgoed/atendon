@@ -5,6 +5,7 @@ import { CheckCircle, SlidersHorizontal, UserCircle } from "@/components/icons";
 import useSWR from "swr";
 import { Shell } from "@/components/shell";
 import { AppearancePreferences } from "@/components/appearance-preferences";
+import { AccountSecurity } from "@/components/account-security";
 import { api } from "@/lib/api";
 import { workspaceRoleLabel } from "@/lib/labels";
 import type { PanelSession } from "@/lib/session";
@@ -115,6 +116,8 @@ export default function ProfilePage() {
           </Section>
         </Card>
       </div>
+
+      <AccountSecurity totpEnabled={session?.user.totpEnabled} onTotpChanged={() => void mutate()} />
 
       <Card className="admin-card">
         <Section title="Preferências" className={styles.section}>

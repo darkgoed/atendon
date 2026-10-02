@@ -34,11 +34,35 @@ function canReachOnAxis(control, ancestor, axis) {
   return state.overflow !== "hidden" && state.overflow !== "clip";
 }
 
+// Contêiner visualmente oculto de propósito (.sr-only; thead de tabela responsiva em ≤900px): caixa
+// de no máximo 1px fora do fluxo, overflow cortado e clip zerado. Controle DENTRO dele é conteúdo
+// só para tecnologia assistiva, não um botão visível cortado. A assinatura exige todos os sinais:
+// contêiner que colapsou sem clip zerado (bug de layout) ou em fluxo normal continua reprovando.
+const ZERO_CLIP = /^rect\(\s*0(?:px)?\s*[, ]\s*0(?:px)?\s*[, ]\s*0(?:px)?\s*[, ]\s*0(?:px)?\s*\)$/;
+const clipsAll = (overflow) => overflow === "hidden" || overflow === "clip";
+const isVisuallyHidden = (ancestor) =>
+  (ancestor.position === "absolute" || ancestor.position === "fixed")
+  && ancestor.right - ancestor.left <= 1 + EPSILON && ancestor.bottom - ancestor.top <= 1 + EPSILON
+  && clipsAll(ancestor.overflowX) && clipsAll(ancestor.overflowY)
+  && ZERO_CLIP.test(String(ancestor.clip ?? "").trim());
+
+// Controle position:fixed só é oculto de verdade quando um containing block (transform/perspective/filter) o prende dentro
+// de um contêiner oculto. ancestors vem do mais próximo ao mais distante: basta o contêiner oculto mais distante estar no
+// containing block ou acima dele. Sem containing block o fixed não é excluído e segue no gate normal (no Chromium o clip
+// zerado também esconde o fixed solto, e o gate o reprova). ponytail: só ancestrais com overflow são coletados; transform
+// sem overflow não conta como containing block, o que erra para reprovar e nunca para mascarar.
+const isHiddenFromView = (control, ancestors) => {
+  if (control.position !== "fixed") return ancestors.some(isVisuallyHidden);
+  const trap = ancestors.findIndex((ancestor) => ancestor.establishesFixedContainingBlock);
+  return trap >= 0 && ancestors.findLastIndex(isVisuallyHidden) >= trap;
+};
+
 export function classifyControlReachability(control, viewport, ancestors = [], hitTests = [], proof = null, root = null) {
   const intersectsViewport = control.right > 0 && control.left < viewport.width && control.bottom > 0 && control.top < viewport.height;
 
   const fixed = control.position === "fixed";
   const fixedEscaped = fixed && !ancestors.some((ancestor) => ancestor.establishesFixedContainingBlock);
+  if (isHiddenFromView(control, ancestors)) return { clipped: false, reason: "visually-hidden-ancestor", fixedEscaped };
   if (proof && !proof.verified) return { clipped: true, reason: proof.reason ?? "outside-viewport", fixedEscaped };
   const blocked = ancestors.find((ancestor) => {
     const outsideAxes = outside(control, ancestor);
@@ -69,4 +93,13 @@ export const geometrySelfTestVectors = [
   { name: "offscreen fixed control remains a failure", control: { left: -50, top: 10, right: -10, bottom: 30, position: "fixed" }, viewport, ancestors: [], hitTests: [false], proof: { verified: false, reason: "outside-viewport" }, expected: "outside-viewport" },
   { name: "negative x menu with no scroller remains a failure", control: { left: -50, top: 10, right: -10, bottom: 30 }, viewport, ancestors: [], hitTests: [false], proof: { verified: false, reason: "outside-viewport" }, expected: "outside-viewport" },
   { name: "overlay remains a hit-test failure", control: { left: 10, top: 10, right: 30, bottom: 30 }, viewport, ancestors: [], hitTests: [false], proof: { verified: false, reason: "overflow-hit-test-inconclusive" }, expected: "overflow-hit-test-inconclusive" },
+  { name: "sr-only ancestor hides its control on purpose", control: { left: 10, top: 10, right: 30, bottom: 30 }, viewport, ancestors: [box({ left: 12, top: 12, right: 13, bottom: 13, position: "absolute", clip: "rect(0px, 0px, 0px, 0px)" })], hitTests: [false, false, false], proof: { verified: false, reason: "overflow-hit-test-inconclusive" }, expected: "visually-hidden-ancestor" },
+  { name: "1px container without zero clip keeps failing", control: { left: 10, top: 10, right: 30, bottom: 30 }, viewport, ancestors: [box({ left: 12, top: 12, right: 13, bottom: 13, position: "absolute", clip: "auto" })], hitTests: [false, false, false], proof: { verified: false, reason: "overflow-hit-test-inconclusive" }, expected: "overflow-hit-test-inconclusive" },
+  { name: "1px zero-clip box in normal flow keeps failing", control: { left: 10, top: 10, right: 30, bottom: 30 }, viewport, ancestors: [box({ left: 12, top: 12, right: 13, bottom: 13, position: "static", clip: "rect(0px, 0px, 0px, 0px)" })], hitTests: [false, false, false], proof: { verified: false, reason: "overflow-hit-test-inconclusive" }, expected: "overflow-hit-test-inconclusive" },
+  { name: "large zero-clip card keeps failing", control: { left: 120, top: 10, right: 140, bottom: 30 }, viewport, ancestors: [box({ right: 100, bottom: 100, position: "absolute", clip: "rect(0px, 0px, 0px, 0px)" })], hitTests: [false, false, false], proof: { verified: false, reason: "overflow-hit-test-inconclusive" }, expected: "overflow-hit-test-inconclusive" },
+  { name: "fixed control clipped by a transformed sr-only ancestor is exempted", control: { left: 10, top: 10, right: 30, bottom: 30, position: "fixed" }, viewport, ancestors: [box({ left: 12, top: 12, right: 13, bottom: 13, position: "absolute", clip: "rect(0px, 0px, 0px, 0px)", className: "sr-only transform", establishesFixedContainingBlock: true })], hitTests: [false, false, false], proof: { verified: false, reason: "overflow-hit-test-inconclusive" }, expected: "visually-hidden-ancestor" },
+  { name: "fixed control inside a transformed box below the sr-only ancestor is clipped by it", control: { left: 10, top: 10, right: 30, bottom: 30, position: "fixed" }, viewport, ancestors: [box({ className: "transform", establishesFixedContainingBlock: true }), box({ left: 12, top: 12, right: 13, bottom: 13, position: "absolute", clip: "rect(0px, 0px, 0px, 0px)" })], hitTests: [false, false, false], proof: { verified: false, reason: "overflow-hit-test-inconclusive" }, expected: "visually-hidden-ancestor" },
+  { name: "fixed control whose containing block sits above the sr-only ancestor escapes it", control: { left: 10, top: 10, right: 30, bottom: 30, position: "fixed" }, viewport, ancestors: [box({ left: 12, top: 12, right: 13, bottom: 13, position: "absolute", clip: "rect(0px, 0px, 0px, 0px)" }), box({ className: "transform overflow-hidden", establishesFixedContainingBlock: true })], hitTests: [false, false, false], proof: { verified: false, reason: "overflow-hit-test-inconclusive" }, expected: "overflow-hit-test-inconclusive" },
+  { name: "fixed control escaping a sr-only ancestor is not exempted", control: { left: 10, top: 10, right: 30, bottom: 30, position: "fixed" }, viewport, ancestors: [box({ left: 12, top: 12, right: 13, bottom: 13, position: "absolute", clip: "rect(0px, 0px, 0px, 0px)" })], hitTests: [false, false, false], proof: { verified: false, reason: "overflow-hit-test-inconclusive" }, expected: "overflow-hit-test-inconclusive" },
+  { name: "fixed control trapped by an outer sr-only ancestor through a transformed box is exempted", control: { left: 10, top: 10, right: 30, bottom: 30, position: "fixed" }, viewport, ancestors: [box({ left: 12, top: 12, right: 13, bottom: 13, position: "absolute", clip: "rect(0px, 0px, 0px, 0px)" }), box({ className: "transform", establishesFixedContainingBlock: true }), box({ left: 12, top: 12, right: 13, bottom: 13, position: "absolute", clip: "rect(0px, 0px, 0px, 0px)" })], hitTests: [false, false, false], proof: { verified: false, reason: "overflow-hit-test-inconclusive" }, expected: "visually-hidden-ancestor" },
 ];

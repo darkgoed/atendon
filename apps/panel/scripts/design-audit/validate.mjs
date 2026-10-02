@@ -1,4 +1,19 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { createHash } from "node:crypto";
 export const benignExternal = (url) => /^(https:\/\/fonts\.googleapis\.com|https:\/\/fonts\.gstatic\.com)\//.test(url);
+
+// Optional cache contains the real Google stylesheet and font bytes, never an empty substitute.
+export function fontFixture(url, manifestPath = process.env.AUDIT_FONT_CACHE) {
+  if (!manifestPath || !benignExternal(url)) return null;
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const asset = manifest[url];
+  if (!asset) throw new Error(`font cache missing: ${url}`);
+  const body = readFileSync(resolve(dirname(manifestPath), asset.path));
+  const sha256 = createHash("sha256").update(body).digest("hex");
+  if (sha256 !== asset.sha256) throw new Error(`font cache integrity mismatch: ${url}`);
+  return { status: 200, contentType: asset.contentType, body, headers: { "access-control-allow-origin": "*", "x-audit-font-sha256": sha256 } };
+}
 
 /** Theme is part of the record identity; never interpolate an object. */
 export function recordKey(record) {
@@ -7,10 +22,15 @@ export function recordKey(record) {
   return `${record.route}|${theme}|${viewport}`;
 }
 export function expectedPathFor(route, requested, contract) { return contract?.expectedPath ?? requested; }
-const baseline = process.env.AUDIT_PHASE !== "final";
-// Backgrounds computados aceitos por tema: tokens vigentes (tokens.css) primeiro,
-// valores históricos mantidos para comparabilidade com auditorias antigas.
-const knownBackgrounds = { dark: ["#0a0a0a", "rgb(10, 10, 10)", "#0f1115", "rgb(15, 17, 21)", "#101719", "rgb(16, 23, 25)", "#0e1315"], light: baseline ? ["#f5f5f5", "rgb(245, 245, 245)", "#f7f8fa", "rgb(247, 248, 250)", "#f7f7f5", "#F7F7F5", "#f4f3ee", "rgb(244, 243, 238)"] : ["#f5f5f5", "rgb(245, 245, 245)", "#f7f8fa", "rgb(247, 248, 250)", "#f4f3ee", "rgb(244, 243, 238)"] };
+const tokensCss = readFileSync(new URL("../../styles/tokens.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+function tokenBackground(selector) {
+  for (const [, selectors, body] of tokensCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const hex = selectors.trim() === selector ? body.match(/--bg:\s*(#[0-9a-f]{6})\s*;/i)?.[1].toLowerCase() : null;
+    if (hex) return [hex, `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ")})`];
+  }
+  throw new Error(`tokens.css: --bg missing in ${selector}`);
+}
+const knownBackgrounds = { dark: tokenBackground(':root[data-theme="dark"]'), light: tokenBackground(":root") };
 export function validateRecord(record, contract) {
   const errors = [];
   if (!contract) errors.push("missing route fixture contract");

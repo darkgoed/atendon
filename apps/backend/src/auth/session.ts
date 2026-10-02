@@ -38,6 +38,30 @@ export function purposeJwtSecret(purpose: "totp-challenge" | "google-meet-oauth-
   return createHmac("sha256", config.JWT_SECRET).update(`atendon:jwt:${purpose}`).digest("hex");
 }
 
+// Memoização ESCOPADA À REQUEST (WeakMap pela própria request). Resolve
+// sessão/workspace uma vez por request e reutiliza no lifecycle inteiro — o
+// profiling mostrou requireWorkspace executando 2× por request com gate
+// (preHandler + handler). Nada sobrevive à request: revogação de sessão e
+// mudança de acesso continuam valendo na request seguinte, e erros de auth
+// são evictados (nunca ficam cacheados como resultado aproveitável).
+const requestIdentityCache = new WeakMap<object, Promise<IdentitySession>>();
+const requestWorkspaceCache = new WeakMap<object, Promise<WorkspaceSession>>();
+
+function memoizePerRequest<T>(
+  cache: WeakMap<object, Promise<T>>,
+  request: FastifyRequest,
+  run: () => Promise<T>
+): Promise<T> {
+  const cached = cache.get(request);
+  if (cached) return cached;
+  const promise = run();
+  cache.set(request, promise);
+  void promise.catch(() => {
+    if (cache.get(request) === promise) cache.delete(request);
+  });
+  return promise;
+}
+
 export async function createSessionToken(session: PanelSession | IdentitySession): Promise<string> {
   const sessionVersion = session.sessionVersion ?? (await db.query<{ session_version: number }>(
     "SELECT session_version FROM users WHERE id=$1",
@@ -53,6 +77,19 @@ export async function createSessionToken(session: PanelSession | IdentitySession
 }
 
 export async function requireIdentity(
+  request: FastifyRequest,
+  options: { allowPasswordChangeRequired?: boolean } = {}
+): Promise<IdentitySession> {
+  // O desafio de troca de senha relaxa a checagem de must_change_password;
+  // é um caminho único do fluxo de auth e não compartilha o memo do caminho
+  // padrão.
+  if (options.allowPasswordChangeRequired) {
+    return requireIdentityUncached(request, options);
+  }
+  return memoizePerRequest(requestIdentityCache, request, () => requireIdentityUncached(request, options));
+}
+
+async function requireIdentityUncached(
   request: FastifyRequest,
   options: { allowPasswordChangeRequired?: boolean } = {}
 ): Promise<IdentitySession> {
@@ -105,6 +142,10 @@ export async function requireIdentity(
 }
 
 export async function requireWorkspace(request: FastifyRequest): Promise<WorkspaceSession> {
+  return memoizePerRequest(requestWorkspaceCache, request, () => requireWorkspaceUncached(request));
+}
+
+async function requireWorkspaceUncached(request: FastifyRequest): Promise<WorkspaceSession> {
   const identity = await requireIdentity(request);
   if (!identity.tenantId) throw Object.assign(new Error("Workspace ativo não selecionado"), { statusCode: 409 });
 
