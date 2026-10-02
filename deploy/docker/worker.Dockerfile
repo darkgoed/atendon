@@ -13,7 +13,7 @@ COPY apps/panel/package.json apps/panel/package.json
 # O backend depende de @atendon/proposal-renderer (link de workspace no lock):
 # o package.json do renderer precisa existir antes do npm ci.
 COPY apps/proposal-renderer/package.json apps/proposal-renderer/package.json
-RUN npm ci --workspace @atendon/backend --include-workspace-root
+RUN npm ci --workspace @atendon/backend --workspace @atendon/proposal-renderer --include-workspace-root
 
 FROM dependencies AS build
 # types do renderer apontam para src/ e o worker carrega o dist em runtime
@@ -26,7 +26,7 @@ COPY apps/backend/tsconfig.json apps/backend/tsconfig.build.json apps/backend/
 COPY apps/backend/src apps/backend/src
 RUN npm run build -w @atendon/proposal-renderer \
     && npm run build -w @atendon/backend \
-    && npm prune --omit=dev --workspace @atendon/backend --include-workspace-root
+    && npm prune --omit=dev --workspace @atendon/backend --workspace @atendon/proposal-renderer --include-workspace-root
 
 FROM node:22-bookworm-slim AS runtime
 RUN apt-get update \
