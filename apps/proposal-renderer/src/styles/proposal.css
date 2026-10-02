@@ -226,6 +226,42 @@
 }
 
 /* Overlay editorial: a própria foto da capa esmaecida dentro do bloco azul. */
+/* Capa sem foto: composição tipográfica na página inteira, não um bloco
+   no rodapé de uma página azul vazia. */
+.tp-cover--text .tp-cover__block {
+  top: 0;
+  height: auto;
+  padding: 0 22mm 22mm;
+  justify-content: flex-end;
+  background:
+    radial-gradient(120% 70% at 85% 8%, color-mix(in srgb, var(--tp-secondary) 70%, transparent) 0%, transparent 60%),
+    var(--tp-primary);
+}
+
+.tp-cover--text .tp-cover__block::before {
+  content: "";
+  position: absolute;
+  inset: 14mm;
+  border: 1px solid color-mix(in srgb, var(--tp-sand) 45%, transparent);
+  pointer-events: none;
+}
+
+.tp-cover--text .tp-cover__title {
+  font-size: 46pt;
+  line-height: 1.02;
+  max-width: 160mm;
+}
+
+.tp-cover--text .tp-cover__eyebrow::after {
+  content: "";
+  display: block;
+  width: 22mm;
+  margin-top: 5mm;
+  border-top: 2px solid var(--tp-accent);
+}
+
+.tp-cover--text .tp-cover__stats { margin-top: 16mm; }
+
 .tp-cover__block > * {
   position: relative;
   z-index: 1;

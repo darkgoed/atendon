@@ -104,7 +104,7 @@ function cleanStrings(value: unknown): string[] | undefined {
   return items.length > 0 ? items : undefined;
 }
 
-function mapDestinations(state: TripzProposalState, extras: EditorialStateV2): Array<Record<string, unknown>> {
+export function mapDestinations(state: TripzProposalState, extras: EditorialStateV2): Array<Record<string, unknown>> {
   if (Array.isArray(extras.editorial?.destinations) && extras.editorial?.destinations.length > 0) {
     return extras.editorial?.destinations.map((destination, index) => {
       const actNumber = num(destination.actNumber);
