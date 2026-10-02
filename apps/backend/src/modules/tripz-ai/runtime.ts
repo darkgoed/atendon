@@ -14,11 +14,13 @@ import {
   type TripzPdfTextExtractionInput
 } from "./pdf-text-extractor.js";
 import { TripzAiRepository } from "./repository.js";
+import { attachWebImages, wantsWebImages } from "./media/web-images.js";
 
 export interface TripzAiTurnProcessorDependencies {
   authorizeScope: (scope: TripzAiTurnJob["scope"]) => Promise<TripzAiTurnJob["scope"]>;
   createOrchestrator?: () => TripzConversationOrchestrator;
   extractPdfText?: (input: TripzPdfTextExtractionInput) => Promise<string | undefined>;
+  attachWebImages?: typeof attachWebImages;
 }
 
 function safeErrorCode(error: unknown): string {
@@ -195,12 +197,33 @@ export class TripzAiTurnProcessor {
       });
     }
 
+    let proposal = result.proposal;
+    let assistantMessage = result.assistantMessage;
+    if (wantsWebImages(userMessage.content)) {
+      // O modelo não navega; o backend busca fotos de licença aberta no
+      // Wikimedia Commons (hosts fixos) e preenche só os espaços vazios.
+      try {
+        const web = await (this.dependencies.attachWebImages ?? attachWebImages)({
+          scope,
+          conversationId: job.conversationId,
+          proposal,
+          store: this.repository
+        });
+        proposal = web.proposal;
+        assistantMessage = `${assistantMessage}\n\n${web.message}`.trim();
+      } catch (error) {
+        logger.warn({ component: "TripzAI", action: "web_images_failed", tenantId: scope.tenantId,
+          conversationId: job.conversationId, errorCode: safeErrorCode(error) }, "[TripzAI] web images failed");
+        assistantMessage = `${assistantMessage}\n\nNão consegui buscar fotos na internet agora. Tente de novo em instantes ou envie as imagens aqui no chat.`.trim();
+      }
+    }
+
     const completed = await this.repository.completeAiTurn(scope, {
       conversationId: job.conversationId,
       userMessageId: job.messageId,
       expectedRevision: detail.proposal.revision,
-      proposal: result.proposal,
-      assistantMessage: result.assistantMessage,
+      proposal,
+      assistantMessage,
       summary: result.summary,
       attachmentResults
     });

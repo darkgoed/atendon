@@ -180,7 +180,7 @@ export function upsertImageAssignments(
       // Enquadramento/legenda pertencem à foto: só herdam quando a foto continua a mesma.
       ...(item.placement ? { placement: item.placement } : sameMedia && previous?.placement ? { placement: previous.placement } : {}),
       ...(item.caption ? { caption: item.caption } : sameMedia && previous?.caption ? { caption: previous.caption } : {}),
-      ...(sameMedia && previous?.source ? { source: previous.source } : {})
+      ...("source" in item && item.source ? { source: item.source } : sameMedia && previous?.source ? { source: previous.source } : {})
     } as TripzImageAssignment;
     if (index >= 0) next[index] = assignment;
     else next.push(assignment);

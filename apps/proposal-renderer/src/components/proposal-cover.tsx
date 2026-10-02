@@ -6,10 +6,12 @@ export function ProposalCover({ data }: { data: CoverPageData }): JSX.Element {
   // A origem já aparece na linha de embarque; repetir abaixo do título polui a capa.
   const showOrigin = Boolean(data.origin) && !data.dateLine.note;
   return (
-    <section className="tp-page tp-cover" data-page-id="cover">
-      <div className="tp-cover__photo">
-        {data.photo ? <PhotoWithCaption photo={data.photo} /> : <div className="tp-photo" />}
-      </div>
+    <section className={data.photo?.src ? "tp-page tp-cover" : "tp-page tp-cover tp-cover--text"} data-page-id="cover">
+      {data.photo?.src ? (
+        <div className="tp-cover__photo">
+          <PhotoWithCaption photo={data.photo} />
+        </div>
+      ) : null}
       <div className="tp-cover__block">
         <p className="tp-cover__eyebrow">PROPOSTA DE VIAGEM</p>
         <h1 className="tp-cover__title">{data.tripTitle}</h1>
