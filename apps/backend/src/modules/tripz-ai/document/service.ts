@@ -69,7 +69,11 @@ export class TripzDocumentService {
     }
     // Foto atribuída a um slot (capa, hotel X…) entra mesmo fora da seleção —
     // ex.: imagem enviada por URL no editor ou indicada no chat. Atribuídas primeiro.
-    const assignedIds = [...new Set(spec.imageAssignments.map((assignment) => assignment.mediaId))];
+    const sectionMediaIds = spec.customSections.flatMap((section) => [
+      ...(section.mediaId ? [section.mediaId] : []),
+      ...section.blocks.flatMap((block) => block.type === "image" ? [block.mediaId] : [])
+    ]);
+    const assignedIds = [...new Set([...spec.imageAssignments.map((assignment) => assignment.mediaId), ...sectionMediaIds])];
     const mediaIds = [...new Set([...assignedIds, ...selectedMedia.map((media) => media.attachmentId)])]
       .slice(0, TRIPZ_DOCUMENT_MAX_MEDIA + 4);
     let totalBytes = 0;

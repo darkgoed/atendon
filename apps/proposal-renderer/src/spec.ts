@@ -168,8 +168,104 @@ export const pageOverrideSchema = z.object({
   page: z.string().trim().min(1).max(120),
   hidden: z.boolean().optional(),
   /** Deslocamento relativo na sequência (ordem de empate estável por id). */
-  order: z.number().int().min(-100).max(100).optional()
+  order: z.number().int().min(-100).max(100).optional(),
+  /** Layout das páginas de destino: foto no topo (hero) ou lateral (side). */
+  layout: z.enum(["hero", "side"]).optional()
 }).strict();
+
+/* ------------------------------------------------------- seções dinâmicas */
+
+const blockText = z.string().trim().min(1).max(1_400);
+const cellText = z.string().trim().max(200);
+
+/** Blocos tipados que a IA combina livremente dentro de uma seção. */
+export const sectionBlockSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("paragraph"), text: blockText }).strict(),
+  z.object({
+    type: z.literal("bullets"),
+    title: shortText.optional(),
+    style: z.enum(["check", "dot", "number"]).default("dot"),
+    items: z.array(z.string().trim().min(1).max(400)).min(1).max(16)
+  }).strict(),
+  z.object({
+    type: z.literal("cards"),
+    columns: z.union([z.literal(2), z.literal(3)]).optional(),
+    items: z.array(z.object({
+      label: z.string().trim().min(1).max(80).optional(),
+      title: z.string().trim().min(1).max(120),
+      text: z.string().trim().min(1).max(500).optional()
+    }).strict()).min(1).max(9)
+  }).strict(),
+  z.object({
+    type: z.literal("table"),
+    title: shortText.optional(),
+    columns: z.array(z.string().trim().min(1).max(60)).min(2).max(6),
+    rows: z.array(z.array(cellText).min(1).max(6)).min(1).max(16)
+  }).strict(),
+  z.object({
+    type: z.literal("highlight"),
+    label: z.string().trim().min(1).max(80).optional(),
+    text: z.string().trim().min(1).max(700),
+    tone: z.enum(["primary", "accent", "sand", "info"]).default("primary")
+  }).strict(),
+  z.object({ type: z.literal("quote"), text: z.string().trim().min(1).max(300) }).strict(),
+  z.object({
+    type: z.literal("timeline"),
+    items: z.array(z.object({
+      label: z.string().trim().min(1).max(40),
+      title: z.string().trim().min(1).max(120),
+      text: z.string().trim().min(1).max(500).optional()
+    }).strict()).min(1).max(10)
+  }).strict(),
+  z.object({
+    type: z.literal("stats"),
+    items: z.array(z.object({
+      value: z.string().trim().min(1).max(24),
+      label: z.string().trim().min(1).max(60)
+    }).strict()).min(1).max(4)
+  }).strict(),
+  z.object({
+    type: z.literal("image"),
+    mediaId: z.string().trim().min(1).max(120),
+    caption: shortText.optional()
+  }).strict()
+]);
+export type SectionBlock = z.infer<typeof sectionBlockSchema>;
+
+/**
+ * Seção editorial criada pela IA conforme o conteúdo (dicas, clima,
+ * documentação, comparativos...). Vira uma ou mais páginas A4 no visual da
+ * marca; o renderer pagina pelo tamanho estimado dos blocos.
+ */
+export const customSectionSchema = z.object({
+  id: z.string().trim().regex(/^[a-z0-9-]{1,60}$/),
+  eyebrow: z.string().trim().min(1).max(80).optional(),
+  title: z.string().trim().min(1).max(140),
+  intro: z.string().trim().min(1).max(900).optional(),
+  /** standard: coluna única; split: foto lateral; hero: foto no topo; band: página na cor primária. */
+  layout: z.enum(["standard", "split", "hero", "band"]).default("standard"),
+  mediaId: z.string().trim().min(1).max(120).optional(),
+  /** Id da página após a qual a seção entra (ex.: "concept", "destination:roma", "services"). */
+  after: z.string().trim().min(1).max(120).optional(),
+  blocks: z.array(sectionBlockSchema).min(1).max(14)
+}).strict();
+export type CustomSection = z.infer<typeof customSectionSchema>;
+
+const hexColor = z.string().trim().regex(/^#[0-9a-fA-F]{6}$/);
+
+/** Visual por proposta: paleta, par de fontes e estilo de capa (com guarda de contraste no render). */
+export const proposalThemeSchema = z.object({
+  palette: z.object({
+    primary: hexColor.optional(),
+    secondary: hexColor.optional(),
+    accent: hexColor.optional(),
+    sand: hexColor.optional(),
+    background: hexColor.optional()
+  }).strict().optional(),
+  fontPair: z.enum(["classic", "elegant", "refined", "modern"]).optional(),
+  coverStyle: z.enum(["classic", "split", "minimal", "framed"]).optional()
+}).strict();
+export type ProposalTheme = z.infer<typeof proposalThemeSchema>;
 export type PageOverride = z.infer<typeof pageOverrideSchema>;
 
 export const imageSourceSchema = z.object({
@@ -261,7 +357,9 @@ export const proposalSpecSchema = z.object({
     }
   }),
   sources: z.array(sourceReferenceSchema).max(40).default([]),
-  pageOverrides: z.array(pageOverrideSchema).max(60).default([])
+  pageOverrides: z.array(pageOverrideSchema).max(60).default([]),
+  customSections: z.array(customSectionSchema).max(12).default([]),
+  theme: proposalThemeSchema.default({})
 }).strict();
 
 export type ProposalSpec = z.infer<typeof proposalSpecSchema>;

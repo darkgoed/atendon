@@ -1,3 +1,3 @@
-Noto Sans and Noto Serif Display are variable fonts served by Google Fonts
-and licensed under the SIL Open Font License 1.1 (https://openfontlicense.org).
-Subset: latin + latin-ext.
+Noto Sans, Noto Serif Display, Cormorant Garamond, Playfair Display and Montserrat
+are fonts served by Google Fonts and licensed under the SIL Open Font License 1.1
+(https://openfontlicense.org). Subset: latin + latin-ext.

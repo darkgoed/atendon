@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { basename } from "node:path";
 import { TripzAiError, type TripzAccessScope, type TripzAttachment } from "./domain.js";
 import type { TripzAttachmentBinary, TripzRepositoryPort } from "./repository.js";
+import { TRIPZ_DOCX_MIME, TRIPZ_XLSX_MIME, detectOfficeZip, looksLikeText } from "./office-text.js";
 
 export const TRIPZ_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const TRIPZ_MAX_PDF_BYTES = 20 * 1024 * 1024;
@@ -9,13 +10,15 @@ export const TRIPZ_MAX_IMAGE_PIXELS = 40_000_000;
 export const TRIPZ_MAX_IMAGE_DIMENSION = 16_384;
 export const TRIPZ_MAX_PDF_PAGE_HINT = 200;
 
-export type TripzAllowedMimeType = "image/jpeg" | "image/png" | "image/webp" | "application/pdf";
+export type TripzAllowedMimeType = "image/jpeg" | "image/png" | "image/webp" | "application/pdf"
+  | typeof TRIPZ_DOCX_MIME | typeof TRIPZ_XLSX_MIME | "text/plain" | "text/csv";
+export const TRIPZ_MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
 
 export interface TripzValidatedUpload {
   data: Buffer;
   fileName: string;
   mimeType: TripzAllowedMimeType;
-  extension: "jpg" | "png" | "webp" | "pdf";
+  extension: "jpg" | "png" | "webp" | "pdf" | "docx" | "xlsx" | "txt" | "csv";
   contentHash: string;
   metadata: Record<string, unknown>;
 }
@@ -35,8 +38,16 @@ const MIME_EXTENSION: Record<TripzAllowedMimeType, readonly string[]> = {
   "image/jpeg": ["jpg", "jpeg"],
   "image/png": ["png"],
   "image/webp": ["webp"],
-  "application/pdf": ["pdf"]
+  "application/pdf": ["pdf"],
+  [TRIPZ_DOCX_MIME]: ["docx"],
+  [TRIPZ_XLSX_MIME]: ["xlsx"],
+  "text/plain": ["txt", "md"],
+  "text/csv": ["csv"]
 };
+
+function isDocumentMime(mimeType: TripzAllowedMimeType): boolean {
+  return mimeType !== "image/jpeg" && mimeType !== "image/png" && mimeType !== "image/webp";
+}
 
 function uploadError(code: string, message: string): TripzAiError {
   return new TripzAiError(400, code, message);
@@ -65,6 +76,8 @@ function detectMimeType(data: Buffer): TripzAllowedMimeType | null {
   if (data.length >= 12 && data.subarray(0, 4).toString("ascii") === "RIFF"
     && data.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
   if (data.length >= 8 && data.subarray(0, 5).toString("ascii") === "%PDF-") return "application/pdf";
+  const office = detectOfficeZip(data);
+  if (office) return office;
   return null;
 }
 
@@ -144,14 +157,16 @@ export function validateTripzUpload(input: {
   }
   const data = input.data;
   if (!Buffer.isBuffer(data) || !data.length) throw uploadError("TRIPZ_FILE_EMPTY", "O arquivo está vazio");
-  const detectedMimeType = detectMimeType(data);
+  const detectedMimeType = detectMimeType(data)
+    ?? ((input.mimeType === "text/plain" || input.mimeType === "text/csv") && looksLikeText(data) ? input.mimeType : null);
   if (detectedMimeType !== input.mimeType) {
     throw uploadError("TRIPZ_MAGIC_BYTES_INVALID", "O conteúdo não corresponde ao tipo do arquivo");
   }
-  const maxBytes = input.mimeType === "application/pdf" ? TRIPZ_MAX_PDF_BYTES : TRIPZ_MAX_IMAGE_BYTES;
+  const maxBytes = input.mimeType === "application/pdf" ? TRIPZ_MAX_PDF_BYTES
+    : isDocumentMime(input.mimeType) ? TRIPZ_MAX_DOCUMENT_BYTES : TRIPZ_MAX_IMAGE_BYTES;
   if (data.length > maxBytes) {
-    throw new TripzAiError(413, "TRIPZ_FILE_SIZE", input.mimeType === "application/pdf"
-      ? "O PDF deve ter no máximo 20 MB"
+    throw new TripzAiError(413, "TRIPZ_FILE_SIZE", isDocumentMime(input.mimeType)
+      ? "O documento deve ter no máximo 20 MB"
       : "A imagem deve ter no máximo 10 MB");
   }
   let metadata: Record<string, unknown> = {};
@@ -161,6 +176,8 @@ export function validateTripzUpload(input: {
       throw new TripzAiError(413, "TRIPZ_PDF_PAGES", "O PDF excede o limite de 200 páginas");
     }
     metadata = { pageCountHint };
+  } else if (isDocumentMime(input.mimeType)) {
+    metadata = { document: true };
   } else {
     metadata = validateDimensions(imageDimensions(data, input.mimeType));
   }
@@ -168,7 +185,7 @@ export function validateTripzUpload(input: {
     data,
     fileName,
     mimeType: input.mimeType,
-    extension: input.mimeType === "image/jpeg" ? "jpg" : MIME_EXTENSION[input.mimeType][0] as "png" | "webp" | "pdf",
+    extension: input.mimeType === "image/jpeg" ? "jpg" : MIME_EXTENSION[input.mimeType][0] as TripzValidatedUpload["extension"],
     contentHash: createHash("sha256").update(data).digest("hex"),
     metadata
   };

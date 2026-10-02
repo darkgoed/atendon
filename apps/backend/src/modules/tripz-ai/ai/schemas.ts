@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { customSectionSchema, proposalThemeSchema } from "@atendon/proposal-renderer";
 import { TRIPZ_MEDIA_CATEGORIES } from "../domain.js";
 
 const shortText = z.string().trim().min(1).max(500);
@@ -115,9 +116,18 @@ export const tripzEditorialPatchSchema = z.object({
     caption: shortText.optional()
   }).strict()).max(40).optional(),
   pageOverrides: z.array(z.object({
-    page: z.enum(["cover", "concept", "overview", "destination", "hotel", "experiences", "services", "flights", "closing"]),
-    hidden: z.boolean().optional()
-  }).strict()).max(20).optional(),
+    page: z.string().trim().regex(/^(?:cover|concept|overview|experiences|services|flights|closing|(?:destination|hotel|section):[a-z0-9-]{1,60})$/),
+    hidden: z.boolean().optional(),
+    order: z.number().int().min(-100).max(100).optional(),
+    layout: z.enum(["hero", "side"]).optional()
+  }).strict()).max(40).optional(),
+  /** Seções livres (upsert por id; { id, remove: true } apaga). */
+  customSections: z.array(z.union([
+    customSectionSchema,
+    z.object({ id: z.string().trim().regex(/^[a-z0-9-]{1,60}$/), remove: z.literal(true) }).strict()
+  ])).max(12).optional(),
+  /** Visual desta proposta; null volta à identidade padrão da marca. */
+  theme: proposalThemeSchema.nullable().optional(),
   sources: z.array(z.object({
     label: shortText,
     url: z.string().trim().url().max(2_000).optional(),
@@ -313,6 +323,177 @@ function removeUnknownKeysAt(value: unknown, path: readonly (string | number)[],
 
 const PROVIDER_PATCH_SALVAGE_ROUNDS = 3;
 
+/** Partes opcionais do layout: um item inválido some sozinho em vez de derrubar o turno. */
+const DECORATIVE_LISTS = new Set(["customSections", "pageOverrides", "imageAssignments", "sources"]);
+
+function droppableDecorativeItems(error: z.ZodError): Array<(string | number)[]> {
+  const found: Array<(string | number)[]> = [];
+  const visit = (issues: z.ZodIssue[]): void => {
+    for (const issue of issues) {
+      const [root, key, index] = issue.path;
+      if (root === "editorial" && key === "theme") found.push(["editorial", "theme"]);
+      else if (root === "editorial" && typeof key === "string" && DECORATIVE_LISTS.has(key) && typeof index === "number") found.push(["editorial", key, index]);
+      else if (issue.code === "invalid_union") for (const unionError of issue.unionErrors) visit(unionError.issues);
+    }
+  };
+  visit(error.issues);
+  // Só vale se TODO erro restante cair em partes decorativas.
+  const decorative = error.issues.every((issue) => issue.path[0] === "editorial"
+    && (issue.path[1] === "theme" || (typeof issue.path[1] === "string" && DECORATIVE_LISTS.has(issue.path[1]) && typeof issue.path[2] === "number")));
+  return decorative ? found : [];
+}
+
+function dropDecorativeItems(value: unknown, paths: Array<(string | number)[]>): void {
+  if (!value || typeof value !== "object") return;
+  const editorial = (value as Record<string, unknown>).editorial as Record<string, unknown> | undefined;
+  if (!editorial) return;
+  const byList = new Map<string, Set<number>>();
+  for (const path of paths) {
+    if (path[1] === "theme") delete editorial.theme;
+    else byList.set(String(path[1]), (byList.get(String(path[1])) ?? new Set()).add(Number(path[2])));
+  }
+  for (const [key, indexes] of byList) {
+    const list = editorial[key];
+    if (Array.isArray(list)) editorial[key] = list.filter((_item, index) => !indexes.has(index));
+  }
+}
+
+const EDITORIAL_ONLY_KEYS = ["customSections", "theme", "pageOverrides", "narrative", "imageAssignments", "sources", "destinations", "hotels", "experiences", "inclusions", "commercial", "tripTitle"] as const;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function inclusionGroup(section: unknown, items: unknown): { section: string; items: Array<{ title: string; detail?: string }> } | undefined {
+  if (!Array.isArray(items)) return undefined;
+  const normalized = items.flatMap((item) => typeof item === "string" && item.trim()
+    ? [{ title: item.trim().slice(0, 500) }]
+    : isPlainObject(item) && typeof item.title === "string" ? [item as { title: string; detail?: string }] : []);
+  if (normalized.length === 0) return undefined;
+  return { section: typeof section === "string" && section.trim() ? section.trim().slice(0, 500) : "Incluído", items: normalized.slice(0, 30) };
+}
+
+/**
+ * Formas que o modelo produz de verdade e que têm leitura inequívoca:
+ * campos editoriais no topo do patch (fora de "editorial") e inclusions como
+ * objeto { eyebrow/section, items: [texto] } ou lista de textos.
+ */
+export function normalizeProviderPatchShape(value: unknown): unknown {
+  if (!isPlainObject(value)) return value;
+  const patch: Record<string, unknown> = { ...value };
+  const editorial: Record<string, unknown> = isPlainObject(patch.editorial) ? { ...patch.editorial } : {};
+  let moved = false;
+  for (const key of EDITORIAL_ONLY_KEYS) {
+    if (key in patch && !["title"].includes(key)) {
+      if (!(key in editorial)) editorial[key] = patch[key];
+      delete patch[key];
+      moved = true;
+    }
+  }
+  // Texto editorial de destino escrito dentro de editorial.destinations
+  // (eyebrow/headline/body) pertence a narrative.destinationCopy[id].
+  if (Array.isArray(editorial.destinations)) {
+    const copyKeys = ["eyebrow", "headline", "body", "quote", "momentsLabel", "moments"] as const;
+    const narrative: Record<string, unknown> = isPlainObject(editorial.narrative) ? { ...editorial.narrative } : {};
+    const destinationCopy: Record<string, unknown> = isPlainObject(narrative.destinationCopy) ? { ...narrative.destinationCopy } : {};
+    let copied = false;
+    editorial.destinations = editorial.destinations.map((item) => {
+      if (!isPlainObject(item) || typeof item.id !== "string") return item;
+      const destination: Record<string, unknown> = { ...item };
+      const copy: Record<string, unknown> = {};
+      for (const key of copyKeys) {
+        if (key in destination) { copy[key] = destination[key]; delete destination[key]; }
+      }
+      if (typeof copy.body === "string") copy.body = [copy.body];
+      if (Object.keys(copy).length > 0 && !(item.id in destinationCopy)) {
+        destinationCopy[item.id] = copy;
+        copied = true;
+      }
+      return destination;
+    });
+    if (copied) {
+      narrative.destinationCopy = destinationCopy;
+      editorial.narrative = narrative;
+      moved = true;
+    }
+  }
+  // Hotel: body/headline viram description/highlightNote.
+  if (Array.isArray(editorial.hotels)) {
+    editorial.hotels = editorial.hotels.map((item) => {
+      if (!isPlainObject(item)) return item;
+      const hotel: Record<string, unknown> = { ...item };
+      const body = Array.isArray(hotel.body) ? hotel.body.filter((part) => typeof part === "string").join("\n\n") : hotel.body;
+      if (typeof body === "string" && body.trim() && hotel.description === undefined) hotel.description = body.slice(0, 4_000);
+      if (typeof hotel.headline === "string" && hotel.highlightNote === undefined) hotel.highlightNote = hotel.headline;
+      delete hotel.body;
+      delete hotel.headline;
+      delete hotel.eyebrow;
+      return hotel;
+    });
+  }
+  const inclusions = editorial.inclusions;
+  if (inclusions !== undefined && !(Array.isArray(inclusions) && inclusions.every((group) => isPlainObject(group) && typeof group.section === "string"))) {
+    let groups: unknown[] = [];
+    if (isPlainObject(inclusions)) {
+      const group = inclusionGroup(inclusions.section ?? inclusions.eyebrow ?? inclusions.title, inclusions.items);
+      groups = group ? [group] : [];
+    } else if (Array.isArray(inclusions)) {
+      if (inclusions.every((item) => typeof item === "string")) {
+        const group = inclusionGroup("Incluído", inclusions);
+        groups = group ? [group] : [];
+      } else {
+        groups = inclusions.flatMap((item) => isPlainObject(item)
+          ? [inclusionGroup(item.section ?? item.eyebrow ?? item.title, item.items)].filter(Boolean)
+          : []);
+      }
+    }
+    editorial.inclusions = groups;
+    moved = true;
+  }
+  if (moved || isPlainObject(patch.editorial)) patch.editorial = editorial;
+  return patch;
+}
+
+/**
+ * Patches grandes (seções inteiras) às vezes saem com chave sobrando no fim
+ * ("Extra data") ou cortados antes de fechar. Varre respeitando strings:
+ * fica com o primeiro objeto completo, ou fecha o que ficou aberto. O
+ * resultado ainda passa pela validação completa do schema.
+ */
+export function repairJsonObjectText(text: string): unknown {
+  const start = text.indexOf("{");
+  if (start < 0) return undefined;
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+  let end = -1;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === "\"") inString = false;
+      continue;
+    }
+    if (char === "\"") inString = true;
+    else if (char === "{" || char === "[") stack.push(char === "{" ? "}" : "]");
+    else if (char === "}" || char === "]") {
+      if (stack.pop() !== char) return undefined;
+      if (stack.length === 0) { end = index; break; }
+    }
+  }
+  const body = end >= 0
+    ? text.slice(start, end + 1)
+    : inString ? undefined : `${text.slice(start).replace(/,\s*$/, "")}${stack.reverse().join("")}`;
+  if (body === undefined) return undefined;
+  try {
+    const value = JSON.parse(body) as unknown;
+    return value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // Providers invent fields outside the grammar despite the strict JSON schema
 // (observed in production: unknown top-level keys and {count, description}
 // passengers). Unknown keys are inert downstream — the allowlisted applier
@@ -328,14 +509,25 @@ export const tripzProviderProposalPatchSchema = z.unknown().transform((value, co
     try {
       candidate = JSON.parse(candidate) as unknown;
     } catch {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "proposalPatch não contém JSON válido" });
-      return z.NEVER;
+      const repaired = repairJsonObjectText(candidate as string);
+      if (repaired === undefined) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "proposalPatch não contém JSON válido" });
+        return z.NEVER;
+      }
+      candidate = repaired;
     }
   }
+  candidate = normalizeProviderPatchShape(candidate);
   for (let round = 0; round <= PROVIDER_PATCH_SALVAGE_ROUNDS; round += 1) {
     const parsed = tripzProposalPatchSchema.safeParse(candidate);
     if (parsed.success) return parsed.data;
     const removals = collectUnknownKeyRemovals(parsed.error);
+    const droppable = droppableDecorativeItems(parsed.error);
+    if (droppable.length > 0 && round < PROVIDER_PATCH_SALVAGE_ROUNDS) {
+      candidate = structuredClone(candidate) as object;
+      dropDecorativeItems(candidate, droppable);
+      continue;
+    }
     if (removals.length === 0 || round === PROVIDER_PATCH_SALVAGE_ROUNDS) {
       for (const issue of parsed.error.issues.slice(0, 20)) context.addIssue(issue);
       return z.NEVER;

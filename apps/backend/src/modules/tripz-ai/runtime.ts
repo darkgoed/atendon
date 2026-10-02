@@ -2,6 +2,7 @@ import { logger } from "../../logger.js";
 import type { TripzAiTurnJob } from "../../queue/tripz-ai-queue.js";
 import { getBrandSettings, tripzBrandDatabase } from "./document/brand-settings.js";
 import { TripzAiError, type TripzAttachmentProcessingStatus } from "./domain.js";
+import { tripzProposalContentFingerprint } from "./ai/proposal-validator.js";
 import {
   parseTripzOpenRouterConfig,
   TripzConversationOrchestrator,
@@ -15,6 +16,7 @@ import {
 } from "./pdf-text-extractor.js";
 import { TripzAiRepository } from "./repository.js";
 import { attachWebImages, wantsWebImages } from "./media/web-images.js";
+import { extractOfficeText, isTripzOfficeMime } from "./office-text.js";
 
 export interface TripzAiTurnProcessorDependencies {
   authorizeScope: (scope: TripzAiTurnJob["scope"]) => Promise<TripzAiTurnJob["scope"]>;
@@ -104,7 +106,9 @@ export class TripzAiTurnProcessor {
         attachmentId,
         status: "processing"
       });
-      const extractedText = stored.attachment.mimeType === "application/pdf"
+      const extractedText = isTripzOfficeMime(stored.attachment.mimeType)
+        ? stored.extractedText ?? extractOfficeText(stored.data, stored.attachment.mimeType)
+        : stored.attachment.mimeType === "application/pdf"
         ? stored.extractedText ?? await (this.dependencies.extractPdfText ?? extractTripzPdfTextLocally)({
           data: stored.data,
           mimeType: stored.attachment.mimeType,
@@ -167,10 +171,11 @@ export class TripzAiTurnProcessor {
 
     const attachmentResults = attachments.map((attachment) => {
       const media = result.proposal.media.find((item) => item.attachmentId === attachment.attachmentId);
+      const isDocument = attachment.mimeType === "application/pdf" || isTripzOfficeMime(attachment.mimeType);
       const extractedText = attachment.mimeType === "application/pdf"
         ? attachment.extractedText ?? extractedPdfText(result.fileAnnotations, attachment.fileName)
-        : undefined;
-      const status: TripzAttachmentProcessingStatus = attachment.mimeType === "application/pdf"
+        : isDocument ? attachment.extractedText : undefined;
+      const status: TripzAttachmentProcessingStatus = isDocument
         ? extractedText ? "processed" : "needs_review"
         : media?.confidence !== undefined && media.confidence >= 0.6 ? "processed" : "needs_review";
       return {
@@ -218,12 +223,18 @@ export class TripzAiTurnProcessor {
       }
     }
 
+    if (result.autoGenerate && proposal !== result.proposal) {
+      // As fotos da internet mudaram o conteúdo: a confirmação vale para a versão final.
+      proposal = { ...proposal, reviewConfirmation: { proposalFingerprint: tripzProposalContentFingerprint(proposal), confirmed: true } };
+    }
+
     const completed = await this.repository.completeAiTurn(scope, {
       conversationId: job.conversationId,
       userMessageId: job.messageId,
       expectedRevision: detail.proposal.revision,
       proposal,
       assistantMessage,
+      ...(result.autoGenerate ? { messageMetadata: { autoGenerate: true } } : {}),
       summary: result.summary,
       attachmentResults
     });

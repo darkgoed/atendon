@@ -7,6 +7,7 @@ import type { ProposalSpec } from "./spec.js";
 import type { ProposalDocumentAssets } from "./page-data.js";
 import { ProposalDocument } from "./document.js";
 import { proposalFontFaceCssInline, proposalFontFaceCssExternal } from "./fonts.js";
+import { FONT_PAIRS, fontPairOf } from "./theme.js";
 
 const RENDERER_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -49,9 +50,10 @@ export function renderProposalHtml(input: {
   baseUrl?: string;
 }): string {
   const fontMode = input.fontMode ?? "inline";
+  const families = ["Noto Sans", FONT_PAIRS[fontPairOf(input.spec.theme)].display];
   const fontCss = fontMode === "external"
-    ? proposalFontFaceCssExternal(input.fontBaseUrl ?? "/proposal-fonts")
-    : proposalFontFaceCssInline();
+    ? proposalFontFaceCssExternal(input.fontBaseUrl ?? "/proposal-fonts", families)
+    : proposalFontFaceCssInline(families);
   const css = readProposalCss();
   const markup = renderDocumentMarkup({ spec: input.spec, brand: input.brand, assets: input.assets });
   const title = `${input.spec.tripTitle ?? "Proposta"} · Proposta`;

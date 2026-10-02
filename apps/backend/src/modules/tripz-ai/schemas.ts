@@ -163,7 +163,8 @@ const proposalFields = {
 export const tripzEditorialStateSchema = proposalSpecSchema.pick({
   tripTitle: true, origin: true, destinations: true, hotels: true, experiences: true,
   inclusions: true, exclusions: true, baggage: true, cancellationPolicies: true,
-  transfers: true, imageAssignments: true, pageOverrides: true, sources: true
+  transfers: true, imageAssignments: true, pageOverrides: true, sources: true,
+  customSections: true, theme: true
 }).partial().extend({
   narrative: narrativeSchema.partial().optional(),
   commercial: commercialSchema.partial().optional(),
@@ -249,7 +250,12 @@ const mimeHeader = z.preprocess(
   firstHeader,
   z.string().trim().min(1)
     .transform((value) => value.split(";", 1)[0].trim().toLocaleLowerCase("en-US"))
-    .pipe(z.enum(["image/jpeg", "image/png", "image/webp", "application/pdf"]))
+    .pipe(z.enum([
+      "image/jpeg", "image/png", "image/webp", "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/plain", "text/csv"
+    ]))
 );
 const contentLengthHeader = z.preprocess(
   firstHeader,

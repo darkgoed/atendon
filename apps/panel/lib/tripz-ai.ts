@@ -2,7 +2,26 @@ import { ApiError, api } from "./api";
 import { shouldSubmitOnEnter } from "./compat";
 
 export const TRIPZ_AI_BASE_PATH = "/tripz-ai";
-export const TRIPZ_AI_ACCEPT = "image/jpeg,image/png,image/webp,application/pdf";
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+export const TRIPZ_AI_ACCEPT = `image/jpeg,image/png,image/webp,application/pdf,${DOCX_MIME},${XLSX_MIME},text/plain,text/csv,.docx,.xlsx,.txt,.csv,.md`;
+
+const MIME_BY_EXTENSION: Record<string, string> = {
+  jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", pdf: "application/pdf",
+  docx: DOCX_MIME, xlsx: XLSX_MIME, txt: "text/plain", md: "text/plain", csv: "text/csv"
+};
+
+/** Tipo do arquivo para o upload: navegadores mandam vazio ou genérico para .md/.csv/.docx. */
+export function tripzFileMime(file: File): string {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const byExtension = MIME_BY_EXTENSION[extension];
+  if (allowedMimeTypes.has(file.type) && (!byExtension || byExtension === file.type || file.type.startsWith("image/"))) return file.type;
+  return byExtension ?? file.type;
+}
+
+export function isTripzDocumentFile(file: File): boolean {
+  return !tripzFileMime(file).startsWith("image/");
+}
 export const TRIPZ_AI_MAX_FILES_PER_MESSAGE = 10;
 export const TRIPZ_AI_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const TRIPZ_AI_MAX_PDF_BYTES = 20 * 1024 * 1024;
@@ -120,7 +139,11 @@ const allowedMimeTypes = new Set([
   "image/jpeg",
   "image/png",
   "image/webp",
-  "application/pdf"
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/plain",
+  "text/csv"
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -351,11 +374,13 @@ export function validateTripzFiles(
       rejected.push({ file, reason: `Limite de ${TRIPZ_AI_MAX_FILES_PER_MESSAGE} anexos por mensagem.` });
       continue;
     }
-    if (!allowedMimeTypes.has(file.type)) {
-      rejected.push({ file, reason: "Formato não aceito. Use JPEG, PNG, WebP ou PDF." });
+    const mime = tripzFileMime(file);
+    if (!allowedMimeTypes.has(mime)) {
+      rejected.push({ file, reason: "Formato não aceito. Use imagem, PDF, Word, Excel, CSV ou TXT." });
       continue;
     }
-    const limit = file.type === "application/pdf" ? TRIPZ_AI_MAX_PDF_BYTES : TRIPZ_AI_MAX_IMAGE_BYTES;
+    const isDocument = !mime.startsWith("image/");
+    const limit = isDocument ? TRIPZ_AI_MAX_PDF_BYTES : TRIPZ_AI_MAX_IMAGE_BYTES;
     if (file.size <= 0) {
       rejected.push({ file, reason: "O arquivo está vazio." });
       continue;
@@ -363,7 +388,7 @@ export function validateTripzFiles(
     if (file.size > limit) {
       rejected.push({
         file,
-        reason: file.type === "application/pdf" ? "PDF maior que 20 MB." : "Imagem maior que 10 MB."
+        reason: isDocument ? "Documento maior que 20 MB." : "Imagem maior que 10 MB."
       });
       continue;
     }
@@ -517,7 +542,7 @@ export async function uploadTripzAttachment(
     {
       method: "POST",
       headers: {
-        "Content-Type": file.type,
+        "Content-Type": tripzFileMime(file),
         "X-File-Name": encodeURIComponent(file.name),
         "X-Tripz-File-Name": encodeURIComponent(file.name)
       },

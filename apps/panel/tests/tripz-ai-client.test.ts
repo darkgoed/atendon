@@ -234,7 +234,7 @@ describe("Tripz composer guards", () => {
     const html = new File(["<html>"], "dados.html", { type: "text/html" });
     const result = validateTripzFiles([image, pdf, html]);
     expect(result.accepted).toEqual([image, pdf]);
-    expect(result.rejected).toEqual([{ file: html, reason: "Formato não aceito. Use JPEG, PNG, WebP ou PDF." }]);
+    expect(result.rejected).toEqual([{ file: html, reason: "Formato não aceito. Use imagem, PDF, Word, Excel, CSV ou TXT." }]);
   });
 
   it("rejects a valid individual file when the composer batch would exceed 40 MB", () => {

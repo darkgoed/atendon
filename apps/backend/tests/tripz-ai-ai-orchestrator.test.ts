@@ -415,29 +415,64 @@ describe("TripzConversationOrchestrator safeguards", () => {
     expect(result.rejectedChanges).toEqual([`media:${IMAGE_1}`, `media:${IMAGE_2}`]);
   });
 
-  it("requires a deterministic summary/confirmation gate before allowing a document", async () => {
-    const complete = baseProposal({
+  it("pedido explícito de PDF: pergunta o essencial que falta e só então gera direto", async () => {
+    const incomplete = baseProposal({
       destination: "Aruba",
       flights: [{ origin: "GRU", destination: "AUA", date: "2026-09-10" }],
       status: "ready_for_review"
     });
+    const asked = await new TripzConversationOrchestrator(clientWith(output({ requestedAction: "pdf" }))).processTurn({
+      conversationId: CONVERSATION_ID,
+      userMessage: "Extraia os dados e crie o PDF.",
+      proposal: incomplete
+    });
+    expect(asked.documentGenerationAllowed).toBe(false);
+    expect(asked.autoGenerate).toBe(false);
+    expect(asked.assistantMessage).toContain("valor total, datas da viagem, número de viajantes");
+
+    const complete = baseProposal({
+      ...incomplete,
+      startDate: "2026-09-10",
+      endDate: "2026-09-17",
+      passengers: { adults: 2 },
+      pricing: { totalPrice: 12000, currency: "BRL" }
+    });
+    const direct = await new TripzConversationOrchestrator(clientWith(output({ requestedAction: "pdf" }))).processTurn({
+      conversationId: CONVERSATION_ID,
+      userMessage: "Extraia os dados deste arquivo e crie o PDF.",
+      proposal: complete
+    });
+    expect(direct.documentGenerationAllowed).toBe(true);
+    expect(direct.autoGenerate).toBe(true);
+    expect(direct.proposal.status).toBe("ready_for_pdf");
+    expect(direct.proposal.reviewConfirmation?.confirmed).toBe(true);
+    expect(direct.assistantMessage).toContain("Gerando a prévia e o PDF");
+  });
+
+  it("confirmação solta continua exigindo o resumo antes do documento", async () => {
+    const complete = baseProposal({
+      destination: "Aruba",
+      flights: [{ origin: "GRU", destination: "AUA", date: "2026-09-10" }],
+      startDate: "2026-09-10",
+      endDate: "2026-09-17",
+      passengers: { adults: 2 },
+      pricing: { totalPrice: 12000, currency: "BRL" },
+      status: "ready_for_review"
+    });
     const first = await new TripzConversationOrchestrator(clientWith(output({ requestedAction: "pdf" }))).processTurn({
       conversationId: CONVERSATION_ID,
-      userMessage: "Gera o PDF.",
+      userMessage: "Pode gerar.",
       proposal: complete
     });
     expect(first.documentGenerationAllowed).toBe(false);
     expect(first.generationBlockedReason).toBe("summary_confirmation_required");
-    expect(first.proposal.status).toBe("ready_for_review");
-    expect(first.assistantMessage).toContain("Proposta pronta para revisão");
-
     const confirmed = await new TripzConversationOrchestrator(clientWith(output({ requestedAction: "pdf" }))).processTurn({
       conversationId: CONVERSATION_ID,
       userMessage: "Pode gerar.",
       proposal: first.proposal
     });
-    expect(confirmed.requestedAction).toBe("pdf");
     expect(confirmed.documentGenerationAllowed).toBe(true);
+    expect(confirmed.autoGenerate).toBe(false);
   });
 
   it("sends only the most recent bounded history", async () => {

@@ -65,6 +65,8 @@ export interface TripzAiTurnResult {
   validation: TripzProposalValidationResult;
   requestedAction: "none" | "show_summary" | "preview" | "pdf";
   documentGenerationAllowed: boolean;
+  /** O painel gera prévia + PDF desta revisão sem nova confirmação. */
+  autoGenerate?: boolean;
   generationBlockedReason?: "missing_or_conflicting_information" | "summary_confirmation_required";
   rejectedChanges: string[];
   usage: TripzOpenRouterUsage;
@@ -315,6 +317,27 @@ export function applyEditorialBlock(
       : upsertImageAssignments(editorial.imageAssignments ?? [], e.imageAssignments);
   }
   if (e.sources !== undefined) editorial.sources = e.sources ? [...e.sources] : [];
+  if (e.customSections !== undefined) {
+    let sections = [...(editorial.customSections ?? [])];
+    for (const section of e.customSections) {
+      if ("remove" in section) {
+        sections = sections.filter((current_3) => current_3.id !== section.id);
+        continue;
+      }
+      const index = sections.findIndex((current_3) => current_3.id === section.id);
+      if (index >= 0) sections[index] = section;
+      else sections.push(section);
+    }
+    editorial.customSections = sections.slice(0, 12);
+  }
+  if (e.theme !== undefined) {
+    if (e.theme === null) delete editorial.theme;
+    else editorial.theme = {
+      ...(editorial.theme ?? {}),
+      ...e.theme,
+      ...(e.theme.palette ? { palette: { ...(editorial.theme?.palette ?? {}), ...e.theme.palette } } : {})
+    };
+  }
   if (e.pageOverrides !== undefined) {
     const overrides = [...(editorial.pageOverrides ?? [])];
     for (const override of e.pageOverrides) {
@@ -687,6 +710,36 @@ export function formatTripzProposalSummary(proposal: TripzProposalState): string
   return lines.join("\n");
 }
 
+/**
+ * Pedido explícito de criar o documento ("crie o PDF", "monte a proposta").
+ * Confirmações soltas ("sim", "confirmo", "pode gerar") seguem o resumo.
+ */
+export function explicitDocumentRequest(message: string): boolean {
+  const text = message.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/\b(?:nao|nunca|jamais|cancele|cancelar)\b/.test(text)) return false;
+  return /\b(?:ger\w*|cri\w*|fa[zc]\w*|mont\w*|export\w*|produz\w*|elabor\w*|prepar\w*)\b.{0,40}\b(?:pdf|proposta|documento)\b/.test(text)
+    || /\b(?:pdf|proposta|documento)\b.{0,20}\b(?:pronto|pronta|final)\b/.test(text);
+}
+
+/** Dados sem os quais o PDF não sai direto: valor total, datas e viajantes. */
+export function missingEssentials(proposal: TripzProposalState): string[] {
+  const missing: string[] = [];
+  const total = proposal.editorial?.commercial?.total ?? proposal.pricing?.totalPrice;
+  if (typeof total !== "number" || !(total > 0)) missing.push("valor total");
+  if (!proposal.startDate || !proposal.endDate) missing.push("datas da viagem");
+  const passengers = (proposal.passengers?.adults ?? 0) + (proposal.passengers?.children ?? 0) + (proposal.passengers?.infants ?? 0);
+  if (passengers <= 0) missing.push("número de viajantes");
+  return missing;
+}
+
+function reviewPoints(validation: TripzProposalValidationResult): string[] {
+  const points = [
+    ...validation.issues.filter((issue) => issue.severity !== "info").map((issue) => issue.message),
+    ...validation.missingInformation.filter((field) => !field.required).map((field) => `${field.label} não informado(a)`)
+  ];
+  return [...new Set(points)].slice(0, 5);
+}
+
 export class TripzConversationOrchestrator {
   private readonly contextBudgetCharacters: number;
   private readonly maxHistoryMessages: number;
@@ -793,6 +846,7 @@ export class TripzConversationOrchestrator {
     if (validation.canGenerate && reviewed && next.reviewConfirmation?.confirmed) next.status = "ready_for_pdf";
     let assistantMessage = output.assistantMessage || "Confira os dados da proposta.";
     let documentGenerationAllowed = false;
+    let autoGenerate = false;
     let generationBlockedReason: TripzAiTurnResult["generationBlockedReason"];
 
     const criticalIssue = validation.issues.find((issue) => issue.severity === "critical" && issue.requiresConfirmation);
@@ -812,11 +866,35 @@ export class TripzConversationOrchestrator {
         const first = validation.blockingReasons[0] ?? "informações críticas";
         assistantMessage = `Ainda não consigo preparar a geração. Primeiro, preciso confirmar ${first}.`;
       }
+    } else if (requestedAction === "pdf" && explicitDocumentRequest(input.userMessage) && validation.canGenerate && !criticalIssue) {
+      // Pedido explícito de PDF (ex.: "extraia os dados deste arquivo e crie o PDF"):
+      // gera direto quando valor, datas e viajantes estão definidos; senão pergunta.
+      const essentials = missingEssentials(next);
+      if (essentials.length > 0) {
+        generationBlockedReason = "missing_or_conflicting_information";
+        assistantMessage = `${output.assistantMessage ? `${output.assistantMessage}\n\n` : ""}Para gerar o PDF direto ainda preciso de: ${essentials.join(", ")}. Pode me informar?`;
+      } else {
+        next.status = "ready_for_pdf";
+        next.reviewConfirmation = { proposalFingerprint: fingerprint, confirmed: true };
+        documentGenerationAllowed = true;
+        autoGenerate = true;
+        const doubts = reviewPoints(validation);
+        assistantMessage = [
+          output.assistantMessage && !/n[ãa]o\s+(?:posso|consigo)\s+gerar/i.test(output.assistantMessage) ? output.assistantMessage : "",
+          formatTripzProposalSummary(next),
+          doubts.length > 0 ? `Pontos para conferir:\n${doubts.map((item) => `- ${item}`).join("\n")}` : "",
+          "Gerando a prévia e o PDF agora; eles aparecem em Revisar proposta."
+        ].filter(Boolean).join("\n\n");
+      }
     } else if (requestedAction === "preview" || requestedAction === "pdf") {
       if (!validation.canGenerate) {
         generationBlockedReason = "missing_or_conflicting_information";
         const first = validation.blockingReasons[0] ?? "informações críticas";
-        assistantMessage = `Ainda não posso gerar ${requestedAction === "pdf" ? "o PDF" : "a prévia"}. Primeiro, preciso confirmar ${first}.`;
+        const ask = `Ainda não posso gerar ${requestedAction === "pdf" ? "o PDF" : "a prévia"}. Primeiro, preciso confirmar: ${first.replace(/\.+$/, "")}.`;
+        // Num pedido de "extraia e crie o PDF", o agente precisa ver o que foi extraído, não só a pergunta.
+        assistantMessage = explicitDocumentRequest(input.userMessage) && output.assistantMessage
+          ? `${output.assistantMessage}\n\n${ask}`
+          : ask;
       } else if (!reviewed || materialChange) {
         next.status = "ready_for_review";
         next.reviewConfirmation = { proposalFingerprint: fingerprint, confirmed: false };
@@ -841,6 +919,7 @@ export class TripzConversationOrchestrator {
       validation: normalizedValidation,
       requestedAction,
       documentGenerationAllowed,
+      autoGenerate,
       generationBlockedReason,
       rejectedChanges: mediaResult.rejected,
       usage: completion.usage,

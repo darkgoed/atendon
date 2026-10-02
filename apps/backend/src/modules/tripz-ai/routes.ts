@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { TRIPZ_DOCX_MIME, TRIPZ_XLSX_MIME } from "./office-text.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { db } from "../../db/client.js";
 import { HTTP_RATE_LIMITS } from "../../security/http-rate-limit.js";
@@ -107,7 +108,7 @@ export async function registerTripzAiRoutes(app: FastifyInstance, dependencies: 
   const featureGate = dependencies.featureGate ?? createTripzFeatureGate(db);
   const downloadMedia = dependencies.downloadMedia ?? publicHttpsDownload;
 
-  for (const contentType of ["image/jpeg", "image/png", "image/webp", "application/pdf"]) {
+  for (const contentType of ["image/jpeg", "image/png", "image/webp", "application/pdf", TRIPZ_DOCX_MIME, TRIPZ_XLSX_MIME, "text/plain", "text/csv"]) {
     if (!app.hasContentTypeParser(contentType)) {
       app.addContentTypeParser(contentType, { parseAs: "buffer" }, (_request, body, done) => done(null, body));
     }
