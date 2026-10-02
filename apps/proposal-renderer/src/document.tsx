@@ -4,6 +4,8 @@ import type { ProposalSpec } from "./spec.js";
 import type { PageData, ProposalRenderContext, ProposalDocumentAssets, ResolvedPhoto } from "./page-data.js";
 import type { FooterInfo } from "./components/shared.js";
 import type { ProposalPage } from "./pages.js";
+import { CustomSectionPage } from "./components/custom-section-page.js";
+import { FONT_PAIRS, themedTokens } from "./theme.js";
 import { buildProposalPages, formatShortDate, namesLine, tripTitleOf } from "./pages.js";
 import { ProposalCover } from "./components/proposal-cover.js";
 import { ProposalConcept } from "./components/proposal-concept.js";
@@ -41,18 +43,24 @@ function resolvePhotoSrcs<T>(value: T, assets: ProposalDocumentAssets): T {
   return visit(value) as T;
 }
 
-function brandCssVars(brand: ProposalBrandConfig): CSSProperties {
+function brandCssVars(brand: ProposalBrandConfig, theme?: ProposalSpec["theme"]): CSSProperties {
+  const tokens = themedTokens(brand, theme);
   const vars: Record<string, string> = {
-    "--tp-bg": brand.tokens.background,
-    "--tp-primary": brand.tokens.primary,
-    "--tp-secondary": brand.tokens.secondary,
-    "--tp-accent": brand.tokens.accent,
-    "--tp-sand": brand.tokens.sand,
-    "--tp-ink": brand.tokens.ink,
-    "--tp-muted": brand.tokens.muted,
-    "--tp-info": brand.tokens.info
+    "--tp-bg": tokens.background,
+    "--tp-primary": tokens.primary,
+    "--tp-secondary": tokens.secondary,
+    "--tp-accent": tokens.accent,
+    "--tp-sand": tokens.sand,
+    "--tp-ink": tokens.ink,
+    "--tp-muted": tokens.muted,
+    "--tp-info": tokens.info
   };
-  if (brand.fonts.serif) vars["--tp-font-serif"] = `'${brand.fonts.serif}', "Times New Roman", serif`;
+  if (theme?.fontPair) {
+    const pair = FONT_PAIRS[theme.fontPair];
+    vars["--tp-font-serif"] = `'${pair.display}', ${pair.fallback}`;
+  } else if (brand.fonts.serif) {
+    vars["--tp-font-serif"] = `'${brand.fonts.serif}', "Times New Roman", serif`;
+  }
   if (brand.fonts.sans) vars["--tp-font-sans"] = `'${brand.fonts.sans}', Arial, sans-serif`;
   return vars as CSSProperties;
 }
@@ -80,6 +88,7 @@ function PageRenderer(props: { data: PageData; footer: FooterInfo }): JSX.Elemen
     case "services": return <ServicesPage data={props.data} footer={props.footer} />;
     case "flights": return <FlightsPage data={props.data} footer={props.footer} />;
     case "closing": return <CommercialClosing data={props.data} />;
+    case "custom": return <CustomSectionPage data={props.data} footer={props.footer} />;
     default: return <></>;
   }
 }
@@ -95,7 +104,7 @@ export function ProposalDocument(props: {
   const resolved = resolvePhotoSrcs(built, props.context.assets);
   const footer = footerInfoFor(props.spec);
   return (
-    <div className="tp-doc" style={brandCssVars(props.brand)}>
+    <div className={`tp-doc tp-font-${props.spec.theme?.fontPair ?? "classic"}`} style={brandCssVars(props.brand, props.spec.theme)}>
       {resolved
         .filter((page) => !page.hidden)
         .map((page) => (

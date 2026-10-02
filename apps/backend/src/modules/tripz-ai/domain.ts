@@ -208,6 +208,8 @@ export type TripzEditorialBlock = Partial<Pick<
   | "imageAssignments"
   | "pageOverrides"
   | "sources"
+  | "customSections"
+  | "theme"
 >> & {
   tripTitle?: string;
   origin?: string;

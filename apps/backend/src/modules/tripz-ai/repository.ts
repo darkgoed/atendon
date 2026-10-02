@@ -1222,6 +1222,7 @@ export class TripzAiRepository implements TripzRepositoryPort {
     proposal: TripzProposalState;
     assistantMessage: string;
     summary: string;
+    messageMetadata?: Record<string, unknown>;
     attachmentResults: Array<{
       attachmentId: string;
       status: TripzAttachmentProcessingStatus;
@@ -1303,7 +1304,7 @@ export class TripzAiRepository implements TripzRepositoryPort {
          RETURNING id,conversation_id,role,content,metadata,processing_status,
                    proposal_revision_before,proposal_revision_after,created_at,updated_at`,
         [scope.tenantId, input.conversationId, input.assistantMessage,
-          { source: "tripz_ai", proposalRevision: proposal.revision },
+          { ...(input.messageMetadata ?? {}), source: "tripz_ai", proposalRevision: proposal.revision },
           input.expectedRevision, proposal.revision]
       );
       for (const attachment of input.attachmentResults) {

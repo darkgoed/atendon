@@ -226,7 +226,9 @@ export const ITALIA_SPEC: ProposalSpec = {
     { label: "Nápoles", credit: "Bernard Gagnon / Wikimedia Commons, CC BY 4.0" },
     { label: "Hotéis", credit: "imagens oficiais das propriedades" }
   ],
-  pageOverrides: []
+  pageOverrides: [],
+  customSections: [],
+  theme: {}
 };
 
 /**
@@ -363,7 +365,9 @@ export const PORTO_SPEC: ProposalSpec = {
     { label: "Fotos do Porto", credit: "Michael Gaylard / Wikimedia Commons, CC BY 4.0 e Béria L. Rodríguez / Wikimedia Commons, CC BY-SA 3.0" },
     { label: "Hotel", credit: "imagens oficiais HF Hotels" }
   ],
-  pageOverrides: []
+  pageOverrides: [],
+  customSections: [],
+  theme: {}
 };
 
 /** Assets de teste: todo mediaId resolve para o placeholder. */

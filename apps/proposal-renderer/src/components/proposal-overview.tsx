@@ -11,8 +11,8 @@ export function ProposalOverview(props: { data: OverviewPageData; footer: Footer
         <PageHeader eyebrow={data.eyebrow} headline={data.headline} subtitle={data.subtitle} />
         <div className="tp-overview__grid">
           {data.destinations.map((dest) => (
-            <article key={dest.id} className="tp-dest-card">
-              <PhotoWithCaption photo={dest.photo} className="tp-dest-card__photo" />
+            <article key={dest.id} className={dest.photo ? "tp-dest-card" : "tp-dest-card tp-dest-card--text"}>
+              {dest.photo ? <PhotoWithCaption photo={dest.photo} className="tp-dest-card__photo" /> : null}
               <div className="tp-dest-card__body">
                 <p className="tp-dest-card__range">{dest.rangeLabel}</p>
                 <h3 className="tp-dest-card__name">{dest.name}</h3>

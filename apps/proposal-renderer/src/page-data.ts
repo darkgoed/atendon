@@ -7,6 +7,7 @@ import type {
   ImagePlacement,
   ItineraryDay,
   NarrativeSection,
+  SectionBlock,
   Transfer
 } from "./spec.js";
 
@@ -27,6 +28,7 @@ export interface ResolvedPhoto {
 
 export interface CoverPageData {
   kind: "cover";
+  coverStyle?: "classic" | "split" | "minimal" | "framed";
   tripTitle: string;
   names: string;
   origin?: string;
@@ -164,7 +166,30 @@ export interface ClosingPageData {
   creditsHtml?: string;
 }
 
+/** Bloco de seção dinâmica já resolvido (imagens viram ResolvedPhoto). */
+export type ResolvedSectionBlock =
+  | Exclude<SectionBlock, { type: "image" }>
+  | { type: "image"; photo: ResolvedPhoto; caption?: string };
+
+export interface CustomSectionPageData {
+  kind: "custom";
+  sectionId: string;
+  layout: "standard" | "split" | "hero" | "band";
+  eyebrow?: string;
+  title: string;
+  intro?: string;
+  photo?: ResolvedPhoto;
+  /** Página de continuação da mesma seção (sem foto e sem intro). */
+  continuation: boolean;
+  blocks: ResolvedSectionBlock[];
+  /** Seções curtas empilhadas na mesma página (sem foto). */
+  stacked?: Array<{ sectionId: string; eyebrow?: string; title: string; intro?: string; blocks: ResolvedSectionBlock[] }>;
+  /** Altura estimada (mm) usada só na paginação. */
+  estimatedHeight?: number;
+}
+
 export type PageData =
+  | CustomSectionPageData
   | CoverPageData
   | ConceptPageData
   | OverviewPageData

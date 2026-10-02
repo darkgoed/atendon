@@ -229,9 +229,69 @@ describe("proposta sem fotos nem título", () => {
   });
 });
 
+describe("seções dinâmicas e tema", () => {
+  const longText = "As tarifas promocionais não permitem reembolso integral; alterações de data seguem a multa da companhia e a diferença tarifária vigente no momento da remarcação, conforme a regra de cada bilhete emitido.";
+  const sectionSpec = (sections: ProposalSpec["customSections"], theme: ProposalSpec["theme"] = {}): ProposalSpec => ({ ...PORTO_SPEC, customSections: sections, theme });
+
+  it("insere na ordem declarada, resolve after para outra seção e pagina seção longa", () => {
+    const pages = buildProposalPages(sectionSpec([
+      { id: "a", title: "A", layout: "standard", after: "concept", blocks: [{ type: "paragraph", text: "um" }] },
+      { id: "b", title: "B", layout: "band", after: "concept", blocks: [{ type: "paragraph", text: "dois" }] },
+      { id: "c", title: "C", layout: "band", after: "a", blocks: [{ type: "quote", text: "três" }] },
+      { id: "longa", title: "Longa", layout: "standard", after: "flights", blocks: Array.from({ length: 12 }, () => ({ type: "paragraph" as const, text: longText })) }
+    ]));
+    const ids = pages.map((page) => page.id);
+    expect(ids.indexOf("section:a")).toBe(ids.indexOf("concept") + 1);
+    expect(ids.indexOf("section:c")).toBe(ids.indexOf("section:a") + 1);
+    expect(ids.indexOf("section:b")).toBe(ids.indexOf("section:c") + 1);
+    expect(ids).toContain("section:longa:2");
+    expect(ids.indexOf("section:longa")).toBe(ids.indexOf("flights") + 1);
+    expect(ids[ids.length - 1]).toBe("closing");
+  });
+
+  it("empilha seções curtas sem foto na mesma página", () => {
+    const pages = buildProposalPages(sectionSpec([
+      { id: "x", title: "X", layout: "standard", after: "services", blocks: [{ type: "paragraph", text: "curta" }] },
+      { id: "y", title: "Y", layout: "standard", after: "x", blocks: [{ type: "bullets", style: "dot", items: ["um", "dois"] }] }
+    ]));
+    const page = pages.find((item) => item.id === "section:x");
+    expect(pages.some((item) => item.id === "section:y")).toBe(false);
+    if (page?.data.kind !== "custom") throw new Error("seção ausente");
+    expect(page.data.stacked?.map((part) => part.title)).toEqual(["Y"]);
+  });
+
+  it("todos os blocos renderizam escapados; tema aplica fonte, capa e paleta legível", () => {
+    const html = renderProposalHtml({
+      spec: sectionSpec([{
+        id: "tudo", title: "Tudo", layout: "standard", blocks: [
+          { type: "paragraph", text: "**negrito** <b>cru</b>" },
+          { type: "bullets", style: "number", items: ["um"] },
+          { type: "cards", items: [{ title: "Card", text: "texto" }] },
+          { type: "table", columns: ["A", "B"], rows: [["1", "2"]] },
+          { type: "highlight", text: "aviso", tone: "accent" },
+          { type: "quote", text: "citação" },
+          { type: "timeline", items: [{ label: "D1", title: "Chegada" }] },
+          { type: "stats", items: [{ value: "+4h", label: "FUSO" }] },
+          { type: "image", mediaId: "sem-asset" }
+        ]
+      }], { palette: { primary: "#ffff00", accent: "#a5502f" }, fontPair: "modern", coverStyle: "split" }),
+      brand: TRIPZ_PROPOSAL_BRAND,
+      assets: placeholderAssets(PORTO_SPEC.imageAssignments.map((assignment) => assignment.mediaId))
+    });
+    expect(html).toContain("<strong>negrito</strong> &lt;b&gt;cru&lt;/b&gt;");
+    for (const cls of ["tp-sec-list--number", "tp-sec-card", "tp-sec-table", "tp-sec-highlight--accent", "tp-sec-quote", "tp-sec-timeline", "tp-sec-stat"]) expect(html).toContain(cls);
+    expect(html).not.toContain('class="tp-sec-image"');
+    expect(html).toContain("tp-cover--split");
+    expect(html).toContain("font-family:'Montserrat'");
+    expect(html).not.toContain("font-family:'Cormorant Garamond'");
+    expect(html).toContain("--tp-accent:#a5502f");
+    expect(html).not.toContain("--tp-primary:#ffff00");
+  });
+});
+
 describe("contrato", () => {
   it("versão fixada", () => {
-    expect(PROPOSAL_RENDERER_VERSION).toBe("tripz-editorial-v2");
+    expect(PROPOSAL_RENDERER_VERSION).toBe("tripz-editorial-v3");
   });
 
   it("PageData snapshot (JSON) da derivação Porto", () => {

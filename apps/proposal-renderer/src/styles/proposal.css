@@ -449,6 +449,10 @@
 
 .tp-dest-card__photo { height: 42mm; flex: none; }
 
+/* Sem foto: cartão tipográfico com filete de cor no topo, sem caixa vazia. */
+.tp-dest-card--text { border-top: 1.2mm solid var(--tp-primary); }
+.tp-dest-card--text .tp-dest-card__body { padding: 5.5mm 5mm 6mm; }
+
 .tp-dest-card__body { padding: 4mm 4.6mm 4.6mm; }
 
 .tp-dest-card__range {
@@ -1289,3 +1293,153 @@
 /* Visualização no painel (fora do print): páginas empilhadas com respiro */
 .tp-doc { background: #e8e5de; }
 .tp-page { margin: 0 auto; }
+
+
+/* ===================================================== seções dinâmicas (IA) */
+
+.tp-custom__intro {
+  margin: 2.6mm 0 0;
+  max-width: 160mm;
+  font-size: 9.6pt;
+  line-height: 1.5;
+  color: var(--tp-muted);
+}
+.tp-custom__cont { font-size: 0.55em; font-weight: 400; color: var(--tp-muted); }
+
+.tp-sec-blocks { display: flex; flex-direction: column; gap: 5mm; margin-top: 6mm; min-width: 0; }
+.tp-sec-paragraph { font-size: 8.9pt; line-height: 1.5; }
+
+.tp-sec-list { margin: 0; padding: 0; list-style: none; }
+.tp-sec-list li { display: flex; gap: 2.6mm; padding: 0 0 1.8mm; font-size: 8.7pt; line-height: 1.45; color: var(--tp-ink); }
+.tp-sec-list__marker { flex: 0 0 auto; min-width: 4mm; color: var(--tp-accent); font-weight: 700; }
+.tp-sec-list--number .tp-sec-list__marker { font-family: var(--tp-font-serif); font-size: 9.6pt; min-width: 7mm; }
+
+.tp-sec-cards { display: grid; gap: 3.4mm; }
+.tp-sec-card {
+  background: var(--tp-card);
+  border: 1px solid var(--tp-line-soft);
+  border-top: 3px solid var(--tp-accent);
+  border-radius: 8px;
+  padding: 3.6mm 4mm 4mm;
+}
+.tp-sec-card__label { margin: 0 0 1.2mm; font-size: 6.8pt; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--tp-accent); }
+.tp-sec-card__title { margin: 0; font-family: var(--tp-font-serif); font-weight: 600; font-size: 11.5pt; line-height: 1.2; color: var(--tp-primary); }
+.tp-sec-card__text { margin: 1.6mm 0 0; font-size: 8.1pt; line-height: 1.45; color: var(--tp-muted); }
+
+.tp-sec-table { width: 100%; border-collapse: collapse; background: var(--tp-card); border: 1px solid var(--tp-line-soft); font-size: 8.2pt; }
+.tp-sec-table th {
+  background: var(--tp-primary); color: #fff; text-align: left; padding: 2.4mm 3mm;
+  font-size: 6.9pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+}
+.tp-sec-table td { padding: 2.2mm 3mm; border-top: 1px solid var(--tp-line-soft); color: var(--tp-ink); vertical-align: top; line-height: 1.4; }
+.tp-sec-table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--tp-bg) 55%, white); }
+.tp-sec-table td:first-child { font-weight: 600; color: var(--tp-primary); }
+
+.tp-sec-highlight { border-radius: 10px; padding: 4.4mm 5.2mm 4.8mm; }
+.tp-sec-highlight__label { margin: 0 0 1.4mm; font-size: 7pt; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; }
+.tp-sec-highlight__text { margin: 0; font-size: 9.2pt; line-height: 1.5; }
+.tp-sec-highlight--primary { background: var(--tp-primary); color: #fff; }
+.tp-sec-highlight--primary .tp-sec-highlight__label { color: var(--tp-sand); }
+.tp-sec-highlight--accent { background: var(--tp-accent); color: #fff; }
+.tp-sec-highlight--accent .tp-sec-highlight__label { color: rgba(255, 255, 255, 0.82); }
+.tp-sec-highlight--sand { background: color-mix(in srgb, var(--tp-sand) 38%, white); color: var(--tp-ink); }
+.tp-sec-highlight--sand .tp-sec-highlight__label { color: var(--tp-accent); }
+.tp-sec-highlight--info { background: var(--tp-info); color: var(--tp-ink); }
+.tp-sec-highlight--info .tp-sec-highlight__label { color: var(--tp-secondary); }
+
+.tp-sec-quote { font-size: 14pt; line-height: 1.4; padding-left: 5mm; border-left: 2px solid var(--tp-accent); }
+
+.tp-sec-timeline { display: flex; flex-direction: column; }
+.tp-sec-timeline__item { display: grid; grid-template-columns: 30mm 1fr; gap: 4mm; padding: 2.4mm 0; border-bottom: 1px solid var(--tp-line-soft); }
+.tp-sec-timeline__item:last-child { border-bottom: 0; }
+.tp-sec-timeline__label {
+  align-self: start; justify-self: start; background: var(--tp-primary); color: #fff; border-radius: 999px;
+  padding: 1mm 2.6mm; font-size: 6.8pt; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+}
+.tp-sec-timeline__title { margin: 0; font-family: var(--tp-font-serif); font-weight: 600; font-size: 10.5pt; color: var(--tp-primary); }
+.tp-sec-timeline__text { margin: 1mm 0 0; font-size: 8.2pt; line-height: 1.45; color: var(--tp-muted); }
+
+.tp-sec-stats { display: grid; gap: 3mm; }
+.tp-sec-stat { display: flex; flex-direction: column; gap: 1mm; background: var(--tp-primary); border-radius: 8px; padding: 3.6mm 4mm; }
+.tp-sec-stat__value { font-family: var(--tp-font-serif); font-weight: 600; font-size: 18pt; line-height: 1; color: #fff; }
+.tp-sec-stat__label { font-size: 6.6pt; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--tp-sand); }
+
+.tp-sec-image { margin: 0; }
+.tp-sec-image .tp-photo-frame { height: 64mm; }
+
+.tp-custom__hero { margin-top: 6mm; }
+.tp-custom__hero .tp-photo-frame { height: 86mm; }
+.tp-custom__split { display: grid; grid-template-columns: 66mm 1fr; gap: 8mm; align-items: start; }
+.tp-custom__split .tp-sec-blocks { margin-top: 6mm; }
+.tp-custom__split-photo { margin-top: 6mm; }
+.tp-custom__split-photo .tp-photo-frame { height: 190mm; }
+
+/* band: página inteira na cor primária, texto claro; foto opcional na base */
+.tp-custom--band { background: var(--tp-primary); }
+.tp-custom--band .tp-eyebrow { color: var(--tp-sand); }
+.tp-custom--band .tp-headline,
+.tp-custom--band .tp-sec-card__title,
+.tp-custom--band .tp-sec-timeline__title { color: #fff; }
+.tp-custom--band .tp-custom__intro,
+.tp-custom--band .tp-sec-paragraph,
+.tp-custom--band .tp-sec-list li,
+.tp-custom--band .tp-sec-timeline__text { color: rgba(255, 255, 255, 0.86); }
+.tp-custom--band .tp-label { color: var(--tp-sand); }
+.tp-custom--band .tp-rule { border-top-color: color-mix(in srgb, var(--tp-sand) 50%, transparent); }
+.tp-custom--band .tp-sec-card { background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.16); }
+.tp-custom--band .tp-sec-card__text { color: rgba(255, 255, 255, 0.75); }
+.tp-custom--band .tp-sec-timeline__item { border-color: rgba(255, 255, 255, 0.14); }
+.tp-custom--band .tp-sec-timeline__label,
+.tp-custom--band .tp-sec-stat { background: var(--tp-accent); }
+.tp-custom--band .tp-sec-quote { color: var(--tp-sand); }
+.tp-custom--band .tp-footer { color: rgba(255, 255, 255, 0.6); }
+.tp-custom__band-photo { position: absolute; left: 0; right: 0; bottom: 0; height: 74mm; }
+.tp-custom__band-photo .tp-photo-frame { height: 100%; border-radius: 0; }
+
+/* ============================================================ estilos de capa */
+
+/* split: foto à esquerda em altura total, painel na cor primária à direita */
+.tp-cover--split .tp-cover__photo { right: auto; width: 116mm; }
+.tp-cover--split .tp-cover__block {
+  top: 0; left: 116mm; height: auto; padding: 0 12mm 20mm; justify-content: flex-end; background: var(--tp-primary);
+}
+.tp-cover--split .tp-cover__title { font-size: 30pt; }
+.tp-cover--split .tp-cover__stats { grid-template-columns: 1fr; margin-top: 10mm; }
+
+/* minimal: só foto + degradê, título sobre a imagem */
+.tp-cover--minimal .tp-cover__block {
+  top: auto; height: 120mm; padding: 0 16mm 14mm; justify-content: flex-end;
+  background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--tp-primary) 55%, transparent) 38%, color-mix(in srgb, var(--tp-primary) 92%, transparent) 100%);
+}
+.tp-cover--minimal .tp-cover__title { font-size: 40pt; }
+.tp-cover--minimal .tp-cover__stats { margin-top: 8mm; }
+
+/* framed: revista — fundo claro, foto emoldurada, título escuro abaixo */
+.tp-cover--framed { background: var(--tp-bg); }
+.tp-cover--framed .tp-cover__photo { inset: 14mm 14mm auto; width: auto; height: 168mm; }
+.tp-cover--framed .tp-cover__photo .tp-photo-frame { border-radius: 2px; }
+.tp-cover--framed .tp-cover__block { top: 188mm; height: auto; padding: 0 16mm 12mm; background: none; color: var(--tp-ink); }
+.tp-cover--framed .tp-cover__eyebrow { color: var(--tp-accent); }
+.tp-cover--framed .tp-cover__title { color: var(--tp-primary); font-size: 34pt; }
+.tp-cover--framed .tp-cover__names { color: var(--tp-secondary); }
+.tp-cover--framed .tp-stat-cell { border-color: var(--tp-line); }
+.tp-cover--framed .tp-stat-cell__value { color: var(--tp-primary); }
+.tp-cover--framed .tp-stat-cell__label { color: var(--tp-muted); }
+.tp-cover--framed .tp-cover__dates { color: var(--tp-ink); }
+.tp-cover--framed .tp-cover__dates span { color: var(--tp-muted); }
+
+/* ============================================================== pares de fonte */
+
+/* Cormorant é mais leve e menor no mesmo corpo: compensa peso e tamanho. */
+.tp-font-elegant .tp-headline,
+.tp-font-elegant .tp-cover__title { font-weight: 600; letter-spacing: 0.005em; font-size-adjust: 0.5; }
+.tp-font-elegant .tp-quote,
+.tp-font-elegant .tp-sec-card__title { font-size-adjust: 0.5; }
+/* Montserrat em caixa alta fica larga: títulos sem uppercase e um pouco menores. */
+.tp-font-modern .tp-cover__title { letter-spacing: 0.02em; font-weight: 700; font-size-adjust: 0.48; }
+.tp-font-modern .tp-headline { font-weight: 700; letter-spacing: -0.01em; font-size-adjust: 0.48; }
+.tp-font-modern .tp-quote { font-weight: 400; font-size-adjust: 0.48; }
+
+.tp-custom__stacked { margin-top: 10mm; padding-top: 7mm; border-top: 1px solid var(--tp-line); }
+.tp-custom__stacked-title { font-size: 19pt; }
+.tp-custom--band .tp-custom__stacked { border-top-color: rgba(255, 255, 255, 0.18); }

@@ -108,7 +108,10 @@ export function mapDestinations(state: TripzProposalState, extras: EditorialStat
   if (Array.isArray(extras.editorial?.destinations) && extras.editorial?.destinations.length > 0) {
     return extras.editorial?.destinations.map((destination, index) => {
       const actNumber = num(destination.actNumber);
-      const name = str(destination.name) ?? str(state.destination) ?? "Destino";
+      const ownName = str(destination.name);
+      const idName = str(destination.id)?.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+      // Com vários destinos, o destino geral ("Lisboa e Sintra") repetiria em todos.
+      const name = ownName ?? (extras.editorial!.destinations!.length > 1 ? idName : str(state.destination) ?? idName) ?? "Destino";
       return {
         id: str(destination.id) ?? slugify(name),
         name,
@@ -561,6 +564,8 @@ export function stateToSpec(
       state.editorial?.imageAssignments as Array<Record<string, unknown>> | undefined
     ),
     pageOverrides: state.editorial?.pageOverrides,
+    customSections: state.editorial?.customSections,
+    theme: state.editorial?.theme,
     sources: (extras.editorial?.sources ?? []).map((source) => ({
       label: str(source.label),
       url: str(source.url),

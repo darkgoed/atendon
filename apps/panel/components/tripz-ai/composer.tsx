@@ -16,6 +16,7 @@ import {
   deleteTripzAttachment,
   createTripzIdempotencyKey,
   formatTripzFileSize,
+  isTripzDocumentFile,
   sendTripzMessage,
   shouldSubmitTripzComposer,
   TRIPZ_AI_ACCEPT,
@@ -273,7 +274,7 @@ export function TripzComposer({
     >
       {dragging ? (
         <div className="pointer-events-none absolute inset-2 grid place-items-center border rounded-[var(--radius-md)] border-dashed border-[var(--primary)] bg-[var(--bg)]/95 text-xs font-semibold text-[var(--primary)]" role="status">
-          Solte imagens ou PDFs para anexar
+          Solte imagens ou documentos para anexar
         </div>
       ) : null}
 
@@ -281,7 +282,7 @@ export function TripzComposer({
         {items.length > 0 ? (
           <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Anexos preparados">
             {items.map((item) => {
-              const isPdf = item.file.type === "application/pdf";
+              const isPdf = isTripzDocumentFile(item.file);
               return (
                 <article key={item.localId} className="grid w-[13.5rem] shrink-0 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 border rounded-[var(--radius-md)] border-[var(--border)] bg-[var(--surface)] p-2">
                   <span className="grid h-11 w-11 place-items-center overflow-hidden border rounded-[var(--radius-md)] border-[var(--border)] bg-[var(--surface-sunken)] text-[var(--primary)]">
@@ -307,8 +308,8 @@ export function TripzComposer({
         ) : null}
 
         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 border rounded-[var(--radius-md)] border-[var(--border-strong)] bg-[var(--surface)] p-2 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--text)_5%,transparent)] focus-within:border-[var(--primary)] focus-within:shadow-[var(--focus-ring)]">
-          <input ref={fileInputRef} type="file" className="sr-only" accept={TRIPZ_AI_ACCEPT} multiple onChange={handleFileInput} disabled={unavailable || submitting || items.length >= TRIPZ_AI_MAX_FILES_PER_MESSAGE} aria-label="Anexar imagens ou PDF" aria-describedby="tripz-composer-help" />
-          <button type="button" className="grid h-10 w-10 place-items-center bg-transparent text-[var(--text-secondary)] transition-[background,transform] hover:bg-[var(--surface-active)] hover:text-[var(--text)] active:translate-y-px disabled:opacity-40" onClick={() => fileInputRef.current?.click()} disabled={unavailable || submitting || items.length >= TRIPZ_AI_MAX_FILES_PER_MESSAGE} aria-label="Anexar imagens ou PDF" title="Anexar imagens ou PDF">
+          <input ref={fileInputRef} type="file" className="sr-only" accept={TRIPZ_AI_ACCEPT} multiple onChange={handleFileInput} disabled={unavailable || submitting || items.length >= TRIPZ_AI_MAX_FILES_PER_MESSAGE} aria-label="Anexar imagens ou documentos" aria-describedby="tripz-composer-help" />
+          <button type="button" className="grid h-10 w-10 place-items-center bg-transparent text-[var(--text-secondary)] transition-[background,transform] hover:bg-[var(--surface-active)] hover:text-[var(--text)] active:translate-y-px disabled:opacity-40" onClick={() => fileInputRef.current?.click()} disabled={unavailable || submitting || items.length >= TRIPZ_AI_MAX_FILES_PER_MESSAGE} aria-label="Anexar imagens ou documentos" title="Anexar imagens ou documentos">
             <Paperclip size={19} aria-hidden="true" />
           </button>
           <label className="sr-only" htmlFor="tripz-message">Envie informações da viagem</label>

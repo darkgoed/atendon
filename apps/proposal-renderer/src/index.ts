@@ -6,3 +6,4 @@ export type { ProposalPage, ProposalPageKind } from "./pages.js";
 export { buildProposalPages, PROPOSAL_RENDERER_VERSION } from "./pages.js";
 export { ProposalDocument } from "./document.js";
 export { renderProposalHtml } from "./render.js";
+export { FONT_PAIRS, themedTokens, contrast } from "./theme.js";

@@ -7,13 +7,15 @@ import type {
   ImagePlacement,
   ItineraryDay,
   NarrativeSection,
+  CustomSection,
   ProposalSpec,
+  SectionBlock,
   SourceReference
 } from "./spec.js";
-import type { PageData, ResolvedPhoto } from "./page-data.js";
+import type { CustomSectionPageData, PageData, ResolvedPhoto, ResolvedSectionBlock } from "./page-data.js";
 
 /** VERSÃO do contrato de render. */
-export const PROPOSAL_RENDERER_VERSION = "tripz-editorial-v2";
+export const PROPOSAL_RENDERER_VERSION = "tripz-editorial-v3";
 
 export type ProposalPageKind = PageData["kind"];
 
@@ -415,6 +417,7 @@ export function buildProposalPages(spec: ProposalSpec): ProposalPage[] {
     : returnDate?.slice(0, 4);
   push("cover", "cover", {
     kind: "cover",
+    coverStyle: spec.theme?.coverStyle ?? "classic",
     tripTitle: tripTitleOf(spec),
     names,
     origin: spec.origin,
@@ -462,12 +465,12 @@ export function buildProposalPages(spec: ProposalSpec): ProposalPage[] {
       eyebrow: "VISÃO GERAL",
       headline: spec.narrative.overview?.headline ?? "O percurso da viagem",
       subtitle: spec.narrative.overview?.body?.[0]
-        ?? (nights ? `${plural(nights, "noite", "noites")} entre ${destinations.map((dest) => dest.name).join(", ")}` : undefined),
+        ?? (nights ? `${plural(nights, "noite", "noites")} entre ${joinNames([...new Set(destinations.map((dest) => dest.name))])}` : undefined),
       destinations: destinations.map((dest) => ({
         id: dest.id,
         name: dest.name,
         rangeLabel: rangeLabelFor(dest),
-        text: dest.summary,
+        text: dest.summary ?? copyFor(spec, dest.id)?.headline,
         photo: resolvePhoto(index, "destination", dest.id)
       })),
       route: {
@@ -496,7 +499,8 @@ export function buildProposalPages(spec: ProposalSpec): ProposalPage[] {
     const hotelPanel = hotel && hotelPageId(spec, index) !== hotel.id ? hotelPanelFor(hotel, index) : undefined;
     push(`destination:${dest.id}`, "destination", {
       kind: "destination",
-      layout: destinationIndex % 2 === 1 ? "side" : "hero",
+      layout: spec.pageOverrides.find((override) => override.page === `destination:${dest.id}`)?.layout
+        ?? (destinationIndex % 2 === 1 ? "side" : "hero"),
       destinationId: dest.id,
       eyebrow: actLabelFor(spec, dest),
       headline: copy?.headline ?? dest.name,
@@ -638,18 +642,41 @@ export function buildProposalPages(spec: ProposalSpec): ProposalPage[] {
   /* closing — sempre */
   push("closing", "closing", buildClosingData(spec, index));
 
+  /* seções dinâmicas criadas pela IA — entram onde pediu (after) ou antes de serviços/voos/fechamento */
+  const sectionIds = new Set(spec.customSections.map((section) => section.id));
+  const lastInsertedFor = new Map<string, string>();
+  for (const section of spec.customSections) {
+    const anchor = section.after && !section.after.includes(":") && sectionIds.has(section.after) && section.after !== section.id
+      ? `section:${section.after}`
+      : section.after;
+    const sectionPages = buildCustomSectionPages(section);
+    // Várias seções no mesmo ponto entram na ordem em que foram declaradas.
+    const position = sectionInsertPosition(pages, lastInsertedFor.get(anchor ?? "") ?? anchor);
+    pages.splice(position, 0, ...sectionPages.map((data, part) => ({
+      id: part === 0 ? `section:${section.id}` : `section:${section.id}:${part + 1}`,
+      kind: "custom" as const,
+      hidden: false,
+      data
+    })));
+    lastInsertedFor.set(anchor ?? "", `section:${section.id}`);
+  }
+  packShortSections(pages);
+
   /* pageOverrides: hidden apenas em páginas opcionais; order desloca a ordem */
   const overrides = new Map(spec.pageOverrides.map((override) => [override.page, override]));
-  const OPTIONAL = new Set(["concept", "overview", "experiences", "services", "flights", "hotel"]);
+  const OPTIONAL = new Set(["concept", "overview", "experiences", "services", "flights", "hotel", "custom"]);
   for (const page of pages) {
-    const override = overrides.get(page.id);
+    const override = overrides.get(page.id) ?? (page.kind === "custom" ? overrides.get(page.id.split(":").slice(0, 2).join(":")) : undefined);
     if (!override) continue;
     if (override.hidden && (OPTIONAL.has(page.kind) || page.id.startsWith("destination:"))) page.hidden = true;
-      }
+  }
   const baseOrder = new Map(pages.map((page, position) => [page.id, position]));
+  const orderOf = (page: ProposalPage): number => overrides.get(page.id)?.order
+    ?? (page.kind === "custom" ? overrides.get(page.id.split(":").slice(0, 2).join(":"))?.order : undefined)
+    ?? 0;
   const sorted = pages.slice().sort((a, b) => {
-    const orderA = overrides.get(a.id)?.order ?? 0;
-    const orderB = overrides.get(b.id)?.order ?? 0;
+    const orderA = orderOf(a);
+    const orderB = orderOf(b);
     if (orderA !== orderB) return orderA - orderB;
     return (baseOrder.get(a.id) ?? 0) - (baseOrder.get(b.id) ?? 0);
   });
@@ -657,6 +684,10 @@ export function buildProposalPages(spec: ProposalSpec): ProposalPage[] {
 }
 
 /* --------------------------------------------------------- helpers atrasados */
+
+function joinNames(names: string[]): string {
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} e ${names[names.length - 1]}` : names[0] ?? "";
+}
 
 function rangeLabelFor(dest: Destination): string {
   if (dest.dateRangeLabel) return dest.dateRangeLabel;
@@ -672,4 +703,149 @@ function hotelPageId(spec: ProposalSpec, index: PhotoIndex): string | undefined 
   const longDescription = (hotel.description?.length ?? 0) > 240;
   if (hotelPhotoCount(index, hotel.id) >= 2 || longDescription) return hotel.id;
   return undefined;
+}
+
+
+/* ------------------------------------------------- seções dinâmicas (IA) */
+
+/** Altura útil (mm) da área de conteúdo de uma página A4 com cabeçalho e rodapé. */
+const SECTION_PAGE_HEIGHT = 238;
+const SECTION_HEADER_HEIGHT = 30;
+const CONTINUATION_HEADER_HEIGHT = 22;
+const BLOCK_GAP = 5;
+
+function linesOf(text: string, charsPerLine: number): number {
+  return Math.max(1, Math.ceil(text.length / Math.max(12, charsPerLine)));
+}
+
+/** Estimativa conservadora da altura de um bloco (mm) para paginar sem cortar. */
+export function estimateBlockHeight(block: SectionBlock, charsPerLine: number): number {
+  switch (block.type) {
+    case "paragraph": return linesOf(block.text, charsPerLine) * 4.9 + 2;
+    case "bullets":
+      return (block.title ? 7 : 0) + block.items.reduce((acc, item) => acc + linesOf(item, charsPerLine - 8) * 4.5 + 1.8, 0) + 2;
+    case "cards": {
+      const columns = cardColumns(block.items.length, block.columns, charsPerLine);
+      const cardChars = charsPerLine / columns - 6;
+      let total = 0;
+      for (let start = 0; start < block.items.length; start += columns) {
+        const row = block.items.slice(start, start + columns);
+        const tallest = Math.max(...row.map((item) => (item.label ? 5 : 0) + linesOf(item.title, cardChars * 0.8) * 6 + (item.text ? linesOf(item.text, cardChars) * 4.1 : 0)));
+        total += tallest + 11;
+      }
+      return total;
+    }
+    case "table": {
+      const cellChars = charsPerLine / block.columns.length - 3;
+      const rows = block.rows.reduce((acc, row) => acc + Math.max(...row.map((cell) => linesOf(cell || " ", cellChars))) * 4 + 3.6, 0);
+      return (block.title ? 7 : 0) + 9 + rows;
+    }
+    case "highlight": return 11 + (block.label ? 4.5 : 0) + linesOf(block.text, charsPerLine - 12) * 4.7;
+    case "quote": return 6 + linesOf(block.text, charsPerLine * 0.62) * 7;
+    case "timeline": return block.items.reduce((acc, item) => acc + 9 + (item.text ? linesOf(item.text, charsPerLine - 26) * 4.2 : 0), 0) + 2;
+    case "stats": return 24;
+    case "image": return charsPerLine < 80 ? 52 : 72;
+    default: return 20;
+  }
+}
+
+export function cardColumns(count: number, requested: 2 | 3 | undefined, charsPerLine: number): number {
+  if (charsPerLine < 80) return 1;
+  if (requested) return requested;
+  return count % 3 === 0 || count > 4 ? 3 : 2;
+}
+
+function resolveBlock(block: SectionBlock): ResolvedSectionBlock {
+  if (block.type === "image") return { type: "image", photo: { mediaId: block.mediaId }, caption: block.caption };
+  return block;
+}
+
+/** Uma seção vira 1+ páginas: blocos são distribuídos pela altura estimada. */
+export function buildCustomSectionPages(section: CustomSection): CustomSectionPageData[] {
+  const firstLayout = section.mediaId ? section.layout : section.layout === "band" ? "band" : "standard";
+  const fullChars = 96;
+  const pages: CustomSectionPageData[] = [];
+  let current: CustomSectionPageData | undefined;
+  let used = 0;
+  let capacity = 0;
+  let charsPerLine = fullChars;
+  const open = (continuation: boolean): void => {
+    const layout = continuation ? (firstLayout === "band" ? "band" : "standard") : firstLayout;
+    current = {
+      kind: "custom",
+      sectionId: section.id,
+      layout,
+      eyebrow: section.eyebrow,
+      title: section.title,
+      intro: continuation ? undefined : section.intro,
+      photo: !continuation && section.mediaId && layout !== "standard" && layout !== "band" ? { mediaId: section.mediaId } : undefined,
+      continuation,
+      blocks: []
+    };
+    if (!continuation && section.mediaId && layout === "band") current.photo = { mediaId: section.mediaId };
+    pages.push(current);
+    charsPerLine = layout === "split" && current.photo ? 54 : fullChars;
+    capacity = SECTION_PAGE_HEIGHT - (continuation ? CONTINUATION_HEADER_HEIGHT : SECTION_HEADER_HEIGHT)
+      - (current.intro ? linesOf(current.intro, fullChars) * 5 + 4 : 0)
+      - (layout === "hero" && current.photo ? 94 : 0)
+      - (layout === "band" && current.photo ? 70 : 0);
+    used = 0;
+  };
+  open(false);
+  for (const block of section.blocks) {
+    const height = estimateBlockHeight(block, charsPerLine) + BLOCK_GAP;
+    if (current && current.blocks.length > 0 && used + height > capacity) open(true);
+    current!.blocks.push(resolveBlock(block));
+    used += height;
+  }
+  for (const page of pages) page.estimatedHeight = page === pages[pages.length - 1] ? used + headerHeight(page) : SECTION_PAGE_HEIGHT;
+  return pages;
+}
+
+function headerHeight(page: CustomSectionPageData): number {
+  return (page.continuation ? CONTINUATION_HEADER_HEIGHT : SECTION_HEADER_HEIGHT)
+    + (page.intro ? linesOf(page.intro, 96) * 5 + 4 : 0);
+}
+
+/**
+ * Seções curtas e sem foto seguidas (ex.: dicas + comparativo) dividem a mesma
+ * página em vez de deixar meia folha em branco cada uma.
+ */
+function packShortSections(pages: ProposalPage[]): void {
+  for (let index = 0; index < pages.length - 1; index += 1) {
+    const page = pages[index];
+    const next = pages[index + 1];
+    if (page.kind !== "custom" || next.kind !== "custom") continue;
+    const a = page.data as CustomSectionPageData;
+    const b = next.data as CustomSectionPageData;
+    const packable = (data: CustomSectionPageData) => data.layout === "standard" && !data.photo && !data.continuation;
+    if (!packable(a) || !packable(b)) continue;
+    if (pages[index + 2]?.id.startsWith(`${next.id}:`)) continue;
+    const combined = (a.estimatedHeight ?? SECTION_PAGE_HEIGHT) + (b.estimatedHeight ?? SECTION_PAGE_HEIGHT) + 10;
+    if (combined > SECTION_PAGE_HEIGHT) continue;
+    a.stacked = [...(a.stacked ?? []), { sectionId: b.sectionId, eyebrow: b.eyebrow, title: b.title, intro: b.intro, blocks: b.blocks }, ...(b.stacked ?? [])];
+    a.estimatedHeight = combined;
+    pages.splice(index + 1, 1);
+    index -= 1;
+  }
+}
+
+function sectionInsertPosition(pages: ProposalPage[], after: string | undefined): number {
+  if (after) {
+    const exact = pages.map((page) => page.id).lastIndexOf(after);
+    const byPrefix = exact >= 0 ? exact : pages.map((page) => page.id).reduce((found, id, position) =>
+      id === after || id.startsWith(`${after}:`) ? position : found, -1);
+    const byKind = byPrefix >= 0 ? byPrefix : pages.map((page) => page.kind as string).lastIndexOf(after);
+    if (byKind >= 0) {
+      // Depois da página e das continuações dela.
+      let position = byKind + 1;
+      while (position < pages.length && pages[position].id.startsWith(`${pages[byKind].id}:`)) position += 1;
+      return Math.min(position, pages.length - 1 >= 0 && pages[pages.length - 1].kind === "closing" ? pages.length - 1 : pages.length);
+    }
+  }
+  for (const kind of ["services", "flights", "closing"]) {
+    const position = pages.findIndex((page) => page.kind === kind);
+    if (position >= 0) return position;
+  }
+  return pages.length;
 }
