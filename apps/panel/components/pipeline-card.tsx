@@ -3,6 +3,7 @@
 import { ArrowRight, ArrowSquareOut, CalendarBlank, ChatsCircle, Clock } from "@/components/icons";
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
+import { PipelineOrigin } from "@/components/pipeline-origin";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 
 import {
@@ -129,15 +130,13 @@ export function PipelineCard({
         </div>
       ) : null}
 
-      {visible("origin") && (lead.origem || lead.campanha) ? (
-        <p className="pipeline-card__origin" title={[lead.origem, lead.campanha].filter(Boolean).join(" · ")}>
-          {[lead.origem, lead.campanha].filter(Boolean).join(" · ")}
-        </p>
+      {visible("origin") ? (
+        <PipelineOrigin lead={lead} />
       ) : null}
 
       {lead.situacao ? <span className="pipeline-card__situation">Situação: {pipelineStatusLabel(lead.situacao)}</span> : null}
 
-      {visible("qualification") && lead.qualificacao ? <div className="mt-2"><span className="pipeline-card__score" data-score={score} aria-label={`${lead.qualificacao.estrelas} de 5 na qualificação`}>{score}</span></div> : null}
+      {visible("qualification") && lead.qualificacao ? <div className="mt-2"><Link href={`/contatos/${encodeURIComponent(lead.id)}#qualification-title`} className="pipeline-card__score" data-score={score} aria-label={`${lead.qualificacao.estrelas} de 5 na qualificação`} title="Ver qualificação">{score}</Link></div> : null}
 
       {visible("nextMeeting") && lead.latest_appointment ? (
         <div className="pipeline-card__meeting">

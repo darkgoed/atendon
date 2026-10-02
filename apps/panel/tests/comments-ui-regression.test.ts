@@ -191,6 +191,7 @@ describe("comments.md UI regressions", () => {
 
   it("adds scheduled conversations alongside the existing queue filters", () => {
     const tabs = between(conversationsSource, '["human", "Abertas"', "].map(([key, label, count])");
+    expect(tabs).toContain('["human", "Abertas", unreadCounts?.human');
     expect(tabs).toContain('["ai", "IA"');
     expect(tabs).toContain('["scheduled", "Agendadas"');
     expect(tabs).toContain('["resolved", "Resolvidas"');

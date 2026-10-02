@@ -141,7 +141,7 @@ export default function Overview() {
                 <dd className="type-meta mono">status: {data.connection.status}</dd>
               </div>
               <div className="overview-metrics__item on-enter" style={{ "--i": 1 } as CSSProperties}>
-                <dt className="type-overline">Aguardando humano <HelpHint label="Ajuda: Aguardando humano">Conversas transferidas para atendimento humano que ainda esperam alguém assumir. A fila abaixo mostra há quanto tempo cada uma espera.</HelpHint></dt>
+                <dt className="type-overline"><HelpHint content="Conversas que esperam um atendente." description={<>Conversas transferidas para atendimento humano que ainda esperam alguém assumir. A fila abaixo mostra há quanto tempo cada uma espera.</>}>Aguardando humano</HelpHint></dt>
                 <dd className="metric warning">{data.counts.handoff}</dd>
                 <dd className="type-meta">
                   {hasWorkspaceScope

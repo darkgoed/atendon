@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ErrorToasts } from "@/components/error-toasts";
 
 // Radix Popover/Tooltip medem o balão com ResizeObserver, ausente no jsdom.
 globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
@@ -35,12 +36,14 @@ import { ConversationComposer, type ConversationComposerCapabilities } from "@/c
 import { ConversationNotes } from "@/components/conversation-notes";
 import { ConversationStatusPicker } from "@/components/conversation-status-picker";
 
-// O composer guarda rascunho por conversa em localStorage (PAINEL C13): isola os testes.
-beforeEach(() => { window.localStorage.clear(); });
-
+beforeEach(() => {
+  window.localStorage.clear();
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+});
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function whatsappCapabilities(): ConversationComposerCapabilities {
@@ -72,29 +75,41 @@ function statusPickerProps() {
 }
 
 describe("ajuda contextual do pacote conversas-comp", () => {
-  it("composer: HelpHint de respostas rápidas abre, explica o '/' e fecha com Esc; botão de IA mantém o nome", async () => {
+  it("composer: ajuda compatível abre no hover/foco e fecha com Esc; botão de IA mantém o nome", async () => {
     const user = userEvent.setup();
     render(<ConversationComposer conversationId="conv-help" capabilities={whatsappCapabilities()} onError={vi.fn()} onSent={vi.fn()} />);
 
     expect(screen.getByRole("button", { name: "Gerar sugestão da IA" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Ajuda: Respostas rápidas" }));
-    expect(await screen.findByText(/no começo da mensagem/)).toBeInTheDocument();
-    expect(screen.getByText(/preenchidas na inserção/)).toBeInTheDocument();
+    const trigger = screen.getByRole("textbox", { name: "Mensagem" });
+    expect(screen.queryByRole("group", { name: "Respostas rápidas" })).toBeNull();
+    expect(trigger).toHaveAccessibleDescription(/no começo da mensagem.*preenchidas na inserção/);
+    for (const text of ["Enviar proposta", "Confirmar horário", "Pedir CNPJ"]) {
+      expect(screen.queryByText(text)).toBeNull();
+    }
+    expect(screen.queryByRole("button", { name: /^Ajuda:/ })).toBeNull();
+    await user.hover(trigger);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Digite / para escolher uma resposta rápida.");
+    await user.unhover(trigger);
+    act(() => trigger.focus());
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Digite / para escolher uma resposta rápida.");
     await user.keyboard("{Escape}");
-    expect(screen.queryByText(/no começo da mensagem/)).toBeNull();
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(trigger).toHaveAccessibleDescription(/preenchidas na inserção/);
+    expect(screen.getByRole("button", { name: "Gerar sugestão da IA" })).toBeEnabled();
   });
 
   it("nota interna fechada: ajuda de visibilidade ao lado do botão, sem buscar nada", () => {
     render(<ConversationNotes conversationId="conv-help" />);
     expect(screen.getByRole("button", { name: "Nota interna" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ajuda: Nota interna" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Nota interna" })).toHaveAccessibleDescription("Apenas a equipe vê estas notas.");
+    expect(screen.queryByRole("button", { name: "Ajuda: Nota interna" })).toBeNull();
     expect(apiMock).not.toHaveBeenCalled();
   });
 
   it("mover o lead mostra o flash 'Lead movido para Venda' só no sucesso", async () => {
     const user = userEvent.setup();
     apiMock.mockResolvedValue({ ok: true });
-    render(<ConversationStatusPicker {...statusPickerProps()} onChanged={vi.fn()} />);
+    render(<><ErrorToasts /><ConversationStatusPicker {...statusPickerProps()} onChanged={vi.fn()} /></>);
 
     await user.click(screen.getByRole("button", { name: /Etapa comercial atual: Novo/i }));
     await user.type(screen.getByLabelText("Produto"), "Plano");
@@ -105,12 +120,13 @@ describe("ajuda contextual do pacote conversas-comp", () => {
     await user.click(screen.getByRole("button", { name: /Confirmar movimento/i }));
 
     await waitFor(() => expect(screen.getByText("Lead movido para Venda")).toBeInTheDocument());
+    expect(document.querySelectorAll(".error-toast")).toHaveLength(1);
   });
 
   it("falha ao mover o lead não mostra flash", async () => {
     const user = userEvent.setup();
     apiMock.mockRejectedValueOnce(new Error("falhou"));
-    render(<ConversationStatusPicker {...statusPickerProps()} onChanged={vi.fn()} />);
+    render(<><ErrorToasts /><ConversationStatusPicker {...statusPickerProps()} onChanged={vi.fn()} /></>);
 
     await user.click(screen.getByRole("button", { name: /Etapa comercial atual: Novo/i }));
     await user.type(screen.getByLabelText("Produto"), "Plano");

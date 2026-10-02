@@ -288,7 +288,7 @@ export function CommercialDashboard({
               ["Ticket médio", formatMoney(data.commercial_metrics.average_ticket), <>Valor vendido ÷ vendas registradas no período.</>],
               ["Reagendadas", data.commercial_metrics.rescheduled],
               ["Follow-ups atrasados", data.commercial_metrics.overdue_follow_ups]
-            ].map(([label, value, help]) => <div key={String(label)}><dt>{label}{help ? <HelpHint label={`Ajuda: ${label}`}>{help}</HelpHint> : null}</dt><dd>{value}</dd></div>)}
+            ].map(([label, value, help]) => <div key={String(label)}><dt>{help ? <HelpHint content={help}>{label}</HelpHint> : label}</dt><dd>{value}</dd></div>)}
           </dl>
         </Card>
 

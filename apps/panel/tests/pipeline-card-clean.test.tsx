@@ -116,7 +116,8 @@ describe("PipelineCard e PipelineBoard", () => {
     };
     const card = renderCard(preferences);
 
-    expect(within(card).getByText("Indicação · Campanha secreta")).toBeVisible();
+    expect(within(card).getByRole("img", { name: "Origem: Indicação" })).toBeVisible();
+    expect(within(card).getByRole("img", { name: "Campanha: Campanha secreta" })).toBeVisible();
     expect(within(card).getByLabelText("5 de 5 na qualificação")).toBeVisible();
     expect(within(card).getByText("20/01/2099, 12:00")).toBeVisible();
     expect(within(card).getByText("Enviar resumo da proposta")).toBeVisible();
@@ -147,7 +148,20 @@ describe("PipelineCard e PipelineBoard", () => {
     await user.click(qualification);
     expect(origin).toBeChecked();
     expect(qualification).toBeChecked();
-    expect(screen.getByText("Indicação · Campanha secreta")).toBeVisible();
+    expect(screen.getByRole("img", { name: "Origem: Indicação" })).toBeVisible();
     expect(screen.getByLabelText("5 de 5 na qualificação")).toBeVisible();
+  });
+
+  it("abre a qualificação no detalhe real do lead sem iniciar drag", async () => {
+    const onMoveRequest = vi.fn();
+    render(<PipelineBoard stages={stages} leads={[lead]} allowedTransitions={new Set()} legacy={false} loading={false} hasActiveFilters={false} canMove canSelect={false} selectedIds={new Set()} pendingLeadIds={new Set()} preferences={{ ...DEFAULT_PIPELINE_PREFERENCES, visibleFields: ["qualification"] }} onToggleSelected={vi.fn()} onMoveRequest={onMoveRequest} onRetry={vi.fn()} />);
+    const link = screen.getByRole("link", { name: "5 de 5 na qualificação" });
+    expect(link).toHaveAttribute("href", "/contatos/lead-1#qualification-title");
+    expect(link).toHaveAttribute("title", "Ver qualificação");
+    // Evita a navegação de documento do jsdom; pointer/click continuam reais.
+    link.addEventListener("click", (event) => event.preventDefault());
+    await userEvent.click(link);
+    expect(document.querySelector(".pipeline-card--floating")).toBeNull();
+    expect(onMoveRequest).not.toHaveBeenCalled();
   });
 });

@@ -55,6 +55,57 @@ async function openSelector() {
 afterEach(() => { cleanup(); apiMock.mockReset(); });
 
 describe("PipelineManager", () => {
+  it("salva cor hex, revalida antes do sucesso e relê a seleção ao reabrir", async () => {
+    let persisted = pipeline({ color: "#3b82f6" });
+    apiMock.mockImplementation(async (url: string, init?: { body: string }) => {
+      if (init) persisted = { ...persisted, ...JSON.parse(init.body) };
+      return { pipelines: [persisted] };
+    });
+    const onChanged = vi.fn(async () => {
+      const response = await apiMock("/organization/pipelines");
+      rerender(<PipelineManager pipelines={response.pipelines} activePipeline={response.pipelines[0]} canManage onSelect={vi.fn()} onChanged={onChanged} />);
+    });
+    const { rerender } = render(<PipelineManager pipelines={[persisted]} activePipeline={persisted} canManage onSelect={vi.fn()} onChanged={onChanged} />);
+    await userEvent.click(screen.getByRole("button", { name: "Ações do pipeline" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Renomear/ }));
+    expect(screen.getByRole("button", { name: "Cor #3B82F6" })).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(screen.getByRole("button", { name: "Cor #22C55E" }));
+    await userEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(apiMock.mock.calls[0]![1].body)).toEqual({ name: "Boleto", color: "#22C55E" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.querySelector(".pipeline-switcher__dot")).toHaveStyle({ background: "#22C55E" });
+    await userEvent.click(screen.getByRole("button", { name: "Ações do pipeline" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Renomear/ }));
+    expect(screen.getByRole("button", { name: "Cor #22C55E" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("falha ao salvar cor não mostra sucesso nem revalida", async () => {
+    apiMock.mockRejectedValue(new Error("Cor não foi salva"));
+    const onChanged = vi.fn();
+    renderManager({ onChanged });
+    await userEvent.click(screen.getByRole("button", { name: "Ações do pipeline" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Renomear/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Cor #22C55E" }));
+    await userEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Cor não foi salva");
+    expect(onChanged).not.toHaveBeenCalled();
+    expect(screen.queryByText("Pipeline atualizado")).toBeNull();
+    expect(document.querySelector(".pipeline-switcher__dot")).toHaveStyle({ background: "#3B82F6" });
+  });
+
+  it("espera a recarga e não anuncia sucesso quando a revalidação falha", async () => {
+    apiMock.mockResolvedValue({});
+    const onChanged = vi.fn().mockRejectedValue(new Error("Falha ao recarregar pipeline"));
+    renderManager({ onChanged });
+    await userEvent.click(screen.getByRole("button", { name: "Ações do pipeline" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Renomear/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Falha ao recarregar pipeline");
+    expect(screen.queryByText("Pipeline atualizado")).toBeNull();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   it("mostra o pipeline ativo e troca de pipeline pelo seletor", async () => {
     const onSelect = vi.fn();
     render(<PipelineManager pipelines={pipelines} activePipeline={pipelines[0]!} canManage={false} onSelect={onSelect} onChanged={vi.fn()} />);

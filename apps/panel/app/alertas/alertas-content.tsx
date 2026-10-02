@@ -188,7 +188,7 @@ export function AlertasBody() {
     <div className={`${styles.channelsAiPage} channels-ai-page`}>
       <header className="pagehead">
         <div>
-          <h1>Alertas operacionais <HelpHint label="Ajuda: Alertas operacionais">Reuniões marcadas para você e avisos operacionais do workspace. Dispensar marca o alerta como revisado.</HelpHint></h1>
+          <h1><HelpHint content="Dispensar marca o alerta como revisado." description={<>Reuniões marcadas para você e avisos operacionais do workspace. Dispensar marca o alerta como revisado.</>}>Alertas operacionais</HelpHint></h1>
         </div>
         <div className="flex items-center gap-3 border-l border-[var(--border)] pl-5">
           <BellRinging size={20} className="text-[var(--warning-text)]" aria-hidden="true" />

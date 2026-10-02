@@ -120,8 +120,7 @@ export function SavedViewsControl({
               <span className="label">Nome da visão</span>
               <Input className="input" value={name} onChange={(event) => setName(event.target.value)} maxLength={100} placeholder="Ex.: Leads quentes desta semana" />
             </label>
-            {canPublish ? <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={shared} onChange={(event) => setShared(event.target.checked)} /> Compartilhar com o workspace</label> : null}
-            {canPublish ? <HelpHint label="Ajuda: Compartilhar com o workspace" title="Visões compartilhadas" side="bottom">Sem marcar, a visão fica visível só para você; marcando, fica disponível para todo o workspace.</HelpHint> : null}
+            {canPublish ? <HelpHint content="Marcada, a visão fica disponível para toda a equipe." description={<>Sem marcar, a visão fica visível só para você; marcando, fica disponível para todo o workspace.</>} side="bottom" asChild><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={shared} onChange={(event) => setShared(event.target.checked)} /> Compartilhar com o workspace</label></HelpHint> : null}
             <SaveButton state={pending ? "busy" : viewSave.state} icon={<FloppyDisk size={15} aria-hidden="true" />} onClick={() => void save()} disabled={!name.trim() || pending}>
               Salvar filtros atuais
             </SaveButton>

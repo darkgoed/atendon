@@ -218,7 +218,7 @@ export function WorkspaceMembersContent() {
           <section className="admin-grid admin-grid--sidebar">
             <div className="card admin-card">
               <div className="cardtitle">
-                <span>Equipe ativa <HelpHint label="Ajuda: ações da equipe">No menu de ações (⋮) fica “Transferir propriedade”: quem recebe passa a ser o único dono do workspace e quem transfere volta a ser ADMIN — para reverter, o novo dono precisa transferir de volta. “Remover do workspace” tira o acesso do membro ao painel.</HelpHint></span>
+                <span><HelpHint content="Transferir propriedade troca o dono; remover revoga o acesso." description={<>No menu de ações (⋮) fica “Transferir propriedade”: quem recebe passa a ser o único dono do workspace e quem transfere volta a ser ADMIN — para reverter, o novo dono precisa transferir de volta. “Remover do workspace” tira o acesso do membro ao painel.</>}>Equipe ativa</HelpHint></span>
                 <span className="sub">{members.length} registro(s)</span>
               </div>
               {members.length === 0 ? (
@@ -341,7 +341,7 @@ export function WorkspaceMembersContent() {
             <aside className="admin-stack">
               <form className="card admin-card" aria-busy={submittingInvite} onSubmit={submitInvite}>
                 <div className="cardtitle">
-                  <span>Novo convite <HelpHint label="Ajuda: Validade do convite">O convite vale 7 dias; depois disso, emita outro. Enquanto estiver pendente, ele pode ser revogado no histórico abaixo.</HelpHint></span>
+                  <span><HelpHint content="Convite válido por 7 dias, com opção de revogar." description={<>O convite vale 7 dias; depois disso, emita outro. Enquanto estiver pendente, ele pode ser revogado no histórico abaixo.</>}>Novo convite</HelpHint></span>
                   <span className="sub">Fluxo público de aceite</span>
                 </div>
                 {!canInvite ? (

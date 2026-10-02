@@ -130,7 +130,7 @@ export default function ReportsPage() {
       <div className="leads-page">
         <header className="leads-page__header">
           <div>
-            <h1>Relatórios <HelpHint label="Ajuda: Relatórios" title="Relatórios do workspace">Operação do atendimento no período escolhido, com o escopo da sua sessão: gestores veem o workspace inteiro; operadores veem o próprio escopo.</HelpHint></h1>
+            <h1><HelpHint content="Indicadores do atendimento no seu escopo de acesso." description={<>Operação do atendimento no período escolhido, com o escopo da sua sessão: gestores veem o workspace inteiro; operadores veem o próprio escopo.</>}>Relatórios</HelpHint></h1>
           </div>
           <div className="leads-page__actions flex min-h-8 flex-wrap items-center gap-2">
             <label className="field m-0">
@@ -299,7 +299,7 @@ export default function ReportsPage() {
                   )}
                 </section>
                 <section className="card p-4">
-                  <h2 className="text-base font-semibold">Atentes ociosos <HelpHint label="Ajuda: Ociosos">Ativos sem enviar mensagem há mais de 3 dias (considerando todo o workspace).</HelpHint></h2>
+                  <h2 className="text-base font-semibold"><HelpHint content="Atendentes sem enviar mensagens há mais de 3 dias." description={<>Ativos sem enviar mensagem há mais de 3 dias (considerando todo o workspace).</>}>Atentes ociosos</HelpHint></h2>
                   {quality.idle_agents.length === 0 ? (
                     <Empty>Nenhum atendente ocioso.</Empty>
                   ) : (

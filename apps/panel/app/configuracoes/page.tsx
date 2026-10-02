@@ -499,7 +499,7 @@ function WorkspaceSettingsPanel({ canManageLogo }: { canManageLogo: boolean }) {
             <small className="sub">Exemplo: America/Sao_Paulo.</small>
           </label>
           <div>
-            <h2 className="m-0 flex items-center gap-2">Horário de atendimento <HelpHint label="Ajuda: Horário de atendimento" title="Horário de atendimento">Um único intervalo para todos os dias da semana; não há horário diferente por dia.</HelpHint></h2>
+            <h2 className="m-0 flex items-center gap-2"><HelpHint content="O mesmo intervalo vale para todos os dias." description={<>Um único intervalo para todos os dias da semana; não há horário diferente por dia.</>}>Horário de atendimento</HelpHint></h2>
             <p className="sub mt-1">
               Fora desse intervalo a IA não visualiza, não responde e a conexão fica offline no WhatsApp.
               O atendimento retoma automaticamente no início do horário, sem responder tudo de uma vez.
@@ -1114,7 +1114,7 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
                 <th className="pb-3 font-medium">Atendente</th>
                 <th className="pb-3 font-medium">Cor na agenda</th>
                 <th className="pb-3 font-medium">Disponibilidade</th>
-                <th className="pb-3 text-right font-medium"><span className="inline-flex items-center gap-1">Carga ativa <HelpHint label="Ajuda: Carga ativa" align="end">Quantos agendamentos ativos o atendente tem neste momento.</HelpHint></span></th>
+                <th className="pb-3 text-right font-medium"><span className="inline-flex items-center gap-1"><HelpHint content="Agendamentos ativos do atendente neste momento." description={<>Quantos agendamentos ativos o atendente tem neste momento.</>} align="end">Carga ativa</HelpHint></span></th>
                 <th className="pb-3 text-right font-medium">Controle</th>
               </tr>
             </thead>

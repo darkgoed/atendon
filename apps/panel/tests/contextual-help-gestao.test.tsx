@@ -29,15 +29,16 @@ describe("ajuda contextual no dashboard comercial (pacote gestao)", () => {
   it("HelpHint da taxa de comparecimento abre com a fórmula real do backend", async () => {
     const user = userEvent.setup();
     render(<CommercialDashboard data={data} selectedPeriod="today" customStart="2026-01-01" customEnd="2026-01-01" onPeriodChange={() => undefined} onCustomStartChange={() => undefined} onCustomEndChange={() => undefined} />);
-    await user.click(screen.getByRole("button", { name: "Ajuda: Taxa comparecimento" }));
-    expect(await screen.findByText(/Comparecimentos ÷ reuniões já realizadas/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Ajuda:/ })).toBeNull();
+    await user.hover(screen.getByText("Taxa comparecimento"));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(/Comparecimentos ÷ reuniões já realizadas/);
   });
 
   it("expõe ajuda para ticket médio, fechamento e resultado pendente", () => {
     render(<CommercialDashboard data={data} selectedPeriod="today" customStart="2026-01-01" customEnd="2026-01-01" onPeriodChange={() => undefined} onCustomStartChange={() => undefined} onCustomEndChange={() => undefined} />);
-    expect(screen.getByRole("button", { name: "Ajuda: Ticket médio" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ajuda: Taxa fechamento" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ajuda: Resultado pendente" })).toBeInTheDocument();
+    expect(screen.getByText("Ticket médio")).toHaveAttribute("tabindex", "0");
+    expect(screen.getByText("Taxa fechamento")).toHaveAttribute("aria-describedby");
+    expect(screen.getAllByText("Resultado pendente").find((element) => element.hasAttribute("aria-describedby"))).toHaveAccessibleDescription(/Reuniões encerradas/);
   });
 });
 
@@ -55,12 +56,12 @@ describe("ajuda contextual nas demais telas do pacote gestao", () => {
   });
 
   it("mantém os pontos de ajuda adicionados em cada tela", () => {
-    expect(home).toContain('HelpHint label="Ajuda: Aguardando humano"');
-    expect(members).toContain('HelpHint label="Ajuda: Validade do convite"');
+    expect(home).toContain('HelpHint content="Conversas que esperam um atendente."');
+    expect(members).toContain('HelpHint content="Convite válido por 7 dias, com opção de revogar."');
     expect(members).toContain("O convite vale 7 dias");
-    expect(roles).toContain('HelpHint label="Ajuda: Excluir função"');
-    expect(audit).toContain('HelpHint label="Ajuda: Auditoria do workspace"');
-    expect(uso).toContain('"Ajuda: Interação de IA"');
+    expect(roles).toContain('helper="Mova os membros para outra função antes de excluir."');
+    expect(audit).toContain('HelpHint content="Registro das ações de usuários, incluindo acesso ROOT."');
+    expect(uso).toContain('HelpHint content={legacy?');
     expect(perfil).toContain('help="Ao salvar, suas outras sessões abertas são encerradas."');
   });
 });

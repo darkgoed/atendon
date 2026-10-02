@@ -22,6 +22,25 @@ describe("ContactChatLink (ícone de WhatsApp dos contatos)", () => {
     const link = screen.getByRole("link", { name: "Conversar com Ana pelo WhatsApp" });
     expect(link).toHaveAttribute("href", "/conversas?id=conv-1");
   });
+
+  it("oferece início por callback quando não há conversa, sem link externo", () => {
+    const onStart = vi.fn();
+    render(<ContactChatLink conversationId={null} name="Ana" onStart={onStart} />);
+    const button = screen.getByRole("button", { name: "Entrar em contato" });
+    expect(button.textContent).toBe("");
+    expect(button.querySelector("svg")).toBeTruthy();
+    expect(screen.queryByRole("link")).toBeNull();
+    fireEvent.click(button);
+    expect(onStart).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserva o link da conversa existente mesmo com callback", () => {
+    const onStart = vi.fn();
+    render(<ContactChatLink conversationId="conv/1?x=2" name="Ana" onStart={onStart} />);
+    expect(screen.getByRole("link", { name: "Conversar com Ana pelo WhatsApp" })).toHaveAttribute("href", "/conversas?id=conv%2F1%3Fx%3D2");
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(onStart).not.toHaveBeenCalled();
+  });
 });
 
 describe("ListFiltersBar (padrão único de filtro)", () => {

@@ -76,7 +76,7 @@ export function FlowInsights({ flowId, onClose }: { flowId: string; onClose: () 
 
   return (
     <ModalDialog labelledBy="flow-insights-title" onClose={onClose} dialogClassName={`action-dialog ${styles.insightsDialog}`}>
-      <h2 id="flow-insights-title" className="text-base font-semibold">Desempenho do fluxo <HelpHint label="Ajuda: Desempenho">Contagens desde a criação do fluxo e as execuções mais recentes. Atualiza sozinho a cada 30 segundos.</HelpHint></h2>
+      <h2 id="flow-insights-title" className="text-base font-semibold"><HelpHint content="Contagens e execuções atualizadas a cada 30 segundos." description={<>Contagens desde a criação do fluxo e as execuções mais recentes. Atualiza sozinho a cada 30 segundos.</>}>Desempenho do fluxo</HelpHint></h2>
 
       {analyticsFailed ? (
         <p className="error mt-3" role="alert">{analyticsError instanceof Error ? analyticsError.message : "Não foi possível carregar os agregados."}</p>

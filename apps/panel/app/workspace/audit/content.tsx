@@ -20,7 +20,7 @@ export function WorkspaceAuditContent() {
 
   return (
     <AdminPage>
-      <AdminPageHeader title={<>Auditoria do workspace <HelpHint label="Ajuda: Auditoria do workspace">Registro de quem fez o quê no workspace, do mais recente para o mais antigo — incluindo ações de usuários ROOT com acesso elevado.</HelpHint></>} actions={
+      <AdminPageHeader title={<><HelpHint content="Registro das ações de usuários, incluindo acesso ROOT." description={<>Registro de quem fez o quê no workspace, do mais recente para o mais antigo — incluindo ações de usuários ROOT com acesso elevado.</>}>Auditoria do workspace</HelpHint></>} actions={
         <label className="search-field admin-search">
           <MagnifyingGlass aria-hidden="true" />
           <span className="sr-only">Filtrar eventos do workspace</span>

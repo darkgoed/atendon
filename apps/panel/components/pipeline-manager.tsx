@@ -547,6 +547,7 @@ export function PipelineManager({
         onClose={() => setDialog(null)}
         onSaved={notifySaved}
         onSelect={onSelect}
+        onChanged={onChanged}
       />
     ) : null}
     {dialog?.kind === "channels" ? (
@@ -617,7 +618,8 @@ function PipelineNameDialog({
   groupId = null,
   onClose,
   onSaved,
-  onSelect
+  onSelect,
+  onChanged
 }: {
   kind: NameDialogKind;
   pipeline: PipelineSummary;
@@ -625,6 +627,7 @@ function PipelineNameDialog({
   onClose: () => void;
   onSaved: (message: string) => void;
   onSelect: (pipelineId: string) => void;
+  onChanged: () => unknown | Promise<unknown>;
 }) {
   const isDuplicate = kind === "duplicate";
   const [name, setName] = useState(kind === "rename" ? pipeline.name : isDuplicate ? `${pipeline.name} (cópia)` : "");
@@ -657,7 +660,8 @@ function PipelineNameDialog({
           body: JSON.stringify({ name: trimmed, color })
         });
       }
-      onSaved(kind === "create" ? "Pipeline criado" : isDuplicate ? "Pipeline duplicado" : "Pipeline renomeado");
+      await onChanged();
+      onSaved(kind === "create" ? "Pipeline criado" : isDuplicate ? "Pipeline duplicado" : "Pipeline atualizado");
       onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Falha ao salvar pipeline");
@@ -670,7 +674,7 @@ function PipelineNameDialog({
     <ModalDialog className="pipeline-manager-dialog" labelledBy="pipeline-manager-name-title" onClose={() => { if (!pending) onClose(); }}>
       <h2 id="pipeline-manager-name-title" className="text-base font-semibold">{title}</h2>
       <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-        <Field label="Nome"><Input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} data-autofocus /></Field>
+        <Field label="Nome"><Input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} disabled={pending} data-autofocus /></Field>
         {isDuplicate ? (
           <p className="text-xs leading-relaxed text-[var(--text-secondary)]">Etapas e transições são copiadas. Contatos e canais vinculados permanecem no original.</p>
         ) : (
@@ -683,8 +687,9 @@ function PipelineNameDialog({
                   type="button"
                   className="pipeline-manager__swatch"
                   style={{ background: swatch }}
-                  aria-pressed={color === swatch}
+                  aria-pressed={color.toUpperCase() === swatch}
                   aria-label={`Cor ${swatch}`}
+                  disabled={pending}
                   onClick={() => setColor(swatch)}
                 />
               ))}

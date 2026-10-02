@@ -11,7 +11,7 @@ import useSWR from "swr";
 import { Notepad } from "@/components/icons";
 import { api } from "@/lib/api";
 import { canAccessWithSession, type PanelSession } from "@/lib/session";
-import { HelpHint, IconButton, useFlashToast } from "@/components/ui";
+import { IconButton, useFlashToast } from "@/components/ui";
 import { NoteComposer, NoteList, type NotesResponse } from "./notes-shared";
 import styles from "./conversation-notes.module.css";
 
@@ -36,10 +36,10 @@ export function ConversationNotes({ conversationId }: { conversationId: string }
     // acessível "Nota interna" permanece exatamente igual.
     return (
       <>
-        <IconButton type="button" label="Nota interna" className={styles.trigger} aria-expanded={false} onClick={() => setOpen(true)}>
+        <IconButton helper="Apenas a equipe vê estas notas." type="button" label="Nota interna" className={styles.trigger} aria-expanded={false} onClick={() => setOpen(true)}>
           <Notepad size={16} aria-hidden="true" />
         </IconButton>
-        <HelpHint label="Ajuda: Nota interna">Anotação da equipe sobre esta conversa. O contato não recebe nem vê estas notas.</HelpHint>
+
       </>
     );
   }

@@ -6,6 +6,7 @@ import { useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { ConversationComposer, type ConversationComposerCapabilities } from "@/components/conversation-composer";
+import { ERROR_TOAST_EVENT, reportError } from "@/lib/error-events";
 
 // O composer guarda rascunho por conversa em localStorage (PAINEL C13): isola os testes.
 beforeEach(() => { window.localStorage.clear(); });
@@ -95,6 +96,37 @@ afterEach(() => {
 });
 
 describe("copiloto de IA no composer (R3)", () => {
+  it("ancora ajuda curta na mensagem, sem grupo, label ou segundo alvo de foco", async () => {
+    globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
+    const user = userEvent.setup();
+    const view = renderComposer();
+    const textarea = screen.getByRole("textbox", { name: "Mensagem" });
+    const controlNames = () => screen.getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent);
+    const names = controlNames();
+    expect(screen.getByRole("button", { name: "Gerar sugestão da IA" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Enviar mensagem" })).toBeDisabled();
+    expect(screen.queryByRole("group", { name: "Respostas rápidas" })).toBeNull();
+    expect(textarea).not.toHaveAttribute("tabindex");
+    expect(view.container.querySelectorAll('[tabindex="0"]')).toHaveLength(0);
+    expect(screen.queryByText("Respostas rápidas")).toBeNull();
+    expect(textarea).toHaveAccessibleDescription("Digite / no começo da mensagem para abrir a lista de respostas rápidas. A escolhida substitui o atalho e variáveis como {{nome}} e {{data}} são preenchidas na inserção.");
+    act(() => textarea.focus());
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Digite / para escolher uma resposta rápida.");
+    expect(screen.getByRole("tooltip")).not.toHaveTextContent("no começo da mensagem");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+    act(() => textarea.blur());
+    await user.unhover(textarea);
+    await user.hover(textarea);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Digite / para escolher uma resposta rápida.");
+    expect(screen.getByRole("tooltip")).not.toHaveTextContent("no começo da mensagem");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+    expect(textarea).toHaveAccessibleName("Mensagem");
+    expect(controlNames()).toEqual(names);
+    expect(view.container.querySelectorAll('[tabindex="0"]')).toHaveLength(0);
+  });
+
   it("não chama a IA no mount, na digitação nem na troca de conversa", async () => {
     const user = userEvent.setup();
     const view = renderComposer("conv-1");
@@ -200,6 +232,8 @@ describe("copiloto de IA no composer (R3)", () => {
   });
 
   it("erro atrasado da conversa anterior não é exibido na atual", async () => {
+    const reported = vi.fn();
+    window.addEventListener(ERROR_TOAST_EVENT, reported);
     const stale = deferred();
     copilotQueue.push(stale.promise);
     const view = renderComposer("conv-1");
@@ -209,6 +243,8 @@ describe("copiloto de IA no composer (R3)", () => {
     await act(async () => { stale.resolve(jsonResponse({ error: "Falha ao gerar a sugestão de IA" }, 502)); });
 
     expect(view.onError).not.toHaveBeenCalledWith("Falha ao gerar a sugestão de IA");
+    window.removeEventListener(ERROR_TOAST_EVENT, reported);
+    expect(reported).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Gerar sugestão da IA" })).toBeEnabled();
   });
 
@@ -304,9 +340,13 @@ describe("copiloto de IA no composer (R3)", () => {
       jsonResponse(suggestion("Sugestão válida")),
       jsonResponse({}),
       jsonResponse(suggestion("   ")),
-      jsonResponse({ suggestion: "Sem metadados de contexto" })
+      jsonResponse({ suggestion: "Sem metadados de contexto" }),
+      jsonResponse(suggestion("Contagem negativa", { messages_used: -1 })),
+      jsonResponse(suggestion("Contagem fracionária", { messages_total: 4.5 })),
+      jsonResponse(suggestion("Contagem inconsistente", { messages_used: 5, messages_total: 4 }))
     );
     const view = renderComposer("conv-1");
+    fireEvent.change(view.textarea(), { target: { value: "Rascunho preservado" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Gerar sugestão da IA" }));
     await waitFor(() => expect(view.onError).toHaveBeenCalledWith(invalid));
@@ -315,7 +355,7 @@ describe("copiloto de IA no composer (R3)", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Gerar sugestão da IA" }));
     await screen.findByText("Sugestão válida");
 
-    for (const calls of [3, 4, 5]) {
+    for (const calls of [3, 4, 5, 6, 7, 8]) {
       view.onError.mockClear();
       fireEvent.click(await screen.findByRole("button", { name: "Gerar outra sugestão da IA" }));
       await waitFor(() => expect(view.onError).toHaveBeenCalledWith(invalid));
@@ -323,7 +363,21 @@ describe("copiloto de IA no composer (R3)", () => {
       expect(screen.getByRole("group", { name: "Sugestão da IA" })).toHaveTextContent("Sugestão válida");
     }
     expect(screen.queryByText(/undefined/)).toBeNull();
-    expect(view.textarea().value).toBe("");
+    expect(view.textarea().value).toBe("Rascunho preservado");
+    expect(messagePosts()).toHaveLength(0);
+  });
+
+  it("publica uma única falha da IA pelo callback, sem publicação antecipada da API", async () => {
+    const reported = vi.fn();
+    window.addEventListener(ERROR_TOAST_EVENT, reported);
+    copilotQueue.push(jsonResponse({ error: "IA indisponível nesta tentativa" }, 502));
+    const view = renderComposer("conv-1", { onError: reportError });
+    fireEvent.change(view.textarea(), { target: { value: "Texto não enviado" } });
+    fireEvent.click(screen.getByRole("button", { name: "Gerar sugestão da IA" }));
+    await waitFor(() => expect(reported).toHaveBeenCalled());
+    window.removeEventListener(ERROR_TOAST_EVENT, reported);
+    expect(reported).toHaveBeenCalledTimes(1);
+    expect(view.textarea().value).toBe("Texto não enviado");
     expect(messagePosts()).toHaveLength(0);
   });
 

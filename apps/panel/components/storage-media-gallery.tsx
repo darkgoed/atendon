@@ -139,10 +139,7 @@ export function StorageMediaGallery({ canManage, onChanged }: { canManage: boole
     <section className="max-w-2xl border-t border-[var(--border)] pt-6" aria-label="Galeria de mídia do workspace">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="m-0 flex items-center gap-2 text-base font-semibold text-[var(--text)]">
-          Mídias armazenadas
-          <HelpHint label="Ajuda: Mídias armazenadas" title="Mídias armazenadas">
-            Figurinhas, mídias de follow-up, Instagram e logo usados pelo workspace. Documentos IA aparecem só como registro — nunca são excluídos aqui.
-          </HelpHint>
+          <HelpHint content="Documentos IA são registros e não podem ser excluídos aqui." description={<>Figurinhas, mídias de follow-up, Instagram e logo usados pelo workspace. Documentos IA aparecem só como registro — nunca são excluídos aqui.</>}>Mídias armazenadas</HelpHint>
         </h2>
         {canManage && deletableSelected > 0 ? (
           <button type="button" className="btn warn" disabled={deleting} onClick={() => void deleteSelected()}>

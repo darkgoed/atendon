@@ -34,11 +34,12 @@ describe("ajuda contextual nas configurações", () => {
     );
     const { AiFollowUpSettingsPanel } = await import("@/components/ai-follow-up-settings-panel");
     render(<AiFollowUpSettingsPanel />);
-    const hint = await screen.findByRole("button", { name: "Ajuda: Tentativas cumulativas" });
+    const hint = await screen.findByText("Tentativas cumulativas");
     expect(screen.getByText("Tentativas cumulativas")).toBeTruthy();
-    fireEvent.click(hint);
-    expect(await screen.findByText(/Até 10 tentativas/i)).toBeTruthy();
-    expect(await screen.findByText(/43.200 minutos/i)).toBeTruthy();
+    fireEvent.focus(hint);
+    expect((await screen.findByRole("tooltip")).textContent).toContain("Até 10 tentativas crescentes em até 30 dias.");
+    expect(hint.getAttribute("aria-describedby")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Ajuda:/ })).toBeNull();
   });
 
   it("explica o web push por dispositivo sem mudar o título da seção", async () => {
@@ -57,15 +58,16 @@ describe("ajuda contextual nas configurações", () => {
       }
     }));
     render(<WebPushSettings />);
-    fireEvent.click(await screen.findByRole("button", { name: "Ajuda: Web Push" }));
+    fireEvent.focus(await screen.findByText("Web Push discreto"));
     expect(screen.getByRole("heading", { name: /Web Push discreto/ })).toBeTruthy();
-    expect(await screen.findByText(/Cada dispositivo tem inscrição própria/i)).toBeTruthy();
+    expect((await screen.findByRole("tooltip")).textContent).toContain("Ativa notificações apenas neste dispositivo.");
   });
 
   it("explica tema e densidade mantendo os nomes acessíveis dos grupos", () => {
     render(<AppearancePreferences />);
-    expect(screen.getByRole("button", { name: "Ajuda: Tema" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Ajuda: Densidade" })).toBeTruthy();
+    expect(screen.getByText("Tema").getAttribute("aria-describedby")).toBeTruthy();
+    expect(screen.getByText("Densidade").getAttribute("aria-describedby")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Ajuda:/ })).toBeNull();
     expect(screen.getByRole("group", { name: "Tema" })).toBeTruthy();
     expect(screen.getByRole("group", { name: "Densidade" })).toBeTruthy();
   });

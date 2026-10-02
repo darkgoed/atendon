@@ -52,7 +52,7 @@ export default function PostSaleDebtsPage() {
       <header className="pagehead post-sales-pagehead">
         <div>
           <Tooltip content="Voltar à carteira"><Link className="btn icon-button post-sales-back-link" href="/pos-venda"><ArrowLeft size={16} aria-hidden="true" /><span className="sr-only">Voltar</span></Link></Tooltip>
-          <h1>Cobranças de crediário <HelpHint label="Ajuda: Cobranças de crediário">Parcelas do crediário dos clientes da carteira: valor em aberto, recuperado, status e promessa de pagamento.</HelpHint></h1>
+          <h1><HelpHint content="Parcelas em aberto, recuperadas e promessas de pagamento." description={<>Parcelas do crediário dos clientes da carteira: valor em aberto, recuperado, status e promessa de pagamento.</>}>Cobranças de crediário</HelpHint></h1>
         </div>
         <span className="mono post-sales-result-count" role="status" aria-live="polite">
           {isLoading ? "carregando…" : `${debts.length} resultado(s)`}

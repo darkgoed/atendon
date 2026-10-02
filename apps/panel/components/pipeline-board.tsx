@@ -75,6 +75,7 @@ function StageKindIcon({ kind }: { kind: PipelineStage["operational_kind"] }) {
 function stageTone(stage: PipelineStage): string {
   if (stage.operational_kind === "ai_follow_up") return "var(--info)";
   if (stage.operational_kind === "call") return "var(--danger)";
+  if (stage.color) return stage.color;
   return {
     novo: "var(--text-muted)",
     em_atendimento: "var(--info)",

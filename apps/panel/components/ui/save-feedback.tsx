@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { dismissToast, reportToast } from "@/lib/error-events";
 import { Button, type ButtonProps } from "./button";
 import { cn } from "@/lib/cn";
 import { Check } from "@/components/icons";
@@ -23,6 +23,7 @@ export const SAVE_FEEDBACK_MS = 2600;
 export function useSaveFeedback(duration = SAVE_FEEDBACK_MS) {
   const [state, setState] = useState<SaveState>("idle");
   const timer = useRef<number | null>(null);
+  const toastToken = useRef<object>({});
   const clear = () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
@@ -48,9 +49,9 @@ export function useSaveFeedback(duration = SAVE_FEEDBACK_MS) {
     }
   }, [markDone]);
 
-  const reset = useCallback(() => { clear(); setState("idle"); }, []);
+  const reset = useCallback(() => { clear(); dismissToast(toastToken.current); setState("idle"); }, []);
 
-  return { state, busy: state === "busy", done: state === "done", run, markDone, reset };
+  return { state, busy: state === "busy", done: state === "done", run, markDone, reset, toastToken: toastToken.current };
 }
 
 /** Check de confirmação animado (`.on-check` de styles/motion.css). */
@@ -96,20 +97,20 @@ export const SaveButton = forwardRef<HTMLButtonElement, SaveButtonProps>(functio
 });
 
 /**
- * Toast de sucesso centralizado (`.on-toast`). Renderizado em portal no body
- * com camada fixa própria, então não exige `position: relative` no pai.
+ * Publica a confirmação no toast principal; show controla a publicação,
+ * não a duração da confirmação nem o renderer.
  */
-export function SaveToast({ show, children = "Alterações salvas" }: { show: boolean; children?: ReactNode }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  if (!show || !mounted) return null;
-  return createPortal(
-    <div className="save-toast-layer">
-      <div className="on-toast" role="status" aria-live="polite">
-        <SaveCheck size={22} />
-        <span>{children}</span>
-      </div>
-    </div>,
-    document.body
-  );
+export function SaveToast({ show, token, children = "Alterações salvas" }: { show: boolean; token?: object; children?: ReactNode }) {
+  const previousShow = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (show && previousShow.current !== true) {
+      reportToast(children, {
+        kind: "success", duration: SAVE_FEEDBACK_MS, token,
+        dedupeRemount: previousShow.current === null,
+        refresh: previousShow.current === false
+      });
+    }
+    previousShow.current = show;
+  }, [show, token, children]);
+  return null;
 }

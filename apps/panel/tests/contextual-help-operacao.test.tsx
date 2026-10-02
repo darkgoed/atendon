@@ -3,7 +3,8 @@ import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ErrorToasts } from "@/components/error-toasts";
 
 const { apiMock } = vi.hoisted(() => ({ apiMock: vi.fn() }));
 
@@ -32,7 +33,10 @@ const baseTask = {
   completed_at: null
 };
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+beforeEach(() => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+});
+afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
 describe("ajuda contextual do pacote operacao", () => {
   it("Tarefas: HelpHint do escopo aparece na barra de filtros", async () => {
@@ -43,7 +47,8 @@ describe("ajuda contextual do pacote operacao", () => {
     });
     render(<TasksPage />);
     expect(await screen.findByText("Revisar proposta")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ajuda: Escopo" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Escopo")).toHaveAccessibleDescription(/Minhas mostra só/);
+    expect(screen.queryByRole("button", { name: /^Ajuda:/ })).toBeNull();
   });
 
   it("Tarefas: concluir mostra a resposta imediata; falha não mostra nada", async () => {
@@ -54,7 +59,7 @@ describe("ajuda contextual do pacote operacao", () => {
       if (init?.method === "PATCH") return Promise.reject(new Error("boom"));
       return Promise.resolve({});
     });
-    const { rerender } = render(<TasksPage />);
+    const { rerender } = render(<><ErrorToasts /><TasksPage /></>);
     await user.click(await screen.findByRole("button", { name: "Concluir tarefa: Revisar proposta" }));
     await waitFor(() => { expect(apiMock).toHaveBeenCalledWith("/tasks/t1", expect.objectContaining({ method: "PATCH" })); });
     expect(screen.queryByText("Tarefa concluída")).toBeNull();
@@ -65,9 +70,10 @@ describe("ajuda contextual do pacote operacao", () => {
       if (init?.method === "PATCH") return Promise.resolve({ task: { ...baseTask, status: "concluida", completed_at: "2026-09-24T10:00:00.000Z" } });
       return Promise.resolve({});
     });
-    rerender(<TasksPage />);
+    rerender(<><ErrorToasts /><TasksPage /></>);
     await user.click(await screen.findByRole("button", { name: "Concluir tarefa: Revisar proposta" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Tarefa concluída");
+    expect(document.querySelectorAll(".error-toast")).toHaveLength(1);
   });
 
   it("Follow-ups: HelpHint explica a automação ao lado do título", async () => {
@@ -79,7 +85,8 @@ describe("ajuda contextual do pacote operacao", () => {
     });
     render(<FollowUpsPage />);
     expect(await screen.findByText("Cadência automática")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ajuda: Follow-ups" })).toBeInTheDocument();
+    expect(screen.getByText("Follow-ups")).toHaveAccessibleDescription(/Mensagens que a IA/);
+    expect(screen.queryByRole("button", { name: /^Ajuda:/ })).toBeNull();
   });
 
   it("Bloqueio de horário: HelpHint explica o bloqueio recorrente", () => {
@@ -93,6 +100,7 @@ describe("ajuda contextual do pacote operacao", () => {
         onSaved={() => {}}
       />
     );
-    expect(screen.getByRole("button", { name: "Ajuda: Tipo de bloqueio" })).toBeInTheDocument();
+    expect(screen.getByText("Tipo de bloqueio")).toHaveAccessibleDescription(/Recorrente repete/);
+    expect(screen.queryByRole("button", { name: /^Ajuda:/ })).toBeNull();
   });
 });

@@ -15,7 +15,7 @@ const { apiMock, permissions, exportResult } = vi.hoisted(() => ({ apiMock: vi.f
 const LEADS_DATA = { leads: [{ id: "lead-1", telefone: "5511999999999", nome: "Ana", status: "novo", atualizado_em: "2026-01-01T00:00:00Z" }], total: 2, page: { limit: 50, has_more: true, next_cursor: "cursor-1" } };
 const SESSION_DATA = { workspace_role: "owner" };
 
-apiMock.mockImplementation((url: string, init?: { method?: string; body?: string }) => {
+function apiFixture(url: string, init?: { method?: string; body?: string }) {
   if (url === "/me") return Promise.resolve(SESSION_DATA);
   if (url === "/scheduling/config/unidades") return Promise.resolve({ unidades: [{ id: "u1", nome: "Matriz" }] });
   if (url === "/scheduling/config/categorias") return Promise.resolve({ categorias: [{ id: "c1", nome: "Pousada" }] });
@@ -31,7 +31,7 @@ apiMock.mockImplementation((url: string, init?: { method?: string; body?: string
     return Promise.resolve(LEADS_DATA);
   }
   return Promise.resolve({});
-});
+}
 
 vi.mock("swr", () => ({
   default: (key: string | null) => ({
@@ -51,7 +51,7 @@ vi.mock("@/lib/organization", () => ({
   applyLeadSavedViewFilters: (current: unknown) => current,
   leadFiltersForSavedView: (filters: unknown) => filters
 }));
-vi.mock("@/lib/session", () => ({ hasWorkspaceWideCaseScope: () => true }));
+vi.mock("@/lib/session", () => ({ hasWorkspaceWideCaseScope: () => true, canPollWorkspaceAlerts: () => false }));
 vi.mock("@/lib/realtime", () => ({ useRealtimeSignals: () => undefined }));
 vi.mock("@/components/shell", () => ({ Shell: ({ children }: { children: React.ReactNode }) => <main>{children}</main> }));
 vi.mock("@/components/saved-views-control", () => ({ SavedViewsControl: () => <button type="button">Visões</button> }));
@@ -60,18 +60,22 @@ vi.mock("@/components/bulk-lead-actions", () => ({ BulkLeadActions: () => null }
 vi.mock("@/components/contact-avatar", () => ({ ContactAvatar: () => <span /> }));
 vi.mock("@/components/page-state", () => ({ Empty: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock("@/components/lead-tag-picker", () => ({ LeadTagChips: () => null, LeadTagMenuItems: () => null }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("next/link", () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
 
 import LeadsPage from "../app/contatos/page";
+import { ErrorToasts } from "@/components/error-toasts";
+globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
+beforeEach(() => { apiMock.mockReset().mockImplementation(apiFixture); vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 401 })); });
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("contatos: paginação por cursor", () => {
   beforeEach(() => { permissions.value = true; apiMock.mockClear(); });
 
   it("Carregar mais envia cursor com um único limit e anexa a página seguinte", async () => {
     const user = userEvent.setup();
-    render(<LeadsPage />);
+    render(<><ErrorToasts /><LeadsPage /></>);
     expect(await screen.findByText("Ana")).toBeInTheDocument();
 
     await user.click(await screen.findByRole("button", { name: "Carregar mais contatos" }));
@@ -93,11 +97,13 @@ describe("contatos: exportar CSV", () => {
   it("erro do export aparece no painel e não navega para o JSON da API", async () => {
     exportResult.value = () => Promise.reject(new Error("Campo status: valor não permitido"));
     const assign = vi.fn();
-    Object.defineProperty(window, "location", { configurable: true, value: { ...window.location, assign } });
+    Object.defineProperty(window, "location", { configurable: true, value: { ...window.location, pathname: new URL(window.location.href).pathname, assign } });
     const user = userEvent.setup();
-    render(<LeadsPage />);
+    render(<><ErrorToasts /><LeadsPage /></>);
     await user.click(await screen.findByRole("button", { name: "Exportar CSV" }));
-    expect(await screen.findByText("Campo status: valor não permitido")).toBeInTheDocument();
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith("/contact-ops/export.csv"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Campo status: valor não permitido");
+    expect(document.querySelectorAll(".error-toast")).toHaveLength(1);
     expect(assign).not.toHaveBeenCalled();
   });
 
@@ -107,7 +113,7 @@ describe("contatos: exportar CSV", () => {
     Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     const user = userEvent.setup();
-    render(<LeadsPage />);
+    render(<><ErrorToasts /><LeadsPage /></>);
     await user.click(await screen.findByRole("button", { name: "Exportar CSV" }));
     await waitFor(() => expect(click).toHaveBeenCalled());
     expect(apiMock).toHaveBeenCalledWith("/contact-ops/export.csv");

@@ -151,7 +151,7 @@ export default function TrashPage() {
       <div className={styles.page}>
         <header className="pagehead">
           <div>
-            <h1 className="flex items-center gap-2">Lixeira {items.length ? <span className={styles.count}>{items.length}{pageState.hasMore ? "+" : ""}</span> : null}<HelpHint label="Ajuda: Lixeira" title="Lixeira">Os contatos ficam aqui até serem restaurados ou excluídos definitivamente. Restaurar devolve o contato à lista; a exclusão definitiva apaga também as conversas e os agendamentos dele e não pode ser desfeita.</HelpHint></h1>
+            <h1><HelpHint content="Excluir definitivamente apaga também conversas e agendamentos." description={<>Os contatos ficam aqui até serem restaurados ou excluídos definitivamente. Restaurar devolve o contato à lista; a exclusão definitiva apaga também as conversas e os agendamentos dele e não pode ser desfeita.</>}>Lixeira {items.length ? <span className={styles.count}>{items.length}{pageState.hasMore ? "+" : ""}</span> : null}</HelpHint></h1>
           </div>
         </header>
 

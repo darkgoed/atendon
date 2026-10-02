@@ -1,4 +1,4 @@
-import { HelpHint } from "./help-hint";
+import { Tooltip } from "./overlays";
 import { Children, cloneElement, forwardRef, isValidElement, useId, type ComponentPropsWithRef, type HTMLAttributes, type LabelHTMLAttributes, type ReactElement, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 
 export type FieldProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> & {
@@ -6,7 +6,7 @@ export type FieldProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> & {
   hint?: ReactNode;
   error?: ReactNode;
   htmlFor?: string;
-  /** Ajuda contextual: "?" ao lado do rótulo (fora do <label>, preserva o nome acessível). */
+  /** Ajuda no hover/foco do rótulo e controle, preservando o nome acessível. */
   help?: ReactNode;
   children: ReactNode;
 };
@@ -15,7 +15,8 @@ export function Field({ label, hint, error, htmlFor, help, children, className =
   const generatedId = `field-${useId().replace(/:/g, "")}`;
   const hintId = `${htmlFor ?? generatedId}-hint`;
   const errorId = `${htmlFor ?? generatedId}-error`;
-  const describedBy = error ? errorId : hint ? hintId : undefined;
+  const helpId = `${htmlFor ?? generatedId}-help`;
+  const describedBy = [error ? errorId : hint ? hintId : undefined, help ? helpId : undefined].filter(Boolean).join(" ");
   const enhance = (node: ReactNode): ReactNode => {
     if (!isValidElement(node)) return node;
     const element = node as ReactElement<Record<string, unknown>>;
@@ -25,11 +26,12 @@ export function Field({ label, hint, error, htmlFor, help, children, className =
       const existingId = typeof element.props.id === "string" ? element.props.id : undefined;
       const id = existingId ?? htmlFor ?? generatedId;
       const existingDescribedBy = typeof element.props["aria-describedby"] === "string" ? element.props["aria-describedby"] : "";
-      return cloneElement(element, {
+      const enhanced = cloneElement(element, {
         id,
         ...(describedBy ? { "aria-describedby": [existingDescribedBy, describedBy].filter(Boolean).join(" ") } : {}),
         ...(error ? { "aria-invalid": element.props["aria-invalid"] ?? "true" } : {}),
       });
+      return help ? <Tooltip key={node.key} content={help} compact>{enhanced}</Tooltip> : enhanced;
     }
     if (type === "div" || type === "span") {
       return cloneElement(element, { children: Children.map(element.props.children as ReactNode, enhance) });
@@ -53,9 +55,10 @@ export function Field({ label, hint, error, htmlFor, help, children, className =
   const controlId = htmlFor ?? findControlId(control);
   return <div {...props} className={`field${error ? " field--error" : ""}${className ? ` ${className}` : ""}`}>
     {label && help ? (
-      <span className="field__label-row"><label htmlFor={controlId}>{label}</label><HelpHint label={`Ajuda: ${typeof label === "string" ? label : "campo"}`}>{help}</HelpHint></span>
+      <Tooltip content={help} compact><label htmlFor={controlId} tabIndex={0} aria-describedby={helpId}>{label}</label></Tooltip>
     ) : label ? <label htmlFor={controlId}>{label}</label> : null}
     {control}
+    {help ? <span id={helpId} hidden>{help}</span> : null}
     {error ? <small id={errorId} className="field__error" role="alert">{error}</small> : hint ? <small id={hintId} className="sub">{hint}</small> : null}
   </div>;
 }

@@ -292,7 +292,7 @@ export function ConversationComposer({
         method: "POST",
         headers: { "Idempotency-Key": key },
         body: JSON.stringify(body)
-      });
+      }, { reportErrors: false });
       try {
         await post(attempt.key);
       } catch (error) {
@@ -327,10 +327,12 @@ export function ConversationComposer({
       const result = await api<Partial<CopilotSuggestion> | undefined>(`/conversations/${conversationId}/copilot-suggestion`, {
         method: "POST",
         body: JSON.stringify(previous ? { previous_suggestion: previous } : {})
-      });
+      }, { reportErrors: false });
       // Resposta vazia ou fora do contrato (204, {}, texto em branco, sem metadados) nunca vira chip falso.
       if (typeof result?.suggestion !== "string" || !result.suggestion.trim() || typeof result.context_complete !== "boolean"
-        || !Number.isFinite(result.messages_used) || !Number.isFinite(result.messages_total)) {
+        || typeof result.messages_used !== "number" || typeof result.messages_total !== "number"
+        || !Number.isSafeInteger(result.messages_used) || !Number.isSafeInteger(result.messages_total)
+        || result.messages_used < 0 || result.messages_total < result.messages_used) {
         throw new Error("A IA não retornou uma sugestão válida. Tente novamente.");
       }
       if (copilotRequestRef.current === request) setSuggestion(result as CopilotSuggestion);
@@ -400,7 +402,7 @@ export function ConversationComposer({
         </div>
       ) : null}
       {suggestion ? (
-        <div className="composer-reply-chip mb-3" role="group" aria-label="Sugestão da IA">
+        <div className="composer-reply-chip composer-reply-chip--suggestion mb-3" role="group" aria-label="Sugestão da IA">
           <span className="min-w-0 flex-1">
             <strong>
               <MagicWand size={11} className="mr-1 inline" aria-hidden="true" />
@@ -408,7 +410,7 @@ export function ConversationComposer({
             </strong>
             <span className="line-clamp-2" title={suggestion.suggestion}>{suggestion.suggestion}</span>
             {!suggestion.context_complete ? (
-              <span className="block text-xs text-[var(--warning-text)]">
+              <span className="composer-reply-chip__context">
                 {`Histórico parcial: a sugestão considerou as ${suggestion.messages_used} mensagens mais recentes de ${suggestion.messages_total}.`}
               </span>
             ) : null}
@@ -487,6 +489,9 @@ export function ConversationComposer({
         />
         <label className="conversation-composer__field">
           <span className="sr-only">Mensagem</span>
+          <HelpHint asChild content="Digite / para escolher uma resposta rápida." description={<>
+              Digite <kbd>/</kbd> no começo da mensagem para abrir a lista de respostas rápidas. A escolhida substitui o atalho e variáveis como {"{{nome}}"} e {"{{data}}"} são preenchidas na inserção.
+          </>}>
           <Textarea
             ref={textareaRef}
             value={draft}
@@ -505,6 +510,7 @@ export function ConversationComposer({
             autoComplete="off"
             disabled={draftLocked}
           />
+          </HelpHint>
         </label>
         <div className="conversation-composer__actions">
         <Button type="button" className="conversation-composer__tool active:scale-95" onClick={() => fileInputRef.current?.click()} aria-label="Anexar arquivo" disabled={sending || recording || !canAttach}>
@@ -518,12 +524,7 @@ export function ConversationComposer({
             {generating ? <span className="on-spinner" aria-hidden="true" /> : <MagicWand size={16} aria-hidden="true" />}
           </Button>
         </Tooltip>
-          {/* Os chips estáticos ("Enviar proposta" etc.) não faziam nada: o recurso real é o "/". */}
-          <div className="conversation-composer__quick-replies" role="group" aria-label="Respostas rápidas">
-            <HelpHint label="Ajuda: Respostas rápidas" title="Respostas rápidas">
-              Digite <kbd>/</kbd> no começo da mensagem para abrir a lista de respostas rápidas. A escolhida substitui o atalho e variáveis como {"{{nome}}"} e {"{{data}}"} são preenchidas na inserção.
-            </HelpHint>
-          </div>
+
         {/* DS v2: envio circular de 32px (ref. Conversas.dc.html). O nome
             acessível "Enviar mensagem"/"Enviando mensagem" não muda; sem
             rascunho fica neutro, com rascunho ciano cheio com glow. */}
@@ -539,7 +540,7 @@ export function ConversationComposer({
         </div>
         </div>
       </div>
-      {availabilityMessage ? <p className="mt-2 text-xs text-[var(--warning-text)]" role="status">{availabilityMessage}</p> : null}
+      {availabilityMessage ? <p className="conversation-composer__availability" role="status">{availabilityMessage}</p> : null}
       <p className="conversation-composer__hint mono">Enter envia · Shift + Enter quebra a linha</p>
     </form>
   );

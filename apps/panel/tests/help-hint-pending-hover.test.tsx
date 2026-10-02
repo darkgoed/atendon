@@ -7,16 +7,14 @@ globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 it("Escape cancels an outstanding mouse hover timer", () => {
   vi.useFakeTimers();
-  render(<HelpHint label="Ajuda de auditoria">Corpo da ajuda</HelpHint>);
-  const button = screen.getByRole("button", { name: "Ajuda de auditoria" });
-  const pointer = new MouseEvent("pointerover", { bubbles: true });
+  render(<HelpHint content="Corpo da ajuda" asChild><span tabIndex={0}>Auditoria</span></HelpHint>);
+  const button = screen.getByText("Auditoria");
+  const pointer = new MouseEvent("pointermove", { bubbles: true });
   Object.defineProperty(pointer, "pointerType", { value: "mouse" });
   fireEvent(button, pointer);
   expect(vi.getTimerCount()).toBeGreaterThan(0);
-  fireEvent.click(button);
-  expect(screen.getByText("Corpo da ajuda")).toBeInTheDocument();
   fireEvent.keyDown(document, { key: "Escape" });
-  expect(screen.queryByText("Corpo da ajuda")).toBeNull();
-  act(() => { vi.advanceTimersByTime(350); });
-  expect(screen.queryByText("Corpo da ajuda")).toBeNull();
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  act(() => { vi.advanceTimersByTime(500); });
+  expect(screen.queryByRole("tooltip")).toBeNull();
 });

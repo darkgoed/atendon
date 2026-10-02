@@ -179,7 +179,7 @@ export function LeadCustomFields({ leadId }: { leadId: string }) {
 
   return (
     <section className="card" aria-labelledby="lead-custom-fields-title">
-      <div id="lead-custom-fields-title" className="cardtitle">Campos personalizados <HelpHint label="Ajuda: Campos personalizados do contato" title="Campos personalizados">Campos extras definidos pela empresa. Quem gerencia o catálogo edita os valores direto aqui, no contato.</HelpHint></div>
+      <div id="lead-custom-fields-title" className="cardtitle"><HelpHint content="Edite os campos extras definidos pela empresa." description={<>Campos extras definidos pela empresa. Quem gerencia o catálogo edita os valores direto aqui, no contato.</>}>Campos personalizados</HelpHint></div>
       {error ? <p className="error" role="alert">{error.message}</p> : null}
       {items.length === 0 ? (
         <p className="sub" role="status">Nenhum campo personalizado configurado para a empresa.</p>

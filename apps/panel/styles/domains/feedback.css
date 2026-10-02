@@ -52,15 +52,22 @@
   font-weight: var(--weight-semibold);
 }
 
-.error-toast p {
+.error-toast p,
+.error-toast-message {
   margin: var(--space-1) 0 0;
   color: var(--warning-text);
   font-size: var(--text-label);
   line-height: var(--leading-body);
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 
-.error-toast button {
+.error-toast[data-kind="success"] { border-color: var(--success-border); }
+.error-toast[data-kind="success"] :where(.error-toast-icon, .error-toast-message, button) { color: var(--success-text); }
+.error-toast[data-kind="info"] { border-color: var(--primary-border); }
+.error-toast[data-kind="info"] :where(.error-toast-icon, .error-toast-message, button) { color: var(--primary-text); }
+
+.error-toast > button {
   display: grid;
   width: var(--control-height-sm);
   height: var(--control-height-sm);
@@ -73,12 +80,12 @@
   transition: var(--transition-control);
 }
 
-.error-toast button:hover {
+.error-toast > button:hover {
   background: var(--warning-subtle);
   color: var(--text);
 }
 
-.error-toast button:active {
+.error-toast > button:active {
   transform: scale(.96);
 }
 

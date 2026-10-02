@@ -81,7 +81,7 @@ export function PipelineViewPreferences({
           </div>
         </fieldset>
         <fieldset>
-          <legend className="label mb-2 flex items-center gap-1">Alertas auxiliares<HelpHint label="Ajuda: Alertas auxiliares">Avisos exibidos nos cards: reunião sem resultado registrado, no-show a recuperar e follow-up fora do prazo.</HelpHint></legend>
+          <legend className="label mb-2"><HelpHint content="Avisos de reunião sem resultado, no-show a recuperar e follow-up atrasado." asChild><span tabIndex={0}>Alertas auxiliares</span></HelpHint></legend>
           <div className="grid gap-2">
             {(Object.entries(badgeLabels) as [PipelineAuxiliaryBadge, string][]).map(([badge, label]) => (
               <label key={badge} className="flex min-h-8 items-center gap-2 text-xs">

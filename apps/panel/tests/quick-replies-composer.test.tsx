@@ -173,6 +173,7 @@ describe("respostas rápidas do composer ('/')", () => {
     renderComposer();
     expect(screen.queryByText("Pedir CNPJ")).not.toBeInTheDocument();
     expect(screen.queryByText("Enviar proposta")).not.toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Respostas rápidas" })).not.toHaveAttribute("tabindex");
+    expect(screen.queryByRole("group", { name: "Respostas rápidas" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Mensagem" })).toHaveAccessibleDescription(/no começo da mensagem.*preenchidas na inserção/);
   });
 });
