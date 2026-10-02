@@ -9,6 +9,7 @@ import { createWorkspaceSessionRow } from "../../auth/sessions.js";
 import { issueTotpChallenge } from "../../auth/totp.js";
 import { db } from "../../db/client.js";
 import { config } from "../../config.js";
+import { invalidateCommercialDashboardCache } from "../dashboard/service.js";
 import { withTenantTransaction } from "../../db/tenant-transaction.js";
 import { dataUrlByteLength, recalculateStorageUsage, reserveStorageBytes } from "../organization/storage.js";
 import { getEmailProvider } from "../../mail/index.js";
@@ -268,6 +269,11 @@ export async function registerWorkspaceRoutes(app: FastifyInstance) {
       if (exists.rows[0]) throw httpError(400, "O início do horário comercial deve ser antes do fim");
       throw httpError(404, "Workspace não encontrado");
     }
+
+    // O agregado comercial depende do timezone do tenant para delimitar o
+    // período; sem invalidar, o painel seguiria no fuso antigo por até um TTL.
+    invalidateCommercialDashboardCache(session.tenantId);
+
     let queueAdjustment = { promoted: 0, rescheduled: 0, skipped: 0 };
     try {
       queueAdjustment = await adjustDelayedInboundJobs(session.tenantId, {

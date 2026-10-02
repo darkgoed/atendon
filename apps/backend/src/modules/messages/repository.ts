@@ -522,7 +522,7 @@ export class MessageRepository {
     }>(
       `SELECT c.ai_active,c.contact_name,c.instagram_username,c.facebook_attribution,t.timezone,
               agent.agent_config_version_id,agent.system_prompt,agent.ai_model,agent.model_params,
-              agent.enabled_tools,agent.agent_is_active,
+              agent.enabled_tools,agent.guardrails,agent.agent_is_active,
               settings.openrouter_provider,settings.openrouter_api_key_encrypted,
               settings.media_fallback_audio,settings.media_fallback_image,settings.media_fallback_document,
               settings.humanizer_config,lead.status lead_status,lead.qualification_stars lead_qualification_stars,
@@ -862,6 +862,7 @@ export class MessageRepository {
         agent.media_fallback_document,
         agent.humanizer_config,
         agent.enabled_tools,
+        agent.guardrails,
         agent.timezone,
         conv.facebook_attribution,
         conv.contact_name,

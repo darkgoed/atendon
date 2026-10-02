@@ -18,7 +18,7 @@ import {
   type DashboardLayoutItem,
   type DashboardWidgetKey
 } from "./catalog.js";
-import { loadNewWidgetMetric } from "./metrics.js";
+import { loadNewWidgetMetric, loadWidgetMetricGroups, isMetricWidgetKey } from "./metrics.js";
 
 const widgetKeySchema = z.enum(DASHBOARD_WIDGET_KEYS);
 const layoutItemSchema = z.object({
@@ -266,6 +266,167 @@ async function loadWidgetData(
     series: commercial.series,
     period: commercial.period
   };
+}
+
+type OpenConversationsData = { open: number; ai_open: number; resolved_today: number };
+type HandoffsData = {
+  total: number;
+  unassigned: number;
+  over_sla: number;
+  oldest_minutes: number;
+  items: Array<{ id: string; contact_name: string; contact_phone: string; waiting_minutes: number }>;
+};
+type WhatsappData = { status: string; last_connected_at: string | null; total: number; connected: number };
+type RecentAlertsData = Array<{ id: string; kind: "operational" | "meeting"; message: string; created_at: string }>;
+
+/**
+ * Payload consolidado do dashboard: resolve escopo/capabilities uma vez,
+ * calcula cada agregado compartilhado UMA vez (comercial, grupos de métricas,
+ * counts, pipeline, alertas) e deriva todos os widgets a partir deles — sem
+ * re-executar por widget. O catálogo (permissões + capabilities) continua
+ * sendo o filtro de acesso: widget fora do catálogo não entra no payload.
+ */
+export async function loadDashboardWidgetBundle(
+  session: WorkspaceSession,
+  input: CommercialDashboardInput
+): Promise<Record<string, { key: DashboardWidgetKey; data: unknown }>> {
+  const catalog = await widgetCatalog(session);
+  const allowed = new Set(catalog.map((widget) => widget.key));
+  const scope = await resolveCaseScope(db, session);
+  const workspaceScope = scope.type === "workspace";
+  const caseParams = [session.tenantId, workspaceScope, session.userId];
+  const wants = (keys: string[]) => keys.some((key) => allowed.has(key as DashboardWidgetKey));
+  const wantsCommercial = catalog.some((widget) => !isMetricWidgetKey(widget.key) && ![
+    "whatsapp_connection", "open_conversations", "handoffs",
+    "messages_today", "pipeline", "recent_alerts"
+  ].includes(widget.key));
+
+  const [commercial, metrics, openConversations, handoffs, whatsappConnection, pipeline, recentAlerts, messagesToday] = await Promise.all([
+    wantsCommercial ? loadCommercialDashboard(session, input) : Promise.resolve(undefined),
+    catalog.some((widget) => isMetricWidgetKey(widget.key)) ? loadWidgetMetricGroups(session, input) : Promise.resolve(undefined),
+    wants(["open_conversations"]) ? db.query<OpenConversationsData>(
+      `SELECT count(*) FILTER (WHERE status='open')::int open,
+              count(*) FILTER (WHERE status='open' AND ai_active=true)::int ai_open,
+              count(*) FILTER (WHERE status='closed' AND resolved_at >= date_trunc('day',now()))::int resolved_today
+       FROM conversations
+       WHERE tenant_id=$1 AND ($2::boolean OR assigned_user_id=$3)`,
+      caseParams
+    ) : Promise.resolve(undefined),
+    wants(["handoffs"]) ? Promise.all([
+      db.query<Omit<HandoffsData, "items">>(
+        `SELECT count(*)::int total,
+                count(*) FILTER (WHERE assigned_user_id IS NULL)::int unassigned,
+                count(*) FILTER (WHERE last_message_at < now() - interval '15 minutes')::int over_sla,
+                COALESCE(floor(extract(epoch FROM (now()-min(last_message_at)))/60),0)::int oldest_minutes
+         FROM conversations
+         WHERE tenant_id=$1 AND ($2::boolean OR assigned_user_id=$3)
+           AND status='open' AND ai_active=false AND handoff_reason IS DISTINCT FROM 'manually_paused'`,
+        caseParams
+      ),
+      db.query<HandoffsData["items"][number]>(
+        `SELECT id,contact_name,contact_phone,
+                floor(extract(epoch FROM (now()-last_message_at))/60)::int waiting_minutes
+         FROM conversations
+         WHERE tenant_id=$1 AND ($2::boolean OR assigned_user_id=$3)
+           AND status='open' AND ai_active=false AND handoff_reason IS DISTINCT FROM 'manually_paused'
+         ORDER BY last_message_at LIMIT 5`,
+        caseParams
+      )
+    ]) : Promise.resolve(undefined),
+    wants(["whatsapp_connection"]) ? db.query<WhatsappData>(
+      `SELECT status,last_connected_at,
+              count(*) OVER ()::int total,
+              count(*) FILTER (WHERE status='connected') OVER ()::int connected
+       FROM whatsapp_sessions
+       WHERE tenant_id=$1 AND channel='whatsapp' AND archived_at IS NULL
+       ORDER BY is_primary DESC, created_at DESC LIMIT 1`,
+      [session.tenantId]
+    ) : Promise.resolve(undefined),
+    wants(["pipeline"]) ? db.query<{ id: string; name: string; color: string; position: number; capacity_target: number | null; status: string; pipeline_id: string; pipeline_name: string; count: number }>(
+      `SELECT stage.id,stage.name,stage.color,stage.position,stage.capacity_target,
+              stage.technical_status AS status,stage.pipeline_id,pipeline.name AS pipeline_name,
+              count(lead.id)::int count
+       FROM pipeline_stages stage
+       JOIN pipelines pipeline ON pipeline.id=stage.pipeline_id AND pipeline.tenant_id=stage.tenant_id
+         AND pipeline.archived_at IS NULL
+       LEFT JOIN scheduling_leads lead
+         ON lead.tenant_id=stage.tenant_id
+        AND lead.pipeline_stage_id=stage.id
+        AND lead.deleted_at IS NULL
+        AND ($2::boolean OR lead.assigned_member_id=$3)
+       WHERE stage.tenant_id=$1 AND stage.archived_at IS NULL
+       GROUP BY stage.id,stage.name,stage.color,stage.position,
+                stage.capacity_target,stage.technical_status,stage.pipeline_id,
+                pipeline.name,pipeline.position
+       ORDER BY pipeline.position,stage.position,stage.id`,
+      [session.tenantId, workspaceScope, scope.type === "mine" ? scope.memberId : null]
+    ) : Promise.resolve(undefined),
+    wants(["recent_alerts"]) ? (async (): Promise<RecentAlertsData> => {
+      const appointmentsEnabled = await isCapabilityEnabled(db, session.tenantId, "appointments_v1");
+      const rootMembership = session.isRoot
+        ? await db.query(
+            `SELECT 1 FROM workspace_members
+             WHERE workspace_id=$1 AND user_id=$2 AND status='active'`,
+            [session.tenantId, session.userId]
+          )
+        : null;
+      const canReadWorkspaceAlerts = hasWorkspaceCaseAccess(session)
+        && !(session.isRoot && !rootMembership?.rows[0]);
+      return (await db.query<RecentAlertsData[number]>(
+        `SELECT alert.id,alert.kind,alert.message,alert.created_at
+         FROM system_alerts alert
+         LEFT JOIN system_alert_receipts receipt
+           ON receipt.alert_id=alert.id AND receipt.tenant_id=alert.tenant_id AND receipt.user_id=$2
+         WHERE alert.tenant_id=$1
+           AND (receipt.user_id IS NOT NULL OR ($3::boolean AND alert.audience='workspace'))
+           AND ($4::boolean OR alert.kind <> 'meeting')
+         ORDER BY alert.created_at DESC LIMIT 5`,
+        [session.tenantId, session.userId, canReadWorkspaceAlerts, appointmentsEnabled]
+      )).rows;
+    })() : Promise.resolve(undefined),
+    wants(["messages_today"]) ? db.query<{ today: number }>(
+      `SELECT count(*)::int today
+       FROM messages message JOIN conversations conversation ON conversation.id=message.conversation_id
+       WHERE conversation.tenant_id=$1 AND ($2::boolean OR conversation.assigned_user_id=$3)
+         AND message.created_at >= date_trunc('day',now())`,
+      caseParams
+    ) : Promise.resolve(undefined)
+  ]);
+
+  const whatsappData: WhatsappData = whatsappConnection?.rows[0]
+    ?? { status: "disconnected", last_connected_at: null, total: 0, connected: 0 };
+  const derive = (key: DashboardWidgetKey): unknown => {
+    if (key === "whatsapp_connection") return whatsappData;
+    if (key === "open_conversations") return openConversations?.rows[0];
+    if (key === "handoffs") {
+      if (!handoffs) return undefined;
+      const [summary, items] = handoffs;
+      return { ...summary.rows[0], items: items.rows } satisfies HandoffsData;
+    }
+    if (key === "messages_today") return messagesToday?.rows[0];
+    if (key === "pipeline") return { stages: pipeline?.rows ?? [] };
+    if (key === "recent_alerts") return { items: recentAlerts ?? [] };
+    if (isMetricWidgetKey(key)) return metrics?.[key] ?? { value: 0 };
+    if (key === "today_agenda") return { items: commercial?.today_agenda, period: commercial?.period };
+    if (key === "team_load") return { members: commercial?.team, scope: commercial?.scope, period: commercial?.period };
+    if (key === "conversion_funnel") return { funnel: commercial?.funnel, result: commercial?.result, period: commercial?.period };
+    if (key === "operations_summary") return { operations: commercial?.operations, period: commercial?.period };
+    return {
+      result: commercial?.result,
+      funnel: commercial?.funnel,
+      metrics: commercial?.metrics,
+      sdr_metrics: commercial?.sdr_metrics,
+      commercial_metrics: commercial?.commercial_metrics,
+      series: commercial?.series,
+      period: commercial?.period
+    };
+  };
+
+  const widgets: Record<string, { key: DashboardWidgetKey; data: unknown }> = {};
+  for (const widget of catalog) {
+    widgets[widget.key] = { key: widget.key, data: derive(widget.key) };
+  }
+  return widgets;
 }
 
 export async function registerDashboardWidgetRoutes(app: FastifyInstance) {

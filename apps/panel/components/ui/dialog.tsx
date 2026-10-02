@@ -62,5 +62,3 @@ export function Dialog({
     </RadixDialog.Root>
   );
 }
-
-export const DialogClose = RadixDialog.Close;

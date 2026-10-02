@@ -51,7 +51,7 @@ export const LoadingState = forwardRef<HTMLDivElement, StateProps & { label?: st
   }
 );
 
-/** Barra de progresso determinada (0–100). Para indeterminado use Spinner. */
+/** Barra de progresso determinada (0–100). */
 export const Progress = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement> & { value: number; label?: string }>(
   function Progress({ value, label, className, ...props }, ref) {
     const clamped = Math.max(0, Math.min(100, value));
@@ -72,16 +72,3 @@ export const Progress = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement
   }
 );
 
-export const Spinner = forwardRef<HTMLSpanElement, HTMLAttributes<HTMLSpanElement> & { label?: string }>(
-  function Spinner({ label = "Carregando", className, ...props }, ref) {
-    return (
-      <span {...props} ref={ref} className={cn("spinner", className)} role="status" aria-label={label} />
-    );
-  }
-);
-
-export const Skeleton = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement> & { variant?: "block" | "text" | "title" }>(
-  function Skeleton({ variant = "block", className, ...props }, ref) {
-    return <div {...props} ref={ref} aria-hidden="true" className={cn("skeleton", variant !== "block" && `skeleton--${variant}`, className)} />;
-  }
-);

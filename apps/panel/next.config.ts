@@ -51,8 +51,6 @@ export const panelSecurityHeaders = [
 const config: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: resolve(currentDir, "../.."),
-  // O pacote @atendon/proposal-renderer é TS+TSX fonte (panel compila com o Next).
-  transpilePackages: ["@atendon/proposal-renderer"],
   // The workspace build runs ESLint explicitly before Next to keep the lint gate
   // deterministic with the monorepo's root flat configuration.
   eslint: { ignoreDuringBuilds: true },

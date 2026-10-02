@@ -8,6 +8,7 @@ import {
   type InternalRealtimeSignal
 } from "./signals.js";
 import { incrementRealtimeMetric } from "../operations/observability-metrics.js";
+import { invalidateCommercialDashboardCache } from "../dashboard/service.js";
 
 type RedisClient = ReturnType<typeof createClient>;
 type RealtimeLogger = {
@@ -213,6 +214,19 @@ export class RealtimeCoordinator {
 
   private async deliverSignal(signal: InternalRealtimeSignal): Promise<void> {
     try {
+      // Este processo acabou de receber a notificação de uma mutação que
+      // altera dados do dashboard comercial. Sem isso, o painel revalidaria
+      // os widgets no instante do evento e receberia o agregado ainda em
+      // cache (TTL de fallback) — e, se nenhum outro evento chegasse, ficaria
+      // preso no valor antigo. Escopo: apenas o tenant do sinal.
+      if (
+        signal.type === "conversation.messages.changed"
+        || signal.type === "appointment.changed"
+        || signal.type === "case.assignment.changed"
+        || signal.type === "alerts.changed"
+      ) {
+        invalidateCommercialDashboardCache(signal.tenantId);
+      }
       if (signal.type === "conversation.messages.changed" || signal.type === "conversation.ai.progress") {
         const conversation = await this.pool.query<{ assigned_user_id: string | null }>(
           `SELECT assigned_user_id

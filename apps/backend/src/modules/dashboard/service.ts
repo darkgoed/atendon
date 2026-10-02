@@ -1,6 +1,7 @@
 import type { WorkspaceSession } from "../../auth/session.js";
 import { resolveCaseScope } from "../../auth/case-scope.js";
 import { db } from "../../db/client.js";
+import { config } from "../../config.js";
 import { resolveReportingRange, shiftDateKey, type ReportingInput } from "../reporting.js";
 import { loadQueueWaiting, loadPipelineBottlenecks, loadFirstResponseByOperator } from "../reports/service.js";
 
@@ -9,7 +10,91 @@ export type CommercialDashboardInput = ReportingInput;
 
 export const resolvePeriod = resolveReportingRange;
 
+type CommercialDashboard = Awaited<ReturnType<typeof loadCommercialDashboardUncached>>;
+
+// A rajada de widgets do painel dispara ~15 cópias simultâneas desta carga na
+// mesma janela (cada widget "sales"/"leads"/"funil" reexecuta o agregado
+// completo). Single-flight + TTL curto colapsa as cópias em uma execução por
+// (tenant, usuário, período), no padrão do cache de unread-counts.
+// Consistência: o TTL é fallback — a invalidação dirigida acontece (a) quando
+// um sinal realtime que altera os dados chega ao processo
+// (RealtimeCoordinator → invalidateCommercialDashboardCache) e (b) na troca de
+// timezone do workspace. role/isRoot fazem parte da chave porque definem o
+// escopo do resultado: mudança de papel nunca reutiliza o agregado do papel
+// antigo, mesmo dentro do TTL. Custom ranges criam uma chave por intervalo,
+// então o mapa é limitado (FIFO) para não crescer sem limite. Produção apenas:
+// os testes criam dados e consultam dentro da mesma janela.
+const COMMERCIAL_DASHBOARD_CACHE_TTL_MS = 3_000;
+const COMMERCIAL_DASHBOARD_CACHE_MAX_ENTRIES = 300;
+const commercialDashboardCache = new Map<string, {
+  expiresAt: number;
+  promise: Promise<CommercialDashboard>;
+}>();
+// null = segue NODE_ENV (produção liga, testes/dev desligam).
+let commercialDashboardCacheOverrideForTests: boolean | null = null;
+
+function commercialDashboardCacheAllowed(): boolean {
+  return commercialDashboardCacheOverrideForTests ?? config.NODE_ENV === "production";
+}
+
+export function invalidateCommercialDashboardCache(tenantId: string): void {
+  for (const key of commercialDashboardCache.keys()) {
+    if (key.startsWith(`${tenantId}|`)) commercialDashboardCache.delete(key);
+  }
+}
+
+/** Hooks de teste: os testes rodam fora de produção e mutam dados no banco. */
+export function setCommercialDashboardCacheOverrideForTests(enabled: boolean | null): void {
+  commercialDashboardCacheOverrideForTests = enabled;
+}
+export function clearCommercialDashboardCacheForTests(): void {
+  commercialDashboardCache.clear();
+}
+export function commercialDashboardCacheKeysForTests(): string[] {
+  return [...commercialDashboardCache.keys()];
+}
+export function setCommercialDashboardCacheMaxEntriesForTests(max: number): void {
+  commercialDashboardCacheMaxEntries = max;
+}
+let commercialDashboardCacheMaxEntries = COMMERCIAL_DASHBOARD_CACHE_MAX_ENTRIES;
+
 export async function loadCommercialDashboard(
+  session: WorkspaceSession,
+  input: CommercialDashboardInput
+): Promise<CommercialDashboard> {
+  if (!commercialDashboardCacheAllowed()) {
+    return loadCommercialDashboardUncached(session, input);
+  }
+  const key = [
+    session.tenantId,
+    session.userId,
+    session.isRoot ? "root" : "member",
+    session.role,
+    input.period,
+    input.start ?? "",
+    input.end ?? "",
+    input.now?.toISOString() ?? ""
+  ].join("|");
+  const cached = commercialDashboardCache.get(key);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now) return cached.promise;
+  const promise = loadCommercialDashboardUncached(session, input);
+  if (commercialDashboardCache.size >= commercialDashboardCacheMaxEntries) {
+    const oldest = commercialDashboardCache.keys().next().value;
+    if (oldest !== undefined) commercialDashboardCache.delete(oldest);
+  }
+  commercialDashboardCache.set(key, {
+    expiresAt: now + COMMERCIAL_DASHBOARD_CACHE_TTL_MS,
+    promise
+  });
+  void promise.catch(() => {
+    const current = commercialDashboardCache.get(key);
+    if (current?.promise === promise) commercialDashboardCache.delete(key);
+  });
+  return promise;
+}
+
+async function loadCommercialDashboardUncached(
   session: WorkspaceSession,
   input: CommercialDashboardInput
 ) {

@@ -30,11 +30,15 @@ export function DashboardWidgets() {
   // Data do dia do cabeçalho da referência Painel.dc.html; caixa alta fica no CSS.
   const toolbarDate = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Sao_Paulo" });
 
+  // Uma única requisição consolidada alimenta a visão geral
+  // (/dashboard?include=widgets). Realtime revalida ESSE endereço — não há mais
+  // rajada de ~20 requests por sinal.
+  const consolidateKey = (key: unknown) => typeof key === "string" && key.startsWith("/dashboard?include=widgets");
   useRealtimeSignals({
-    onCatchUp: () => { if (document.visibilityState === "visible") void mutateCache((key) => typeof key === "string" && key.startsWith("/dashboard/widgets/")); },
+    onCatchUp: () => { if (document.visibilityState === "visible") void mutateCache(consolidateKey); },
     onSignal: (signal) => {
       if (document.visibilityState === "visible" && (signal.type === "appointment.changed" || signal.type === "case.assignment.changed" || signal.type === "conversation.messages.changed")) {
-        void mutateCache((key) => typeof key === "string" && key.startsWith("/dashboard/widgets/"));
+        void mutateCache(consolidateKey);
       }
     }
   });

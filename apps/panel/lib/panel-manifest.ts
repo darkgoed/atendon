@@ -2,6 +2,7 @@ import {
   CalendarDots,
   Clock,
   ChatsCircle,
+  ChartLineUp,
   ClipboardText,
   Gauge,
   GearSix,
@@ -85,6 +86,7 @@ export const panelManifest: readonly PanelManifestItem[] = [
   // Cobrança nunca pode depender de uma capability comercial: uma empresa
   // suspensa precisa alcançar esta rota justamente para quitar e reativar.
   { href: "/uso", label: "Uso e cobrança", group: "Administração", Icon: CreditCard, requiredPermissions: ["usage.read"], menu: true, match: startsAt("/uso") },
+  { href: "/relatorios", label: "Relatórios", group: "Administração", Icon: ChartLineUp, requiredPermissions: ["dashboard.read"], menu: true, match: startsAt("/relatorios") },
   { href: "/configuracoes", label: "Configurações", group: "Administração", Icon: GearSix, capability: "workspace_admin_v1", menu: true, match: (path) => administrationPaths.some((base) => startsAt(base)(path)) },
   { href: "/root/workspaces", label: "Empresas", group: "ROOT", Icon: Vault, rootOnly: true, menu: true, match: startsAt("/root/workspaces") },
   { href: "/root/versions", label: "Versões e changelogs", group: "ROOT", Icon: Sparkle, rootOnly: true, menu: true, match: startsAt("/root/versions") },

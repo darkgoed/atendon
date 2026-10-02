@@ -43,11 +43,10 @@ async function reportingContext(session: WorkspaceSession, input: CommercialDash
   return { range, scope, workspaceScope: scope.type === "workspace" };
 }
 
-async function loadConversationMetric(
+async function loadConversationMetricGroup(
   session: WorkspaceSession,
-  key: DashboardWidgetKey,
   input: CommercialDashboardInput
-): Promise<NumericMetric> {
+): Promise<Record<string, NumericMetric>> {
   const { range, scope, workspaceScope } = await reportingContext(session, input);
   const row = (await db.query<{ started: number; active: number }>(
     `SELECT
@@ -57,14 +56,24 @@ async function loadConversationMetric(
      WHERE tenant_id=$1 AND ($4::boolean OR assigned_user_id=$5)`,
     [session.tenantId, range.start.toISOString(), range.end.toISOString(), workspaceScope, scope.userId]
   )).rows[0];
-  return { value: key === "conversations_started" ? finite(row?.started) : finite(row?.active) };
+  return {
+    conversations_started: { value: finite(row?.started) },
+    active_conversations: { value: finite(row?.active) }
+  };
 }
 
-async function loadLeadMetric(
+async function loadConversationMetric(
   session: WorkspaceSession,
   key: DashboardWidgetKey,
   input: CommercialDashboardInput
 ): Promise<NumericMetric> {
+  return (await loadConversationMetricGroup(session, input))[key] ?? { value: 0 };
+}
+
+async function loadLeadMetricGroup(
+  session: WorkspaceSession,
+  input: CommercialDashboardInput
+): Promise<Record<string, NumericMetric>> {
   const { range, scope, workspaceScope } = await reportingContext(session, input);
   const row = (await db.query<Record<string, number>>(
     `WITH scoped AS (
@@ -91,14 +100,30 @@ async function loadLeadMetric(
      FROM scoped`,
     [session.tenantId, range.start.toISOString(), range.end.toISOString(), workspaceScope, scope.memberId]
   )).rows[0];
-  return { value: finite(row?.[key]) };
+  const pick = (metricKey: string): NumericMetric => ({ value: finite(row?.[metricKey]) });
+  return {
+    new_leads: pick("new_leads"),
+    pending_follow_ups: pick("pending_follow_ups"),
+    overdue_follow_ups: pick("overdue_follow_ups"),
+    leads_paid_traffic: pick("leads_paid_traffic"),
+    leads_referral: pick("leads_referral"),
+    leads_organic: pick("leads_organic"),
+    leads_other_sources: pick("leads_other_sources")
+  };
 }
 
-async function loadAppointmentMetric(
+async function loadLeadMetric(
   session: WorkspaceSession,
   key: DashboardWidgetKey,
   input: CommercialDashboardInput
 ): Promise<NumericMetric> {
+  return (await loadLeadMetricGroup(session, input))[key] ?? { value: 0 };
+}
+
+async function loadAppointmentMetricGroup(
+  session: WorkspaceSession,
+  input: CommercialDashboardInput
+): Promise<Record<string, NumericMetric>> {
   const { range, scope, workspaceScope } = await reportingContext(session, input);
   const row = (await db.query<{ scheduled: number; completed: number; no_show: number; rescheduled: number; due: number }>(
     `SELECT
@@ -126,14 +151,27 @@ async function loadAppointmentMetric(
     reschedules: finite(row.rescheduled),
     attendance_rate: row.due ? Math.round((completed / row.due) * 1_000) / 10 : 0
   };
-  return { value: finite(values[key]) };
+  return {
+    appointments_count: { value: finite(values.appointments_count) },
+    attendances: { value: finite(values.attendances) },
+    no_shows: { value: finite(values.no_shows) },
+    reschedules: { value: finite(values.reschedules) },
+    attendance_rate: { value: finite(values.attendance_rate) }
+  };
 }
 
-async function loadSalesMetric(
+async function loadAppointmentMetric(
   session: WorkspaceSession,
   key: DashboardWidgetKey,
   input: CommercialDashboardInput
 ): Promise<NumericMetric> {
+  return (await loadAppointmentMetricGroup(session, input))[key] ?? { value: 0 };
+}
+
+async function loadSalesMetricGroup(
+  session: WorkspaceSession,
+  input: CommercialDashboardInput
+): Promise<Record<string, NumericMetric>> {
   const { range, scope, workspaceScope } = await reportingContext(session, input);
   const row = (await db.query<Record<string, number | string>>(
     `WITH scoped_sales AS (
@@ -178,35 +216,83 @@ async function loadSalesMetric(
       scope.userId, scope.memberId
     ]
   )).rows[0];
-  const monetary = key === "sales_value" || key === "average_ticket";
-  return { value: finite(row?.[key]), ...(monetary ? { currency: "BRL" as const } : {}) };
+  const pick = (metricKey: string): NumericMetric => ({
+    value: finite(row?.[metricKey]),
+    ...(metricKey === "sales_value" || metricKey === "average_ticket" ? { currency: "BRL" as const } : {})
+  });
+  return {
+    sales_count: pick("sales_count"),
+    sales_value: pick("sales_value"),
+    average_ticket: pick("average_ticket"),
+    lost_sales: pick("lost_sales"),
+    conversion_rate: pick("conversion_rate"),
+    sales_paid_traffic: pick("sales_paid_traffic"),
+    sales_referral: pick("sales_referral"),
+    sales_organic: pick("sales_organic")
+  };
 }
 
-async function loadSalesValueBySeller(
+async function loadSalesMetric(
+  session: WorkspaceSession,
+  key: DashboardWidgetKey,
+  input: CommercialDashboardInput
+): Promise<NumericMetric> {
+  return (await loadSalesMetricGroup(session, input))[key] ?? { value: 0 };
+}
+
+async function loadTeamMetricGroups(
   session: WorkspaceSession,
   input: CommercialDashboardInput
-): Promise<TeamMetric> {
+): Promise<Record<string, TeamMetric>> {
   const { range, scope, workspaceScope } = await reportingContext(session, input);
-  const rows = (await db.query<{ member_id: string; email: string; name: string | null; value: string }>(
-    `SELECT member.id member_id,"user".email,"user".name,
-            COALESCE(round(sum(appointment.sale_value) FILTER (
-              WHERE appointment.start_at >= $2::timestamptz AND appointment.start_at < $3::timestamptz
-                AND appointment.commercial_outcome='fechado'
-            ) * 100),0)::text value
-     FROM scheduling_google_meet_closers closer
-     JOIN workspace_members member
-       ON member.id=closer.member_id AND member.workspace_id=closer.tenant_id AND member.status='active'
-     JOIN users "user" ON "user".id=member.user_id AND "user".status='active'
-     LEFT JOIN scheduling_appointments appointment
-       ON appointment.tenant_id=closer.tenant_id AND appointment.assigned_member_id=member.id
-     WHERE closer.tenant_id=$1 AND ($4::boolean OR member.id=$5)
-     GROUP BY member.id,"user".email,"user".name,closer.created_at
-     ORDER BY closer.created_at,member.id`,
-    [session.tenantId, range.start.toISOString(), range.end.toISOString(), workspaceScope, scope.memberId]
-  )).rows;
+  const params = [session.tenantId, range.start.toISOString(), range.end.toISOString(), workspaceScope, scope.memberId];
+  const [valueRows, outcomeRows] = await Promise.all([
+    db.query<{ member_id: string; email: string; name: string | null; value: string }>(
+      `SELECT member.id member_id,"user".email,"user".name,
+              COALESCE(round(sum(appointment.sale_value) FILTER (
+                WHERE appointment.start_at >= $2::timestamptz AND appointment.start_at < $3::timestamptz
+                  AND appointment.commercial_outcome='fechado'
+              ) * 100),0)::text value
+       FROM scheduling_google_meet_closers closer
+       JOIN workspace_members member
+         ON member.id=closer.member_id AND member.workspace_id=closer.tenant_id AND member.status='active'
+       JOIN users "user" ON "user".id=member.user_id AND "user".status='active'
+       LEFT JOIN scheduling_appointments appointment
+         ON appointment.tenant_id=closer.tenant_id AND appointment.assigned_member_id=member.id
+       WHERE closer.tenant_id=$1 AND ($4::boolean OR member.id=$5)
+       GROUP BY member.id,"user".email,"user".name,closer.created_at
+       ORDER BY closer.created_at,member.id`,
+      params
+    ),
+    db.query<{ member_id: string; email: string; name: string | null; completed: number; sales: number }>(
+      `SELECT member.id member_id,"user".email,"user".name,
+              count(appointment.id) FILTER (WHERE appointment.start_at >= $2::timestamptz AND appointment.start_at < $3::timestamptz AND appointment.status='concluido')::int completed,
+              count(appointment.id) FILTER (WHERE appointment.start_at >= $2::timestamptz AND appointment.start_at < $3::timestamptz AND appointment.commercial_outcome='fechado')::int sales
+       FROM scheduling_google_meet_closers closer
+       JOIN workspace_members member ON member.id=closer.member_id AND member.workspace_id=closer.tenant_id AND member.status='active'
+       JOIN users "user" ON "user".id=member.user_id AND "user".status='active'
+       LEFT JOIN scheduling_appointments appointment ON appointment.tenant_id=closer.tenant_id AND appointment.assigned_member_id=member.id
+       WHERE closer.tenant_id=$1 AND ($4::boolean OR member.id=$5)
+       GROUP BY member.id,"user".email,"user".name,closer.created_at
+       ORDER BY closer.created_at,member.id`,
+      params
+    )
+  ]);
   return {
-    items: rows.map((row) => ({ member_id: row.member_id, name: memberName(row), value: finite(row.value) })),
-    currency: "BRL"
+    sales_value_by_seller: {
+      items: valueRows.rows.map((row) => ({ member_id: row.member_id, name: memberName(row), value: finite(row.value) })),
+      currency: "BRL"
+    },
+    sales_by_seller: {
+      items: outcomeRows.rows.map((member) => ({ member_id: member.member_id, name: memberName(member), value: finite(member.sales) }))
+    },
+    conversion_by_seller: {
+      items: outcomeRows.rows.map((member) => ({
+        member_id: member.member_id,
+        name: memberName(member),
+        value: member.completed ? Math.round((member.sales / member.completed) * 1_000) / 10 : 0
+      }))
+    }
   };
 }
 
@@ -215,28 +301,7 @@ async function loadTeamMetric(
   key: DashboardWidgetKey,
   input: CommercialDashboardInput
 ): Promise<TeamMetric> {
-  if (key === "sales_value_by_seller") return loadSalesValueBySeller(session, input);
-  const { range, scope, workspaceScope } = await reportingContext(session, input);
-  const rows = (await db.query<{ member_id: string; email: string; name: string | null; completed: number; sales: number }>(
-    `SELECT member.id member_id,"user".email,"user".name,
-            count(appointment.id) FILTER (WHERE appointment.start_at >= $2::timestamptz AND appointment.start_at < $3::timestamptz AND appointment.status='concluido')::int completed,
-            count(appointment.id) FILTER (WHERE appointment.start_at >= $2::timestamptz AND appointment.start_at < $3::timestamptz AND appointment.commercial_outcome='fechado')::int sales
-     FROM scheduling_google_meet_closers closer
-     JOIN workspace_members member ON member.id=closer.member_id AND member.workspace_id=closer.tenant_id AND member.status='active'
-     JOIN users "user" ON "user".id=member.user_id AND "user".status='active'
-     LEFT JOIN scheduling_appointments appointment ON appointment.tenant_id=closer.tenant_id AND appointment.assigned_member_id=member.id
-     WHERE closer.tenant_id=$1 AND ($4::boolean OR member.id=$5)
-     GROUP BY member.id,"user".email,"user".name,closer.created_at
-     ORDER BY closer.created_at,member.id`,
-    [session.tenantId, range.start.toISOString(), range.end.toISOString(), workspaceScope, scope.memberId]
-  )).rows;
-  return {
-    items: rows.map((member) => ({
-      member_id: member.member_id,
-      name: memberName(member),
-      value: key === "sales_by_seller" ? finite(member.sales) : member.completed ? Math.round((member.sales / member.completed) * 1_000) / 10 : 0
-    }))
-  };
+  return (await loadTeamMetricGroups(session, input))[key] ?? { items: [] };
 }
 
 /**
@@ -255,4 +320,29 @@ export async function loadNewWidgetMetric(
   if (SALES_KEYS.has(key)) return loadSalesMetric(session, key, input);
   if (TEAM_KEYS.has(key)) return loadTeamMetric(session, key, input);
   return undefined;
+}
+
+/** Chave cujo payload sai de um dos grupos de métricas (1 query por grupo). */
+export function isMetricWidgetKey(key: DashboardWidgetKey): boolean {
+  return CONVERSATION_KEYS.has(key) || LEAD_KEYS.has(key) || APPOINTMENT_KEYS.has(key)
+    || SALES_KEYS.has(key) || TEAM_KEYS.has(key);
+}
+
+/**
+ * Todos os grupos de métricas em uma passada (1 query por grupo). O bundle
+ * consolidado do dashboard usa isto para derivar todos os widgets numéricos
+ * sem repetir nenhuma query por chave.
+ */
+export async function loadWidgetMetricGroups(
+  session: WorkspaceSession,
+  input: CommercialDashboardInput
+): Promise<Record<DashboardWidgetKey, NewMetric>> {
+  const [conversation, lead, appointment, sales, team] = await Promise.all([
+    loadConversationMetricGroup(session, input),
+    loadLeadMetricGroup(session, input),
+    loadAppointmentMetricGroup(session, input),
+    loadSalesMetricGroup(session, input),
+    loadTeamMetricGroups(session, input)
+  ]);
+  return { ...conversation, ...lead, ...appointment, ...sales, ...team } as Record<DashboardWidgetKey, NewMetric>;
 }

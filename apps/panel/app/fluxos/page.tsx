@@ -8,13 +8,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import useSWR from "swr";
-import { ArrowsClockwise, CopySimple, PencilSimple, Plus, Plugs } from "@/components/icons";
+import { ArrowsClockwise, BookmarkSimple, CopySimple, PencilSimple, Plus, Plugs } from "@/components/icons";
 import { Shell } from "@/components/shell";
 import { Button, HelpHint, IconButton } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { formatPanelDateTime } from "@/lib/format";
 import { usePermission } from "@/lib/use-permission";
 import { newFlowId, starterDefinition, triggerSummary, type FlowSummary } from "@/components/flow-editor/flow-model";
+import { NewFlowFromTemplateDialog, SaveFlowTemplateDialog } from "@/components/flow-templates";
 
 /* F4-r1 CAS: a listagem traz o token de revisão da linha (revisao: row.revision). */
 type FlowRow = FlowSummary & { revisao?: number };
@@ -29,6 +30,8 @@ export default function FluxosPage() {
   const { data, error, isLoading, mutate } = useSWR(canRead ? "/qualification/flows" : null, listFetcher);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [saveTemplateFlow, setSaveTemplateFlow] = useState<FlowRow | null>(null);
   const busyRef = useRef(false);
 
   const flows = data?.flows ?? [];
@@ -67,6 +70,32 @@ export default function FluxosPage() {
       });
       router.push(`/fluxos/${id}`);
     });
+  }
+
+  /* C1-f: cria o fluxo com a definition do template (nasce inativo).
+     Diferente de run(): PROPAGA o erro para o dialog mostrar a mensagem —
+     fechar o dialog em silêncio com o erro só no fundo é armadilha de UX. */
+  async function criarDeTemplate(name: string, definition: unknown) {
+    if (busyRef.current || !canManage) throw new Error("Aguarde a operação atual terminar.");
+    const id = newFlowId();
+    busyRef.current = true;
+    setBusyId(id);
+    setActionError(null);
+    try {
+      await api(`/qualification/flows/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ nome: name, ativo: false, definition, revisao_base: 0 }),
+      });
+      await mutate();
+      router.push(`/fluxos/${id}`);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Falha ao criar o fluxo";
+      setActionError(message);
+      throw new Error(message);
+    } finally {
+      busyRef.current = false;
+      setBusyId(null);
+    }
   }
 
   function duplicar(flow: FlowRow) {
@@ -127,15 +156,22 @@ export default function FluxosPage() {
             <p id="fluxos-manage-hint" className="sub">Você não tem permissão para criar ou alterar fluxos. Peça acesso a um administrador.</p>
           )}
         </div>
-        <Button
-          type="button"
-          tone="primary"
-          disabled={!canManage || busyId !== null}
-          aria-describedby={canManage ? undefined : "fluxos-manage-hint"}
-          onClick={novoFluxo}
-        >
-          <Plus size={16} aria-hidden="true" /> Novo fluxo
-        </Button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {canManage ? (
+            <Button type="button" disabled={busyId !== null} onClick={() => setTemplateDialogOpen(true)}>
+              Novo de template
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            tone="primary"
+            disabled={!canManage || busyId !== null}
+            aria-describedby={canManage ? undefined : "fluxos-manage-hint"}
+            onClick={novoFluxo}
+          >
+            <Plus size={16} aria-hidden="true" /> Novo fluxo
+          </Button>
+        </div>
       </header>
 
       {actionError ? <p className="error" role="alert">{actionError}</p> : null}
@@ -189,6 +225,14 @@ export default function FluxosPage() {
                     <CopySimple size={15} aria-hidden="true" />
                   </IconButton>
                   <IconButton
+                    label="Salvar como template"
+                    size="sm"
+                    disabled={!canManage || busyId !== null}
+                    onClick={() => setSaveTemplateFlow(flow)}
+                  >
+                    <BookmarkSimple size={15} aria-hidden="true" />
+                  </IconButton>
+                  <IconButton
                     label={flow.ativo ? "Desativar" : "Ativar"}
                     size="sm"
                     disabled={!canManage || busyId !== null}
@@ -201,6 +245,23 @@ export default function FluxosPage() {
             ))}
           </ul>
         </div>
+      ) : null}
+
+      {canManage ? (
+        <NewFlowFromTemplateDialog
+          open={templateDialogOpen}
+          onClose={() => setTemplateDialogOpen(false)}
+          onCreate={(name, definition) => criarDeTemplate(name, definition)}
+        />
+      ) : null}
+      {saveTemplateFlow ? (
+        <SaveFlowTemplateDialog
+          open={Boolean(saveTemplateFlow)}
+          flowName={saveTemplateFlow.nome}
+          definition={saveTemplateFlow.definition}
+          onClose={() => setSaveTemplateFlow(null)}
+          onSaved={() => mutate()}
+        />
       ) : null}
     </Shell>
   );

@@ -1,5 +1,5 @@
 "use client";
-import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowsLeftRight, BellRinging, BellSlash, CalendarClock, CalendarDots, CheckCircle, Checks, Check, DotsThreeVertical, Inbox, MagnifyingGlass, Pause, Robot, UserPlus, X, type Icon } from "@/components/icons";
+import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowsLeftRight, BellRinging, BellSlash, CalendarClock, CalendarDots, CheckCircle, Checks, Check, DotsThreeVertical, Inbox, MagnifyingGlass, Pause, Plus, Robot, UserPlus, X, type Icon } from "@/components/icons";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { ConversationComposer } from "@/components/conversation-composer";
@@ -17,6 +17,8 @@ import { Field, HelpHint, IconButton, SaveButton, SaveToast, Tooltip, useFlashTo
 import { ListFiltersBar, type ListFilterDef } from "@/components/ui/filters";
 import { MessageActionsMenu } from "@/components/message-actions-menu";
 import { ModalDialog } from "@/components/modal-dialog";
+import { NewConversationDialog } from "@/components/new-conversation-dialog";
+import { useTeams } from "@/components/teams-manager";
 import { PopoverMenu } from "@/components/popover-menu";
 import { Shell } from "@/components/shell";
 import { ApiError, api } from "@/lib/api";
@@ -488,6 +490,7 @@ export default function Conversations() {
   const canSchedule = appointmentsEnabled && canCreateAppointment && canReadAvailability && canReadUnits;
   const [filter, setFilter] = useState("human");
   const [connectionFilter, setConnectionFilter] = useState("");
+  const [teamFilter, setTeamFilter] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [pendingOnly, setPendingOnly] = useState(false);
   const [selected, setSelected] = useState("");
@@ -499,6 +502,7 @@ export default function Conversations() {
   const [changingOwner, setChangingOwner] = useState(false);
   const [followUpPending, setFollowUpPending] = useState(false);
   const [schedulerOpen, setSchedulerOpen] = useState(false);
+  const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<{ message: string; confirmLabel: string; danger?: boolean; onConfirm: () => void } | null>(null);
   const [contactPanelOpen, setContactPanelOpen] = useState(false);
   const [contactAssets, setContactAssets] = useState<ContactPanelMessage[]>([]);
@@ -586,12 +590,13 @@ export default function Conversations() {
     escopo: hasWorkspaceScope && (filter === "mine" || filter === "unassigned") ? filter : "",
     nao_lidas: unreadOnly ? "true" : "",
     pendencias: pendingOnly ? "true" : "",
-    numero: connectionFilter
+    numero: connectionFilter,
+    equipe: teamFilter
   };
   // Busca no SERVIDOR (todas as conversas, não só a 1ª página carregada), com debounce.
   const [debouncedListQuery, setDebouncedListQuery] = useState("");
   const listKey = session
-    ? `/conversations?filter=${effectiveFilter}${connectionFilter ? `&session_id=${connectionFilter}` : ""}${unreadOnly ? "&unread=true" : ""}${pendingOnly ? "&pending_action=true" : ""}${debouncedListQuery ? `&q=${encodeURIComponent(debouncedListQuery)}` : ""}`
+    ? `/conversations?filter=${effectiveFilter}${connectionFilter ? `&session_id=${connectionFilter}` : ""}${teamFilter ? `&team_id=${teamFilter}` : ""}${unreadOnly ? "&unread=true" : ""}${pendingOnly ? "&pending_action=true" : ""}${debouncedListQuery ? `&q=${encodeURIComponent(debouncedListQuery)}` : ""}`
     : null;
   const { data: listData, error: listError, isLoading: listLoading, mutate: mutateList } = useSWR<ConversationsResponse>(listKey, fetcher, {
     refreshInterval: 10_000,
@@ -664,19 +669,24 @@ export default function Conversations() {
     else if (key === "nao_lidas") setUnreadOnly(value === "true");
     else if (key === "pendencias") setPendingOnly(value === "true");
     else if (key === "numero") setConnectionFilter(value);
+    else if (key === "equipe") setTeamFilter(value);
   };
   const clearConversationFilters = () => {
     setConnectionFilter("");
+    setTeamFilter("");
     setFilter(hasWorkspaceScope ? "human" : "mine");
     setUnreadOnly(false);
     setPendingOnly(false);
   };
+  // B6 Times: filtro por equipe consome o team_id já aceito por GET /conversations.
+  const { teams: filterTeams } = useTeams(hasWorkspaceScope);
   const conversationFilterDefs: Array<ListFilterDef<typeof conversationFilters>> = [
     { key: "nao_lidas", label: "Não lidas", kind: "option", options: [{ id: "true", nome: "Não lidas" }] },
     { key: "pendencias", label: "Pendências", kind: "option", options: [{ id: "true", nome: "Pendências" }] }
   ];
   if (hasWorkspaceScope) conversationFilterDefs.push({ key: "escopo", label: "Escopo", kind: "option", options: [{ id: "mine", nome: "Minhas conversas" }, { id: "unassigned", nome: "Sem responsável" }] });
   if (showConnectionFilter) conversationFilterDefs.push({ key: "numero", label: "Número", kind: "option", options: connections.map((item) => ({ id: item.id, nome: item.label })) });
+  if (hasWorkspaceScope && filterTeams.length) conversationFilterDefs.push({ key: "equipe", label: "Equipe", kind: "option", options: filterTeams.map((team) => ({ id: team.id, nome: team.name })) });
   const allItems = useMemo(() => {
     const fresh = listData?.conversations ?? [];
     if (olderConversations.length === 0) return fresh;
@@ -1444,7 +1454,7 @@ export default function Conversations() {
         >
         <aside className="conversation-list flex min-h-0 flex-col border-r border-[var(--border)] bg-transparent">
           <header className="conversation-list__header shrink-0">
-            <div className="conversation-list__title">
+            <div className="conversation-list__title flex-wrap">
               <h1>{hasWorkspaceScope ? "Conversas" : "Minhas conversas"}</h1>
               {hasWorkspaceScope ? (
                 <HelpHint label="Ajuda: abas da lista de conversas" title="O que cada aba mostra" side="bottom">
@@ -1452,6 +1462,11 @@ export default function Conversations() {
                 </HelpHint>
               ) : null}
               <span className="mono">{allItems.length} na fila</span>
+              {canReply ? (
+                <button type="button" className="btn crm-compact-button ml-auto" onClick={() => setNewConversationOpen(true)}>
+                  <Plus size={14} aria-hidden="true" />Nova conversa
+                </button>
+              ) : null}
             </div>
             <div className="conversation-list__search-row" data-testid="conversation-list-filters">
               <label className="conversation-list__search-field">
@@ -1923,6 +1938,20 @@ export default function Conversations() {
             </button>
           </div>
         </ModalDialog>
+      ) : null}
+
+      {canReply ? (
+        <NewConversationDialog
+          open={newConversationOpen}
+          onClose={() => setNewConversationOpen(false)}
+          onInitiated={(conversationId) => {
+            // A conversa nova nasce com a IA pausada → aba "Abertas"; seleciona
+            // direto e atualiza fila/contadores.
+            setSelected(conversationId);
+            void mutateList();
+            void mutateUnreadCounts();
+          }}
+        />
       ) : null}
 
       <SaveToast show={resolveSave.done}>Conversa resolvida</SaveToast>

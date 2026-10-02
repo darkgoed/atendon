@@ -56,16 +56,19 @@ do AtendON diretamente.
    mais `--surface-sunken` e o trio `--surface-hover/-active/-selected`.
 4. **Nada de caixa-dentro-de-caixa.** Um painel não contém outro painel com
    borda. Seções internas: `.panel__section` (divisor de 1px) ou spacing.
-5. **Proporções.** Radius: `--radius-md` (7px) em inputs/botões, `--radius-lg`
-   (9px) em painéis, `--radius-xl` (11px) em dialogs. Nunca 16–24px.
-   Controles: 28/32/36/40/44px via `--control-height-{sm,,md,lg,touch}`.
+5. **Proporções.** Radius: `--radius-md` (8px) em inputs/botões, `--radius-lg`
+   (10px) em cards, `--radius-xl` (12px) em painéis e dialogs.
+   Controles: 28/34/34/38/44px via `--control-height-{sm,,md,lg,touch}`
+   (compacto: 24/28/30/32px). Campo de uma linha mede o token, não o padding:
+   ver "Campos de formulário".
    Ícones 16–18px. Padding de painel 16–20px.
 6. **Sombras só para o que sai do fluxo:** `--shadow-popover`, `--shadow-dialog`,
    `--shadow-drag`, `--shadow-sm`. Painéis, cards e linhas: nenhuma.
 7. **Sem glassmorphism, sem gradiente decorativo, sem `backdrop-filter`.**
    Gradiente permitido apenas em `.skeleton` (shimmer) e fade de scroll.
-8. **Azul com parcimônia.** `--primary` só em: ação primária, item de nav ativo,
-   foco, seleção, link e indicador. Todo o resto é neutro.
+8. **Ciano com parcimônia.** `--primary` só em: foco, seleção, item de nav ativo,
+   link, indicador e `.btn--accent` (envio e confirmação em lote). A ação
+   principal com texto é neutra (`Button tone="primary"`). Todo o resto é neutro.
 9. **Estados obrigatórios** em todo interativo, nos dois temas: `default, hover,
    focus-visible, active, selected, disabled, loading, error`. Foco sempre por
    `box-shadow: var(--focus-ring)`; `base.css` já define o par
@@ -83,20 +86,23 @@ do AtendON diretamente.
     `.truncate` ou `.clamp-2`. Nunca conteúdo inalcançável.
 13. **z-index só por token:** `--z-sticky --z-topbar --z-sidebar --z-drawer
     --z-popover --z-dialog --z-toast`.
-14. **Ícones:** `@phosphor-icons/react`, `weight="regular"`, 16–18px. Não troque
-    de biblioteca nem misture pesos (`fill`/`bold` só em dot/indicador mínimo).
+14. **Ícones:** só `components/icons` (vocabulário Lucide, traço de 1.75px em
+    16–18px). Não importe biblioteca de ícones direto no componente.
 15. **Motion:** só `--duration-fast|normal` com `--ease`, e só em
     `background-color, border-color, color, box-shadow, transform, opacity`.
     `prefers-reduced-motion` já tratado em `base.css`.
 
 ## Dois registros tipográficos
 
-- **Denso** (operação — tabelas, listas, painéis): page title 20px, section 14px,
-  body 13.5px, control 13px, label 12px, meta 11.5px, micro 11px.
+- **Denso** (operação — tabelas, listas, painéis): page title 18px, section 13px,
+  body 13px, control 13px, label 12px, meta 11.5px, micro 11px.
 - **Expressivo** (marca — login, estados públicos, 403, convite, meet):
   `--text-hero` / `--text-hero-sub` mantêm presença tipográfica.
   **Não aplique o teto denso globalmente**: achatar o login foi exatamente o
   erro que reverteu a v1 deste refactor.
+
+Fontes: Geist (`--font-sans`) e Geist Mono (`--font-mono`) valem no painel
+inteiro, inclusive na navegação do shell (uma família só).
 
 ## Primitives disponíveis (reutilize, não recrie)
 
@@ -105,7 +111,7 @@ CSS:
 `.card .card--sunken .cardtitle .divider .divider--strong`
 `.btn` + `.primary|.quiet|.danger|.btn--outline|.btn--danger-solid|.btn--sm|.btn--lg|.btn--block`
 `.icon-button .icon-button--sm|--md|--lg .segmented`
-`.input .input--sm .field .field--error .field__error .field__hint .search-field .switch .checkbox`
+`.input .input--sm .textarea .field .field--error .field__error .field__hint .search-field .switch .checkbox`
 `.badge .badge--neutral|primary|info|success|warning|danger|outline|pill .dot .kbd .progress .spinner`
 `.table-wrap` + `table/thead th/tbody td` (header micro uppercase, linhas 38px,
 hover, `[aria-selected]`, `.is-numeric`, `th[aria-sort]`)
@@ -127,6 +133,33 @@ TabsContent ToggleGroup ToggleGroupItem`
 Se um domínio precisa de algo que não existe: **primeiro** verifique se um
 primitive resolve; só então crie classe de domínio — tokenizada, sem duplicar
 primitive e no arquivo do próprio domínio.
+
+## Campos de formulário
+
+`input`, `select` e `textarea` compartilham um seletor-base em
+`styles/components.css`. Ele lê três ganchos de `styles/tokens.css`:
+
+| Gancho | Padrão | Função |
+| --- | --- | --- |
+| `--input-min-height` | `--control-height-md` (34px; 30px no compacto) | altura de uma linha |
+| `--input-pad-y` | `--space-1` (4px) | respiro vertical |
+| `--input-pad-x` | `--space-3` (12px) | respiro lateral |
+
+- A altura vem do token (`min-height`), não do padding. Input, select, date e
+  `Button` medem 34px no padrão e 30px no compacto. Abaixo de 700px o alvo de
+  toque de 44px assume.
+- `.input--sm` só troca ganchos: 34px (28px no compacto) e 8px de padding
+  lateral. O seletor-base tem cinco `:not()`, então uma variante que redeclara
+  `min-height` perde para ele. Variante nova também troca ganchos, sem
+  `!important`.
+- `<Textarea>`, `<textarea class="input">` e `select[multiple]` mantêm 8px de
+  padding vertical e crescem com `rows`. Dentro de `.field` o textarea tem piso
+  de duas vezes `--control-height-lg` (76px; 64px no compacto). Fora de `.field`,
+  `rows` decide a altura: o composer de /conversas depende disso.
+- `checkbox`, `radio`, `file`, `range` e `hidden` ficam fora do seletor-base.
+- `--content-form-max` (48rem) é a largura de leitura de formulário curto. Cada
+  painel opta por ela (Configurações/Geral usa `.panelForm`). Não existe teto
+  global: inbox, pipeline, agenda e tabelas pedem larguras próprias.
 
 ## Propriedade de arquivo
 

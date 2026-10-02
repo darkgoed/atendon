@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import Link from "next/link";
 import {
   ArrowsDownUp,
+  ChartLineUp,
   ChatText,
   ClockCounterClockwise,
   CursorClick,
@@ -94,6 +95,12 @@ type FlowEditorProps = {
   onReload?: () => void;
   /** "Ver histórico" do modal: abre o drawer de Histórico da página (não é rota). */
   onOpenHistory?: () => void;
+  /** "Desempenho" (C1-d): abre o drawer de analytics/execuções da página. */
+  onOpenInsights?: () => void;
+  /** C1-h: nó interactive só entra na paleta quando o gateway relata suporte
+      (GET /me/messaging-capabilities → qualquer sessão com interactive=true).
+      Fluxos EXISTENTES com nós interativos continuam renderizados/editáveis. */
+  interactiveSupported?: boolean;
   onNome: (nome: string) => void;
   onDefinition: (definition: FlowDefinition) => void;
   onSave: () => void;
@@ -1216,6 +1223,11 @@ function FlowEditorInner(props: FlowEditorProps) {
         </div>
         <div className={styles.headerActions}>
           <span className={styles.nodeCount} aria-hidden="true">{graph.nodes.length} blocos</span>
+          {props.onOpenInsights ? (
+            <IconButton label="Desempenho" size="sm" data-testid="flow-insights-open" onClick={props.onOpenInsights}>
+              <ChartLineUp size={15} aria-hidden="true" />
+            </IconButton>
+          ) : null}
           {props.onOpenHistory ? (
             <IconButton label="Histórico" size="sm" data-testid="flow-history-open" onClick={props.onOpenHistory}>
               <ClockCounterClockwise size={15} aria-hidden="true" />
@@ -1284,10 +1296,18 @@ function FlowEditorInner(props: FlowEditorProps) {
 
       <div className={styles.body} data-with-properties={Boolean(selectedNode)}>
         <aside className={styles.palette} aria-label="Adicionar etapa">
-          {PALETTE_GROUPS.map((group) => (
+          {PALETTE_GROUPS.map((group) => {
+            /* C1-h: sem capability confirmada de mensagem interativa, a paleta
+               não OFERECE o nó (degradação segura da spec); nós já presentes no
+               fluxo seguem de pé. */
+            const items = props.interactiveSupported === false
+              ? group.items.filter((item) => item.id !== "interactive")
+              : group.items;
+            if (items.length === 0) return null;
+            return (
             <section key={group.group} className={styles.paletteGroupBlock}>
               <span className={styles.paletteGroup}>{group.group}</span>
-              {group.items.map((item) => (
+              {items.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -1305,7 +1325,8 @@ function FlowEditorInner(props: FlowEditorProps) {
                 </button>
               ))}
             </section>
-          ))}
+            );
+          })}
         </aside>
 
         <div className={styles.canvasWrap} data-testid="flow-canvas" data-flowing={flowing}>

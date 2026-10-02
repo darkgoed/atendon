@@ -185,7 +185,6 @@ const schema = z.object({
   DEFAULT_SYSTEM_PROMPT: z.string()
     .refine((value) => value.trim().length > 0, "DEFAULT_SYSTEM_PROMPT não pode conter somente espaços")
     .default(defaultSystemPrompt),
-  AI_EVALUATOR_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
   WHATSAPP_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
   EVOLUTION_API_URL: z.string().url().default("http://localhost:8088"),
   EVOLUTION_API_KEY: z.string().min(16).default(ephemeralSecret()),

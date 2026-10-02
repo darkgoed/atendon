@@ -48,7 +48,9 @@ export const ROUTE_CONTRACTS = {
   "/contatos": populated("Contatos", "Cliente QA com nome comercial deliberadamente longo", "/contatos"),
   "/contatos/[id]": { expectedPath: null, heading: "Cliente QA com nome comercial deliberadamente longo", headingRole: "heading", marker: "Notas internas", entitySelector: "[aria-labelledby='lead-notes-title']", state: "populated" },
   "/pipeline": populated("Pipeline", "Cliente QA com nome comercial deliberadamente longo", "/pipeline"),
-  "/pos-venda": populated("Carteira de pós-venda", "Marina QA · Cliente de implantação empresarial|Confirmar treinamento de implantação", "/pos-venda"),
+  // h1 = título + HelpHint ("?" no textContent, "Ajuda: o que é a carteira" no nome acessível):
+  // o sufixo aceito é só o do próprio h1 (page.tsx, HelpHint label), igual a /configuracoes/* e /contatos/campos.
+  "/pos-venda": populated("Carteira de pós-venda(?: ?\\?)?(?:\\s*Ajuda: o que é a carteira)?", "Marina QA · Cliente de implantação empresarial|Confirmar treinamento de implantação", "/pos-venda"),
   "/pos-venda/cobranca": populated("Cobranças de crediário", "Cliente QA|qa-debt", "/pos-venda/cobranca"),
   "/pos-venda/configurar": populated("Configurar checklist", "Confirmar cadastro|Agendar treinamento", "/pos-venda/configurar"),
   "/tripz-ai": { expectedPath: null, heading: "Roteiro QA", headingRole: "heading", marker: "Roteiro QA|Roteiro QA pronto para revisão", entitySelector: "section[aria-label^='Conversa ']", state: "populated" },
@@ -95,8 +97,11 @@ export const ROUTE_CONTRACTS = {
   // = "Tarefa QA", renderizado como h3 dentro de article[data-task-id]). O marker
   // antigo ("Prioridade") aparece em qualquer card e não prova seeding.
   "/tarefas": { expectedPath: null, heading: "Tarefas", headingRole: "heading", marker: "Tarefa QA", entitySelector: "main article[data-task-id]", state: "populated" },
-  "/contatos/campos": { expectedPath: null, heading: "Campos personalizados", headingRole: "heading", marker: "chave:", entitySelector: "main article[data-field-id]", state: "populated" },
-  "/contatos/lixeira": { expectedPath: null, heading: "Lixeira", headingRole: "heading", marker: "Excluído em", entitySelector: "main article[data-trash-id]", state: "populated" },
+  // h1 = título + HelpHint ("?" no textContent, "Ajuda: <título>" no nome acessível): o sufixo
+  // aceito é só o do próprio h1, igual aos contratos de /configuracoes/*.
+  "/contatos/campos": { expectedPath: null, heading: "Campos personalizados(?: ?\\?)?(?:\\s*Ajuda: Campos personalizados)?", headingRole: "heading", marker: "chave:", entitySelector: "main article[data-field-id]", state: "populated" },
+  // The fixture has one item and no next page; reject other counts and unrelated help labels.
+  "/contatos/lixeira": { expectedPath: null, heading: "Lixeira\\s*1(?: ?\\?)?(?:\\s*Ajuda: Lixeira)?", headingRole: "heading", marker: "Excluído em", entitySelector: "main article[data-trash-id]", state: "populated" },
   "/contatos/importar": { expectedPath: null, heading: "Importar contatos", headingRole: "heading", marker: "Histórico de importações", entitySelector: "main [aria-labelledby='import-history-title']", state: "populated" },
   "/fluxos": { expectedPath: null, heading: "Fluxos", headingRole: "heading", marker: "Fluxo QA de qualificação", entitySelector: "main .card ul li", state: "populated" },
   "/fluxos/[id]": { expectedPath: "/fluxos/qa-flow-0001", heading: "Fluxo QA de qualificação", headingRole: "heading", marker: "Olá QA", entitySelector: "main .react-flow__node", state: "populated" },

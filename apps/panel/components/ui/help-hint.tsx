@@ -28,7 +28,7 @@ export function HelpHint({ label, title, children, side = "top", align = "center
     hoverTimer.current = null;
   };
   return (
-    <RadixPopover.Root open={open} onOpenChange={setOpen}>
+    <RadixPopover.Root open={open} onOpenChange={(nextOpen) => { clearHover(); setOpen(nextOpen); }}>
       <RadixPopover.Trigger asChild>
         <button
           type="button"

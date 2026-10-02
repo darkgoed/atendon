@@ -4,6 +4,7 @@ export interface SessionUser {
   isRoot: boolean;
   name: string | null;
   mustChangePassword?: boolean;
+  totpEnabled?: boolean;
 }
 
 export interface SessionWorkspace {

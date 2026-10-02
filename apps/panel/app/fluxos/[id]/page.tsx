@@ -27,6 +27,7 @@ import { useSaveFeedback } from "@/components/ui";
 import { FlowEditor, type SimTrace } from "@/components/flow-editor/flow-editor";
 import type { FlowConflict } from "@/components/flow-editor/FlowConflictModal";
 import { FlowHistory } from "@/components/flow-editor/flow-history";
+import { FlowInsights } from "@/components/flow-editor/flow-insights";
 import {
   normalizeDefinition,
   parseTrace,
@@ -43,6 +44,11 @@ type FlowResponse = {
     revisao?: number;
     atualizado_em: string | null;
   };
+};
+
+/* GET /me/messaging-capabilities (messaging/routes.ts) — flags por sessão. */
+type MessagingCapabilitiesResponse = {
+  sessions: Array<{ session_id: string; capabilities: { reactions: boolean; forward_media: boolean; interactive: boolean } }>;
 };
 
 /* Resposta do PUT: só o que a página consome (a revisão nova pós-trigger). */
@@ -64,6 +70,17 @@ export default function FluxoEditorPage() {
   const canManage = usePermission("agent.manage");
   const canRead = usePermission("agent.read");
   const { data, error, isLoading, mutate } = useSWR(canRead ? `/qualification/flows/${flowId}` : null, flowFetcher);
+  /* C1-h: a paleta só oferece o nó interactive quando o gateway relata suporte
+     (qualquer sessão WhatsApp com interactive=true). Fetch falho/sem método no
+     gateway → undefined/false → nó oculto (degradação segura da spec). */
+  const capabilitiesFetcher = (url: string) => api<MessagingCapabilitiesResponse>(url);
+  const { data: messagingCapabilities } = useSWR<MessagingCapabilitiesResponse>(
+    canRead ? "/me/messaging-capabilities" : null,
+    capabilitiesFetcher,
+    { revalidateOnFocus: false, shouldRetryOnError: false, dedupingInterval: 60_000 }
+  );
+  const interactiveSupported = Boolean(messagingCapabilities?.sessions?.some((session) => session.capabilities?.interactive));
+  const [insightsOpen, setInsightsOpen] = useState(false);
 
   const [nome, setNome] = useState<string | null>(null);
   const [ativo] = useState<boolean | null>(null);
@@ -117,6 +134,7 @@ export default function FluxoEditorPage() {
     setRevisao(null);
     setConflict(null);
     setHistoryOpen(false);
+    setInsightsOpen(false);
     setDirty(false);
     setServerError(null);
     setSaving(false);
@@ -313,6 +331,8 @@ export default function FluxoEditorPage() {
             conflict={conflict}
             onReload={reloadFromServer}
             onOpenHistory={() => setHistoryOpen(true)}
+            onOpenInsights={canRead ? () => setInsightsOpen(true) : undefined}
+            interactiveSupported={interactiveSupported}
             onNome={(value) => { editNonceRef.current += 1; resetSaveFeedback(); setNome(value); setSaved(false); setDirty(true); }}
             onDefinition={updateDefinition}
             onSave={() => void save()}
@@ -335,6 +355,7 @@ export default function FluxoEditorPage() {
               onClose={() => setHistoryOpen(false)}
             />
           ) : null}
+          {insightsOpen ? <FlowInsights flowId={flowId} onClose={() => setInsightsOpen(false)} /> : null}
           {!canManage ? <p className="sub p-2" role="status">Acesso somente leitura. Salve e ative apenas com permissão de edição.</p> : null}
         </div>
       ) : null}

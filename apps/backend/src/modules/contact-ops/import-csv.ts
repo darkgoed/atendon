@@ -2,8 +2,7 @@
 // v6-evolucao-estrutural-atendon.md). CSV com parser próprio mínimo (aspas,
 // vírgula, BOM); XLSX com a lib SheetJS `xlsx` — versão estável 0.18.5, a
 // última publicada no npm pela SheetJS (as posteriores são distribuídas pelo
-// CDN próprio), JS puro sem dependências nativas e com tipos embutidos
-// (`@types/xlsx` entra como stub no devDependencies por exigência do contrato).
+// CDN próprio), JS puro sem dependências nativas e com tipos embutidos.
 import { read as readWorkbook, utils as xlsxUtils } from "xlsx";
 
 export const MAX_IMPORT_FILE_BYTES = 20 * 1024 * 1024; // payload decodificado

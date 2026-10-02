@@ -48,11 +48,13 @@ describe("Visão geral única (sem board de widgets)", () => {
         // Layout salvo da era do board: não pode trazer o board de volta.
         return respond({ layout: { source: "saved", items: [{ key: "handoffs", order: 0, visible: true, size: "small" }] } });
       }
-      if (url.includes("commercial_metrics")) {
-        return respond({ data: { result: { new_contacts: 48, appointments: 21, calls: 18, sales: 9, sold_value: 13500, average_ticket: 1500, due_meetings: 20, no_show: 3 }, funnel: { lead_to_appointment: 44, appointment_to_attendance: 90, call_to_sale: 50, lead_to_sale: 19, no_show_rate: 15 } } });
+      if (url.includes("/dashboard?include=widgets")) {
+        return respond({ widgets: {
+          commercial_metrics: { key: "commercial_metrics", data: { result: { new_contacts: 48, appointments: 21, calls: 18, sales: 9, sold_value: 13500, average_ticket: 1500, due_meetings: 20, no_show: 3 }, funnel: { lead_to_appointment: 44, appointment_to_attendance: 90, call_to_sale: 50, lead_to_sale: 19, no_show_rate: 15 } } },
+          conversations_started: { key: "conversations_started", data: { value: 52 } },
+          conversion_rate: { key: "conversion_rate", data: { value: 17.3 } }
+        } });
       }
-      if (url.includes("conversations_started")) return respond({ data: { value: 52 } });
-      if (url.includes("conversion_rate")) return respond({ data: { value: 17.3 } });
       return new Response(JSON.stringify({ message: "not found" }), { status: 404, headers: { "content-type": "application/json" } });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -76,11 +78,13 @@ describe("Visão geral única (sem board de widgets)", () => {
       const url = String(input);
       calls.push(url);
       if (url.endsWith("/me")) return respond(session);
-      if (url.includes("commercial_metrics")) {
-        return respond({ data: { result: { new_contacts: 48, appointments: 21, calls: 18, sales: 9, sold_value: 13500, average_ticket: 1500, due_meetings: 20, no_show: 3 }, funnel: { lead_to_appointment: 44, appointment_to_attendance: 90, call_to_sale: 50, lead_to_sale: 19, no_show_rate: 15 } } });
+      if (url.includes("/dashboard?include=widgets")) {
+        return respond({ widgets: {
+          commercial_metrics: { key: "commercial_metrics", data: { result: { new_contacts: 48, appointments: 21, calls: 18, sales: 9, sold_value: 13500, average_ticket: 1500, due_meetings: 20, no_show: 3 }, funnel: { lead_to_appointment: 44, appointment_to_attendance: 90, call_to_sale: 50, lead_to_sale: 19, no_show_rate: 15 } } },
+          conversations_started: { key: "conversations_started", data: { value: 52 } },
+          conversion_rate: { key: "conversion_rate", data: { value: 17.3 } }
+        } });
       }
-      if (url.includes("conversations_started")) return respond({ data: { value: 52 } });
-      if (url.includes("conversion_rate")) return respond({ data: { value: 17.3 } });
       return new Response(JSON.stringify({ message: "not found" }), { status: 404, headers: { "content-type": "application/json" } });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -91,7 +95,7 @@ describe("Visão geral única (sem board de widgets)", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Semana" }));
     await waitFor(() => {
-      expect(calls.some((url) => url.includes("commercial_metrics") && url.includes("period=week"))).toBe(true);
+      expect(calls.some((url) => url.includes("/dashboard?include=widgets") && url.includes("period=week"))).toBe(true);
     });
   });
 });

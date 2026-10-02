@@ -6,6 +6,7 @@ import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useSta
 import useSWR from "swr";
 import { Empty } from "@/components/page-state";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/cn";
 import { fetchWorkspaceTimezone, unmuteConversation } from "@/lib/settings-api";
 import { useCapabilities } from "@/lib/capabilities";
 import {
@@ -32,6 +33,7 @@ import {
 import { WebPushSettings } from "@/components/web-push-settings";
 import { WorkspaceLogoSection } from "@/components/workspace-logo";
 import { StorageSettingsPanel } from "@/components/storage-settings";
+import { StorageMediaGallery } from "@/components/storage-media-gallery";
 import { GoogleCalendarSettings } from "@/components/google-calendar-settings";
 import { SETTINGS_COLOR_DEFAULTS } from "@/components/settings-colors";
 import { Button, Field as UiField, HelpHint, IconButton, Input, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
@@ -105,18 +107,20 @@ const resourceIcons: Record<Resource, Icon> = {
 // cabeçalho (ícone da biblioteca do handoff num círculo + h2 + sub opcional), mesmo
 // estado de carregamento. O conteúdo interno (forms, tabelas, grids) de cada
 // painel permanece como está.
-function PanelChassi({ headId, Icon, title, sub, busy, busyLabel, children }: {
+function PanelChassi({ headId, Icon, title, sub, busy, busyLabel, className, children }: {
   headId: string;
   Icon: Icon;
   title: string;
   sub?: string;
   busy?: boolean;
   busyLabel?: string;
+  // Opt-in de largura (ex.: styles.panelForm); sem className o chassi segue em largura cheia.
+  className?: string;
   // children é opcional: os skeletons de loading usam <PanelChassi ... busy /> sem children.
   children?: ReactNode;
 }) {
   return (
-    <section className={`card ${styles.panel}`} aria-labelledby={headId}>
+    <section className={cn("card", styles.panel, className)} aria-labelledby={headId}>
       <header className={styles.panelHead}>
         <span className={styles.panelIcon}><Icon size={19} aria-hidden="true" /></span>
         <div className="min-w-0">
@@ -333,7 +337,11 @@ export default function ConfigPage() {
       ) : activeResource === "agenda-notifications" ? (
         <AgendaNotificationSettingsPanel canManage={canManageAgendaNotifications} />
       ) : activeResource === "armazenamento" ? (
-        <StorageSettingsPanel canManage={canManageStorage} />
+        <div className="grid gap-6">
+          <StorageSettingsPanel canManage={canManageStorage} />
+          {/* B10: galeria de mídia do workspace (GET/DELETE /organization/storage/media). */}
+          <StorageMediaGallery canManage={canManageStorage} />
+        </div>
       ) : (
         <PanelChassi
           headId="settings-catalog"
@@ -457,12 +465,12 @@ function WorkspaceSettingsPanel({ canManageLogo }: { canManageLogo: boolean }) {
 
   if (isLoading) {
     return (
-      <PanelChassi headId="settings-workspace" Icon={GlobeHemisphereWest} title="Geral" busy busyLabel="Carregando configurações gerais" />
+      <PanelChassi headId="settings-workspace" Icon={GlobeHemisphereWest} title="Geral" className={styles.panelForm} busy busyLabel="Carregando configurações gerais" />
     );
   }
 
   return (
-    <PanelChassi headId="settings-workspace" Icon={GlobeHemisphereWest} title="Geral">
+    <PanelChassi headId="settings-workspace" Icon={GlobeHemisphereWest} title="Geral" className={styles.panelForm}>
       <form className="grid gap-5" onSubmit={submit}>
         <div className="grid gap-5">
           <div>

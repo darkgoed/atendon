@@ -2,7 +2,6 @@ import type { Queue } from "bullmq";
 import type pg from "pg";
 import { aiFollowUpQueue } from "../../queue/ai-follow-up-queue.js";
 import { handoffNotificationQueue } from "../../queue/handoff-notification-queue.js";
-import { humanOutboundQueue } from "../../queue/human-message-queue.js";
 import { meetingContactDeliveryQueue } from "../../queue/meeting-contact-delivery-queue.js";
 import { meetingProvisioningQueue } from "../../queue/meeting-provisioning-queue.js";
 import { inboundQueue } from "../../queue/message-queue.js";
@@ -10,7 +9,6 @@ import { inMemoryOperationalMetrics, WORKER_RECONCILER_METRICS_KEY } from "./obs
 
 const QUEUES = [
   ["inbound", inboundQueue],
-  ["human_outbound", humanOutboundQueue],
   ["handoff_notification", handoffNotificationQueue],
   ["ai_follow_up", aiFollowUpQueue],
   ["meeting_provisioning", meetingProvisioningQueue],

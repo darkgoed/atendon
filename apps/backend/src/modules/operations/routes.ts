@@ -9,6 +9,7 @@ import {
   effectiveFeatureFlagMap,
   capabilityKeySchema,
   featureFlagKeySchema,
+  invalidateEffectiveFlagsCache,
   listEffectiveCapabilities,
   listEffectiveFeatureFlags,
   listGlobalFeatureFlags,
@@ -133,6 +134,7 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
       const effective = (await listEffectiveFeatureFlags(client, session.tenantId))
         .find((flag) => flag.key === AI_MEETING_CONFIRMATION_FLAG);
       await client.query("COMMIT");
+      invalidateEffectiveFlagsCache(session.tenantId);
       return { enabled: effective?.enabled ?? body.enabled };
     } catch (error) {
       await client.query("ROLLBACK");
@@ -285,6 +287,7 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
         });
       }
       await client.query("COMMIT");
+      invalidateEffectiveFlagsCache(tenantId);
       return {
         capabilities: provisional,
         changes: [...applied.values()],
@@ -317,6 +320,8 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
         }
       });
       await client.query("COMMIT");
+      // Global/kill switch afetam todos os tenants: limpa o cache inteiro.
+      invalidateEffectiveFlagsCache();
       return { flag: changed.current };
     } catch (error) {
       await client.query("ROLLBACK");
@@ -345,6 +350,8 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
         }
       });
       await client.query("COMMIT");
+      // Global/kill switch afetam todos os tenants: limpa o cache inteiro.
+      invalidateEffectiveFlagsCache();
       return { flag: changed.current };
     } catch (error) {
       await client.query("ROLLBACK");
@@ -383,6 +390,7 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
       const effective = (await listEffectiveFeatureFlags(client, tenantId))
         .find((flag) => flag.key === key);
       await client.query("COMMIT");
+      invalidateEffectiveFlagsCache(tenantId);
       return { flag: effective };
     } catch (error) {
       await client.query("ROLLBACK");
@@ -411,6 +419,7 @@ export async function registerOperationsRoutes(app: FastifyInstance) {
       const effective = (await listEffectiveFeatureFlags(client, tenantId))
         .find((flag) => flag.key === key);
       await client.query("COMMIT");
+      invalidateEffectiveFlagsCache(tenantId);
       return { flag: effective };
     } catch (error) {
       await client.query("ROLLBACK");

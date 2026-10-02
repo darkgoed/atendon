@@ -21,7 +21,6 @@ const composeEnvironment = {
   EVOLUTION_WEBHOOK_SECRET: "evolution-webhook-secret-with-32-characters",
   JWT_SECRET: "jwt-secret-with-at-least-32-characters",
   DATA_ENCRYPTION_KEY: "data-secret-with-at-least-32-characters",
-  TENANT_API_KEY: "tenant-secret-with-at-least-32-characters",
   PANEL_SEED_PASSWORD: "StrongSeedPass2026",
   PANEL_ORIGIN: "https://atendon.example",
   PANEL_PUBLIC_URL: "https://atendon.example"
@@ -128,7 +127,6 @@ test("Compose exige segredos em runtime e não contém credenciais padrão", asy
     "EVOLUTION_WEBHOOK_SECRET",
     "JWT_SECRET",
     "DATA_ENCRYPTION_KEY",
-    "TENANT_API_KEY",
     "PANEL_SEED_PASSWORD"
   ]) {
     assert.match(source, new RegExp(`\\$\\{${name}:\\?`), `${name} deve ser obrigatória`);
