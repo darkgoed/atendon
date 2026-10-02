@@ -30,7 +30,7 @@ body {
    ou do elemento, nunca de um valor arbitrário na página. */
 h1, h2, h3, h4, h5, h6 {
   color: var(--text);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-title);
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-title);
 }

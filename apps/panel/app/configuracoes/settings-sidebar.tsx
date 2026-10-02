@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import useSWR from "swr";
@@ -120,6 +121,7 @@ type NavEntry = { key: string; href: string; label: string; Icon: Icon };
 
 export function SettingsSidebar() {
   const pathname = usePathname();
+  const railRef = useRef<HTMLElement>(null);
   const { isEnabled } = useCapabilities();
   const leadsEnabled = isEnabled("leads_v1");
   const appointmentsEnabled = isEnabled("appointments_v1");
@@ -197,8 +199,17 @@ export function SettingsSidebar() {
     }))
     .filter((group) => group.entries.length > 0);
 
+  // Faixa horizontal (<960px): centraliza o link ativo sem rolar a página.
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail || rail.scrollWidth <= rail.clientWidth) return;
+    const active = rail.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!active) return;
+    rail.scrollLeft = active.offsetLeft - rail.offsetLeft - (rail.clientWidth - active.offsetWidth) / 2;
+  }, [pathname]);
+
   return (
-    <nav className="settings-rail" aria-label="Configurações">
+    <nav ref={railRef} className="settings-rail" aria-label="Configurações">
       {groups.map((group) => {
         const headId = `settings-group-${settingsGroupSlug(group.label)}`;
         return (

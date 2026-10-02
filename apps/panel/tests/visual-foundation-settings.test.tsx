@@ -156,21 +156,21 @@ describe("Configurações/Geral: comportamento preservado (fuso e horário de at
 });
 
 describe("Configurações/Geral: escopo no código-fonte", () => {
-  it("PanelChassi ganha className opcional e só WorkspaceSettingsPanel opta (skeleton e card)", () => {
+  it("PanelChassi aplica panelForm por padrão e só catálogo, equipe e Google Meet optam por `wide` (skeleton e card)", () => {
     const chassiStart = page.indexOf("function PanelChassi(");
     const chassiEnd = page.indexOf("export default function ConfigPage");
     expect(chassiStart).toBeGreaterThan(-1);
-    expect(page.slice(chassiStart, chassiEnd)).toMatch(/className\?: string/);
+    const chassi = page.slice(chassiStart, chassiEnd);
+    expect(chassi).toMatch(/wide\?: boolean/);
+    expect(chassi).toMatch(/className\?: string/);
+    expect(chassi).toMatch(/!wide && styles\.panelForm/);
+    expect(chassi).toMatch(/className=\{styles\.panelTitle\}/);
 
-    const start = page.indexOf("function WorkspaceSettingsPanel(");
-    expect(start).toBeGreaterThan(-1);
-    const rest = page.slice(start + 1);
-    const end = start + 1 + rest.search(/\n(?:export default |export )?(?:function|type|const) /);
-    expect(end).toBeGreaterThan(start);
-
-    // Só o JSX conta: o comentário do chassi também cita o nome da classe.
-    expect(page.match(/className=\{styles\.panelForm\}/g)).toHaveLength(2);
-    expect(page.slice(start, end).match(/<PanelChassi[^>]*className=\{styles\.panelForm\}/g)).toHaveLength(2);
+    // Nenhum consumidor repete a classe: o chassi decide a largura.
+    expect(page.match(/className=\{styles\.panelForm\}/g)).toBeNull();
+    // Skeletons de equipe e Meet em linha única; catálogo, equipe e Meet em várias linhas.
+    expect(page.match(/<PanelChassi [^>\n]*\bwide busy/g)).toHaveLength(2);
+    expect(page.match(/\n\s+wide\n/g)).toHaveLength(3);
   });
 
   it("membros e os demais consumidores do CSS compartilhado não optam pela largura de formulário", () => {

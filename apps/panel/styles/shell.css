@@ -505,7 +505,7 @@
 .pagehead h1 {
   color: var(--text);
   font-size: var(--text-page-title);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-title);
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-title);
 }

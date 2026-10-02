@@ -157,7 +157,7 @@
   line-height: var(--leading-body);
 }
 .admin-textarea { min-height: calc(var(--control-height-lg) * 2.5); resize: vertical; }
-.admin-metric-copy { font-size: var(--text-metric); font-weight: var(--weight-semibold); line-height: var(--leading-flat); letter-spacing: var(--tracking-title); font-variant-numeric: tabular-nums; }
+.admin-metric-copy { font-size: var(--text-metric); font-weight: var(--weight-metric); line-height: var(--leading-flat); letter-spacing: var(--tracking-title); font-variant-numeric: tabular-nums; }
 
 /* ============================================= PAINEL DE FEATURE (PLANO) == */
 

@@ -40,6 +40,8 @@
   --weight-medium: 500;
   --weight-semibold: 560;
   --weight-bold: 620;
+  --weight-title: var(--weight-semibold);   /* títulos; Configurações sobrescreve p/ medium */
+  --weight-metric: var(--weight-semibold); /* números de KPI/métrica */
 
   --leading-body: 1.5;
   --leading-tight: 1.3;
@@ -68,6 +70,7 @@
   --content-max: 1160px;
   --prose-max: 68ch;
   --content-form-max: 48rem;   /* formulário curto (Configurações/Geral); opt-in por painel, não é teto global */
+  --settings-content-max: 72rem; /* teto do conteúdo do hub de Configurações */
 
   /* Raios discretos (B2B minimalista): painéis 12, cards 10, controles 8 */
   --radius-xs: 4px;

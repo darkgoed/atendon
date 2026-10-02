@@ -2,7 +2,7 @@
 
 import { type ChangeEvent, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
-import { FloppyDisk, Sticker, Trash } from "@/components/icons";
+import { FloppyDisk, Trash } from "@/components/icons";
 import { IconButton, SaveButton, SaveToast, useSaveFeedback } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { PanelSession } from "@/lib/session";
@@ -152,14 +152,10 @@ export function WorkspaceLogoSection({ canManage }: { canManage: boolean }) {
 
   const shownLogo = previewLogo || currentLogo;
   return (
-    <section className="max-w-2xl border-t border-[var(--border)] pt-4" aria-label="Logo da empresa">
-      <div className="grid gap-5 sm:grid-cols-[40px_minmax(0,1fr)]">
-        <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--primary-text)]">
-          <Sticker size={19} aria-hidden="true" />
-        </span>
-        <div className="grid gap-4">
+    <section className="grid gap-4 border-t border-[var(--border)] pt-[var(--space-5)]" aria-label="Logo da empresa">
+      <div className="grid gap-4">
           <div>
-            <h2 className="m-0 text-base font-semibold text-[var(--text)]">Logo da empresa</h2>
+            <h2 className="m-0">Logo da empresa</h2>
             <p className="sub mt-1">Aparece no seletor de empresas do sidebar, no lugar da inicial.</p>
           </div>
           {logoError ? <p className="error" role="alert">{logoError}</p> : null}
@@ -218,7 +214,6 @@ export function WorkspaceLogoSection({ canManage }: { canManage: boolean }) {
               <span className="sub">{shownLogo ? undefined : "Nenhuma logo definida."}</span>
             )}
           </div>
-        </div>
       </div>
     </section>
   );
