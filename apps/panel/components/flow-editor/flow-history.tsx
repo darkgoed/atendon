@@ -195,10 +195,7 @@ export function FlowHistory({
   return (
     <ModalDialog labelledBy="flow-history-title" onClose={onClose} dialogClassName={`action-dialog ${styles.historyDialog}`}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <h2 id="flow-history-title">Histórico de versões</h2>
-        <HelpHint label="Ajuda: histórico de versões" side="bottom" align="start">
-          Um snapshot é gravado a cada salvamento do fluxo. Restaurar volta a uma versão anterior sem apagar as outras — a restauração entra como uma versão nova.
-        </HelpHint>
+        <h2 id="flow-history-title"><HelpHint content="Restaurar cria uma versão sem apagar as anteriores." description={<>Um snapshot é gravado a cada salvamento do fluxo. Restaurar volta a uma versão anterior sem apagar as outras — a restauração entra como uma versão nova.</>} side="bottom" align="start">Histórico de versões</HelpHint></h2>
       </div>
       {isLoading ? <p className="sub">Carregando…</p> : null}
       {error ? <p className="error" role="alert">Não foi possível carregar o histórico.</p> : null}

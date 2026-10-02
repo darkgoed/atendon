@@ -1,5 +1,5 @@
 "use client";
-import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowsLeftRight, BellRinging, BellSlash, CalendarClock, CalendarDots, CheckCircle, Checks, Check, DotsThreeVertical, Inbox, MagnifyingGlass, Pause, Plus, Robot, UserPlus, X, type Icon } from "@/components/icons";
+import { ArrowClockwise, ArrowDown, ArrowLeft, BellRinging, BellSlash, CalendarClock, CalendarDots, CheckCircle, Checks, Check, DotsThreeVertical, Inbox, MagnifyingGlass, Pause, PencilSimple, Robot, UserPlus, UserSwitch, type Icon } from "@/components/icons";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { ConversationComposer } from "@/components/conversation-composer";
@@ -22,6 +22,7 @@ import { useTeams } from "@/components/teams-manager";
 import { PopoverMenu } from "@/components/popover-menu";
 import { Shell } from "@/components/shell";
 import { ApiError, api } from "@/lib/api";
+import { reportError as setError } from "@/lib/error-events";
 import {
   claimConversation as claimConversationApi,
   deleteConversationMessages,
@@ -494,7 +495,6 @@ export default function Conversations() {
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [pendingOnly, setPendingOnly] = useState(false);
   const [selected, setSelected] = useState("");
-  const [error, setError] = useState("");
   const [assignmentNotice, setAssignmentNotice] = useState("");
   const [changingAi, setChangingAi] = useState(false);
   const [requestingAiReply, setRequestingAiReply] = useState(false);
@@ -1456,17 +1456,8 @@ export default function Conversations() {
           <header className="conversation-list__header shrink-0">
             <div className="conversation-list__title flex-wrap">
               <h1>{hasWorkspaceScope ? "Conversas" : "Minhas conversas"}</h1>
-              {hasWorkspaceScope ? (
-                <HelpHint label="Ajuda: abas da lista de conversas" title="O que cada aba mostra" side="bottom">
-                  Abertas: aguardando atendimento humano (IA desligada). IA: a IA responde sozinha. Agendadas: com horário confirmado na agenda. Resolvidas: encerradas.
-                </HelpHint>
-              ) : null}
+
               <span className="mono">{allItems.length} na fila</span>
-              {canReply ? (
-                <button type="button" className="btn crm-compact-button ml-auto" onClick={() => setNewConversationOpen(true)}>
-                  <Plus size={14} aria-hidden="true" />Nova conversa
-                </button>
-              ) : null}
             </div>
             <div className="conversation-list__search-row" data-testid="conversation-list-filters">
               <label className="conversation-list__search-field">
@@ -1482,6 +1473,11 @@ export default function Conversations() {
                 />
               </label>
               <ListFiltersBar filters={conversationFilters} defs={conversationFilterDefs} onSet={setConversationFilter} onClearAll={clearConversationFilters} />
+              {canReply ? (
+                <IconButton label="Nova conversa" tone="quiet" className="conversation-list__compose" onClick={() => setNewConversationOpen(true)}>
+                  <PencilSimple size={16} aria-hidden="true" />
+                </IconButton>
+              ) : null}
             </div>
 
             {hasWorkspaceScope ? (
@@ -1673,7 +1669,7 @@ export default function Conversations() {
                   && (hasWorkspaceScope || thread.conversation.assigned_user_id === session?.user.id) ? (
                     <PopoverMenu
                       buttonClassName="btn conversation-action-menu-trigger shrink-0 active:scale-95"
-                      icon={<ArrowsLeftRight size={14} aria-hidden="true" />}
+                      icon={<UserSwitch size={14} aria-hidden="true" />}
                       ariaLabel="Transferir"
                       title="Transferir"
                       align="start"
@@ -1775,13 +1771,12 @@ export default function Conversations() {
               {thread.conversation.status === "open" && !thread.conversation.ai_active ? (
                 <div className="conversation-thread__pause flex shrink-0 items-center gap-2">
                   <Pause size={13} className="shrink-0" />
-                  <p className="truncate leading-tight">
+                  <HelpHint content="A IA está pausada. Para voltar, use Reativar IA em Mais ações." description={<>A IA desliga neste contato quando o cliente pede um atendente, a própria IA transfere, há falha técnica ou alguém pausa manualmente. Para voltar à IA, use Reativar IA em Mais ações.</>} asChild side="bottom">
+                  <p className="truncate leading-tight" tabIndex={0}>
                     {thread.conversation.handoff_reason === "manually_paused"
                       ? "IA pausada manualmente para este contato — responda pelo painel ou celular."
                       : "Transferida para atendimento humano — responda pelo painel ou celular."}
                   </p>
-                  <HelpHint label="Ajuda: por que a IA está desligada" title="Transferência para humano" side="bottom">
-                    A IA desliga neste contato quando o cliente pede um atendente, a própria IA transfere, há falha técnica ou alguém pausa manualmente. Para voltar à IA, use Reativar IA em Mais ações.
                   </HelpHint>
                 </div>
               ) : null}
@@ -1905,13 +1900,6 @@ export default function Conversations() {
         ) : null}
         </div>
       </div>
-
-      {error ? (
-        <div className="error fixed inset-x-4 bottom-20 flex items-start justify-between gap-3 rounded-lg border border-[var(--warning-border)] bg-[var(--bg)] p-3 sm:bottom-4 sm:left-auto sm:max-w-sm" role="alert">
-          <span>{error}</span>
-          <IconButton type="button" tone="quiet" label="Fechar aviso" onClick={() => setError("")}><X size={15} aria-hidden="true" /></IconButton>
-        </div>
-      ) : null}
 
       {appointmentsEnabled && schedulerOpen && thread.conversation ? (
         <ConversationScheduler

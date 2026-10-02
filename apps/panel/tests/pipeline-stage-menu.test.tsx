@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
+import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -55,6 +56,33 @@ function bodyOf(call: unknown[]) {
 afterEach(() => { cleanup(); apiMock.mockReset(); });
 
 describe("etapas configuráveis no quadro", () => {
+  it("cor salva na etapa volta da revalidação e aparece na coluna", async () => {
+    const updated = STAGES.map((item) => item.id === "s2" ? { ...item, color: "#22C55E" } : item);
+    apiMock.mockResolvedValue({});
+    function Harness() {
+      const [stages, setStages] = React.useState(STAGES);
+      return <PipelineBoard stages={stages} leads={LEADS} allowedTransitions={new Set()} legacy={false} loading={false} hasActiveFilters={false} canMove canSelect={false} selectedIds={new Set()} pendingLeadIds={new Set()} preferences={DEFAULT_PIPELINE_PREFERENCES} onToggleSelected={vi.fn()} onMoveRequest={vi.fn()} onRetry={vi.fn()} pipelineId="p1" manageStages onStagesChanged={async () => { setStages(updated); }} />;
+    }
+    render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "Ações da etapa Qualificação" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Alterar cor para #22C55E" }));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith("/organization/pipeline/stages/s2", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ color: "#22C55E" }) })));
+    const column = screen.getByRole("region", { name: "Qualificação, 0 lead(s)" });
+    await waitFor(() => expect(column.querySelector(".pipeline-column__dot")).toHaveStyle({ backgroundColor: "#22C55E" }));
+    await userEvent.click(screen.getByRole("button", { name: "Ações da etapa Qualificação" }));
+    expect(screen.getByRole("menuitem", { name: "Alterar cor para #22C55E" })).toHaveAttribute("aria-current", "true");
+  });
+
+  it("falha na cor da etapa mantém a coluna e mostra erro sem revalidar", async () => {
+    apiMock.mockRejectedValue(new Error("Falha de escrita"));
+    const onChanged = renderBoard(true);
+    await userEvent.click(screen.getByRole("button", { name: "Ações da etapa Qualificação" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Alterar cor para #22C55E" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Falha de escrita");
+    expect(onChanged).not.toHaveBeenCalled();
+    expect(screen.getByRole("region", { name: "Qualificação, 0 lead(s)" }).querySelector(".pipeline-column__dot")).toHaveStyle({ backgroundColor: "#3B82F6" });
+  });
+
   it("sem pipeline.manage: sem menu ⋯, sem alça e sem coluna nova; nada de #10/Ordem", () => {
     renderBoard(false);
     expect(screen.queryByRole("button", { name: /Ações da etapa/ })).toBeNull();

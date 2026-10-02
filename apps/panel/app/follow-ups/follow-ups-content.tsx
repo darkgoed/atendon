@@ -10,7 +10,7 @@ export function FollowUpsBody() {
     <div className={`${styles.channelsAiPage} channels-ai-page`}>
       <header className="pagehead">
         <div>
-          <h1>Follow-ups <HelpHint label="Ajuda: Follow-ups">Mensagens que a IA envia sozinha para quem parou de responder. Aqui você define os intervalos das tentativas e o formato de cada envio.</HelpHint></h1>
+          <h1><HelpHint content="Mensagens automáticas para quem parou de responder." description={<>Mensagens que a IA envia sozinha para quem parou de responder. Aqui você define os intervalos das tentativas e o formato de cada envio.</>}>Follow-ups</HelpHint></h1>
         </div>
       </header>
       <AiFollowUpSettingsPanel />

@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowClockwise } from "@/components/icons";
+import { ArrowClockwise, CaretDown } from "@/components/icons";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import useSWR from "swr";
 import { BulkLeadActions } from "@/components/bulk-lead-actions";
 import { PipelineBoard } from "@/components/pipeline-board";
@@ -262,17 +262,22 @@ function PipelinePageContent() {
   const [extraLeads, setExtraLeads] = useState<PipelineLead[]>([]);
   const [pageState, setPageState] = useState<{ cursor: string | null; hasMore: boolean; fetchedPages: number }>({ cursor: null, hasMore: false, fetchedPages: 0 });
   const [loadingMore, setLoadingMore] = useState(false);
+  const loadingMoreRef = useRef(false);
+  const paginationScopeRef = useRef({ key: leadsKey, nonce: 0 });
   const [stagePages, setStagePages] = useState<Record<string, StagePageState>>({});
   // Override otimista por lead: { pipeline_stage_id, status } aplicado sobre
   // TODAS as fontes (página 1 + extras + páginas por coluna) até a revalidação
   // terminar; em erro é limpo (rollback) e em 409 o quadro é revalidado.
   const [stageOverrides, setStageOverrides] = useState<Map<string, { pipeline_stage_id: string | null; status: string }>>(() => new Map());
-  useEffect(() => {
+  useLayoutEffect(() => {
+    paginationScopeRef.current = { key: leadsKey, nonce: paginationScopeRef.current.nonce + 1 };
+    loadingMoreRef.current = false;
     setExtraLeads([]);
     setPageState({ cursor: null, hasMore: false, fetchedPages: 0 });
     setLoadingMore(false);
     setStagePages({});
     setStageOverrides(new Map());
+    return () => { paginationScopeRef.current.nonce += 1; };
   }, [leadsKey]);
   const { data, error: leadsError, mutate } = useSWR<PipelineResponse>(leadsKey, fetcher, {
     refreshInterval: 15_000,
@@ -283,7 +288,7 @@ function PipelinePageContent() {
     const page = data?.page;
     if (!page || pageState.fetchedPages > 0) return;
     setPageState((current) => current.fetchedPages > 0 ? current : { cursor: page.next_cursor, hasMore: page.has_more, fetchedPages: 0 });
-  }, [data?.page, pageState.fetchedPages]);
+  }, [data?.page, leadsKey, pageState.fetchedPages]);
   const pipelineConfigKey = organizationEnabled === true
     ? (activePipeline ? `/organization/pipeline?pipeline_id=${activePipeline.id}` : "/organization/pipeline")
     : null;
@@ -386,10 +391,14 @@ function PipelinePageContent() {
   }
 
   async function loadMoreLeads() {
-    if (!pageState.cursor || loadingMore) return;
+    if (!pageState.hasMore || !pageState.cursor || loadingMoreRef.current) return;
+    const request = { ...paginationScopeRef.current };
+    const isCurrent = () => request.key === paginationScopeRef.current.key && request.nonce === paginationScopeRef.current.nonce;
+    loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-      const response = await api<PipelineResponse>(`${leadsKey}&cursor=${encodeURIComponent(pageState.cursor)}`);
+      const response = await api<PipelineResponse>(`${leadsKey}&cursor=${encodeURIComponent(pageState.cursor)}`, undefined, { reportErrors: false });
+      if (!isCurrent()) return;
       setExtraLeads((current) => {
         const seen = new Set(current.map((lead) => lead.id));
         return [...current, ...response.leads.filter((lead) => !seen.has(lead.id))];
@@ -400,15 +409,21 @@ function PipelinePageContent() {
         fetchedPages: current.fetchedPages + 1
       }));
     } catch (cause) {
+      if (!isCurrent()) return;
       setActionError(cause instanceof Error ? cause.message : "Falha ao carregar mais leads");
     } finally {
-      setLoadingMore(false);
+      if (isCurrent()) {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      }
     }
   }
 
   async function loadMoreForStage(stage: PipelineStage) {
     const state = stagePages[stage.id];
     if (state?.loading) return;
+    const request = { ...paginationScopeRef.current };
+    const isCurrent = () => request.key === paginationScopeRef.current.key && request.nonce === paginationScopeRef.current.nonce;
     // Anchor: the column's own keyset cursor once extras exist; otherwise the
     // oldest lead already loaded in that column (the global page-1 stream
     // interleaves stages, so the column defines its own page chain).
@@ -428,8 +443,10 @@ function PipelinePageContent() {
       if (organizationEnabled === false) params.set("status", stage.technical_status);
       else params.set("pipeline_stage_id", stage.operational_source_stage_id ?? stage.id);
       params.set("limit", String(STAGE_PAGE_SIZE));
+      if (activePipeline) params.set("pipeline_id", activePipeline.id);
       if (anchor) params.set("cursor", anchor);
-      const response = await api<PipelineResponse>(`/scheduling/leads?${params.toString()}`);
+      const response = await api<PipelineResponse>(`/scheduling/leads?${params.toString()}`, undefined, { reportErrors: false });
+      if (!isCurrent()) return;
       setStagePages((current) => {
         const existing = current[stage.id];
         const seen = new Set((existing?.leads ?? []).map((lead) => lead.id));
@@ -444,6 +461,7 @@ function PipelinePageContent() {
         };
       });
     } catch (cause) {
+      if (!isCurrent()) return;
       setStagePages((current) => ({
         ...current,
         [stage.id]: { leads: current[stage.id]?.leads ?? [], cursor: current[stage.id]?.cursor ?? null, hasMore: current[stage.id]?.hasMore ?? false, loading: false }
@@ -576,14 +594,13 @@ function PipelinePageContent() {
       <div className="pipeline-page">
       <header className="pipeline-page__header">
         <div className="flex min-w-0 items-baseline gap-2">
-          <h1 className="truncate">{hasWorkspaceScope ? "Pipeline" : "Meu pipeline"}</h1>
+          <h1 className="truncate"><HelpHint content="Leads entram pelo canal vinculado; mudar de etapa aplica etiquetas e responsável." asChild><span tabIndex={0}>{hasWorkspaceScope ? "Pipeline" : "Meu pipeline"}</span></HelpHint></h1>
           {organizationEnabled === true ? <PipelineManager pipelines={pipelines} groups={pipelinesData?.groups ?? []} activePipeline={activePipeline} channels={pipelinesData?.channels ?? []} canManage={canManagePipeline} onSelect={selectPipeline} onChanged={handlePipelinesChanged} /> : null}
           <div className="pipeline-page__view" aria-label="Visualização do pipeline">
             <Button type="button" aria-pressed={viewMode === "kanban"} onClick={() => changeView("kanban")}>Kanban</Button>
             <Button type="button" aria-pressed={viewMode === "list"} onClick={() => changeView("list")}>Lista</Button>
           </div>
           <span className="mono pipeline-page__count" role="status" aria-live="polite">{loading ? "carregando…" : `${total} lead(s)`}</span>
-          <HelpHint label="Ajuda: Pipeline e etapas" title="Pipeline e etapas">Cada pipeline é um funil próprio, com suas etapas. Contatos entram no pipeline do canal que os trouxe, e ao mudar de etapa recebem as automações da etapa de destino (etiquetas e responsável).</HelpHint>
         </div>
         <div className="pipeline-page__actions">
           <SavedViewsControl resource="pipeline" filters={pipelineFiltersForSavedView(filters)} onApply={(saved) => setFilters(applyPipelineSavedView(saved))} />
@@ -603,7 +620,7 @@ function PipelinePageContent() {
       {actionError && !intent ? <div className="pipeline-error"><span>{actionError}</span><IconButton label="Atualizar" onClick={retry}><ArrowClockwise size={15} aria-hidden="true" /></IconButton></div> : null}
       {loadError && leads.length > 0 ? <div className="pipeline-stale"><span>Os dados exibidos podem estar desatualizados: {loadError}</span><IconButton label="Tentar novamente" onClick={retry}><ArrowClockwise size={15} aria-hidden="true" /></IconButton></div> : null}
 
-      <div className="pipeline-page__board">
+      <div className={`pipeline-page__board${viewMode === "list" ? " pipeline-page__board--list" : ""}`}>
         {viewMode === "list" ? <PipelineList
           leads={visibleLeads}
           stages={stages}
@@ -642,9 +659,9 @@ function PipelinePageContent() {
           onRetry={retry}
         />}
         {viewMode === "list" && !loading && pageState.hasMore ? (
-          <div className="flex justify-center p-3">
-            <Button type="button" onClick={() => void loadMoreLeads()} disabled={loadingMore}>{loadingMore ? "Carregando…" : "Carregar mais leads"}</Button>
-          </div>
+          <footer className="pipeline-list__footer">
+            <Button type="button" size="sm" onClick={() => void loadMoreLeads()} disabled={loadingMore}><CaretDown size={14} aria-hidden="true" />{loadingMore ? "Carregando…" : "Carregar mais leads"}</Button>
+          </footer>
         ) : null}
       </div>
 

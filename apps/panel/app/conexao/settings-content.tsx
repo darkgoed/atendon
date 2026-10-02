@@ -534,10 +534,8 @@ export function ConnectionSettingsContent() {
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-3">
                   <div className="flex channels-ai-min-zero flex-wrap items-center gap-2">
                     <h2 className="truncate text-lg font-semibold text-[var(--text)]">{item.label}</h2>
-                    {item.is_primary ? <span className="mono rounded border border-[var(--primary-border)] bg-[var(--primary-subtle)] px-2 py-0.5 text-[length:var(--text-meta)] leading-[1.45] text-[var(--primary-text)]">Principal</span> : null}
-                    {item.is_primary ? <HelpHint label="Ajuda: Conexão principal">Número usado por padrão quando o sistema precisa de uma conexão e nenhuma outra foi escolhida, como nos avisos da agenda e no resumo do painel.</HelpHint> : null}
-                    <span className={`mono rounded-md border px-2 py-1 type-caption ${item.status === "connected" ? "border-[var(--primary-border)] text-[var(--primary-text)]" : "border-[var(--warning-border)] bg-[var(--warning-subtle)] text-[var(--warning-text)]"}`}>status: {item.status}</span>
-                    <HelpHint label="Ajuda: status da sessão">connected: ativa e respondendo. qr_pending: aguardando a leitura do QR Code. Demais estados: sessão indisponível; use Reconectar para gerar um novo QR Code.</HelpHint>
+                    {item.is_primary ? <HelpHint content="Número padrão para avisos e operações sem conexão escolhida." description={<>Número usado por padrão quando o sistema precisa de uma conexão e nenhuma outra foi escolhida, como nos avisos da agenda e no resumo do painel.</>} asChild><span className="mono rounded border border-[var(--primary-border)] bg-[var(--primary-subtle)] px-2 py-0.5 text-[length:var(--text-meta)] leading-[1.45] text-[var(--primary-text)]">Principal</span></HelpHint> : null}
+                    <HelpHint content="Estado da conexão com o WhatsApp." description={<>connected: ativa e respondendo. qr_pending: aguardando a leitura do QR Code. Demais estados: sessão indisponível; use Reconectar para gerar um novo QR Code.</>} asChild><span className={`mono rounded-md border px-2 py-1 type-caption ${item.status === "connected" ? "border-[var(--primary-border)] text-[var(--primary-text)]" : "border-[var(--warning-border)] bg-[var(--warning-subtle)] text-[var(--warning-text)]"}`}>status: {item.status}</span></HelpHint>
                   </div>
                   {canManageConnection ? (
                     <div className="flex flex-wrap gap-2">

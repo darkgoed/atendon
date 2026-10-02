@@ -96,6 +96,7 @@
 .conversation-list__title { display: flex; align-items: baseline; gap: 10px; padding: 4px 2px 12px; }
 .conversation-list__title h1 { margin: 0; font-size: var(--text-page-title); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-title); }
 .conversation-list__search-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.conversation-list__search-row > .conversation-list__compose { flex: none; width: 36px; min-width: 36px; min-height: 36px; padding: 0; }
 .conversation-list__search-field {
   display: flex;
   min-width: 0;
@@ -373,6 +374,19 @@
   line-height: var(--leading-tight);
 }
 .composer-reply-chip strong { display: block; color: var(--primary-text); font-size: var(--text-micro); }
+.composer-reply-chip--suggestion {
+  align-items: flex-start;
+  padding: var(--space-2) var(--space-3);
+  overflow-wrap: anywhere;
+}
+.composer-reply-chip__context,
+.conversation-composer__availability {
+  display: block;
+  margin-top: var(--space-2);
+  color: var(--warning-text);
+  font-size: var(--text-meta);
+  line-height: var(--leading-body);
+}
 .msg-reaction-badge {
   display: inline-flex;
   align-self: flex-end;

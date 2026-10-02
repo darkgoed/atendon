@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -48,20 +48,59 @@ describe("ajuda contextual do pipeline", () => {
     render(<PipelineStageMenu stage={stage({})} stages={[stage({})]} onChanged={vi.fn()} onMoveStage={vi.fn()} />);
     await user.click(screen.getByRole("button", { name: "Ações da etapa Proposta" }));
     await user.click(screen.getByRole("menuitem", { name: /Editar etapa/ }));
-    expect(screen.getByRole("button", { name: "Ajuda: Comportamento" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ajuda: Meta de capacidade" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Ajuda: Comportamento" }));
-    expect(await screen.findByText(/dados da venda no Ganho, motivo da perda no Perdido/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Ajuda:/ })).toBeNull();
+    const behavior = screen.getByRole("combobox", { name: "Comportamento" });
+    await user.hover(screen.getByText("Comportamento", { selector: "label" }));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Ganho pede dados da venda; Perdido, motivo; Negociação, Proposta e Follow-up, próxima ação com data.");
+    await user.unhover(screen.getByText("Comportamento", { selector: "label" }));
+    behavior.focus();
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(/Ganho pede dados da venda/);
     await user.keyboard("{Escape}");
-    expect(screen.queryByText(/dados da venda no Ganho/)).toBeNull();
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    screen.getByRole("spinbutton", { name: "Meta de capacidade" }).focus();
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Meta visual de preenchimento; não limita a entrada de leads.");
   });
 
   it("preferências de exibição explica os alertas auxiliares", async () => {
     const user = userEvent.setup();
     render(<PipelineViewPreferences value={{ density: "compact", visibleFields: [], auxiliaryBadges: [], columnWidth: 280 }} onChange={vi.fn()} />);
     await user.click(screen.getByRole("button", { name: "Exibição" }));
-    expect(screen.getByRole("button", { name: "Ajuda: Alertas auxiliares" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Ajuda: Alertas auxiliares" }));
-    expect(await screen.findByText(/reunião sem resultado registrado, no-show a recuperar/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Ajuda:/ })).toBeNull();
+    const label = screen.getByText("Alertas auxiliares", { selector: "span[tabindex]" });
+    expect(label).toHaveAttribute("tabindex", "0");
+    await user.hover(label);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Avisos de reunião sem resultado, no-show a recuperar e follow-up atrasado.");
+    await user.unhover(label);
+    label.focus();
+    expect(await screen.findByRole("tooltip")).toHaveClass("tooltip--compact");
+    expect(screen.getAllByText("Alertas auxiliares", { selector: "legend span[tabindex]" })).toHaveLength(1);
+  });
+
+  it("cabeçalhos existentes da lista mostram ajuda sem botões extras", async () => {
+    const user = userEvent.setup();
+    render(<PipelineList leads={[{ id: "l1", nome: "Ana", telefone: "5511", status: "novo", atualizado_em: "2026-01-01T00:00:00Z" }]} stages={[]} members={[]} legacy={false} loading={false} canMove={false} canSelect={false} selectedIds={new Set()} pendingLeadIds={new Set()} onToggleSelected={vi.fn()} onMoveRequest={vi.fn()} />);
+    expect(screen.getByRole("columnheader", { name: "Estágio atual" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Idade no estágio" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Ajuda:/ })).toBeNull();
+    await user.hover(screen.getByText("Estágio atual", { selector: "span[tabindex]" }));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("IA indica follow-up automático; Ligação e Manual indicam o tipo da etapa.");
+    await user.unhover(screen.getByText("Estágio atual", { selector: "span[tabindex]" }));
+    screen.getByText("Idade no estágio", { selector: "span[tabindex]" }).focus();
+    await waitFor(() => expect(screen.getByRole("tooltip")).toHaveTextContent("Tempo desde a última atualização do lead."));
+  });
+
+  it("automações usam legenda e controle reais para ajuda", async () => {
+    apiMock.mockResolvedValue({ tags: [], members: [] });
+    const user = userEvent.setup();
+    render(<PipelineStageMenu stage={stage({})} stages={[stage({})]} onChanged={vi.fn()} onMoveStage={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "Ações da etapa Proposta" }));
+    await user.click(screen.getByRole("menuitem", { name: /Automações e regras/ }));
+    expect(screen.queryByRole("button", { name: /^Ajuda:/ })).toBeNull();
+    await user.hover(screen.getByText("Etiquetas ao entrar", { selector: "span[tabindex]" }));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Aplica estas etiquetas a todo lead que entrar nesta etapa.");
+    await user.unhover(screen.getByText("Etiquetas ao entrar", { selector: "span[tabindex]" }));
+    const responsible = within(screen.getByRole("dialog")).getByRole("combobox", { name: "Responsável ao entrar" });
+    responsible.focus();
+    await waitFor(() => expect(screen.getByRole("tooltip")).toHaveTextContent("Atribui leads ao entrar; sem escolha, mantém o responsável atual."));
   });
 });

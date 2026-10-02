@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SWRConfig } from "swr";
 import Conversations from "@/app/conversas/page";
+import { ErrorToasts } from "@/components/error-toasts";
 
 // Radix Popover (HelpHint) mede o balão com ResizeObserver, ausente no jsdom.
 globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
@@ -77,7 +78,7 @@ describe("conversas — rollback de reação (PAINEL C14)", () => {
 
   it("a falha desfaz só a reação e mantém a mensagem que chegou no meio", async () => {
     window.history.replaceState({}, "", "/conversas?id=c-1");
-    render(<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}><Conversations /></SWRConfig>);
+    render(<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}><ErrorToasts /><Conversations /></SWRConfig>);
     await screen.findByText("primeira");
     fireEvent.click(screen.getAllByRole("button", { name: "Reagir" })[0]);
     // Chega mensagem nova enquanto a reação ainda está em voo.
@@ -85,7 +86,9 @@ describe("conversas — rollback de reação (PAINEL C14)", () => {
     await act(async () => { realtime.options?.onSignal?.({ type: "conversation.messages.changed", conversationId: "c-1" }); });
     await screen.findByText("chegou no meio");
     await act(async () => { rejectReaction?.(); });
-    await screen.findByText("falhou");
+    expect(await screen.findByRole("alert")).toHaveTextContent("falhou");
+    expect(document.querySelectorAll(".error-toast")).toHaveLength(1);
+    expect(screen.queryByLabelText("Reação 👍")).toBeNull();
     expect(screen.getByText("chegou no meio")).toBeInTheDocument();
   });
 });

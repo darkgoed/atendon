@@ -2,6 +2,7 @@
 
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { HelpHint } from "@/components/ui/help-hint";
 
 type Placement = { top: number; left?: number; right?: number };
 
@@ -92,8 +93,7 @@ export function PopoverMenu({
     };
   }, [open]);
 
-  return (
-    <>
+  const button = (
       <button
         type="button"
         ref={anchorRef}
@@ -102,11 +102,15 @@ export function PopoverMenu({
         aria-haspopup="true"
         aria-expanded={open}
         aria-label={ariaLabel}
-        title={title}
       >
         {icon}
         {label}
       </button>
+  );
+
+  return (
+    <>
+      {title !== undefined || ariaLabel !== undefined ? <HelpHint content={title ?? ariaLabel} asChild>{button}</HelpHint> : button}
       {open && placement && typeof document !== "undefined"
         ? createPortal(
             <div

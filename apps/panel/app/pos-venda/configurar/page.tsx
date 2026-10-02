@@ -173,7 +173,7 @@ export default function PostSalesChecklistSettingsPage() {
 
           <section className="post-sales-template-section" aria-labelledby="active-template-title">
             <div className="post-sales-section-title">
-              <div><span className="label">Modelo ativo</span><h2 id="active-template-title">Sequência do atendimento <HelpHint label="Ajuda: Sequência do atendimento">A ordem definida aqui é a sequência que cada cliente segue no checklist dele.</HelpHint></h2></div>
+              <div><span className="label">Modelo ativo</span><h2 id="active-template-title"><HelpHint content="Esta ordem define o checklist de cada cliente." description={<>A ordem definida aqui é a sequência que cada cliente segue no checklist dele.</>}>Sequência do atendimento</HelpHint></h2></div>
               <span className="mono">{active.length} item(ns)</span>
             </div>
             {isLoading && !data ? <div className="post-sales-template-skeleton" role="status" aria-label="Carregando itens">{[1, 2, 3].map((item) => <div className="skeleton" key={item} aria-hidden="true" />)}</div>

@@ -1,9 +1,10 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
+import { dismissToast, reportToast } from "@/lib/error-events";
 import { conversationMessagesPath } from "@/lib/conversation-messages";
 import { confirmLeave } from "@/lib/leave-guard";
 import {
@@ -16,7 +17,6 @@ import {
   conversationVisibleInAnyPanelTab,
   messageNotificationFromThread,
   publishPanelTabState,
-  type MessageNotification,
   type PanelNotificationPreferencesResponse,
   type NotificationThreadResponse
 } from "@/lib/message-notifications";
@@ -50,8 +50,6 @@ export function MessageNotifications({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [notification, setNotification] = useState<MessageNotification | null>(null);
-  const [leaving, setLeaving] = useState(false);
   const seenMessageIdsRef = useRef(new Set<string>());
   const activeConversationIdRef = useRef(activeConversationId);
   const tabIdRef = useRef(globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
@@ -118,8 +116,24 @@ export function MessageNotifications({
 
       if (preferences.sound_enabled) playNotificationSound(preferences.sound_key, preferences.volume);
       if (preferences.visual_enabled) {
-        setLeaving(false);
-        setNotification(nextNotification);
+        const token = reportToast(
+          <button
+            className="chip-action"
+            type="button"
+            onClick={() => {
+              if (pathname.startsWith("/conversas") && onOpenConversation) onOpenConversation(nextNotification.conversationId);
+              else {
+                if (!confirmLeave()) return;
+                router.push(`/conversas?id=${encodeURIComponent(nextNotification.conversationId)}`);
+              }
+              dismissToast(token);
+            }}
+            aria-label={`Abrir conversa com ${nextNotification.contactName}: ${nextNotification.preview}`}
+          >
+            <strong>{nextNotification.contactName}</strong>{" · "}{nextNotification.preview}
+          </button>,
+          { kind: "info", duration: 4_300 }
+        );
         if (document.hidden && typeof Notification !== "undefined" && Notification.permission === "granted") {
           const desktop = new Notification(nextNotification.contactName, {
             body: nextNotification.preview,
@@ -134,54 +148,7 @@ export function MessageNotifications({
         }
       }
     }).catch(() => undefined);
-  }, [deltaEnabled, preferencesData, router, tenantId]);
+  }, [deltaEnabled, onOpenConversation, pathname, preferencesData, router, tenantId]);
 
-  useEffect(() => {
-    if (!notification) return;
-    const leaveTimer = window.setTimeout(() => setLeaving(true), 4_000);
-    const removeTimer = window.setTimeout(() => {
-      setNotification(null);
-      setLeaving(false);
-    }, 4_300);
-    return () => {
-      window.clearTimeout(leaveTimer);
-      window.clearTimeout(removeTimer);
-    };
-  }, [notification]);
-
-  const openConversation = () => {
-    if (!notification) return;
-    const conversationId = notification.conversationId;
-    setNotification(null);
-    setLeaving(false);
-    if (pathname.startsWith("/conversas") && onOpenConversation) {
-      onOpenConversation(conversationId);
-    } else if (confirmLeave()) {
-      router.push(`/conversas?id=${encodeURIComponent(conversationId)}`);
-    }
-  };
-
-  return (
-    <>
-      {enabled ? <MessageRealtimeSync onSignal={handleSignal} /> : null}
-      {notification ? (
-        <div className="message-toast-region" aria-live="polite">
-          <button
-            className={`message-toast${leaving ? " is-leaving" : ""}`}
-            type="button"
-            onClick={openConversation}
-            aria-label={`Abrir conversa com ${notification.contactName}: ${notification.preview}`}
-          >
-            <span className="message-toast__avatar" aria-hidden="true">
-              {notification.contactName.charAt(0).toLocaleUpperCase("pt-BR")}
-            </span>
-            <span className="message-toast__content">
-              <strong>{notification.contactName}</strong>
-              <span>{notification.preview}</span>
-            </span>
-          </button>
-        </div>
-      ) : null}
-    </>
-  );
+  return enabled ? <MessageRealtimeSync onSignal={handleSignal} /> : null;
 }

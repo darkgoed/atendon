@@ -147,10 +147,7 @@ export default function FluxosPage() {
       <header className="pagehead">
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <h1>Fluxos</h1>
-            <HelpHint label="Ajuda: Fluxos" side="bottom" align="start">
-              O fluxo é o robô do atendimento: quando uma conversa dispara o gatilho, ele responde com etapas fixas antes da IA. Se nenhum fluxo for acionado, a IA assume.
-            </HelpHint>
+            <h1><HelpHint content="O robô atende antes da IA quando o gatilho é acionado." description={<>O fluxo é o robô do atendimento: quando uma conversa dispara o gatilho, ele responde com etapas fixas antes da IA. Se nenhum fluxo for acionado, a IA assume.</>} side="bottom" align="start">Fluxos</HelpHint></h1>
           </div>
           {canManage ? null : (
             <p id="fluxos-manage-hint" className="sub">Você não tem permissão para criar ou alterar fluxos. Peça acesso a um administrador.</p>

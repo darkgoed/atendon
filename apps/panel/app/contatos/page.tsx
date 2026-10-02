@@ -2,12 +2,14 @@
 
 import { DotsThreeVertical, DownloadSimple, Eye, MagicWand, MagnifyingGlass, Plus, Star, UploadSimple, UsersThree } from "@/components/icons";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { BulkLeadActions } from "@/components/bulk-lead-actions";
 import { ContactChatLink } from "@/components/contact-chat-link";
 import { ContactAvatar } from "@/components/contact-avatar";
 import { NewLeadDialog } from "@/components/new-lead-dialog";
+import { NewConversationDialog } from "@/components/new-conversation-dialog";
 import { LeadMergeDialog, type LeadMergePairItem } from "@/components/lead-merge-dialog";
 import { LeadTagChips, LeadTagMenuItems, type LeadTag } from "@/components/lead-tag-picker";
 import { PopoverMenu } from "@/components/popover-menu";
@@ -15,6 +17,7 @@ import { SavedViewsControl } from "@/components/saved-views-control";
 import { TagCatalogSettings } from "@/components/tag-catalog-settings";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
+import { reportError as setError } from "@/lib/error-events";
 import { buildLeadFilterQuery, type LeadFilters } from "@/lib/lead-filters";
 import { leadStatusLabel } from "@/lib/labels";
 import { applyLeadSavedViewFilters, leadFiltersForSavedView, useCaseOrganizationEnabled } from "@/lib/organization";
@@ -54,6 +57,8 @@ const LEADS_PAGE_SIZE = 50;
 const fetcher = <T,>(url: string) => api<T>(url);
 
 export default function LeadsPage() {
+  const router = useRouter();
+  const canReply = usePermission("conversations.reply");
   const canReadFollowUp = usePermission("leads.follow_up.read");
   const canQualifyLeads = usePermission("leads.update_status");
   const canCreateLeads = usePermission("leads.create");
@@ -65,7 +70,6 @@ export default function LeadsPage() {
     status: "", unidade_id: "", categoria_id: "", parceiro_id: "", busca: "", estrelas: "", fila_humana: ""
   });
   const [options, setOptions] = useState<{ unidades: Option[]; categorias: Option[]; parceiros: Option[] }>({ unidades: [], categorias: [], parceiros: [] });
-  const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [accessNotice, setAccessNotice] = useState("");
   const [qualifyingLeadId, setQualifyingLeadId] = useState<string | null>(null);
@@ -88,6 +92,7 @@ export default function LeadsPage() {
   }, [hasSelection]);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [conversationLead, setConversationLead] = useState<Lead | null>(null);
   const [createToast, setCreateToast] = useState(false);
   const [mergePair, setMergePair] = useState<[LeadMergePairItem, LeadMergePairItem] | null>(null);
   const [mergeToast, setMergeToast] = useState(false);
@@ -283,7 +288,6 @@ export default function LeadsPage() {
         <BulkLeadActions selected={selectedItems} onClear={() => setSelectedIds(new Set())} onChanged={mutate} />
       </div>
     </header>
-    {error ? <p className="error mb-4" role="alert">{error}</p> : null}
     {feedback ? <p className="accent mb-4" role="status" aria-live="polite">{feedback}</p> : null}
     {accessNotice ? <p className="mb-4 rounded border border-[var(--primary-border)] p-3 text-sm text-[var(--primary-text)]" role="status">{accessNotice}</p> : null}
     {swrError ? <p className="error mb-4" role="alert">{swrError.message}</p> : null}
@@ -303,8 +307,8 @@ export default function LeadsPage() {
           : <table className={`responsive-table leads-table crm-lead-table whitespace-nowrap ${canReadFollowUp ? "crm-lead-table--follow-up" : "crm-lead-table--basic"}`}>
             <thead><tr>
               <th>Contato</th>
-              <th>Etapa <HelpHint label="Ajuda: Etapa" title="Etapa e qualificação">Situação comercial do contato. O número (ex.: 4/5) é a nota da qualificação da IA; “Decisão humana” marca contatos que aguardam decisão de uma pessoa.</HelpHint></th>
-              <th>Contexto <HelpHint label="Ajuda: Contexto" title="Contexto">Resumo gerado pela IA na qualificação, com a origem do contato e a agenda associada.</HelpHint></th>
+              <th><HelpHint content="Situação comercial, nota da IA e indicação de decisão humana." description={<>Situação comercial do contato. O número (ex.: 4/5) é a nota da qualificação da IA; “Decisão humana” marca contatos que aguardam decisão de uma pessoa.</>} asChild><span>Etapa</span></HelpHint></th>
+              <th><HelpHint content="Resumo da IA, origem do contato e agenda associada." asChild><span>Contexto</span></HelpHint></th>
               {canReadFollowUp ? <th>Acompanhamento</th> : null}
               <th>Atualizado</th>
               <th>Ações</th>
@@ -333,7 +337,7 @@ export default function LeadsPage() {
               <td data-label="Atualizado" className="mono leads-table__updated"><time dateTime={lead.atualizado_em} title={new Date(lead.atualizado_em).toLocaleString("pt-BR")}>{new Date(lead.atualizado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</time></td>
               <td data-label="Ações">
                 <div className="leads-table__actions">
-                  <ContactChatLink conversationId={lead.conversation_id} name={lead.nome} />
+                  <ContactChatLink conversationId={lead.conversation_id} name={lead.nome} onStart={canReply ? () => setConversationLead(lead) : undefined} />
                   <IconButton asChild label="Ver detalhes" size="sm">
                     <Link href={`/contatos/${lead.id}`}><Eye size={14} aria-hidden="true" /></Link>
                   </IconButton>
@@ -366,6 +370,14 @@ export default function LeadsPage() {
           </table>}
         {!loading && pageState.hasMore ? <div className="flex justify-center p-3"><Button onClick={() => void loadMoreLeads()} disabled={loadingMore}>{loadingMore ? "Carregando…" : "Carregar mais contatos"}</Button></div> : null}
     </section>
+    {canReply ? (
+      <NewConversationDialog
+        open={Boolean(conversationLead)}
+        initialLead={conversationLead ?? undefined}
+        onClose={() => setConversationLead(null)}
+        onInitiated={(conversationId) => router.push(`/conversas?id=${encodeURIComponent(conversationId)}`)}
+      />
+    ) : null}
     {canCreateLeads ? (
       <NewLeadDialog
         open={createOpen}

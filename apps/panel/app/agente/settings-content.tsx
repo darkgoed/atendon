@@ -282,7 +282,7 @@ export function AgentSettingsContent() {
           <SaveButton type="button" state={saving ? "busy" : save.state} disabled={!canManage || !dirty || !form || form.enabledTools.length === 0 || changingStatus || removingOverride} onClick={() => void saveAgent()}>
             Salvar alterações
           </SaveButton>
-          <SaveToast show={save.done}>Agente salvo</SaveToast>
+          <SaveToast show={save.done} token={save.toastToken}>Agente salvo</SaveToast>
           </div>
         }
       />
@@ -315,14 +315,14 @@ export function AgentSettingsContent() {
             <section className="agent-main">
               <div className="flex channels-ai-agent-editor flex-col">
                 <div className="cardtitle channels-ai-section-title">
-                  <span><label htmlFor="agent-system-prompt">Instruções do agente</label> <small className="mono ml-2 type-caption text-[var(--text-muted)]">system_prompt</small> <HelpHint label="Ajuda: Instruções do agente">É aqui que se define como a IA atende: tom, regras e o que pode prometer. As mudanças valem ao clicar em Salvar alterações.</HelpHint></span>
+                  <span><HelpHint content="Defina como a IA atende e salve para aplicar." description={<>É aqui que se define como a IA atende: tom, regras e o que pode prometer. As mudanças valem ao clicar em Salvar alterações.</>} asChild><label htmlFor="agent-system-prompt">Instruções do agente</label></HelpHint> <small className="mono ml-2 type-caption text-[var(--text-muted)]">system_prompt</small> </span>
                   <span className="mono type-caption text-[var(--text-muted)]">{form.systemPrompt.length} caracteres</span>
                 </div>
                 <textarea id="agent-system-prompt" className="input channels-ai-prompt flex-1 resize-none leading-relaxed" value={form.systemPrompt} onChange={(event) => change({ systemPrompt: event.target.value })} />
                 <p className="sub mt-3">Proteções contra injeção de prompt, fuga de contexto e exposição de dados continuam ativas automaticamente. O comportamento do atendimento vem do que você escrever aqui.</p>
               </div>
               <div className="line-section grid gap-4">
-                <div className="cardtitle channels-ai-section-title"><span>Ferramentas habilitadas <HelpHint label="Ajuda: Ferramentas habilitadas">Cada opção é uma ação que a IA pode executar, como consultar agendas ou agendar reuniões. Desmarcada, a ação fica indisponível para ela.</HelpHint></span></div>
+                <div className="cardtitle channels-ai-section-title"><span><HelpHint content="Desmarcar impede a IA de executar esta ação." description={<>Cada opção é uma ação que a IA pode executar, como consultar agendas ou agendar reuniões. Desmarcada, a ação fica indisponível para ela.</>}>Ferramentas habilitadas</HelpHint></span></div>
                 <p className="sub">O agente só enxerga e executa as ferramentas selecionadas.</p>
                 {obsoleteTools.length > 0 ? (
                   <p className="sub warning" role="alert">
@@ -337,7 +337,7 @@ export function AgentSettingsContent() {
                     </label>
                   ))}
                 </div>
-                <div className="cardtitle channels-ai-section-title"><span>Respostas para mídia <HelpHint label="Ajuda: Respostas para mídia">Mensagem enviada quando a IA não consegue analisar o áudio, a imagem ou o documento recebido.</HelpHint></span></div>
+                <div className="cardtitle channels-ai-section-title"><span><HelpHint content="Resposta quando a IA não consegue analisar a mídia." description={<>Mensagem enviada quando a IA não consegue analisar o áudio, a imagem ou o documento recebido.</>}>Respostas para mídia</HelpHint></span></div>
                 <Field label="Áudio"><textarea className="input channels-ai-textarea-compact resize-y" value={form.mediaFallbackAudio} onChange={(event) => change({ mediaFallbackAudio: event.target.value })} /></Field>
                 <Field label="Imagem"><textarea className="input channels-ai-textarea-compact resize-y" value={form.mediaFallbackImage} onChange={(event) => change({ mediaFallbackImage: event.target.value })} /></Field>
                 <Field label="Documento"><textarea className="input channels-ai-textarea-compact resize-y" value={form.mediaFallbackDocument} onChange={(event) => change({ mediaFallbackDocument: event.target.value })} /></Field>
@@ -360,7 +360,7 @@ export function AgentSettingsContent() {
                 <p className="sub">A chave é criptografada no servidor e nunca é retornada ao navegador.</p>
               </section>
               <section className="line-section grid gap-4">
-                <div className="cardtitle channels-ai-section-title"><span>Parâmetros <HelpHint label="Ajuda: Parâmetros">Temperatura controla a variação das respostas: 0 é mais previsível, valores altos variam mais. Máx. tokens limita o tamanho de cada resposta.</HelpHint></span></div>
+                <div className="cardtitle channels-ai-section-title"><span><HelpHint content="Ajuste a variação e o limite de tamanho das respostas." description={<>Temperatura controla a variação das respostas: 0 é mais previsível, valores altos variam mais. Máx. tokens limita o tamanho de cada resposta.</>}>Parâmetros</HelpHint></span></div>
                 <Field label="Nível de raciocínio">
                   <select className="input" value={form.reasoningEffort} onChange={(event) => change({ reasoningEffort: event.target.value as AgentForm["reasoningEffort"] })}>
                     <option value="low">Baixo, mais rápido</option>

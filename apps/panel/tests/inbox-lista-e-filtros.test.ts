@@ -14,12 +14,32 @@ beforeAll(async () => {
 });
 
 describe("inbox /conversas — comments.md L5, L7, L9", () => {
+  it("mantém Nova conversa só-ícone depois dos filtros, inclusive fora do título oculto no mobile", () => {
+    const title = conversations.slice(conversations.indexOf('<div className="conversation-list__title">'), conversations.indexOf('<div className="conversation-list__search-row"'));
+    const searchRow = conversations.slice(conversations.indexOf('<div className="conversation-list__search-row"'), conversations.indexOf('<div className="conversation-filter-tabs">'));
+    expect(title).not.toContain("Nova conversa");
+    expect(searchRow).toMatch(/<ListFiltersBar[^>]+\/>\s*\{canReply \? \(\s*<IconButton label="Nova conversa" tone="quiet"/);
+    expect(searchRow).toContain('onClick={() => setNewConversationOpen(true)}');
+    expect(searchRow).toContain('<PencilSimple size={16} aria-hidden="true" />');
+    expect(conversationsCss).toMatch(/\.conversation-list__search-row > \.conversation-list__compose \{[^}]*width:\s*36px;/);
+  });
+
   it("usa ListFiltersBar (o mesmo filtro de /contatos) e não o painel ad-hoc antigo", () => {
     expect(conversations).toContain("ListFiltersBar");
     expect(conversations).not.toContain("advancedFiltersOpen");
     expect(conversations).not.toContain("Filtros avançados");
     // O padrão é o mesmo componente de /contatos e /pipeline.
     expect(conversations).toContain('from "@/components/ui/filters"');
+  });
+
+  it("distingue transferência de responsável da mudança de etapa comercial", async () => {
+    const picker = await readFile(new URL("../components/conversation-status-picker.tsx", import.meta.url), "utf8");
+    expect(conversations).toMatch(/icon=\{<UserSwitch size=\{14\} aria-hidden="true" \/>\}\s*ariaLabel="Transferir"/);
+    expect(conversations).toContain('onChange={(event) => void assignConversation(event.target.value)}');
+    expect(conversations).toContain('api(`/conversations/${selected}/assign`');
+    expect(picker).toContain('<ArrowsLeftRight size={14} aria-hidden="true" />');
+    expect(picker).toContain('api(`/organization/leads/${leadId}/stage`');
+    expect(conversations).not.toContain('<HelpHint label="Ajuda:');
   });
 
   it("remove o contador acima da busca e mantém os filtros e as abas", () => {

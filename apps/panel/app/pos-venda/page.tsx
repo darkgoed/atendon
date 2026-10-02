@@ -195,7 +195,7 @@ export default function PostSalesPage() {
       <div className="post-sales-page">
         <PageHeader
           className="post-sales-head"
-          title={<>Carteira de pós-venda <HelpHint label="Ajuda: o que é a carteira" title="Carteira de pós-venda">Clientes que já compraram e agora recebem acompanhamento: checklist de relacionamento, responsável e próxima ação.</HelpHint></>}
+          title={<><HelpHint content="Clientes que já compraram e recebem acompanhamento." description={<>Clientes que já compraram e agora recebem acompanhamento: checklist de relacionamento, responsável e próxima ação.</>}>Carteira de pós-venda</HelpHint></>}
           actions={
             <div className="post-sales-head__actions">
               <Link className="btn" href="/pos-venda/cobranca">Cobranças de crediário</Link>
@@ -222,7 +222,7 @@ export default function PostSalesPage() {
               </label>
               <div className="post-sales-filters" aria-label="Filtros da carteira">
                 <Funnel size={15} aria-hidden="true" />
-                <HelpHint label="Ajuda: Filtros da carteira">“Atrasadas” reúne clientes com próxima ação vencida; “Sem ação”, quem não tem nada agendado.</HelpHint>
+
                 <Select value={filters.progress} onChange={(event) => changeFilter("progress", event.target.value as PostSaleFilters["progress"])} aria-label="Filtrar por progresso">
                   <option value="">Todo progresso</option>
                   <option value="not_started">Não iniciados</option>
@@ -234,13 +234,13 @@ export default function PostSalesPage() {
                   <option value="unassigned">Sem responsável</option>
                   {options?.members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
                 </Select>
-                <Select value={filters.next_action} onChange={(event) => changeFilter("next_action", event.target.value as PostSaleFilters["next_action"])} aria-label="Filtrar por próxima ação">
+                <HelpHint content="Filtrar por ações vencidas ou não agendadas." description={<>“Atrasadas” reúne clientes com próxima ação vencida; “Sem ação”, quem não tem nada agendado.</>} asChild><Select value={filters.next_action} onChange={(event) => changeFilter("next_action", event.target.value as PostSaleFilters["next_action"])} aria-label="Filtrar por próxima ação">
                   <option value="">Todas as ações</option>
                   <option value="overdue">Atrasadas</option>
                   <option value="today">Para hoje</option>
                   <option value="upcoming">Próximas</option>
                   <option value="none">Sem ação</option>
-                </Select>
+                </Select></HelpHint>
                 <Select value={filters.archived} onChange={(event) => changeFilter("archived", event.target.value as PostSaleFilters["archived"])} aria-label="Filtrar por arquivamento">
                   <option value="active">Ativos</option>
                   <option value="archived">Arquivados</option>
@@ -324,7 +324,7 @@ export default function PostSalesPage() {
 
                   <section className="post-sales-detail__section post-sales-detail__section--checklist">
                     <div className="post-sales-section-title">
-                      <div><span className="label">Elemento principal</span><h3>Checklist de relacionamento <HelpHint label="Ajuda: Checklist de relacionamento">Lista de compromissos pós-venda definida pela empresa. Registre o resultado de cada item para acompanhar o progresso do cliente.</HelpHint></h3></div>
+                      <div><span className="label">Elemento principal</span><h3><HelpHint content="Registre os compromissos de acompanhamento do cliente." description={<>Lista de compromissos pós-venda definida pela empresa. Registre o resultado de cada item para acompanhar o progresso do cliente.</>}>Checklist de relacionamento</HelpHint></h3></div>
                       <span className="mono">{detail.client.checklist_accepted} aceito(s)</span>
                     </div>
                     <PostSalesChecklist entries={detail.checklist} savingId={savingEntryId} errors={entryErrors} onSave={saveChecklist} />

@@ -91,7 +91,7 @@ export function ConversationNextAction({
     <section className={`card ${due ? "border-[var(--warning-border)]" : ""}`} aria-labelledby="conversation-next-action-title">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div id="conversation-next-action-title" className="cardtitle flex items-center gap-1.5"><CalendarDots size={14} aria-hidden="true" /> Próxima ação<HelpHint label="Ajuda: Próxima ação">Define o próximo passo do follow-up e a data em que ele vence. Passada a data, o card fica marcado como Pendência.</HelpHint></div>
+          <div id="conversation-next-action-title" className="cardtitle flex items-center gap-1.5"><CalendarDots size={14} aria-hidden="true" /> <HelpHint content="Após o prazo, o card fica marcado como Pendência." description={<>Define o próximo passo do follow-up e a data em que ele vence. Passada a data, o card fica marcado como Pendência.</>}>Próxima ação</HelpHint></div>
           {due ? <strong className="mt-1 block text-xs text-[var(--warning-text)]">Pendência</strong> : null}
           <p className={`mt-1 whitespace-pre-wrap text-sm ${due ? "text-[var(--warning-text)]" : "text-[var(--text-secondary)]"}`}>{nextAction || "Nenhuma próxima ação definida."}</p>
           {nextActionAt ? <time className="mono mt-1 block text-xs text-[var(--text-muted)]">{new Date(nextActionAt).toLocaleString("pt-BR", { timeZone: timezone })}</time> : null}

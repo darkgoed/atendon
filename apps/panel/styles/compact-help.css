@@ -1,0 +1,32 @@
+.tooltip.tooltip--compact {
+  max-width: 320px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: none;
+}
+
+@media (max-width: 335px) {
+  .tooltip.tooltip--compact {
+    max-width: calc(100vw - 16px);
+  }
+}
+
+.compact-help-trigger:focus-visible {
+  outline: 2px solid var(--text-secondary);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.compact-help-description,
+.field > [hidden] {
+  display: none;
+}

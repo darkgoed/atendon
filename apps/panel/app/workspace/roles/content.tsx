@@ -196,7 +196,7 @@ export function WorkspaceRolesContent() {
 
         <form className="card admin-card" aria-busy={saving} onSubmit={submit}>
           <div className="cardtitle">
-            <span>{editor.id ? "Editar função" : "Nova função"} <HelpHint label="Ajuda: Como as permissões valem">As permissões dizem o que quem tem a função pode ver e fazer. Ao salvar, o novo conjunto vale na hora para todos os membros com ela.</HelpHint></span>
+            <span><HelpHint content="Salvar aplica as permissões a todos os membros da função." description={<>As permissões dizem o que quem tem a função pode ver e fazer. Ao salvar, o novo conjunto vale na hora para todos os membros com ela.</>}>{editor.id ? "Editar função" : "Nova função"}</HelpHint></span>
             {editingProtectedRole ? (
               <span className="admin-badge admin-badge--warn"><Lock size={12} aria-hidden="true" />Protegida</span>
             ) : null}
@@ -262,10 +262,10 @@ export function WorkspaceRolesContent() {
           <div className="admin-actions admin-actions--end">
             {editor.id ? (
               <>
-                <IconButton type="button" label="Excluir" disabled={!canDelete || saving || editingProtectedRole || editor.memberCount > 0} onClick={() => void removeRole()}>
+                <IconButton helper="Mova os membros para outra função antes de excluir." type="button" label="Excluir" disabled={!canDelete || saving || editingProtectedRole || editor.memberCount > 0} onClick={() => void removeRole()}>
                   <Trash size={16} aria-hidden="true" />
                 </IconButton>
-                <HelpHint label="Ajuda: Excluir função">Uma função usada por algum membro não pode ser excluída; mova os membros para outra função antes.</HelpHint>
+
               </>
             ) : null}
             <SaveButton type="submit" state={saving ? "busy" : save.state} disabled={saving || editingProtectedRole || (!editor.id && !canCreate) || (Boolean(editor.id) && !canUpdate)}>

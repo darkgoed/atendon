@@ -12,6 +12,7 @@ const { apiMock } = vi.hoisted(() => ({ apiMock: vi.fn() }));
 vi.mock("@/lib/api", () => ({ api: apiMock }));
 
 import { GoogleCalendarSettings } from "@/components/google-calendar-settings";
+import { ErrorToasts } from "@/components/error-toasts";
 
 type TestConnection = {
   id: string;
@@ -59,19 +60,21 @@ const assignMock = vi.fn();
 function setLocation(href: string) {
   Object.defineProperty(window, "location", {
     configurable: true,
-    value: { origin: "http://localhost:3000", href, assign: assignMock }
+    value: { origin: "http://localhost:3000", href, pathname: new URL(href).pathname, assign: assignMock }
   });
 }
 
 function renderPanel() {
   return render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+      <ErrorToasts />
       <GoogleCalendarSettings canManage />
     </SWRConfig>
   );
 }
 
 beforeEach(() => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 401 }));
   state.connections = [mariaConnected, joaoWithoutCalendar];
   state.routes = [];
   state.putCalls = [];
@@ -122,7 +125,7 @@ beforeEach(() => {
     return Promise.reject(new Error(`rota inesperada ${options?.method ?? "GET"} ${path}`));
   });
 });
-afterEach(() => cleanup());
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("Google Agenda — configuração por atendente", () => {
   it("mostra status por conta: agenda escolhida com fuso e aviso quando falta agenda", async () => {

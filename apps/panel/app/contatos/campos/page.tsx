@@ -178,7 +178,7 @@ export default function CustomFieldsPage() {
       <div className={styles.page}>
         <header className="pagehead">
           <div>
-            <h1>Campos personalizados <HelpHint label="Ajuda: Campos personalizados" title="Campos personalizados">Campos extras que aparecem no perfil de cada contato da empresa: escolha o tipo, as opções (quando houver) e se é obrigatório.</HelpHint></h1>
+            <h1><HelpHint content="Defina campos extras no perfil dos contatos." description={<>Campos extras que aparecem no perfil de cada contato da empresa: escolha o tipo, as opções (quando houver) e se é obrigatório.</>}>Campos personalizados</HelpHint></h1>
           </div>
           <div className={styles.toolbar}>
             <Button tone="primary" onClick={() => setDialog({ open: true, field: null })}>

@@ -151,8 +151,7 @@ export function AiStickerLibrary() {
       </div>
       <div className="border-l border-[var(--border)] pl-5 text-right type-caption text-[var(--text-muted)]">
         <strong className="block text-xl font-semibold text-[var(--text)]">{stickers.length}</strong>
-        {pendingCount} aguardando revisão
-        <HelpHint label="Ajuda: Aguardando revisão" className="ml-2">Figurinhas importadas do WhatsApp chegam desativadas até você descrever o uso e salvar.</HelpHint>
+        <HelpHint content="Descreva o uso e salve para liberar a figurinha." description={<>Figurinhas importadas do WhatsApp chegam desativadas até você descrever o uso e salvar.</>}>{pendingCount} aguardando revisão</HelpHint>
       </div>
     </header>
 
@@ -182,8 +181,7 @@ export function AiStickerLibrary() {
                   <label className="field sm:col-span-2"><span>Quando a IA pode usar</span><textarea className="input channels-ai-textarea-compact resize-y" placeholder="Ex.: comemorar quando o cliente confirma o agendamento" value={draft.description} onChange={(event) => changeDraft(sticker, { description: event.target.value })}/></label>
                   <div className="sm:col-span-2 flex flex-wrap items-center gap-3 type-caption text-[var(--text-muted)]">
                     <span className="">{sticker.source === "whatsapp_sent" ? "Importada do WhatsApp" : "Enviada pelo painel"}</span><span>{formatSize(sticker.size_bytes)}</span>
-                    <label className="ml-auto flex items-center gap-2 text-xs text-[var(--text-secondary)]"><input type="checkbox" checked={draft.enabled} onChange={(event) => changeDraft(sticker, { enabled: event.target.checked })}/>Disponível para a IA</label>
-                    <HelpHint label="Ajuda: Disponível para a IA">Desmarcada, a figurinha fica guardada na biblioteca, mas a IA não envia.</HelpHint>
+                    <HelpHint content="Desmarcada, a figurinha fica guardada, mas a IA não envia." description={<>Desmarcada, a figurinha fica guardada na biblioteca, mas a IA não envia.</>} asChild><label className="ml-auto flex items-center gap-2 text-xs text-[var(--text-secondary)]"><input type="checkbox" checked={draft.enabled} onChange={(event) => changeDraft(sticker, { enabled: event.target.checked })}/>Disponível para a IA</label></HelpHint>
                   </div>
                 </div>
                 <div className="flex items-start gap-2 md:flex-col">

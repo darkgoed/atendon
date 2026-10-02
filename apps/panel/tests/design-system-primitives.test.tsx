@@ -61,7 +61,7 @@ describe("button primitives", () => {
     expect(screen.getByRole("button", { name: "Disabled" })).toBeDisabled();
   });
 
-  it("gives IconButton an accessible name, DS tooltip, ref, and no accidental form submit", async () => {
+  it("gives IconButton an accessible name, description, ref, and no accidental form submit", async () => {
     const user = userEvent.setup();
     const ref = createRef<HTMLButtonElement>();
     const submit = vi.fn((event: React.FormEvent) => event.preventDefault());
@@ -70,6 +70,7 @@ describe("button primitives", () => {
     const button = screen.getByRole("button", { name: "Close panel" });
     expect(ref.current).toBe(button);
     expect(button).not.toHaveAttribute("title");
+    expect(button).toHaveAccessibleDescription("Close panel");
     expect(button).toHaveClass("icon-button", "btn");
     await user.hover(button);
     expect(await screen.findByRole("tooltip")).toHaveTextContent("Close panel");

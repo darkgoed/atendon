@@ -7,7 +7,7 @@
 // não leva formulário, legado nem aviso de sucesso de uma configuração para a outra.
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render as renderView, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,6 +18,9 @@ vi.mock("@/lib/use-permission", () => ({ usePermission: () => true }));
 vi.mock("@/components/shell", () => ({ Shell: ({ children }: { children: React.ReactNode }) => <main>{children}</main> }));
 
 import Agent from "../app/agente/page";
+import { ErrorToasts } from "@/components/error-toasts";
+
+const render = (element: React.ReactNode) => renderView(<><ErrorToasts />{element}</>);
 
 const AVAILABLE = ["registrar_lead", "agendar_reuniao"];
 
@@ -108,8 +111,9 @@ async function switchTo(user: ReturnType<typeof userEvent.setup>, value: string,
 // Corpo em bloco: devolver a mock faria o vitest registrá-la como cleanup hook.
 beforeEach(() => {
   apiMock.mockReset();
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 401 }));
 });
-afterEach(() => cleanup());
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("agente — ferramentas legadas (R4)", () => {
   it("avisa explicitamente sobre o nome obsoleto e mantém a seleção válida", async () => {

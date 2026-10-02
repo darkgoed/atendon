@@ -1,16 +1,27 @@
 "use client";
 
-import { WarningCircle, X } from "@/components/icons";
+import { CheckCircle, WarningCircle, X } from "@/components/icons";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { ERROR_TOAST_EVENT } from "@/lib/error-events";
+import { isValidElement, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { ERROR_TOAST_EVENT, type ToastKind, type ToastNotice } from "@/lib/error-events";
 import { adaptivePollingDelay, toastableAlerts, type ServerAlertToast } from "@/lib/alerts";
 import type { PanelFeatureFlagsResponse } from "@/lib/feature-flags";
 import { canPollWorkspaceAlerts, type PanelSession } from "@/lib/session";
 import { WhatsAppDisconnectedHelp } from "@/components/whatsapp-disconnected-help";
 import { isWhatsAppDisconnectedError } from "@/lib/whatsapp-support";
 
-type Toast = { id: number; message: string; kind: "error" | "operational" };
+type Toast = { id: number; message: ReactNode; kind: ToastKind; token?: object; duration: number };
+
+function sameContent(left: ReactNode, right: ReactNode): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) return left.length === right.length && left.every((child, index) => sameContent(child, right[index]));
+  if (!isValidElement<Record<string, unknown>>(left) || !isValidElement<Record<string, unknown>>(right)) return false;
+  if (left.type !== right.type || left.key !== right.key) return false;
+  const keys = Object.keys(left.props);
+  return keys.length === Object.keys(right.props).length && keys.every((key) => key === "children"
+    ? sameContent(left.props.children as ReactNode, right.props.children as ReactNode)
+    : Object.is(left.props[key], right.props[key]));
+}
 
 function errorMessage(value: unknown): string {
   if (value instanceof Error && value.message) return value.message;
@@ -23,34 +34,63 @@ function isBenignResizeObserverError(message: unknown): boolean {
 }
 
 export function ErrorToasts() {
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [toast, setToast] = useState<Toast | null>(null);
   const nextId = useRef(0);
-  const lastToast = useRef({ message: "", kind: "error" as Toast["kind"], at: 0 });
-  const dismissTimers = useRef(new Set<number>());
+  const activeToast = useRef<Toast | null>(null);
+  const lastSave = useRef<{ message: ReactNode } | null>(null);
+  const dismissTimer = useRef<number | null>(null);
+  const countdown = useRef({ id: 0, remaining: 0, startedAt: 0 });
+  const [interaction, setInteraction] = useState({ hover: false, focus: false });
+  const paused = interaction.hover || interaction.focus;
   const seenServerAlerts = useRef(new Set<string>());
   const alertPollingState = useRef<{ pathname: string; enabled: boolean } | null>(null);
 
+  const dismiss = useCallback(() => {
+    if (dismissTimer.current !== null) window.clearTimeout(dismissTimer.current);
+    dismissTimer.current = null;
+    activeToast.current = null;
+    setToast(null);
+  }, []);
+
   useEffect(() => {
-    const timers = dismissTimers.current;
+    if (!toast) return;
+    if (countdown.current.id !== toast.id) countdown.current = { id: toast.id, remaining: toast.duration, startedAt: 0 };
+    if (paused) return;
+    countdown.current.startedAt = Date.now();
+    const timer = window.setTimeout(dismiss, countdown.current.remaining);
+    dismissTimer.current = timer;
+    return () => {
+      window.clearTimeout(timer);
+      countdown.current.remaining = Math.max(0, countdown.current.remaining - (Date.now() - countdown.current.startedAt));
+      dismissTimer.current = null;
+    };
+  }, [toast, paused, dismiss]);
+
+  useLayoutEffect(() => {
     let stopped = false;
     let pollInFlight = false;
     let pollTimer: number | undefined;
     let consecutiveFailures = 0;
     let deliveryV2 = false;
-    const add = (message: string, kind: Toast["kind"] = "error") => {
+    const add = (message: ReactNode, kind: ToastKind = "error", options: ToastNotice = { message }) => {
       if (stopped) return;
-      const now = Date.now();
-      if (lastToast.current.message === message && lastToast.current.kind === kind && now - lastToast.current.at < 10_000) return;
-      lastToast.current = { message, kind, at: now };
+      if (message == null || typeof message === "boolean" || (typeof message === "string" && !message.trim())) return;
+      if (options.dedupeRemount && lastSave.current && sameContent(lastSave.current.message, message)) return;
+      if (!options.refresh && activeToast.current?.kind === kind && sameContent(activeToast.current.message, message)) return;
+      if (kind === "success" && (options.dedupeRemount || options.refresh)) lastSave.current = { message };
+      if (dismissTimer.current !== null) window.clearTimeout(dismissTimer.current);
       const id = ++nextId.current;
-      setToasts((current) => [...current, { id, message, kind }].slice(-4));
-      const timer = window.setTimeout(() => {
-        timers.delete(timer);
-        setToasts((current) => current.filter((toast) => toast.id !== id));
-      }, 8_000);
-      timers.add(timer);
+      activeToast.current = { id, message, kind, token: options.token, duration: options.duration ?? (kind === "success" ? 2_600 : 8_000) };
+      setInteraction({ hover: false, focus: false });
+      setToast(activeToast.current);
     };
-    const onReportedError = (event: Event) => add(errorMessage((event as CustomEvent<{ message?: unknown }>).detail?.message));
+    const onReportedError = (event: Event) => {
+      const detail = (event as CustomEvent<ToastNotice>).detail;
+      if (detail?.dismiss) {
+        if (detail.token === activeToast.current?.token) dismiss();
+      } else if (detail?.kind) add(detail.message, detail.kind, detail);
+      else add(errorMessage(detail?.message));
+    };
     const onWindowError = (event: ErrorEvent) => {
       /* Aviso benigno do navegador (layout reajustado no mesmo frame, ex.:
          arrastar nós no editor de fluxos) — não é falha da operação. */
@@ -150,10 +190,10 @@ export function ErrorToasts() {
           consecutiveFailures = 0;
           return;
         }
-        for (const alert of toastableAlerts(alerts)) {
-          if (seenServerAlerts.current.has(alert.id)) continue;
-          seenServerAlerts.current.add(alert.id);
-          add(alert.message, "operational");
+        const unseen = toastableAlerts(alerts).filter((alert) => !seenServerAlerts.current.has(alert.id));
+        if (unseen.length) {
+          for (const alert of unseen) seenServerAlerts.current.add(alert.id);
+          add(unseen.map((alert) => alert.message).join("\n"), "operational");
         }
         consecutiveFailures = 0;
       } catch (caught) {
@@ -174,20 +214,27 @@ export function ErrorToasts() {
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       if (pollTimer !== undefined) window.clearTimeout(pollTimer);
-      for (const timer of timers) window.clearTimeout(timer);
-      timers.clear();
+      if (dismissTimer.current !== null) window.clearTimeout(dismissTimer.current);
+      dismissTimer.current = null;
     };
-  }, []);
+  }, [dismiss]);
 
   return (
-    <section className="error-toasts" aria-label="Avisos do sistema" aria-live="assertive">
-      {toasts.map((toast) => (
-        <div className="error-toast" role="alert" key={toast.id}>
-          <WarningCircle className="error-toast-icon" size={20} weight="fill" aria-hidden="true" />
+    <section className="error-toasts" aria-label="Avisos do sistema">
+      {toast ? (
+        <div className="error-toast" data-kind={toast.kind} role={toast.kind === "success" || toast.kind === "info" ? "status" : "alert"} aria-live={toast.kind === "success" || toast.kind === "info" ? "polite" : "assertive"} key={toast.id}
+          onPointerEnter={() => setInteraction((current) => ({ ...current, hover: true }))}
+          onPointerLeave={() => setInteraction((current) => ({ ...current, hover: false }))}
+          onFocus={() => setInteraction((current) => ({ ...current, focus: true }))}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setInteraction((current) => ({ ...current, focus: false }));
+          }}
+        >
+          {toast.kind === "success" ? <CheckCircle className="error-toast-icon" size={20} aria-hidden="true" /> : <WarningCircle className="error-toast-icon" size={20} weight="fill" aria-hidden="true" />}
           <div>
-            <strong>{toast.kind === "operational" ? "Alerta operacional" : "Não foi possível concluir"}</strong>
-            <p>{toast.message}</p>
-            {toast.kind === "error" && isWhatsAppDisconnectedError(toast.message) ? <WhatsAppDisconnectedHelp /> : null}
+            <strong>{toast.kind === "operational" ? "Alerta operacional" : toast.kind === "success" ? "Concluído" : toast.kind === "info" ? "Informação" : toast.kind === "warning" ? "Atenção" : "Não foi possível concluir"}</strong>
+            <div className="error-toast-message">{toast.message}</div>
+            {toast.kind === "error" && typeof toast.message === "string" && isWhatsAppDisconnectedError(toast.message) ? <WhatsAppDisconnectedHelp /> : null}
             {toast.kind === "operational" ? (
               <Link className="mt-2 inline-block text-xs font-medium text-[var(--warning-text)] underline underline-offset-4" href="/alertas">
                 Revisar na central
@@ -196,13 +243,13 @@ export function ErrorToasts() {
           </div>
           <button
             type="button"
-            aria-label="Fechar aviso de erro"
-            onClick={() => setToasts((current) => current.filter(({ id }) => id !== toast.id))}
+            aria-label={toast.kind === "error" ? "Fechar aviso de erro" : "Fechar aviso"}
+            onClick={dismiss}
           >
             <X size={16} weight="bold" aria-hidden="true" />
           </button>
         </div>
-      ))}
+      ) : null}
     </section>
   );
 }

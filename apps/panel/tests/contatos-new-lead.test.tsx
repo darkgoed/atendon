@@ -4,6 +4,7 @@ import React from "react";
 import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 const { apiMock, permissions } = vi.hoisted(() => ({ apiMock: vi.fn(), permissions: { value: true } }));
 

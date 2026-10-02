@@ -178,7 +178,7 @@ export function AiFollowUpSettingsPanel() {
         <div className="grid gap-3">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2"><div className="label">Tentativas cumulativas</div><HelpHint label="Ajuda: Tentativas cumulativas" title="Limites da cadência">Até 10 tentativas; a última não pode passar de 30 dias (43.200 minutos). Os atrasos precisam ser crescentes.</HelpHint></div>
+              <div className="flex items-center gap-2"><HelpHint content="Até 10 tentativas crescentes em até 30 dias." description={<>Até 10 tentativas; a última não pode passar de 30 dias (43.200 minutos). Os atrasos precisam ser crescentes.</>} asChild><div className="label" tabIndex={0}>Tentativas cumulativas</div></HelpHint></div>
               <p className="sub mt-1 text-xs">Cada valor é contado desde a resposta original da IA, não desde a tentativa anterior.</p>
             </div>
             <Button

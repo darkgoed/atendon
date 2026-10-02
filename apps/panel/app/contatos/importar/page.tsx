@@ -295,7 +295,7 @@ export default function ImportContactsPage() {
               </div>
             ) : null}
             <fieldset className={styles.policy}>
-              <legend className="label flex flex-wrap items-center gap-1">Duplicados (mesmo telefone) <HelpHint label="Ajuda: Duplicados (mesmo telefone)" title="Duplicados">O que fazer quando uma linha traz um telefone que já existe na base: pular a linha, atualizar o contato existente ou importá-lo marcado como possível duplicado.</HelpHint></legend>
+              <legend className="label flex flex-wrap items-center gap-1"><HelpHint content="Pule, atualize ou marque telefones já cadastrados." description={<>O que fazer quando uma linha traz um telefone que já existe na base: pular a linha, atualizar o contato existente ou importá-lo marcado como possível duplicado.</>}>Duplicados (mesmo telefone)</HelpHint></legend>
               <div className={styles.policyOptions}>
                 {IMPORT_DUPLICATE_OPTIONS.map((option) => (
                   <label key={option.id} className={styles.policyOption}>
@@ -325,7 +325,7 @@ export default function ImportContactsPage() {
 
         {step === "review" && preview && file ? (
           <section className="card" aria-labelledby="review-step-title">
-            <div id="review-step-title" className="cardtitle">Revisar e importar <HelpHint label="Ajuda: Revisar e importar" title="Resultado da importação">Ao terminar, o resultado separa contatos criados, atualizados a partir de telefones já existentes, ignorados pela política de duplicados e marcados como possível duplicado.</HelpHint></div>
+            <div id="review-step-title" className="cardtitle"><HelpHint content="Confira os contatos criados, atualizados ou ignorados." description={<>Ao terminar, o resultado separa contatos criados, atualizados a partir de telefones já existentes, ignorados pela política de duplicados e marcados como possível duplicado.</>}>Revisar e importar</HelpHint></div>
             <dl className="mb-4 grid gap-3 text-sm md:grid-cols-2">
               <div><dt className="label">Arquivo</dt><dd className="mono mt-1">{file.name}</dd></div>
               <div><dt className="label">Linhas detectadas</dt><dd className="mt-1">{lineCount}</dd></div>

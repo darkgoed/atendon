@@ -188,10 +188,7 @@ function Group({ name, value, path, update }: {
 }) {
   return (
     <section className="line-section">
-      <div className="cardtitle">
-        <span>{labels[name] ?? name}</span>
-        {groupHelp[name] ? <HelpHint label={`Ajuda: ${labels[name] ?? name}`}>{groupHelp[name]}</HelpHint> : null}
-      </div>
+      <div className="cardtitle">{groupHelp[name] ? <HelpHint content={groupHelp[name]}>{labels[name] ?? name}</HelpHint> : <span>{labels[name] ?? name}</span>}</div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {Object.entries(value).map(([key, item]) => typeof item === "object" && !Array.isArray(item) ? (
           <div className="border-t border-[var(--border)] pt-4 sm:col-span-2" key={key}>

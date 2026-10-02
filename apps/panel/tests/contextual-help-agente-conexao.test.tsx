@@ -44,9 +44,10 @@ describe("ajuda contextual — agente", () => {
       return Promise.reject(new Error(`rota inesperada ${path}`));
     });
     render(<Agent />);
-    expect(await screen.findByRole("button", { name: "Ajuda: Ferramentas habilitadas" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ajuda: Parâmetros" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ajuda: Respostas para mídia" })).toBeInTheDocument();
+    expect(await screen.findByText("Ferramentas habilitadas")).toHaveAttribute("tabindex", "0");
+    expect(screen.getByText("Parâmetros")).toHaveAccessibleDescription(/Temperatura controla/);
+    expect(screen.getByText("Respostas para mídia")).toHaveAccessibleDescription(/Mensagem enviada/);
+    expect(screen.queryByRole("button", { name: /^Ajuda:/ })).toBeNull();
   });
 
   // A página já dá retorno imediato na própria linha de status (sem flash extra).
@@ -86,8 +87,8 @@ describe("ajuda contextual — humanização", () => {
       return Promise.reject(new Error(`rota inesperada ${path}`));
     });
     render(<HumanizacaoPage />);
-    await user.click(await screen.findByRole("button", { name: "Ajuda: Agrupamento de mensagens" }));
-    expect(await screen.findByText("A IA espera o contato terminar de enviar mensagens em sequência antes de responder.")).toBeInTheDocument();
+    await user.hover(await screen.findByText("Agrupamento de mensagens"));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("A IA espera o contato terminar de enviar mensagens em sequência antes de responder.");
   });
 });
 
@@ -115,8 +116,9 @@ describe("ajuda contextual — conexões do Instagram", () => {
         onChanged={() => undefined}
       />
     );
-    expect(screen.getByRole("button", { name: "Ajuda: Token expira em" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ajuda: estado da conta" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ajuda: limite técnico" })).toBeInTheDocument();
+    expect(screen.getByText("Token expira em")).toHaveAccessibleDescription(/Prazo de validade/);
+    expect(screen.getByText("connected")).toHaveAccessibleDescription(/nova autorização/);
+    expect(screen.getByText(/Graph v21.0/)).toHaveAccessibleDescription(/limite máximo/);
+    expect(screen.queryByRole("button", { name: /^Ajuda:/ })).toBeNull();
   });
 });

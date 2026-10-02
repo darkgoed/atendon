@@ -417,6 +417,7 @@ const STEP_HELP: Record<string, { title: string; text: string }> = {
 function Properties({ node, definition, canManage, onDefinition, onDeleteStep, onClose }: PropertiesProps) {
   const step = node.id === TRIGGER_ID ? null : definition.steps[node.id] ?? null;
   const item = step ? paletteItemForStep(step) : undefined;
+  const help = STEP_HELP[node.id === TRIGGER_ID ? "trigger" : node.nodeType];
 
   function setStep(next: FlowStep) {
     if (!step) return;
@@ -439,17 +440,11 @@ function Properties({ node, definition, canManage, onDefinition, onDeleteStep, o
     <aside className={styles.properties} aria-label="Propriedades da etapa">
       <div className={styles.propertiesHead}>
         <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-          <span className={styles.propertiesBadge} style={withNt(node.nodeType)}>
+          {help ? <HelpHint content={help.text} asChild><span className={styles.propertiesBadge} style={withNt(node.nodeType)}>
             {node.id === TRIGGER_ID ? "Gatilho" : item?.label ?? node.label}
-          </span>
-          {(() => {
-            const help = STEP_HELP[node.id === TRIGGER_ID ? "trigger" : node.nodeType];
-            return help ? (
-              <HelpHint label={`Ajuda: ${help.title}`} title={help.title} side="bottom" align="start">
-                {help.text}
-              </HelpHint>
-            ) : null;
-          })()}
+          </span></HelpHint> : <span className={styles.propertiesBadge} style={withNt(node.nodeType)}>
+            {node.id === TRIGGER_ID ? "Gatilho" : item?.label ?? node.label}
+          </span>}
         </span>
         <button type="button" className={styles.propertiesClose} onClick={onClose} aria-label="Fechar propriedades">
           <X size={14} aria-hidden="true" />
@@ -1216,10 +1211,7 @@ function FlowEditorInner(props: FlowEditorProps) {
             disabled={!canManage}
             aria-label="Nome do fluxo"
           />
-          <span className={styles.statusPill} data-on={props.ativo}>{props.ativo ? "Ativo" : "Inativo"}</span>
-          <HelpHint label="Ajuda: fluxo ativo" side="bottom">
-            O robô só atende por este fluxo quando ele está Ativo. Ativar e desativar são feitos na lista de fluxos.
-          </HelpHint>
+          <HelpHint content="Ative ou desative o robô pela lista de fluxos." description={<>O robô só atende por este fluxo quando ele está Ativo. Ativar e desativar são feitos na lista de fluxos.</>} side="bottom" asChild><span className={styles.statusPill} data-on={props.ativo}>{props.ativo ? "Ativo" : "Inativo"}</span></HelpHint>
         </div>
         <div className={styles.headerActions}>
           <span className={styles.nodeCount} aria-hidden="true">{graph.nodes.length} blocos</span>
@@ -1242,17 +1234,14 @@ function FlowEditorInner(props: FlowEditorProps) {
           >
             <Play size={15} aria-hidden="true" />
           </IconButton>
-          <HelpHint label="Ajuda: salvar e revisões" side="bottom" align="end">
-            Cada salvamento cria uma revisão do fluxo. Se outra pessoa salvar antes de você, o editor avisa o conflito em vez de sobrescrever — recarregue para receber a versão dela.
-          </HelpHint>
-          <SaveButton
+          <HelpHint content="Salvar cria uma revisão e protege contra sobrescritas." description={<>Cada salvamento cria uma revisão do fluxo. Se outra pessoa salvar antes de você, o editor avisa o conflito em vez de sobrescrever — recarregue para receber a versão dela.</>} side="bottom" align="end" asChild><SaveButton
             state={props.saving ? "busy" : props.saveState ?? "idle"}
             data-testid="flow-save"
             disabled={!canManage}
             onClick={handleSave}
           >
             Salvar
-          </SaveButton>
+          </SaveButton></HelpHint>
         </div>
       </header>
       <SaveToast show={props.saveState === "done"}>Fluxo salvo</SaveToast>

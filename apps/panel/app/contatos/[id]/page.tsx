@@ -571,7 +571,7 @@ export default function LeadDetail() {
             <div className="lead-detail-main">
               {data.qualificacao ? (
                 <section className="card" aria-labelledby="qualification-title">
-                  <div className="flex flex-wrap items-center justify-between gap-3"><div id="qualification-title" className="cardtitle">Qualificação contextual <HelpHint label="Ajuda: Qualificação contextual" title="Qualificação contextual">Nota e resumo gerados pela IA a partir do histórico da conversa; “Requer decisão humana” sinaliza contatos que aguardam decisão de uma pessoa.</HelpHint></div><strong className="lead-stars">{[1, 2, 3, 4, 5].map((value) => <Star key={value} size={14} weight="fill" aria-hidden="true" data-on={value <= (data.qualificacao?.estrelas ?? 0) ? "true" : undefined} />)}<span>{data.qualificacao.estrelas} de 5</span></strong></div>
+                  <div className="flex flex-wrap items-center justify-between gap-3"><div id="qualification-title" className="cardtitle"><HelpHint content="Nota e resumo da IA, com indicação de decisão humana." description={<>Nota e resumo gerados pela IA a partir do histórico da conversa; “Requer decisão humana” sinaliza contatos que aguardam decisão de uma pessoa.</>}>Qualificação contextual</HelpHint></div><strong className="lead-stars">{[1, 2, 3, 4, 5].map((value) => <Star key={value} size={14} weight="fill" aria-hidden="true" data-on={value <= (data.qualificacao?.estrelas ?? 0) ? "true" : undefined} />)}<span>{data.qualificacao.estrelas} de 5</span></strong></div>
                   <dl className="mb-4 grid gap-3 text-sm md:grid-cols-2">
                     <Item label="Situação" value={data.qualificacao.requer_decisao_humana ? "Requer decisão humana" : "Oportunidade qualificada"} />
                     <Item label="Avaliado em" value={data.qualificacao.avaliado_em ? new Date(data.qualificacao.avaliado_em).toLocaleString("pt-BR", { timeZone: data.timezone }) : undefined} />
@@ -615,7 +615,7 @@ export default function LeadDetail() {
               </section>
               {canReadFollowUp ? (
                 <section className="card" aria-labelledby="follow-up-title">
-                  <div id="follow-up-title" className="cardtitle">Próximo acompanhamento <HelpHint label="Ajuda: Próximo acompanhamento" title="Próximo acompanhamento">Define o responsável e a próxima ação com data. Ao salvar com outro responsável, o contato passa para essa pessoa — dependendo do seu escopo de acesso, você pode perder o acesso a ele.</HelpHint></div>
+                  <div id="follow-up-title" className="cardtitle"><HelpHint content="Mudar o responsável pode retirar seu acesso ao contato." description={<>Define o responsável e a próxima ação com data. Ao salvar com outro responsável, o contato passa para essa pessoa — dependendo do seu escopo de acesso, você pode perder o acesso a ele.</>}>Próximo acompanhamento</HelpHint></div>
                   {followUpLoading && !followUpData ? <div className="skeleton h-28" aria-label="Carregando acompanhamento" /> : null}
                   {followUpData ? (
                     <>
@@ -666,7 +666,7 @@ export default function LeadDetail() {
               {canUpdateStatus ? (
                 <form className="card" onSubmit={updateStatus}>
                   <div className="cardtitle">
-                    <span className="flex items-center gap-2"><ArrowsClockwise />Atualizar status <HelpHint label="Ajuda: Atualizar status" title="Atualizar status">Mostra apenas as transições de status permitidas a partir do status atual do contato.</HelpHint></span>
+                    <span className="flex items-center gap-2"><ArrowsClockwise /><HelpHint content="Mostra as transições permitidas para o status atual." description={<>Mostra apenas as transições de status permitidas a partir do status atual do contato.</>}>Atualizar status</HelpHint></span>
                   </div>
                   <p className="sub mb-3">Atual: {statusLabel(data.lead.status)}</p>
                   {data.status_permitidos.length ? (
@@ -689,7 +689,7 @@ export default function LeadDetail() {
               {canTransfer ? (
                 <form className="card" onSubmit={transfer}>
                   <div className="cardtitle">
-                    <span className="flex items-center gap-2"><UserSwitch />Transferir para humano <HelpHint label="Ajuda: Transferir para humano" title="Transferir para humano">Encerra o atendimento pela IA: a conversa passa para um humano, os follow-ups automáticos são cancelados e o motivo é enviado ao atendente.</HelpHint></span>
+                    <span className="flex items-center gap-2"><UserSwitch /><HelpHint content="Desliga a IA, cancela follow-ups e avisa o atendente." description={<>Encerra o atendimento pela IA: a conversa passa para um humano, os follow-ups automáticos são cancelados e o motivo é enviado ao atendente.</>}>Transferir para humano</HelpHint></span>
                   </div>
                   <label className="field">
                     <span className="label">Motivo</span>
