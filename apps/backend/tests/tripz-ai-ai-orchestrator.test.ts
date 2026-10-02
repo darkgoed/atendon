@@ -314,6 +314,76 @@ describe("TripzConversationOrchestrator mandatory AI cases", () => {
   });
 });
 
+describe("TripzConversationOrchestrator imagens indicadas no chat", () => {
+  const image = (attachmentId: string) => ({ attachmentId, fileName: "foto.jpg", mimeType: "image/jpeg", base64: "YQ==" });
+
+  it("\"essa é a foto do hotel X\" atribui o slot do hotel sem apagar a capa existente", async () => {
+    const proposal = baseProposal({
+      schemaVersion: 2,
+      media: [{ attachmentId: IMAGE_1, category: "cover", sortOrder: 0, selectedForPdf: true, confidence: 1 }],
+      editorial: {
+        hotels: [{ id: "villa-pandora", name: "Villa Pandora Hotel", pending: false }],
+        imageAssignments: [{ mediaId: IMAGE_1, role: "cover" }]
+      }
+    });
+    const client = clientWith(output({
+      assistantMessage: "Coloquei a foto no Villa Pandora.",
+      mediaUpdates: [{ attachmentId: IMAGE_2, category: "hotel_pool", label: "Piscina do Villa Pandora", confidence: 0.95 }],
+      proposalPatch: { editorial: { imageAssignments: [{ mediaId: IMAGE_2, role: "hotel", targetId: "villa-pandora" }] } }
+    }));
+    const result = await new TripzConversationOrchestrator(client).processTurn({
+      conversationId: CONVERSATION_ID,
+      userMessage: "Essa é a imagem do hotel Villa Pandora.",
+      proposal,
+      attachments: [image(IMAGE_2)]
+    });
+    expect(result.proposal.editorial?.imageAssignments).toEqual([
+      { mediaId: IMAGE_1, role: "cover" },
+      { mediaId: IMAGE_2, role: "hotel", targetId: "villa-pandora" }
+    ]);
+    expect(client.completeStructured.mock.calls[0][0].systemPrompt).toContain("essa é a foto do hotel X");
+  });
+
+  it("\"essa vai ser a capa\" troca a capa mesmo se o modelo esquecer o bloco editorial", async () => {
+    const proposal = baseProposal({
+      schemaVersion: 2,
+      media: [{ attachmentId: IMAGE_1, category: "cover", sortOrder: 0, selectedForPdf: true, confidence: 1 }],
+      editorial: { imageAssignments: [{ mediaId: IMAGE_1, role: "cover" }] }
+    });
+    const client = clientWith(output({
+      assistantMessage: "Nova capa definida.",
+      mediaUpdates: [{ attachmentId: IMAGE_2, category: "cover", label: "Capa", confidence: 0.99 }]
+    }));
+    const result = await new TripzConversationOrchestrator(client).processTurn({
+      conversationId: CONVERSATION_ID,
+      userMessage: "Essa vai ser a imagem da capa.",
+      proposal,
+      attachments: [image(IMAGE_2)]
+    });
+    expect(result.proposal.editorial?.imageAssignments).toEqual([{ mediaId: IMAGE_2, role: "cover" }]);
+  });
+
+  it("imagem antiga reclassificada como capa não sequestra a capa (só imagem do turno)", async () => {
+    const proposal = baseProposal({
+      schemaVersion: 2,
+      media: [
+        { attachmentId: IMAGE_1, category: "cover", sortOrder: 0, selectedForPdf: true, confidence: 1 },
+        { attachmentId: IMAGE_2, category: "destination", sortOrder: 1, selectedForPdf: true, confidence: 1 }
+      ],
+      editorial: { imageAssignments: [{ mediaId: IMAGE_1, role: "cover" }] }
+    });
+    const client = clientWith(output({
+      mediaUpdates: [{ attachmentId: IMAGE_2, category: "cover", label: "Capa", confidence: 0.6 }]
+    }));
+    const result = await new TripzConversationOrchestrator(client).processTurn({
+      conversationId: CONVERSATION_ID,
+      userMessage: "A segunda foto também é bonita.",
+      proposal
+    });
+    expect(result.proposal.editorial?.imageAssignments).toEqual([{ mediaId: IMAGE_1, role: "cover" }]);
+  });
+});
+
 describe("TripzConversationOrchestrator safeguards", () => {
   it("does not allow an attachment to trigger PDF generation or mutate unrelated existing media", async () => {
     const proposal = baseProposal({

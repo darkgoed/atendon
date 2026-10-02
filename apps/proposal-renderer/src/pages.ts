@@ -58,8 +58,13 @@ function plural(count: number, singular: string, pluralWord: string): string {
   return `${count} ${count === 1 ? singular : pluralWord}`;
 }
 
-function namesLine(spec: ProposalSpec): string {
-  return spec.travellers.map((traveller) => traveller.name.trim()).filter(Boolean).join(" & ");
+/** Rótulos genéricos ("Adulto 2") não são nomes: não vão para capa/rodapé. */
+const PLACEHOLDER_TRAVELLER = /^(?:adulto|criança|crianca|bebê|bebe|viajante)(?:\s+\d+)?$/i;
+
+export function namesLine(spec: ProposalSpec): string {
+  return spec.travellers.map((traveller) => traveller.name.trim())
+    .filter((name) => name && !PLACEHOLDER_TRAVELLER.test(name))
+    .join(" & ");
 }
 
 function totalNights(spec: ProposalSpec): number {
@@ -174,20 +179,66 @@ function timelineFor(days: ItineraryDay[]): TimelineData {
 
 /* ------------------------------------------------------------------ voos */
 
+/** Cidade legível: "GRU - SAO PAULO" → "Sao Paulo"; mantém acentos quando vierem. */
+function displayCity(value: string | undefined): string {
+  const raw = cityOf(value).split(/\s+-\s+/).pop()?.trim() ?? "";
+  if (!raw || raw !== raw.toUpperCase() || /^[A-Z]{3}$/.test(raw)) return raw;
+  return raw.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_match, sep: string, letter: string) => `${sep}${letter.toUpperCase()}`)
+    .replace(/\b(De|Do|Da|Dos|Das|E)\b/g, (word) => word.toLowerCase());
+}
+
+/** Ref. Itália: "São Paulo → Roma · Nápoles → São Paulo · conexões em Madri". */
 function flightRouteSubtitle(flights: FlightSegment[], spec: ProposalSpec): string | undefined {
   if (flights.length === 0) return undefined;
-  const from = cityOf(flights[0].origin) || spec.origin;
-  const to = cityOf(flights[flights.length - 1].destination);
-  if (!from || !to) return undefined;
-  return from === to ? from : `${from} → ${to}`;
+  const outbound = flights.filter((flight) => flight.direction === "outbound");
+  const inbound = flights.filter((flight) => flight.direction === "return");
+  if (outbound.length === 0 || inbound.length === 0) {
+    // Um só sentido (ex.: só retorno): a cadeia inteira com as escalas, ref. Porto.
+    const chain = [displayCity(flights[0].origin), ...flights.map((flight) => displayCity(flight.destination))]
+      .filter((city, position, all) => city && city !== all[position - 1]);
+    if (chain.length < 2) return undefined;
+    const dates = [...new Set(flights.map((flight) => flight.date).filter((date): date is string => Boolean(date)))];
+    return dates.length === 1 ? `${chain.join(" → ")} · ${formatLongDate(dates[0])} de ${dates[0].slice(0, 4)}` : chain.join(" → ");
+  }
+  const going = outbound;
+  const back = inbound;
+  const start = spec.origin ?? displayCity(going[0]?.origin);
+  const arrive = displayCity(going[going.length - 1]?.destination);
+  if (!start || !arrive) return undefined;
+  const legs = [start, arrive];
+  let route = `${start} → ${arrive}`;
+  if (back.length > 0) {
+    const depart = displayCity(back[0].origin);
+    const end = displayCity(back[back.length - 1].destination);
+    if (depart && depart !== arrive) route += ` · ${depart}`;
+    if (end) route += ` → ${end}`;
+    legs.push(depart, end);
+  }
+  const connections = new Set<string>();
+  for (const group of [going, back]) {
+    for (const flight of group.slice(0, -1)) {
+      const city = displayCity(flight.destination);
+      if (city && !legs.includes(city)) connections.add(city);
+    }
+  }
+  if (connections.size > 0) route += ` · ${connections.size === 1 ? "conexão" : "conexões"} em ${[...connections].join(", ")}`;
+  return route;
+}
+
+function flightsHeadline(flights: FlightSegment[]): string {
+  const airlines = [...new Set(flights.map((flight) => flight.airline?.trim()).filter(Boolean))];
+  return airlines.length > 0 ? `Voos previstos com ${airlines.join(" · ")}` : "Voos previstos";
+}
+
+/** Título da viagem; sem título, os destinos ("Roma · Sorrento"). */
+export function tripTitleOf(spec: ProposalSpec): string {
+  return spec.tripTitle?.trim() || spec.destinations.map((destination) => destination.name).join(" · ");
 }
 
 function flightsEyebrow(flights: FlightSegment[]): string {
-  if (flights.length === 0) return "LOGÍSTICA AÉREA";
-  const hasOutbound = flights.some((flight) => flight.direction === "outbound" || flight.direction === "internal");
-  const allReturn = flights.every((flight) => flight.direction === "return" || flight.direction === "other");
-  if (allReturn) return "RETORNO AO BRASIL";
-  if (hasOutbound) return "IDA E VOLTA";
+  if (flights.length > 0 && flights.every((flight) => flight.direction === "return" || flight.direction === "other")) {
+    return "RETORNO AO BRASIL";
+  }
   return "LOGÍSTICA AÉREA";
 }
 
@@ -203,7 +254,7 @@ function flightRow(flight: FlightSegment): string[] {
     kind,
     flight.flightNumber ?? "",
     flight.date ? formatShortDate(flight.date) : "",
-    `${cityOf(flight.origin)} → ${cityOf(flight.destination)}`,
+    `${displayCity(flight.origin)} → ${displayCity(flight.destination)}`,
     flight.duration ?? "",
     flight.cabin ?? ""
   ];
@@ -364,7 +415,7 @@ export function buildProposalPages(spec: ProposalSpec): ProposalPage[] {
     : returnDate?.slice(0, 4);
   push("cover", "cover", {
     kind: "cover",
-    tripTitle: spec.tripTitle ?? "",
+    tripTitle: tripTitleOf(spec),
     names,
     origin: spec.origin,
     photo: resolvePhoto(index, "cover"),
@@ -383,16 +434,17 @@ export function buildProposalPages(spec: ProposalSpec): ProposalPage[] {
     }
   });
 
-  /* concept — se narrative.concept.headline ou destinos */
+  /* concept — só com conteúdo (texto, citação ou foto); título sozinho vira página vazia */
   const concept = spec.narrative.concept;
-  if (concept?.headline || destinations.length > 0) {
+  const conceptPhoto = resolvePhoto(index, "concept");
+  if ((concept?.body?.length ?? 0) > 0 || concept?.quote || (concept?.moments?.length ?? 0) > 0 || conceptPhoto) {
     push("concept", "concept", {
       kind: "concept",
       eyebrow: concept?.eyebrow ?? "A PROPOSTA",
       headline: concept?.headline ?? "Uma viagem desenhada para vocês",
       quote: concept?.quote,
       body: concept?.body?.slice() ?? [],
-      photo: resolvePhoto(index, "concept"),
+      photo: conceptPhoto,
       moments: concept?.moments && concept.moments.length > 0
         ? { label: concept.momentsLabel ?? "O TOM DESTA EXPERIÊNCIA", items: concept.moments.slice() }
         : undefined,
@@ -544,7 +596,7 @@ export function buildProposalPages(spec: ProposalSpec): ProposalPage[] {
     const rightGroups = spec.inclusions.filter((group) => rightSection(group.section));
     push("services", "services", {
       kind: "services",
-      eyebrow: "SERVIÇOS COMPREENDIDOS",
+      eyebrow: "SERVIÇOS CONTEMPLADOS",
       headline: "Tudo o que já está incluído",
       subtitle: "Uma base cuidadosamente organizada para viajar com tranquilidade",
       leftGroups: leftGroups.map((group) => ({
@@ -572,7 +624,7 @@ export function buildProposalPages(spec: ProposalSpec): ProposalPage[] {
     push("flights", "flights", {
       kind: "flights",
       eyebrow: flightsEyebrow(spec.flights),
-      headline: `Voos previstos com ${[...new Set(spec.flights.map((flight) => flight.airline).filter(Boolean))].join(" · ")}`,
+      headline: flightsHeadline(spec.flights),
       subtitle: flightRouteSubtitle(spec.flights, spec),
       notice: undefined,
       capture: resolvePhoto(index, "flights"),

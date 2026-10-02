@@ -138,6 +138,56 @@ export function applyAllowlistedTripzPatch(
   return next;
 }
 
+type TripzImageAssignment = NonNullable<TripzEditorialBlock["imageAssignments"]>[number];
+type TripzImageAssignmentPatch = NonNullable<TripzEditorialPatch["imageAssignments"]>[number];
+
+/** Papéis com UMA foto por alvo: trocar a foto da capa/hotel X substitui a anterior. */
+const SINGLE_IMAGE_ROLES = new Set(["cover", "concept", "closing", "flights", "destination", "hotel"]);
+
+function imageSlotKey(role: string, targetId: string | undefined): string {
+  return `${role}:${targetId ?? ""}`;
+}
+
+/**
+ * Upsert por slot: { role, targetId } identifica o lugar da foto no documento.
+ * - Papéis de foto única (capa, hotel X, destino Y…) substituem a foto do slot.
+ * - gallery/experience acumulam por mediaId.
+ * - Item sem mediaId remove o slot ("tire a foto do hotel X").
+ * Assim a IA envia só a foto que mudou sem apagar as demais.
+ */
+export function upsertImageAssignments(
+  current: readonly TripzImageAssignment[],
+  incoming: readonly TripzImageAssignmentPatch[]
+): TripzImageAssignment[] {
+  let next = [...current];
+  for (const item of incoming) {
+    if (!item?.role) continue;
+    if ((item.role === "destination" || item.role === "hotel" || item.role === "experience") && !item.targetId) continue;
+    const slot = imageSlotKey(item.role, item.targetId);
+    if (!item.mediaId) {
+      next = next.filter((assignment) => imageSlotKey(assignment.role, assignment.targetId) !== slot);
+      continue;
+    }
+    const single = SINGLE_IMAGE_ROLES.has(item.role);
+    const index = next.findIndex((assignment) => imageSlotKey(assignment.role, assignment.targetId) === slot
+      && (single || assignment.mediaId === item.mediaId));
+    const previous = index >= 0 ? next[index] : undefined;
+    const sameMedia = previous?.mediaId === item.mediaId;
+    const assignment: TripzImageAssignment = {
+      mediaId: item.mediaId,
+      role: item.role,
+      ...(item.targetId ? { targetId: item.targetId } : {}),
+      // Enquadramento/legenda pertencem à foto: só herdam quando a foto continua a mesma.
+      ...(item.placement ? { placement: item.placement } : sameMedia && previous?.placement ? { placement: previous.placement } : {}),
+      ...(item.caption ? { caption: item.caption } : sameMedia && previous?.caption ? { caption: previous.caption } : {}),
+      ...(sameMedia && previous?.source ? { source: previous.source } : {})
+    } as TripzImageAssignment;
+    if (index >= 0) next[index] = assignment;
+    else next.push(assignment);
+  }
+  return next.slice(0, 120);
+}
+
 /**
  * Aplica o bloco editorial (ProposalSpec) sobre o estado:
  * - listas com id (destinations/hotels/experiences) e inclusions/paymentEntries:
@@ -260,10 +310,9 @@ export function applyEditorialBlock(
     }
   }
   if (e.imageAssignments !== undefined) {
-    editorial.imageAssignments = (e.imageAssignments ?? []).filter(
-      (assignment): assignment is { mediaId: string; role: NonNullable<TripzEditorialBlock["imageAssignments"]>[number]["role"]; targetId?: string; caption?: string } =>
-        typeof assignment?.mediaId === "string" && typeof assignment?.role === "string"
-    );
+    editorial.imageAssignments = e.imageAssignments === null || e.imageAssignments.length === 0
+      ? []
+      : upsertImageAssignments(editorial.imageAssignments ?? [], e.imageAssignments);
   }
   if (e.sources !== undefined) editorial.sources = e.sources ? [...e.sources] : [];
   if (e.pageOverrides !== undefined) {
@@ -351,6 +400,32 @@ function applyMediaUpdates(
   const overflow = selected.slice(TRIPZ_MAX_SELECTED_MEDIA);
   for (const media of overflow) media.selectedForPdf = false;
   return { proposal: next, rejected, changed: changed || overflow.length > 0, autoDeselected: overflow.length };
+}
+
+/**
+ * Imagem enviada NESTE turno e classificada como capa vira a capa do documento,
+ * mesmo que o modelo esqueça o bloco editorial — e substitui uma capa antiga
+ * atribuída explicitamente. Se o modelo já escolheu a capa no patch, respeita.
+ */
+function applyNewCoverImage(
+  proposal: TripzProposalState,
+  output: TripzAiStructuredOutput,
+  attachments: readonly TripzAiAttachmentContent[]
+): TripzProposalState {
+  const patchAssignments = output.proposalPatch.editorial?.imageAssignments;
+  if (patchAssignments?.some((assignment) => assignment.role === "cover")) return proposal;
+  const turnImages = new Set(attachments
+    .filter((attachment) => attachment.mimeType.startsWith("image/"))
+    .map((attachment) => attachment.attachmentId));
+  const cover = output.mediaUpdates.find((update) => update.category === "cover" && turnImages.has(update.attachmentId));
+  if (!cover) return proposal;
+  const next = structuredClone(proposal);
+  next.editorial = {
+    ...(next.editorial ?? {}),
+    imageAssignments: upsertImageAssignments(next.editorial?.imageAssignments ?? [], [{ mediaId: cover.attachmentId, role: "cover" }])
+  };
+  next.schemaVersion = 2;
+  return next;
 }
 
 function requestedActionFromMessage(
@@ -654,7 +729,7 @@ export class TripzConversationOrchestrator {
     const conflicts = detectTripzPatchConflicts(input.proposal, output.proposalPatch, acceptedCorrections);
     let next = applyAllowlistedTripzPatch(input.proposal, output.proposalPatch, conflicts.conflictingPaths);
     const mediaResult = applyMediaUpdates(next, output, input.attachments ?? [], input.userMessage);
-    next = mediaResult.proposal;
+    next = applyNewCoverImage(mediaResult.proposal, output, input.attachments ?? []);
     next.generationRequirements = updateGenerationRequirements(
       next.generationRequirements,
       input.requiredFields,

@@ -211,3 +211,87 @@ describe("Tripz editorial document pipeline", () => {
       .rejects.toMatchObject({ statusCode: 413, code: "TRIPZ_RENDER_MEDIA_LIMIT" });
   });
 });
+
+describe("imagens da proposta: atribuição por slot", () => {
+  const labelled = (attachmentId: string, category: string, label?: string, sortOrder = 0) => ({
+    ...mediaRow(attachmentId, category, sortOrder), label
+  });
+  const roles = (state: Partial<TripzProposalState>) => {
+    const result = stateToSpec(proposalFromState(state).state, { tenantId: "t" });
+    expect(result.issues).toEqual([]);
+    return result.spec!.imageAssignments.map((assignment) => `${assignment.role}:${assignment.targetId ?? ""}=${assignment.mediaId}`);
+  };
+
+  it("foto de quarto/piscina vai para o hotel em vez de quebrar o documento", () => {
+    expect(roles({ ...editorialState, media: [labelled("room", "hotel_room"), labelled("pool", "hotel_pool", undefined, 1)] }))
+      .toEqual(["hotel:hf-fenix=room", "gallery:hf-fenix=pool"]);
+  });
+
+  it("com vários hotéis, a legenda com o nome escolhe o hotel; sem match, não inventa alvo", () => {
+    const state: Partial<TripzProposalState> = {
+      ...editorialState,
+      editorial: {
+        ...editorialState.editorial,
+        hotels: [
+          { id: "kent", name: "Kent Hotel Roma", pending: false },
+          { id: "villa-pandora", name: "Villa Pandora Hotel", pending: false }
+        ]
+      },
+      media: [labelled("vp", "hotel_pool", "Piscina do Villa Pandora"), labelled("x", "hotel_room", "Quarto")]
+    };
+    expect(roles(state)).toEqual(["hotel:villa-pandora=vp", "gallery:=x"]);
+  });
+
+  it("atribuição explícita vence a inferida no mesmo slot e as demais fotos continuam", () => {
+    const state: Partial<TripzProposalState> = {
+      ...editorialState,
+      media: [labelled("old-cover", "cover"), labelled("room", "hotel_room", undefined, 1), labelled("new", "destination", undefined, 2)],
+      editorial: { ...editorialState.editorial, imageAssignments: [{ mediaId: "new", role: "cover" }] }
+    };
+    expect(roles(state)).toEqual(["cover:=new", "hotel:hf-fenix=room"]);
+  });
+
+  it("targetId pelo nome do hotel/destino é resolvido para o id; alvo inexistente é descartado", () => {
+    const state: Partial<TripzProposalState> = {
+      ...editorialState,
+      media: [],
+      editorial: {
+        ...editorialState.editorial,
+        imageAssignments: [
+          { mediaId: "a", role: "hotel", targetId: "hf-fenix-porto" },
+          { mediaId: "b", role: "destination", targetId: "porto" },
+          { mediaId: "c", role: "hotel", targetId: "hotel-inexistente" }
+        ]
+      }
+    };
+    expect(roles(state)).toEqual(["hotel:hf-fenix=a", "destination:porto=b"]);
+  });
+
+  it("crédito da mídia vira source estruturado (não string)", () => {
+    const state: Partial<TripzProposalState> = {
+      ...editorialState,
+      media: [{ ...mediaRow("cov", "cover"), metadata: { credit: "Foto: Visit Porto" } }]
+    };
+    const result = stateToSpec(proposalFromState(state).state, { tenantId: "t" });
+    expect(result.issues).toEqual([]);
+    expect(result.spec!.imageAssignments[0].source).toEqual({ credit: "Foto: Visit Porto" });
+  });
+
+  it("documento carrega a foto atribuída mesmo fora da seleção (ex.: enviada por URL)", async () => {
+    clearBrandSettingsCache();
+    const image = await sharp({ create: { width: 64, height: 48, channels: 3, background: "#327b70" } }).jpeg().toBuffer();
+    const repository = fakeRepository(new Map([["from-url", { mimeType: "image/jpeg", data: image }]]));
+    const service = new TripzDocumentService(repository);
+    const proposal = proposalFromState({
+      ...editorialState,
+      media: [],
+      editorial: { ...editorialState.editorial, imageAssignments: [{ mediaId: "from-url", role: "cover" }] }
+    });
+    const result = await service.renderPreview(scope("tenant-tripz"), proposal);
+    expect(result.html).toContain("/attachments/from-url/content");
+    // Nome do cliente com dois adultos: sem "Adulto 2" na capa; IATA continua em caixa alta.
+    expect(result.html).toContain('<p class="tp-cover__names">Jhonny &amp; Shayene</p>');
+    expect(result.html).not.toContain("Adulto 2");
+    expect(result.html).toContain("GRU → OPO");
+  });
+});

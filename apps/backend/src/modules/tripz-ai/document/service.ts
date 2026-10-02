@@ -56,6 +56,7 @@ export class TripzDocumentService {
   private async loadAssets(
     scope: TripzAccessScope,
     proposal: TripzProposal,
+    spec: ProposalSpec,
     mode: "data" | "url"
   ): Promise<{ assets: ProposalDocumentAssets; issues: string[] }> {
     const assets: ProposalDocumentAssets = {};
@@ -66,11 +67,16 @@ export class TripzDocumentService {
     if (selectedMedia.length > TRIPZ_DOCUMENT_MAX_MEDIA) {
       throw new TripzAiError(413, "TRIPZ_RENDER_MEDIA_LIMIT", `Selecione no máximo ${TRIPZ_DOCUMENT_MAX_MEDIA} imagens para o documento`);
     }
+    // Foto atribuída a um slot (capa, hotel X…) entra mesmo fora da seleção —
+    // ex.: imagem enviada por URL no editor ou indicada no chat. Atribuídas primeiro.
+    const assignedIds = [...new Set(spec.imageAssignments.map((assignment) => assignment.mediaId))];
+    const mediaIds = [...new Set([...assignedIds, ...selectedMedia.map((media) => media.attachmentId)])]
+      .slice(0, TRIPZ_DOCUMENT_MAX_MEDIA + 4);
     let totalBytes = 0;
-    for (const media of selectedMedia) {
-      const stored = await this.repository.getAttachmentContent(scope, proposal.conversationId, media.attachmentId);
+    for (const mediaId of mediaIds) {
+      const stored = await this.repository.getAttachmentContent(scope, proposal.conversationId, mediaId);
       if (!stored || !RENDERABLE_MIME.includes(stored.attachment.mimeType)) {
-        issues.push(`media ${media.attachmentId} indisponível ou não renderizável`);
+        issues.push(`media ${mediaId} indisponível ou não renderizável`);
         continue;
       }
       if (mode === "url") {
@@ -104,7 +110,7 @@ export class TripzDocumentService {
     const { spec, brand } = await this.buildDocument(scope, proposal);
     const parsedSpec: ProposalSpec = proposalSpecSchema.parse(spec);
     const { renderProposalHtml } = await import("@atendon/proposal-renderer");
-    const { assets } = await this.loadAssets(scope, proposal, "url");
+    const { assets } = await this.loadAssets(scope, proposal, parsedSpec, "url");
     const panelUrl = APP_PANEL_URL(process.env);
     const html = renderProposalHtml({
       spec: parsedSpec,
@@ -123,7 +129,7 @@ export class TripzDocumentService {
     const { spec, brand } = await this.buildDocument(scope, proposal);
     const parsedSpec: ProposalSpec = proposalSpecSchema.parse(spec);
     const { renderProposalHtml } = await import("@atendon/proposal-renderer");
-    const { assets } = await this.loadAssets(scope, proposal, "data");
+    const { assets } = await this.loadAssets(scope, proposal, parsedSpec, "data");
     const html = renderProposalHtml({
       spec: parsedSpec,
       brand,

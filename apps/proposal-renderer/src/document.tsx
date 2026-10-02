@@ -4,7 +4,7 @@ import type { ProposalSpec } from "./spec.js";
 import type { PageData, ProposalRenderContext, ProposalDocumentAssets, ResolvedPhoto } from "./page-data.js";
 import type { FooterInfo } from "./components/shared.js";
 import type { ProposalPage } from "./pages.js";
-import { buildProposalPages, formatShortDate } from "./pages.js";
+import { buildProposalPages, formatShortDate, namesLine, tripTitleOf } from "./pages.js";
 import { ProposalCover } from "./components/proposal-cover.js";
 import { ProposalConcept } from "./components/proposal-concept.js";
 import { ProposalOverview } from "./components/proposal-overview.js";
@@ -58,8 +58,7 @@ function brandCssVars(brand: ProposalBrandConfig): CSSProperties {
 }
 
 function footerInfoFor(spec: ProposalSpec): FooterInfo {
-  const names = spec.travellers.map((traveller) => traveller.name.trim()).filter(Boolean).join(" & ");
-  const left = [spec.tripTitle?.toUpperCase() ?? "", names.toUpperCase()].filter(Boolean).join(" · ");
+  const left = [tripTitleOf(spec).toUpperCase(), namesLine(spec).toUpperCase()].filter(Boolean).join(" · ");
   const start = spec.startDate ?? spec.departureDate;
   const end = spec.endDate ?? spec.returnDate;
   const right = start && end && start !== end

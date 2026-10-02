@@ -46,15 +46,38 @@ describe("bloco editorial no patch", () => {
     expect(next.editorial?.destinations?.[0]).toMatchObject({ name: "Roma", nights: 4, summary: "A cidade eterna." });
   });
 
-  it("substitui imageAssignments por completo quando enviados", () => {
+  it("imageAssignments fazem upsert por slot: troca só a foto citada e preserva as demais", () => {
     const first = applyEditorialBlock(createEmptyTripzProposalState(), {
-      imageAssignments: [{ mediaId: "a1", role: "cover" }]
+      imageAssignments: [
+        { mediaId: "a1", role: "cover", placement: { x: 50, y: 30, zoom: 120 } },
+        { mediaId: "h1", role: "hotel", targetId: "villa-pandora" },
+        { mediaId: "d1", role: "destination", targetId: "roma" }
+      ]
     });
     const second = applyEditorialBlock(first, {
-      imageAssignments: [{ mediaId: "a2", role: "cover" }, { mediaId: "a3", role: "destination", targetId: "porto" }]
+      imageAssignments: [{ mediaId: "a2", role: "cover" }, { mediaId: "h2", role: "hotel", targetId: "villa-pandora" }]
     });
-    expect(second.editorial?.imageAssignments).toHaveLength(2);
-    expect(second.editorial?.imageAssignments?.some((a) => a.mediaId === "a1")).toBe(false);
+    expect(second.editorial?.imageAssignments).toEqual([
+      { mediaId: "a2", role: "cover" },
+      { mediaId: "h2", role: "hotel", targetId: "villa-pandora" },
+      { mediaId: "d1", role: "destination", targetId: "roma" }
+    ]);
+    // Mesmo mediaId: enquadramento novo substitui; sem mediaId remove o slot; galeria acumula.
+    const third = applyEditorialBlock(second, {
+      imageAssignments: [
+        { mediaId: "a2", role: "cover", placement: { x: 50, y: 70, zoom: 100 } },
+        { role: "destination", targetId: "roma" },
+        { mediaId: "g1", role: "gallery", targetId: "villa-pandora" },
+        { mediaId: "g2", role: "gallery", targetId: "villa-pandora" }
+      ]
+    });
+    expect(third.editorial?.imageAssignments).toEqual([
+      { mediaId: "a2", role: "cover", placement: { x: 50, y: 70, zoom: 100 } },
+      { mediaId: "h2", role: "hotel", targetId: "villa-pandora" },
+      { mediaId: "g1", role: "gallery", targetId: "villa-pandora" },
+      { mediaId: "g2", role: "gallery", targetId: "villa-pandora" }
+    ]);
+    expect(applyEditorialBlock(third, { imageAssignments: [] }).editorial?.imageAssignments).toEqual([]);
   });
 
   it("inclusions fazem upsert por section", () => {

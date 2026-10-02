@@ -1,7 +1,7 @@
 import type { JSX } from "react";
 import type { ConceptPageData } from "../page-data.js";
 import type { FooterInfo } from "./shared.js";
-import { PageHeader, PhotoCaption, PhotoWithCaption, ProposalFooter, QuoteBlock } from "./shared.js";
+import { PageHeader, PhotoCaption, PhotoWithCaption, ProposalFooter, QuoteBlock, RichParagraph } from "./shared.js";
 
 export function ProposalConcept(props: { data: ConceptPageData; footer: FooterInfo }): JSX.Element {
   const { data, footer } = props;
@@ -9,12 +9,12 @@ export function ProposalConcept(props: { data: ConceptPageData; footer: FooterIn
     <section className="tp-page tp-concept" data-page-id="concept">
       <div className="tp-page__inner">
         <PageHeader eyebrow={data.eyebrow} headline={data.headline} />
-        <div className="tp-concept__grid">
+        <div className={data.photo?.src ? "tp-concept__grid" : "tp-concept__grid tp-concept__grid--text"}>
           <div>
             {data.quote ? <QuoteBlock text={data.quote} /> : null}
             <div className="tp-concept__body tp-body-text">
               {data.body.map((paragraph, index) => (
-                <p key={index}>{paragraph}</p>
+                <RichParagraph key={index} text={paragraph} />
               ))}
             </div>
             {data.moments ? (
@@ -24,10 +24,12 @@ export function ProposalConcept(props: { data: ConceptPageData; footer: FooterIn
               </div>
             ) : null}
           </div>
-          <div>
-            <PhotoWithCaption photo={data.photo} className="tp-concept__photo" />
-            <PhotoCaption text={data.photo?.caption} />
-          </div>
+          {data.photo?.src ? (
+            <div>
+              <PhotoWithCaption photo={data.photo} className="tp-concept__photo" />
+              <PhotoCaption text={data.photo.caption} />
+            </div>
+          ) : null}
         </div>
         {data.axes.length > 0 ? (
           <div className="tp-concept__axes">

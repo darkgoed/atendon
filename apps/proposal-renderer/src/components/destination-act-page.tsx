@@ -1,7 +1,7 @@
 import type { JSX } from "react";
 import type { DestinationPageData } from "../page-data.js";
 import type { FooterInfo } from "./shared.js";
-import { PageHeader, PhotoCaption, PhotoWithCaption, ProposalFooter, QuoteBlock } from "./shared.js";
+import { PageHeader, PhotoCaption, PhotoWithCaption, ProposalFooter, QuoteBlock, RichParagraph } from "./shared.js";
 
 function HotelPanel({ hotel }: { hotel: NonNullable<DestinationPageData["hotel"]> }): JSX.Element {
   if (hotel.pending) {
@@ -15,8 +15,8 @@ function HotelPanel({ hotel }: { hotel: NonNullable<DestinationPageData["hotel"]
     );
   }
   return (
-    <div className="tp-hotel-panel">
-      <PhotoWithCaption photo={hotel.photo} className="tp-hotel-panel__photo" />
+    <div className={hotel.photo?.src ? "tp-hotel-panel" : "tp-hotel-panel tp-hotel-panel--text"}>
+      {hotel.photo?.src ? <PhotoWithCaption photo={hotel.photo} className="tp-hotel-panel__photo" /> : null}
       <div className="tp-hotel-panel__body">
         <p className="tp-hotel-panel__eyebrow">{hotel.eyebrow}</p>
         <h3 className="tp-hotel-panel__name">{hotel.name}</h3>
@@ -38,7 +38,7 @@ export function DestinationActPage(props: { data: DestinationPageData; footer: F
           <p className="tp-label">{data.bodyLabel ?? "A EXPERIÊNCIA"}</p>
           <div className="tp-body-text">
             {data.body.map((paragraph, index) => (
-              <p key={index}>{paragraph}</p>
+              <RichParagraph key={index} text={paragraph} />
             ))}
           </div>
         </>
@@ -78,7 +78,7 @@ export function DestinationActPage(props: { data: DestinationPageData; footer: F
     <section className={`tp-page tp-destination${side ? " tp-destination--side" : ""}`} data-page-id={`destination:${data.destinationId}`}>
       <div className="tp-page__inner">
         <PageHeader eyebrow={data.eyebrow} headline={data.headline} subtitle={data.subtitle} />
-        {side && data.photo ? (
+        {side && data.photo?.src ? (
           <div className="tp-dest__side-grid">
             <div>
               <PhotoWithCaption photo={data.photo} className="tp-dest__photo tp-dest__photo--side" />
@@ -88,7 +88,7 @@ export function DestinationActPage(props: { data: DestinationPageData; footer: F
           </div>
         ) : (
           <>
-            {data.photo ? (
+            {data.photo?.src ? (
               <div>
                 <PhotoWithCaption photo={data.photo} className="tp-dest__photo" />
                 <PhotoCaption text={data.photo.caption} />

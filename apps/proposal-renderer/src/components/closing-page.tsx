@@ -1,6 +1,6 @@
-import type { CSSProperties, JSX } from "react";
+import type { JSX } from "react";
 import type { ClosingPageData } from "../page-data.js";
-import { PageHeader, PhotoWithCaption, QuoteBlock } from "./shared.js";
+import { PageHeader, PhotoWithCaption, QuoteBlock, RichParagraph } from "./shared.js";
 
 function InvestmentCard({ investment, payment }: { investment: NonNullable<ClosingPageData["investment"]>; payment?: ClosingPageData["payment"] }): JSX.Element {
   return (
@@ -44,29 +44,26 @@ function PaymentTerms({ payment }: { payment: NonNullable<ClosingPageData["payme
 }
 
 export function CommercialClosing({ data }: { data: ClosingPageData }): JSX.Element {
-  const innerStyle: CSSProperties | undefined = data.photo || data.bottomPhoto
-    ? {
-        paddingTop: data.photo ? "56mm" : "18mm",
-        paddingBottom: data.bottomPhoto ? "80mm" : undefined
-      }
-    : undefined;
+  // Ref. Itália: uma única foto full-bleed atrás de um painel creme; o topo e a
+  // base da mesma foto aparecem acima e abaixo do painel.
+  const hasPhoto = Boolean(data.photo || data.bottomPhoto);
   return (
-    <section className="tp-page tp-closing" data-page-id="closing">
+    <section className={hasPhoto ? "tp-page tp-closing tp-closing--photo" : "tp-page tp-closing"} data-page-id="closing">
       {data.photo ? (
-        <div className="tp-closing__band">
+        <div className="tp-closing__backdrop">
           <PhotoWithCaption photo={data.photo} />
         </div>
       ) : null}
       {data.bottomPhoto ? (
         <div className="tp-closing__band tp-closing__band--bottom">
-          <img className="tp-photo" src={data.bottomPhoto.src} alt="" />
+          <PhotoWithCaption photo={data.bottomPhoto} />
         </div>
       ) : null}
-      <div className="tp-page__inner" style={innerStyle}>
+      <div className="tp-page__inner tp-closing__panel">
         <PageHeader eyebrow={data.eyebrow} headline={data.headline} rule={false} />
         <div className="tp-closing__body tp-body-text">
           {data.body.map((paragraph, index) => (
-            <p key={index}>{paragraph}</p>
+            <RichParagraph key={index} text={paragraph} />
           ))}
         </div>
         <div className="tp-closing__grid">

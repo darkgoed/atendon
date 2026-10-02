@@ -106,6 +106,12 @@ export const tripzEditorialPatchSchema = z.object({
     mediaId: z.string().trim().min(1).max(120).optional(),
     role: z.enum(["cover", "concept", "closing", "flights", "destination", "hotel", "experience", "gallery"]).optional(),
     targetId: z.string().trim().regex(/^[a-z0-9-]{1,60}$/).optional(),
+    /** Enquadramento: x/y = ponto focal em %, zoom 100-300. */
+    placement: z.object({
+      x: z.number().min(0).max(100).default(50),
+      y: z.number().min(0).max(100).default(50),
+      zoom: z.number().min(100).max(300).default(100)
+    }).strict().optional(),
     caption: shortText.optional()
   }).strict()).max(40).optional(),
   pageOverrides: z.array(z.object({
