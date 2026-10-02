@@ -32,6 +32,12 @@ export function PageHeader(props: {
   );
 }
 
+/** Parágrafo com destaques **assim** em negrito (ref. Itália: nomes de lugares). Sem HTML cru. */
+export function RichParagraph({ text }: { text: string }): JSX.Element {
+  const parts = text.split(/\*\*([^*]+)\*\*/g);
+  return <p>{parts.map((part, index) => (index % 2 === 1 ? <strong key={index}>{part}</strong> : part))}</p>;
+}
+
 export function QuoteBlock({ text }: { text: string }): JSX.Element {
   const short = text.trim().split(/\s+/).length <= 8;
   if (short) {

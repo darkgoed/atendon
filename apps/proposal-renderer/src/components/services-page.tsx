@@ -4,7 +4,17 @@ import type { FooterInfo } from "./shared.js";
 import { PageHeader, ProposalFooter } from "./shared.js";
 
 const IMPORTANTE_NOTE =
-  "IMPORTANTE: hospedagens, voos e traslados estão sujeitos à disponibilidade e serão confirmados no momento da reserva.";
+  "Hospedagens, voos e traslados estão sujeitos à disponibilidade e serão confirmados no momento da reserva.";
+
+/** Ref. Itália: só o trecho-chave vai em negrito quando há detalhe ("4 noites em Roma — Kent Hotel"). */
+function InclusionItem({ title, detail }: { title: string; detail?: string }): JSX.Element {
+  return (
+    <li>
+      <span className="tp-check">✓</span>
+      {detail ? <><strong>{title}</strong><span> — {detail}</span></> : <span>{title}</span>}
+    </li>
+  );
+}
 
 export function ServicesPage(props: { data: ServicesPageData; footer: FooterInfo }): JSX.Element {
   const { data, footer } = props;
@@ -19,19 +29,25 @@ export function ServicesPage(props: { data: ServicesPageData; footer: FooterInfo
                 <p className="tp-label">{group.section}</p>
                 <ul className="tp-inclusion-list">
                   {group.items.map((item, itemIndex) => (
-                    <li key={itemIndex}>
-                      <span className="tp-check">✓</span>
-                      <strong>{item.title}</strong>
-                      {item.detail ? <span> — {item.detail}</span> : null}
-                    </li>
+                    <InclusionItem key={itemIndex} title={item.title} detail={item.detail} />
                   ))}
                 </ul>
               </div>
             ))}
           </div>
           <div>
+            {data.rightGroups.map((group, index) => (
+              <div key={index} className="tp-inclusion-group" style={{ marginTop: index === 0 ? undefined : "5.2mm" }}>
+                <p className="tp-label">{group.section}</p>
+                <ul className="tp-inclusion-list">
+                  {group.items.map((item, itemIndex) => (
+                    <InclusionItem key={itemIndex} title={item.title} detail={item.detail} />
+                  ))}
+                </ul>
+              </div>
+            ))}
             {data.summary ? (
-              <div className="tp-summary-card">
+              <div className="tp-summary-card" style={{ marginTop: data.rightGroups.length > 0 ? "5.2mm" : undefined }}>
                 <p className="tp-summary-card__label">{data.summary.title}</p>
                 {data.summary.rows.map((row, index) => (
                   <div key={index} className="tp-summary-row">
@@ -47,20 +63,6 @@ export function ServicesPage(props: { data: ServicesPageData; footer: FooterInfo
                 ) : null}
               </div>
             ) : null}
-            {data.rightGroups.map((group, index) => (
-              <div key={index} className="tp-inclusion-group" style={{ marginTop: index === 0 ? "5.2mm" : undefined }}>
-                <p className="tp-label">{group.section}</p>
-                <ul className="tp-inclusion-list">
-                  {group.items.map((item, itemIndex) => (
-                    <li key={itemIndex}>
-                      <span className="tp-check">✓</span>
-                      <strong>{item.title}</strong>
-                      {item.detail ? <span> — {item.detail}</span> : null}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
             {data.exclusions.length > 0 ? (
               <div className="tp-inclusion-group tp-exclusion-list" style={{ marginTop: "5.2mm" }}>
                 <p className="tp-label">NÃO INCLUÍDO</p>
@@ -77,7 +79,7 @@ export function ServicesPage(props: { data: ServicesPageData; footer: FooterInfo
             <div className="tp-exp-note">
               <p className="tp-label">IMPORTANTE</p>
               <p className="tp-muted-note">
-                {data.warnings.length > 0 ? data.warnings.join(" ") : IMPORTANTE_NOTE}
+                {data.warnings.length > 0 ? data.warnings.map((warning) => warning.replace(/^\s*importante\s*:\s*/i, "")).join(" ") : IMPORTANTE_NOTE}
               </p>
             </div>
           </div>

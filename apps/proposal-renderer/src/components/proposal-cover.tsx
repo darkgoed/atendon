@@ -1,18 +1,19 @@
-import type { CSSProperties, JSX } from "react";
+import type { JSX } from "react";
 import type { CoverPageData } from "../page-data.js";
 import { PhotoWithCaption, StatCell } from "./shared.js";
 
 export function ProposalCover({ data }: { data: CoverPageData }): JSX.Element {
-  const overlayStyle = data.photo ? { "--tp-cover-photo": `url("${data.photo.src}")` } as CSSProperties : undefined;
+  // A origem já aparece na linha de embarque; repetir abaixo do título polui a capa.
+  const showOrigin = Boolean(data.origin) && !data.dateLine.note;
   return (
-    <section className="tp-page tp-cover" data-page-id="cover" style={overlayStyle}>
+    <section className="tp-page tp-cover" data-page-id="cover">
       <div className="tp-cover__photo">
         {data.photo ? <PhotoWithCaption photo={data.photo} /> : <div className="tp-photo" />}
       </div>
       <div className="tp-cover__block">
         <p className="tp-cover__eyebrow">PROPOSTA DE VIAGEM</p>
         <h1 className="tp-cover__title">{data.tripTitle}</h1>
-        {data.origin ? <p className="tp-cover__origin">{data.origin.toUpperCase()}</p> : null}
+        {showOrigin ? <p className="tp-cover__origin">{data.origin?.toUpperCase()}</p> : null}
         {data.names ? <p className="tp-cover__names">{data.names}</p> : null}
         <div className="tp-cover__stats">
           {data.stats.map((stat) => (

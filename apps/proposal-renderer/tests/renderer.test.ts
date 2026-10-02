@@ -173,6 +173,62 @@ describe("renderProposalHtml", () => {
   });
 });
 
+describe("acabamento editorial (ref. Itália)", () => {
+  it("negrito **assim** vira <strong> no corpo, sem asteriscos nem HTML cru", () => {
+    const html = renderProposalHtml({ spec: ITALIA_SPEC, brand: TRIPZ_PROPOSAL_BRAND, assets: {} });
+    expect(html).toContain("<strong>Roma e do Vaticano</strong>");
+    expect(html).not.toContain("**Roma");
+    const spec = { ...ITALIA_SPEC, narrative: { ...ITALIA_SPEC.narrative, concept: { ...ITALIA_SPEC.narrative.concept, body: ["**<img src=x onerror=alert(1)>**"] } } };
+    expect(renderProposalHtml({ spec, brand: TRIPZ_PROPOSAL_BRAND, assets: {} })).not.toContain("<img src=x");
+  });
+
+  it("subtítulo de voos descreve a rota com conexões, em caixa normal", () => {
+    const italia = buildProposalPages(ITALIA_SPEC).find((page) => page.kind === "flights");
+    const porto = buildProposalPages(PORTO_SPEC).find((page) => page.kind === "flights");
+    if (italia?.kind !== "flights" || porto?.kind !== "flights") throw new Error("flights ausente");
+    expect(italia.data.eyebrow).toBe("LOGÍSTICA AÉREA");
+    expect(italia.data.subtitle).toBe("São Paulo → Roma · Naples → Sao Paulo · conexão em Madrid");
+    expect(porto.data.subtitle).toBe("Porto → Casablanca → Sao Paulo · 24 de abril de 2027");
+  });
+
+  it("serviços: IMPORTANTE não duplica e itens sem detalhe não ficam em negrito", () => {
+    const html = renderProposalHtml({ spec: ITALIA_SPEC, brand: TRIPZ_PROPOSAL_BRAND, assets: {} });
+    expect(html).not.toMatch(/IMPORTANTE<\/p><p class="tp-muted-note">IMPORTANTE/);
+    expect(html).not.toContain("<strong>Bagagem de mão");
+  });
+
+  it("capa não repete a origem quando a linha de embarque já a mostra", () => {
+    const html = renderProposalHtml({ spec: ITALIA_SPEC, brand: TRIPZ_PROPOSAL_BRAND, assets: {} });
+    expect(html).not.toContain('class="tp-cover__origin"');
+    expect(html).toContain("embarque em São Paulo");
+  });
+});
+
+describe("proposta sem fotos nem título", () => {
+  it("conceito sem texto nem foto não gera página vazia", () => {
+    const spec = { ...PORTO_SPEC, imageAssignments: [], narrative: { ...PORTO_SPEC.narrative, concept: { headline: "Só título" } } };
+    expect(buildProposalPages(spec).map((page) => page.id)).not.toContain("concept");
+  });
+
+  it("não deixa blocos cinza vazios, usa os destinos como título e não mostra viajantes genéricos", () => {
+    const spec = {
+      ...PORTO_SPEC,
+      tripTitle: undefined,
+      imageAssignments: [],
+      travellers: [{ name: "Carlos", role: "adult" as const }, { name: "Adulto 2", role: "adult" as const }],
+      flights: PORTO_SPEC.flights.map(({ airline: _airline, ...flight }) => flight)
+    };
+    const html = renderProposalHtml({ spec, brand: TRIPZ_PROPOSAL_BRAND, assets: {} });
+    expect(html).toContain("tp-concept__grid--text");
+    expect(html).not.toContain('class="tp-photo-frame tp-concept__photo"');
+    expect(html).not.toContain('class="tp-photo-frame tp-hotel-panel__photo"');
+    expect(html).not.toContain("Adulto 2");
+    expect(html).not.toContain("ADULTO 2");
+    expect(html).toContain('<h1 class="tp-cover__title">Porto</h1>');
+    expect(html).toContain("Voos previstos</h2>");
+  });
+});
+
 describe("contrato", () => {
   it("versão fixada", () => {
     expect(PROPOSAL_RENDERER_VERSION).toBe("tripz-editorial-v2");

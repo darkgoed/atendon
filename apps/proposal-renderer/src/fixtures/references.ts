@@ -161,7 +161,7 @@ export const ITALIA_SPEC: ProposalSpec = {
       eyebrow: "UMA VIAGEM DESENHADA PARA DOIS",
       headline: "Da história eterna ao azul do Mediterrâneo",
       quote: "Uma Itália que começa entre monumentos e obras-primas e, aos poucos, se abre para a luz, o mar e o ritmo acolhedor do sul.",
-      body: ["Enquanto muitos roteiros se concentram em uma única face do país, esta jornada combina a riqueza histórica de Roma e do Vaticano com a beleza solar da Costa Amalfitana. Vocês caminham pela história viva, contemplam tesouros artísticos e seguem rumo ao sul em uma transição confortável e cheia de significado. Em Sorrento e Maiori, a viagem ganha leveza: falésias, vilas charmosas e o azul-turquesa do Mediterrâneo criam dias para desacelerar, descobrir e simplesmente estar juntos. Nápoles encerra o percurso com autenticidade antes do retorno ao Brasil."],
+      body: ["Enquanto muitos roteiros se concentram em uma única face do país, esta jornada combina a riqueza histórica de **Roma e do Vaticano** com a beleza solar da **Costa Amalfitana**. Vocês caminham pela história viva, contemplam tesouros artísticos e seguem rumo ao sul em uma transição confortável e cheia de significado. Em **Sorrento** e **Maiori**, a viagem ganha leveza: falésias, vilas charmosas e o azul-turquesa do Mediterrâneo criam dias para desacelerar, descobrir e simplesmente estar juntos. **Nápoles** encerra o percurso com autenticidade antes do retorno ao Brasil."],
       momentsLabel: "O TOM DESTA EXPERIÊNCIA",
       moments: ["Cultura com profundidade", "Deslocamentos tranquilos", "Tempo livre com propósito", "Assessoria personalizada"],
       axes: [

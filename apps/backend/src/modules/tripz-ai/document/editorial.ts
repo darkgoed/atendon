@@ -203,10 +203,14 @@ function mapTravellers(state: TripzProposalState, extras: EditorialStateV2): Arr
   }
   const travellers: Array<Record<string, unknown>> = [];
   const clientName = str(state.client?.name);
-  for (let adult = 0; adult < (passengers.adults ?? 0); adult += 1) {
+  // "Jhonny & Shayene" com 2 adultos = um nome por adulto, não "Jhonny & Shayene & Adulto 2".
+  const parts = clientName?.split(/\s*(?:&|,|\s+e\s+)\s*/i).map((part) => part.trim()).filter(Boolean) ?? [];
+  const adults = passengers.adults ?? 0;
+  const names = parts.length > 1 && parts.length <= adults ? parts : clientName ? [clientName] : [];
+  for (let adult = 0; adult < adults; adult += 1) {
     travellers.push({
       id: `traveller-${travellers.length + 1}`,
-      name: adult === 0 && clientName ? clientName : `Adulto ${adult + 1}`,
+      name: names[adult] ?? `Adulto ${adult + 1}`,
       role: "adult"
     });
   }
@@ -350,52 +354,153 @@ function mapCommercial(state: TripzProposalState, extras: EditorialStateV2): Rec
   };
 }
 
+type ImageCandidate = { id: string; slug: string };
+
+const SINGLE_IMAGE_ROLES = new Set(["cover", "concept", "closing", "flights", "destination", "hotel"]);
+const TARGETED_IMAGE_ROLES = new Set(["destination", "hotel", "experience"]);
+const IMAGE_ROLES = new Set(["cover", "concept", "closing", "flights", "destination", "hotel", "experience", "gallery"]);
+
+function candidatesOf(items: Array<Record<string, unknown>>, nameKey = "name"): ImageCandidate[] {
+  return items
+    .map((item) => ({ id: String(item.id ?? ""), slug: slugify(String(item[nameKey] ?? "")) }))
+    .filter((candidate) => candidate.id);
+}
+
+/** Alvo pelo id exato ou pelo nome ("hf-fenix-porto", "Villa Pandora") — a IA nem sempre vê os ids. */
+function resolveImageTarget(targetId: string | undefined, candidates: ImageCandidate[]): string | undefined {
+  if (!targetId) return undefined;
+  if (candidates.some((candidate) => candidate.id === targetId)) return targetId;
+  const slug = slugify(targetId).replace(/^hotel-/, "");
+  if (slug.length < 3) return undefined;
+  return candidates.find((candidate) => candidate.slug === slug || candidate.id === `hotel-${slug}`)?.id
+    ?? candidates.find((candidate) => candidate.slug.length >= 3 && (candidate.slug.includes(slug) || slug.includes(candidate.slug)))?.id;
+}
+
+/** Nome do hotel/destino citado na legenda da foto ("Piscina do Villa Pandora"). */
+function targetFromLabel(label: string | undefined, candidates: ImageCandidate[]): string | undefined {
+  const slug = label ? slugify(label) : "";
+  if (!slug) return undefined;
+  const significant = (value: string) => value.split("-").filter((word) => word.length >= 4 && !["hotel", "pousada", "resort"].includes(word));
+  return candidates.find((candidate) => candidate.slug.length >= 3 && slug.includes(candidate.slug))?.id
+    ?? candidates.find((candidate) => significant(candidate.slug).some((word) => slug.split("-").includes(word)))?.id;
+}
+
+function imageSource(value: unknown): Record<string, string> | undefined {
+  if (typeof value === "string") return str(value) ? { credit: str(value)! } : undefined;
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const source = Object.fromEntries((["url", "credit", "license"] as const)
+    .map((key) => [key, str(record[key])])
+    .filter((entry): entry is [string, string] => Boolean(entry[1])));
+  return Object.keys(source).length > 0 ? source : undefined;
+}
+
+function imagePlacement(value: unknown): Record<string, number> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const x = num(record.x);
+  const y = num(record.y);
+  const zoom = num(record.zoom);
+  if (x === undefined && y === undefined && zoom === undefined) return undefined;
+  return { x: x ?? 50, y: y ?? 50, zoom: zoom ?? 100 };
+}
+
 /**
- * HEURÍSTICA de roles de imagem (simplificação documentada):
- * mediaId = attachmentId; category cover/closing mapeia direto; city_<slug> vira
- * role "destination" com targetId casado por slug contra destinations; hotel_<slug>
- * vira "hotel" casado por slug contra hotels; flight → "flights"; demais → "gallery".
+ * Fotos do documento = atribuições explícitas (IA/editor) + inferência pelas
+ * categorias da mídia para o que ninguém atribuiu.
+ * - Explícita vence a inferida no mesmo slot (capa, hotel X, destino Y…).
+ * - Alvos são resolvidos por id ou nome; alvo inexistente descarta a atribuição
+ *   em vez de invalidar o documento inteiro.
+ * - hotel_* → hotel (pela legenda ou hotel único); fotos extras do mesmo hotel
+ *   viram galeria dele. destination → destino (legenda ou destino único).
+ *   airline → print de voos. Capa mais recente primeiro.
  */
 function mapImageAssignments(
   state: TripzProposalState,
   destinations: Array<Record<string, unknown>>,
-  hotels: Array<Record<string, unknown>>
+  hotels: Array<Record<string, unknown>>,
+  experiences: Array<Record<string, unknown>>,
+  explicit: Array<Record<string, unknown>> | undefined
 ): Array<Record<string, unknown>> {
-  const destinationSlugs = destinations.map((destination) => ({
-    id: String(destination.id ?? ""),
-    slug: slugify(String(destination.name ?? ""))
-  }));
-  const hotelSlugs = hotels.map((hotel) => ({ id: String(hotel.id ?? ""), slug: slugify(String(hotel.name ?? "")) }));
-  return state.media
-    .filter((media) => media.selectedForPdf || str(media.category)?.toLowerCase() === "cover")
-    .map((media) => {
-      const category = str(media.category)?.toLowerCase() ?? "";
-      let role = "gallery";
-      let targetId: string | undefined;
-      if (category === "cover") {
-        role = "cover";
-      } else if (category === "closing") {
-        role = "closing";
-      } else if (category.startsWith("city_")) {
-        role = "destination";
-        const slug = slugify(category.slice("city_".length));
-        targetId = destinationSlugs.find((candidate) => candidate.slug === slug || candidate.slug.includes(slug))?.id;
-      } else if (category.startsWith("hotel_")) {
-        role = "hotel";
-        const slug = slugify(category.slice("hotel_".length));
-        targetId = hotelSlugs.find((candidate) => candidate.slug === slug || candidate.slug.includes(slug))?.id;
-      } else if (category.startsWith("flight")) {
-        role = "flights";
-      }
-      return {
-        mediaId: media.attachmentId,
-        role,
-        targetId,
-        placement: (media as unknown as Record<string, unknown>).placement as string | undefined,
-        caption: str(media.label),
-        source: str((media.metadata as Record<string, unknown> | undefined)?.credit)
-      };
+  const destinationCandidates = candidatesOf(destinations);
+  const hotelCandidates = candidatesOf(hotels);
+  const experienceCandidates = candidatesOf(experiences, "title");
+  const candidatesFor = (role: string): ImageCandidate[] => role === "destination"
+    ? destinationCandidates
+    : role === "hotel"
+      ? hotelCandidates
+      : role === "experience"
+        ? experienceCandidates
+        : [...hotelCandidates, ...destinationCandidates];
+  const result: Array<Record<string, unknown>> = [];
+  const takenSlots = new Set<string>();
+  const usedMedia = new Set<string>();
+  const add = (assignment: Record<string, unknown>): void => {
+    const role = String(assignment.role);
+    const slot = `${role}:${assignment.targetId ?? ""}`;
+    if (SINGLE_IMAGE_ROLES.has(role)) {
+      if (takenSlots.has(slot)) return;
+      takenSlots.add(slot);
+    }
+    usedMedia.add(String(assignment.mediaId));
+    result.push(Object.fromEntries(Object.entries(assignment).filter(([, value]) => value !== undefined)));
+  };
+
+  for (const raw of explicit ?? []) {
+    const mediaId = str(raw.mediaId);
+    const role = str(raw.role);
+    if (!mediaId || !role || !IMAGE_ROLES.has(role)) continue;
+    const targetId = resolveImageTarget(str(raw.targetId), candidatesFor(role));
+    if (TARGETED_IMAGE_ROLES.has(role) && !targetId) continue;
+    add({ mediaId, role, targetId, placement: imagePlacement(raw.placement), caption: str(raw.caption), source: imageSource(raw.source) });
+  }
+
+  const inferred = state.media
+    .map((media, position) => ({ media, position }))
+    .filter(({ media }) => !usedMedia.has(media.attachmentId)
+      && (media.selectedForPdf || str(media.category)?.toLowerCase() === "cover"))
+    .sort((left, right) => {
+      const leftCover = str(left.media.category)?.toLowerCase() === "cover";
+      const rightCover = str(right.media.category)?.toLowerCase() === "cover";
+      if (leftCover && rightCover) return right.position - left.position;
+      return (left.media.sortOrder ?? 0) - (right.media.sortOrder ?? 0) || left.position - right.position;
     });
+  for (const { media } of inferred) {
+    const category = str(media.category)?.toLowerCase() ?? "";
+    const label = str(media.label);
+    let role = "gallery";
+    let targetId: string | undefined;
+    if (category === "cover") {
+      role = "cover";
+    } else if (category === "closing") {
+      role = "closing";
+    } else if (category === "airline" || category.startsWith("flight")) {
+      role = "flights";
+    } else if (category === "destination" || category.startsWith("city_")) {
+      targetId = category.startsWith("city_")
+        ? resolveImageTarget(category.slice("city_".length), destinationCandidates)
+        : targetFromLabel(label, destinationCandidates);
+      targetId ??= destinationCandidates.length === 1 ? destinationCandidates[0].id : undefined;
+      role = targetId ? "destination" : "gallery";
+    } else if (category.startsWith("hotel_")) {
+      targetId = targetFromLabel(label, hotelCandidates) ?? (hotelCandidates.length === 1 ? hotelCandidates[0].id : undefined);
+      role = targetId ? "hotel" : "gallery";
+    }
+    // Segunda foto do mesmo slot (outra foto do hotel/destino) vai para a galeria do alvo.
+    if (SINGLE_IMAGE_ROLES.has(role) && takenSlots.has(`${role}:${targetId ?? ""}`)) {
+      if (!targetId) continue;
+      role = "gallery";
+    }
+    add({
+      mediaId: media.attachmentId,
+      role,
+      targetId,
+      placement: imagePlacement((media as unknown as Record<string, unknown>).placement),
+      caption: label,
+      source: imageSource((media.metadata as Record<string, unknown> | undefined)?.credit)
+    });
+  }
+  return result;
 }
 
 export function stateToSpec(
@@ -411,6 +516,7 @@ export function stateToSpec(
   const hotels = mapHotels(state, extras, destinationIds);
   const flights = mapFlights(state);
   const itinerary = mapItinerary(state, destinationIds, destinationNames);
+  const experiences = mapExperiences(extras, destinationIds);
   const nights = nightsBetween(str(state.startDate), str(state.endDate));
   const candidate = {
     schemaVersion: 2,
@@ -426,7 +532,7 @@ export function stateToSpec(
     hotels,
     flights,
     transfers: mapTransfers(state, extras),
-    experiences: mapExperiences(extras, destinationIds),
+    experiences,
     inclusions: mapInclusions(state, extras),
     exclusions: state.editorial?.exclusions ?? mapExclusions(state),
     baggage: Array.isArray(extras.editorial?.baggage)
@@ -447,7 +553,13 @@ export function stateToSpec(
       }
       : undefined),
     narrative,
-    imageAssignments: state.editorial?.imageAssignments ?? mapImageAssignments(state, destinations, hotels),
+    imageAssignments: mapImageAssignments(
+      state,
+      destinations,
+      hotels,
+      experiences,
+      state.editorial?.imageAssignments as Array<Record<string, unknown>> | undefined
+    ),
     pageOverrides: state.editorial?.pageOverrides,
     sources: (extras.editorial?.sources ?? []).map((source) => ({
       label: str(source.label),

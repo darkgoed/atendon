@@ -86,7 +86,8 @@
 }
 
 .tp-closing .tp-headline {
-  font-size: 19.5pt;
+  font-size: 24pt;
+  max-width: 140mm;
 }
 
 .tp-subtitle {
@@ -124,6 +125,12 @@
   line-height: 1.5;
   color: var(--tp-muted);
 }
+
+.tp-concept .tp-quote { font-size: 14.5pt; line-height: 1.38; }
+
+/* Citação seguida de rótulo/texto (layout lateral do destino) precisa de respiro. */
+.tp-quote + .tp-label,
+.tp-quote-banner + .tp-label { margin-top: 4.2mm; }
 
 .tp-quote {
   margin: 0;
@@ -186,17 +193,20 @@
   color: #fff;
 }
 
+/* Foto full-bleed na página inteira: o bloco azul translúcido deixa a
+   continuação da própria foto aparecer por baixo (ref. Itália, capa). */
 .tp-cover__photo {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
   width: 210mm;
-  height: 203mm;
+  height: 297mm;
   overflow: hidden;
 }
 
+.tp-cover__photo .tp-photo-frame { height: 100%; }
+
 .tp-cover__photo .tp-photo {
-  object-position: center 62%;
+  object-position: center 40%;
 }
 
 .tp-cover__block {
@@ -205,7 +215,9 @@
   right: 0;
   bottom: 0;
   height: 94mm;
-  background: var(--tp-primary);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--tp-primary) 88%, transparent) 0%,
+    color-mix(in srgb, var(--tp-primary) 82%, transparent) 100%);
   padding: 14mm 16mm 6mm;
   display: flex;
   flex-direction: column;
@@ -214,16 +226,6 @@
 }
 
 /* Overlay editorial: a própria foto da capa esmaecida dentro do bloco azul. */
-.tp-cover__block::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: linear-gradient(100deg, var(--tp-primary) 24%, rgba(18, 48, 71, 0.72) 58%, rgba(18, 48, 71, 0.28) 100%), var(--tp-cover-photo, none);
-  background-size: cover, cover;
-  background-position: center, center 30%;
-  pointer-events: none;
-}
-
 .tp-cover__block > * {
   position: relative;
   z-index: 1;
@@ -631,6 +633,11 @@
 
 .tp-hotel-panel__photo { min-height: 52mm; height: 100%; }
 
+/* Sem foto: o texto ocupa a largura toda em vez de um bloco cinza vazio. */
+.tp-hotel-panel--text { grid-template-columns: 1fr; }
+.tp-concept__grid--text { grid-template-columns: 1fr; }
+.tp-concept__grid--text .tp-concept__body { max-width: 150mm; }
+
 .tp-hotel-panel__body { padding: 4.4mm 5mm 4.8mm; }
 
 .tp-hotel-panel__eyebrow {
@@ -926,7 +933,9 @@
   border: 1px solid var(--tp-line-soft);
 }
 
-.tp-flight-capture .tp-photo-frame { border-radius: 5px; height: 54mm; }
+/* Print da reserva: nunca cortar linhas — a imagem inteira, na proporção original. */
+.tp-flight-capture .tp-photo-frame { border-radius: 5px; height: auto; background: transparent; }
+.tp-flight-capture .tp-photo { height: auto; max-height: 96mm; object-fit: contain; }
 
 .tp-flight-table {
   margin-top: 5mm;
@@ -983,20 +992,36 @@
 
 /* ------------------------------------------------------------- fechamento */
 
+.tp-closing__backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.tp-closing__backdrop .tp-photo-frame,
+.tp-closing__band .tp-photo-frame { height: 100%; }
+
 .tp-closing__band {
   position: absolute;
-  top: 0;
   left: 0;
   width: 210mm;
-  height: 62mm;
   overflow: hidden;
 }
 
 .tp-closing__band--bottom {
-  top: auto;
   bottom: 0;
-  height: 72mm;
+  height: 62mm;
 }
+
+/* Painel creme sobre a foto: começa abaixo do céu e cresce com o conteúdo. */
+.tp-closing--photo .tp-closing__panel {
+  inset: 58mm 0 auto 0;
+  padding: 12mm 16mm 6mm;
+  background: color-mix(in srgb, var(--tp-bg) 95%, transparent);
+  z-index: 1;
+}
+
+.tp-closing:not(.tp-closing--photo) .tp-closing__panel { padding-top: 6mm; }
 
 /* Payment dentro do card azul de investimento. */
 .tp-payment--inside {
