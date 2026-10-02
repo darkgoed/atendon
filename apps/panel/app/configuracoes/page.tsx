@@ -107,24 +107,25 @@ const resourceIcons: Record<Resource, Icon> = {
 // cabeçalho (ícone da biblioteca do handoff num círculo + h2 + sub opcional), mesmo
 // estado de carregamento. O conteúdo interno (forms, tabelas, grids) de cada
 // painel permanece como está.
-function PanelChassi({ headId, Icon, title, sub, busy, busyLabel, className, children }: {
+function PanelChassi({ headId, Icon, title, sub, busy, busyLabel, className, wide, children }: {
   headId: string;
   Icon: Icon;
   title: string;
   sub?: string;
   busy?: boolean;
   busyLabel?: string;
-  // Opt-in de largura (ex.: styles.panelForm); sem className o chassi segue em largura cheia.
+  // Sem `wide`, o chassi usa largura de formulário (styles.panelForm); `wide` = largura cheia (tabelas, aside).
+  wide?: boolean;
   className?: string;
   // children é opcional: os skeletons de loading usam <PanelChassi ... busy /> sem children.
   children?: ReactNode;
 }) {
   return (
-    <section className={cn("card", styles.panel, className)} aria-labelledby={headId}>
+    <section className={cn("card", styles.panel, !wide && styles.panelForm, className)} aria-labelledby={headId}>
       <header className={styles.panelHead}>
-        <span className={styles.panelIcon}><Icon size={19} aria-hidden="true" /></span>
+        <span className={styles.panelIcon}><Icon size={16} aria-hidden="true" /></span>
         <div className="min-w-0">
-          <h2 id={headId} className="m-0 text-base font-semibold text-[var(--text)]">{title}</h2>
+          <h2 id={headId} className={styles.panelTitle}>{title}</h2>
           {sub ? <p className="sub mt-1">{sub}</p> : null}
         </div>
       </header>
@@ -345,6 +346,7 @@ export default function ConfigPage() {
       ) : (
         <PanelChassi
           headId="settings-catalog"
+          wide
           Icon={resourceIcons[activeResource]}
           title={resourceLabels[activeResource]}
           busy={loading}
@@ -465,16 +467,16 @@ function WorkspaceSettingsPanel({ canManageLogo }: { canManageLogo: boolean }) {
 
   if (isLoading) {
     return (
-      <PanelChassi headId="settings-workspace" Icon={GlobeHemisphereWest} title="Geral" className={styles.panelForm} busy busyLabel="Carregando configurações gerais" />
+      <PanelChassi headId="settings-workspace" Icon={GlobeHemisphereWest} title="Geral" busy busyLabel="Carregando configurações gerais" />
     );
   }
 
   return (
-    <PanelChassi headId="settings-workspace" Icon={GlobeHemisphereWest} title="Geral" className={styles.panelForm}>
+    <PanelChassi headId="settings-workspace" Icon={GlobeHemisphereWest} title="Geral">
       <form className="grid gap-5" onSubmit={submit}>
         <div className="grid gap-5">
           <div>
-            <h2 className="m-0 text-base font-semibold text-[var(--text)]">Fuso horário</h2>
+            <h2 className="m-0">Fuso horário</h2>
             <p className="sub mt-1">Define como os horários aparecem na agenda e nas automações deste workspace.</p>
           </div>
           {error || saveError ? (
@@ -497,7 +499,7 @@ function WorkspaceSettingsPanel({ canManageLogo }: { canManageLogo: boolean }) {
             <small className="sub">Exemplo: America/Sao_Paulo.</small>
           </label>
           <div>
-            <h2 className="m-0 flex items-center gap-2 text-base font-semibold text-[var(--text)]">Horário de atendimento <HelpHint label="Ajuda: Horário de atendimento" title="Horário de atendimento">Um único intervalo para todos os dias da semana; não há horário diferente por dia.</HelpHint></h2>
+            <h2 className="m-0 flex items-center gap-2">Horário de atendimento <HelpHint label="Ajuda: Horário de atendimento" title="Horário de atendimento">Um único intervalo para todos os dias da semana; não há horário diferente por dia.</HelpHint></h2>
             <p className="sub mt-1">
               Fora desse intervalo a IA não visualiza, não responde e a conexão fica offline no WhatsApp.
               O atendimento retoma automaticamente no início do horário, sem responder tudo de uma vez.
@@ -615,7 +617,7 @@ function SignatureSettingsPanel({ canManage }: { canManage: boolean }) {
             <p className="error" role="alert">{saveError || (error instanceof Error ? error.message : "Não foi possível carregar a configuração.")}</p>
           ) : null}
           {saved ? <p className="text-sm text-[var(--primary-text)]" role="status">Assinatura salva.</p> : null}
-          <label className="field flex-row items-center gap-2">
+          <label className="field field--row">
             <input
               type="checkbox"
               checked={enabled}
@@ -624,6 +626,7 @@ function SignatureSettingsPanel({ canManage }: { canManage: boolean }) {
             />
             <span className="label">Ativar assinatura nas mensagens enviadas por atendentes</span>
           </label>
+          <div className={styles.fieldGrid}>
           <label className="field">
             <span className="label">Formato</span>
             <select
@@ -650,6 +653,7 @@ function SignatureSettingsPanel({ canManage }: { canManage: boolean }) {
             </select>
             <small className="sub">O nome vem do perfil de cada atendente (Configurações → Perfil).</small>
           </label>
+          </div>
           {canManage ? (
             <div>
               <SaveButton type="submit" state={saving ? "busy" : save.state} icon={<FloppyDisk size={16} aria-hidden="true" />}>
@@ -908,7 +912,7 @@ function AgendaNotificationSettingsPanel({ canManage }: { canManage: boolean }) 
             <p className="error" role="alert">{saveError || (error instanceof Error ? error.message : "Não foi possível carregar a configuração.")}</p>
           ) : null}
           {saved ? <p className="text-sm text-[var(--primary-text)]" role="status">Configuração salva.</p> : null}
-          <label className="field flex-row items-center gap-2">
+          <label className="field field--row">
             <input
               type="checkbox"
               checked={enabled}
@@ -1086,13 +1090,14 @@ function AttendantSettingsPanel({ canManage }: { canManage: boolean }) {
 
   if (panelState === "loading") {
     return (
-      <PanelChassi headId="settings-attendants" Icon={UserList} title="Equipe de atendimento" busy busyLabel="Carregando equipe de atendimento" />
+      <PanelChassi headId="settings-attendants" Icon={UserList} title="Equipe de atendimento" wide busy busyLabel="Carregando equipe de atendimento" />
     );
   }
 
   return (
     <PanelChassi
       headId="settings-attendants"
+      wide
       Icon={UserList}
       title="Equipe de atendimento"
       sub="Os membros selecionados recebem novos contatos em rodízio estrito, na ordem de entrada no pool. O status Disponível/Indisponível é apenas informativo e não altera a distribuição."
@@ -1405,7 +1410,7 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
 
   if (loading) {
     return (
-      <PanelChassi headId="settings-google-meet" Icon={GoogleLogo} title="Google Meet" busy busyLabel="Carregando configuração do Google Meet" />
+      <PanelChassi headId="settings-google-meet" Icon={GoogleLogo} title="Google Meet" wide busy busyLabel="Carregando configuração do Google Meet" />
     );
   }
 
@@ -1416,6 +1421,7 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
   return (
     <PanelChassi
       headId="settings-google-meet"
+      wide
       Icon={GoogleLogo}
       title="Google Meet"
       sub="Cria uma sala pela API do Google Meet assim que o agendamento é confirmado. O fluxo não cria nem consulta eventos no Google Calendar."

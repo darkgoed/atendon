@@ -72,14 +72,14 @@
 .type-page-title {
   color: var(--text);
   font-size: var(--text-page-title);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-title);
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-title);
 }
 .type-section-title {
   color: var(--text);
   font-size: var(--text-section-title);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-title);
   line-height: var(--leading-tight);
 }
 .type-body { color: var(--text); font-size: var(--text-body); line-height: var(--leading-body); }
@@ -105,7 +105,7 @@
 .type-metric {
   color: var(--text);
   font-size: var(--text-metric);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-metric);
   line-height: var(--leading-flat);
   letter-spacing: var(--tracking-title);
   font-variant-numeric: tabular-nums;
@@ -129,7 +129,7 @@
   gap: var(--space-2);
   color: var(--text);
   font-size: var(--text-section-title);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-title);
   line-height: var(--leading-tight);
 }
 .cardtitle > svg { flex: none; color: var(--text-subtle); }
@@ -151,7 +151,7 @@
   margin-top: var(--space-1);
   color: var(--text);
   font-size: var(--text-metric);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-metric);
   line-height: var(--leading-flat);
   letter-spacing: var(--tracking-title);
   font-variant-numeric: tabular-nums;
@@ -699,7 +699,7 @@ th[aria-sort="descending"]::after { content: " ↓"; color: var(--primary-text);
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
 }
-.dialog__title { color: var(--text); font-size: var(--text-section-title); font-weight: var(--weight-semibold); }
+.dialog__title { color: var(--text); font-size: var(--text-section-title); font-weight: var(--weight-title); }
 .dialog__description { margin-top: var(--space-1); color: var(--text-muted); font-size: var(--text-meta); }
 .dialog__body { min-height: 0; flex: 1 1 auto; overflow: auto; padding: var(--space-4); }
 .dialog__footer {
@@ -915,7 +915,7 @@ th[aria-sort="descending"]::after { content: " ↓"; color: var(--primary-text);
 .kpi-card__value {
   color: var(--text);
   font-size: var(--text-metric);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-metric);
   line-height: var(--leading-flat);
   letter-spacing: var(--tracking-title);
   font-variant-numeric: tabular-nums;

@@ -7,7 +7,9 @@
 import { CalendarDots, GoogleLogo, LinkBreak } from "@/components/icons";
 import { type FormEvent, useEffect, useState } from "react";
 import useSWR from "swr";
+import styles from "@/components/settings-panels.module.css";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/cn";
 import type { PipelinesResponse } from "@/lib/pipeline";
 import { IconButton, SaveToast, useSaveFeedback } from "@/components/ui";
 
@@ -218,7 +220,7 @@ export function GoogleCalendarSettings({ canManage }: { canManage: boolean }) {
 
   if (isLoading) {
     return (
-      <div className="max-w-3xl border-t border-[var(--border)] pt-4" aria-busy="true" aria-label="Carregando configuração do Google Agenda">
+      <div className={cn("card", styles.panel, styles.panelForm)} aria-busy="true" aria-label="Carregando configuração do Google Agenda">
         <div className="grid gap-4">
           <div className="skeleton h-8 w-2/5" />
           <div className="skeleton h-28" />
@@ -228,19 +230,17 @@ export function GoogleCalendarSettings({ canManage }: { canManage: boolean }) {
   }
 
   return (
-    <section className="max-w-3xl border-t border-[var(--border)] pt-4" aria-labelledby="google-calendar-head">
+    <section className={cn("card", styles.panel, styles.panelForm)} aria-labelledby="google-calendar-head">
       <div className="grid gap-5">
-        <div className="grid gap-5 sm:grid-cols-[40px_minmax(0,1fr)]">
-          <span className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] text-[var(--primary-text)]">
-            <CalendarDots size={19} aria-hidden="true" />
-          </span>
-          <div>
-            <h2 id="google-calendar-head" className="m-0 text-base font-semibold text-[var(--text)]">Google Agenda</h2>
+        <header className={styles.panelHead}>
+          <span className={styles.panelIcon}><CalendarDots size={16} aria-hidden="true" /></span>
+          <div className="min-w-0">
+            <h2 id="google-calendar-head" className={styles.panelTitle}>Google Agenda</h2>
             <p className="sub mt-1">
               Conecta a agenda Google de cada atendente e escolhe qual agenda recebe os eventos. Independente da conta global do Google Meet.
             </p>
           </div>
-        </div>
+        </header>
 
         {error ? <p className="error" role="alert">{error}</p> : null}
         {oauthFeedback ? <p className="text-sm text-[var(--primary-text)]" role="status">{oauthFeedback}</p> : null}

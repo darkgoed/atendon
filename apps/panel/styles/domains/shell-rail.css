@@ -409,7 +409,7 @@
 .settings-rail__group { display: grid; gap: var(--space-1); padding-bottom: var(--space-4); }
 .settings-rail__group + .settings-rail__group { padding-top: var(--space-4); border-top: 1px solid var(--border-subtle); }
 .settings-rail__grouphead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 0 var(--space-2) var(--space-1); }
-.settings-rail__grouphead h2 { color: var(--text-muted); font-size: var(--text-micro); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-overline); text-transform: uppercase; }
+.settings-rail__grouphead h2 { color: var(--text-muted); font-size: var(--text-micro); font-weight: var(--weight-medium); letter-spacing: var(--tracking-overline); text-transform: uppercase; }
 .settings-rail__count { color: var(--text-muted); font-size: var(--text-micro); }
 .settings-rail__nav { display: grid; gap: var(--space-1); }
 
@@ -426,7 +426,7 @@
   color: var(--text-secondary);
   cursor: pointer;
   font-size: var(--text-control);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-regular);
   text-align: left;
   text-decoration: none;
   transition: var(--transition-control);
@@ -445,7 +445,7 @@
      (13px exige 4.5:1). Mix local de TOKENS (--primary-text × --text) chega a
      ~5.0:1 sem cor hardcoded; sem color-mix o fallback mantém --primary-text. */
   color: color-mix(in srgb, var(--primary-text) 85%, var(--text));
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-medium);
 }
 .settings-rail__link[aria-current="page"] > svg,
 .settings-rail__tab[aria-pressed="true"] > svg { color: var(--primary-text); color: color-mix(in srgb, var(--primary-text) 85%, var(--text)); }
@@ -457,6 +457,30 @@
   display: grid;
   align-items: start;
   gap: var(--space-4);
+  /* Só dentro do hub: títulos/métricas em 500 (resto do app segue 600). */
+  --weight-title: var(--weight-medium);
+  --weight-metric: var(--weight-medium);
+}
+.settings-layout :is(strong, b) { font-weight: var(--weight-medium); }
+.settings-main { min-width: 0; max-width: var(--settings-content-max); }
+
+/* <960px o layout empilha: o rail vira uma faixa única com rolagem horizontal. */
+@media (max-width: 959px) {
+  .settings-layout > .settings-rail {
+    display: flex;
+    gap: var(--space-1);
+    overflow-x: auto;
+    padding-bottom: var(--space-1);
+    border-bottom: 1px solid var(--border-subtle);
+    scrollbar-width: thin;
+  }
+  .settings-layout > .settings-rail .settings-rail__group { display: contents; }
+  .settings-layout > .settings-rail .settings-rail__nav { display: contents; }
+  .settings-layout > .settings-rail .settings-rail__grouphead { display: none; }
+  .settings-layout > .settings-rail .settings-rail__link { flex: none; white-space: nowrap; }
+}
+@media (max-width: 700px) {
+  .settings-layout > .settings-rail .settings-rail__link { min-height: var(--control-height-touch); }
 }
 
 @media (min-width: 960px) {
@@ -476,7 +500,6 @@
     padding-bottom: var(--space-2);
     scrollbar-width: thin;
   }
-  .settings-main { min-width: 0; }
 }
 
 /* ======================================= <1280px: UX atual, visual donor == */
