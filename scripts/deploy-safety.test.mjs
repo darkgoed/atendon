@@ -186,6 +186,12 @@ test("Dockerfiles de produção usam Node 22, npm 12, usuário não-root e coman
     "GET /agent não deve depender do template Markdown aposentado"
   );
   assert.match(files.worker, /dist\/worker\.js/);
+  for (const [name, source] of Object.entries(files)) {
+    assert.match(source, /npm ci[^\n]*--workspace @atendon\/proposal-renderer/, `${name} deve instalar as dependências próprias do renderer`);
+    if (name !== "panel") {
+      assert.match(source, /npm prune[^\n]*--workspace @atendon\/proposal-renderer/, `${name} deve preservar as dependências de runtime do renderer`);
+    }
+  }
   assert.match(files.panel, /standalone/);
   assert.match(files.panel, /server\.js/);
   await Promise.all([

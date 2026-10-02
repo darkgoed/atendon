@@ -12,7 +12,7 @@ COPY apps/backend/package.json apps/backend/package.json
 COPY apps/panel/package.json apps/panel/package.json
 # O painel depende de @atendon/proposal-renderer (link de workspace no lock).
 COPY apps/proposal-renderer/package.json apps/proposal-renderer/package.json
-RUN npm ci --workspace @atendon/panel --include-workspace-root
+RUN npm ci --workspace @atendon/panel --workspace @atendon/proposal-renderer --include-workspace-root
 
 FROM dependencies AS build
 ARG BACKEND_URL=http://atendon-api:3110
