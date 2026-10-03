@@ -19,7 +19,7 @@ export function WorkspaceAuditContent() {
   const filtered = useMemo(() => filterAuditLogs(logs, query), [logs, query]);
 
   return (
-    <AdminPage>
+    <AdminPage className="settings-admin-page">
       <AdminPageHeader title={<><HelpHint content="Registro das ações de usuários, incluindo acesso ROOT." description={<>Registro de quem fez o quê no workspace, do mais recente para o mais antigo — incluindo ações de usuários ROOT com acesso elevado.</>}>Auditoria do workspace</HelpHint></>} actions={
         <label className="search-field admin-search">
           <MagnifyingGlass aria-hidden="true" />

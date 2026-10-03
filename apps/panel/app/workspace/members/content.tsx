@@ -177,7 +177,7 @@ export function WorkspaceMembersContent() {
   const dataError = membersError || rolesError || invitationsError;
 
   return (
-    <AdminPage>
+    <AdminPage className="settings-admin-page">
       <AdminPageHeader title="Membros" />
 
       {error ? <p className="error mb-4" role="alert">{error}</p> : null}
@@ -215,7 +215,7 @@ export function WorkspaceMembersContent() {
             </div>
           </section>
 
-          <section className="admin-grid admin-grid--sidebar">
+          <section className="admin-grid admin-grid--sidebar settings-members-grid">
             <div className="card admin-card">
               <div className="cardtitle">
                 <span><HelpHint content="Transferir propriedade troca o dono; remover revoga o acesso." description={<>No menu de ações (⋮) fica “Transferir propriedade”: quem recebe passa a ser o único dono do workspace e quem transfere volta a ser ADMIN — para reverter, o novo dono precisa transferir de volta. “Remover do workspace” tira o acesso do membro ao painel.</>}>Equipe ativa</HelpHint></span>

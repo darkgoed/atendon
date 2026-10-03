@@ -148,7 +148,7 @@ export function WorkspaceRolesContent() {
   }
 
   return (
-    <AdminPage>
+    <AdminPage className="settings-admin-page">
       <AdminPageHeader title="Funções e permissões" actions={<AdminButton tone="primary" disabled={!canCreate} onClick={() => selectRole()}>
           <Plus size={16} aria-hidden="true" />
           Nova função
@@ -157,7 +157,7 @@ export function WorkspaceRolesContent() {
       {error ? <p className="error mb-4" role="alert">{error.message}</p> : null}
       {message ? <p className="error mb-4" role="alert">{message}</p> : null}
 
-      <section className="admin-grid admin-grid--sidebar">
+      <section className="admin-grid admin-grid--sidebar settings-roles-grid">
         <div className="card admin-card">
           <div className="cardtitle">
             <span>Funções</span>

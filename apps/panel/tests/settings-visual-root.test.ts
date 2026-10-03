@@ -21,7 +21,8 @@ describe("raiz visual de Configurações", () => {
     expect(css).toMatch(/\.settings-layout \{[^}]*--weight-title:\s*var\(--weight-medium\)/);
     expect(css).toMatch(/\.settings-layout \{[^}]*--weight-metric:\s*var\(--weight-medium\)/);
     expect(css).toMatch(/\.settings-main \{[^}]*max-width:\s*var\(--settings-content-max\)/);
-    expect(css).toMatch(/@media \(max-width: 959px\) \{[^@]*overflow-x:\s*auto/);
+    expect(css).toMatch(/@media \(max-width: 1199px\) \{[^@]*overflow-x:\s*auto/);
+    expect(css).toContain("@media (min-width: 1200px)");
   });
 
   it("module define .panelTitle e esconde o placeholder no mobile", () => {

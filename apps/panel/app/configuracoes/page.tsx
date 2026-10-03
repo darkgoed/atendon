@@ -355,7 +355,7 @@ export default function ConfigPage() {
           {error ? <p className="error" role="alert">{error}</p> : null}
           {!canManage && !loading ? <p className="sub" role="status">Esta seção está disponível somente para consulta.</p> : null}
 
-          <div className={`${styles.catalogLayout} ${canManage ? styles.catalogLayoutManaged : ""}`}>
+          <div className={cn(styles.catalogLayout, canManage && editing && styles.catalogLayoutManaged)}>
           <section className="responsive-table-wrap" aria-label={resourceLabels[activeResource]}>
           {items.length === 0 ? (
             <Empty>Nenhum cadastro nesta seção.</Empty>
@@ -394,7 +394,7 @@ export default function ConfigPage() {
           )}
         </section>
 
-        {canManage ? editing ? (
+        {canManage && editing ? (
           <Editor
             resource={activeResource}
             item={editing}
@@ -405,10 +405,6 @@ export default function ConfigPage() {
             }}
             onError={setError}
           />
-        ) : (
-          <aside className={`card ${styles.editorPlaceholder}`}>
-            Selecione um cadastro para editar<br />ou crie um novo.
-          </aside>
         ) : null}
         </div>
         </PanelChassi>
@@ -1426,8 +1422,8 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
       title="Google Meet"
       sub="Cria uma sala pela API do Google Meet assim que o agendamento é confirmado. O fluxo não cria nem consulta eventos no Google Calendar."
     >
-      <form className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)]" onSubmit={submit}>
-      <section className="border-b border-[var(--border)] pb-4 lg:border-b-0">
+      <form className={styles.integrationGrid} onSubmit={submit}>
+      <section className={styles.integrationMain}>
         <div className="mb-4 flex flex-wrap items-start justify-between gap-5 border-b border-[var(--border)] pb-5">
           <label className="flex items-center gap-3 text-sm font-medium text-[var(--text-secondary)]">
             <input type="checkbox" checked={enabled} disabled={!canManage} onChange={(event) => { setEnabled(event.target.checked); setSaved(false); }} />
@@ -1459,7 +1455,7 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
           {!oauthAvailable ? <p className="error mt-3 text-xs">O Client ID OAuth do Google ainda não foi configurado no servidor.</p> : null}
         </fieldset>
 
-        <div className="grid gap-5 md:grid-cols-2">
+        <div className={styles.fieldGrid}>
           <UiField label="Momento da criação">
             <Input value="Ao confirmar o agendamento" readOnly />
             <span className="sub text-xs">O mesmo link é salvo antes da confirmação chegar ao contato.</span>
@@ -1488,7 +1484,7 @@ function GoogleMeetSettingsPanel({ canManage }: { canManage: boolean }) {
         ) : <p className="sub mt-4 text-sm">Esta configuração está disponível somente para consulta.</p>}
       </section>
 
-      <aside className="border-t border-[var(--border)] pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-1" aria-label="Estado da integração com Google Meet">
+      <aside className={styles.integrationAside} aria-label="Estado da integração com Google Meet">
         <h3 className="text-sm font-semibold text-[var(--text)]">Pré-requisitos da integração</h3>
         <div className="mt-5 grid gap-5">
           <div className="grid grid-cols-[32px_1fr] gap-3">

@@ -160,7 +160,7 @@ export function HumanizationSettingsContent() {
       ) : value ? (
         <form aria-busy={saving} onSubmit={submit}>
           <fieldset className="contents" disabled={!canManage || saving}>
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="settings-humanization-grid grid gap-4 xl:grid-cols-2">
               {Object.entries(value).map(([key, item]) => (
                 <Group key={key} name={key} value={item as Json} path={[key]} update={update} />
               ))}
