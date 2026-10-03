@@ -57,6 +57,7 @@ describe("Configurações: distribuição do espaço", () => {
     expect(css).toContain(".settings-main .settings-humanization-grid");
     expect(css).toContain(".settings-main .pagehead > :first-child { flex: 1 1 auto; }");
     expect(css).toMatch(/\.settings-main \.pagehead\s*\{[^}]*align-items:\s*flex-start/);
+    expect(css).toContain('.settings-main .responsive-table :is([data-label="Cor na agenda"], [data-label="Disponibilidade"]) .type-caption { white-space: nowrap; }');
     expect(css).toMatch(/\.settings-main \.responsive-table\s*\{[^}]*min-width:\s*0/);
   });
 
