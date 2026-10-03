@@ -483,6 +483,7 @@
 .settings-main .settings-humanization-grid { grid-template-columns: minmax(0, 1fr); align-items: start; }
 .settings-main .responsive-table { min-width: 0; min-inline-size: 0; }
 .settings-main .responsive-table :is(th, td) { overflow-wrap: anywhere; }
+.settings-main .responsive-table :is([data-label="Cor na agenda"], [data-label="Disponibilidade"]) .type-caption { white-space: nowrap; }
 .settings-main .responsive-table :is(input, select) { min-width: 0; max-width: 100%; }
 .settings-main .channels-ai-page { --channels-ai-panel-gap: var(--space-4); }
 
