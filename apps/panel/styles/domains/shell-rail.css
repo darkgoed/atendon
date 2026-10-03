@@ -462,10 +462,43 @@
   --weight-metric: var(--weight-medium);
 }
 .settings-layout :is(strong, b) { font-weight: var(--weight-medium); }
-.settings-main { min-width: 0; max-width: var(--settings-content-max); }
+.settings-main {
+  container: settings / inline-size;
+  min-width: 0;
+  width: 100%;
+  max-width: var(--settings-content-max);
+}
 
-/* <960px o layout empilha: o rail vira uma faixa única com rolagem horizontal. */
-@media (max-width: 959px) {
+/* A largura útil do hub, não a viewport, decide quando cabe uma segunda coluna. */
+.settings-main .pagehead { align-items: flex-start; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
+.settings-main .pagehead > * { min-width: 0; max-width: 100%; }
+.settings-main .pagehead > :first-child { flex: 1 1 auto; }
+.settings-main .admin-grid { gap: var(--space-4); margin-top: var(--space-4); }
+.settings-main .admin-stack { gap: var(--space-4); }
+.settings-main .settings-admin-page { gap: var(--space-4); }
+.settings-main .settings-admin-page .pagehead { margin-bottom: 0; }
+.settings-main .settings-admin-page .admin-grid { margin-top: 0; }
+.settings-main .settings-members-grid { grid-template-columns: minmax(0, 1fr); }
+.settings-main .settings-roles-grid { grid-template-columns: minmax(0, 1fr); }
+.settings-main .settings-humanization-grid { grid-template-columns: minmax(0, 1fr); align-items: start; }
+.settings-main .responsive-table { min-width: 0; min-inline-size: 0; }
+.settings-main .responsive-table :is(th, td) { overflow-wrap: anywhere; }
+.settings-main .responsive-table :is(input, select) { min-width: 0; max-width: 100%; }
+.settings-main .channels-ai-page { --channels-ai-panel-gap: var(--space-4); }
+
+@container settings (min-width: 48rem) {
+  .settings-main .settings-members-grid > .admin-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-main .settings-roles-grid { grid-template-columns: minmax(14rem, 1fr) minmax(0, 2fr); }
+  .settings-main .settings-humanization-grid { display: block; column-count: 2; column-gap: var(--space-4); }
+  .settings-main .settings-humanization-grid > .line-section { break-inside: avoid; margin-bottom: var(--space-4); }
+}
+@container settings (max-width: 48rem) {
+  .settings-main .agent-layout { grid-template-columns: minmax(0, 1fr); }
+  .settings-main .agent-side { padding-left: 0; padding-top: var(--space-4); border-left: 0; border-top: 1px solid var(--border-subtle); }
+}
+
+/* Em tablet o menu vira faixa para reservar largura às tabelas e formulários. */
+@media (max-width: 1199px) {
   .settings-layout > .settings-rail {
     display: flex;
     gap: var(--space-1);
@@ -483,7 +516,7 @@
   .settings-layout > .settings-rail .settings-rail__link { min-height: var(--control-height-touch); }
 }
 
-@media (min-width: 960px) {
+@media (min-width: 1200px) {
   .settings-layout {
     grid-template-columns: var(--settings-nav-width) minmax(0, 1fr);
     gap: var(--space-5);

@@ -1,7 +1,7 @@
 .page {
-  --settings-content-width: 76rem;
+  --settings-content-width: var(--settings-content-max);
   display: grid;
-  gap: var(--space-6);
+  gap: var(--space-4);
   min-width: 0;
   max-width: var(--settings-content-width);
 }
@@ -18,9 +18,22 @@
 .tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .tab { min-height: var(--control-height-md); padding: var(--space-2) var(--space-3); border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); white-space: nowrap; }
 .tabActive { border-bottom-color: var(--primary); color: var(--primary-text); }
-.catalogLayout { display: grid; gap: var(--space-4); min-width: 0; }
-.catalogLayoutManaged { grid-template-columns: minmax(0, 1fr) minmax(18rem, 26rem); }
-.catalogTable { width: 100%; min-width: 32rem; text-align: left; }
+.catalogLayout { display: grid; align-items: start; gap: var(--space-4); min-width: 0; }
+.catalogLayoutManaged { grid-template-columns: minmax(0, 1fr); }
+.catalogTable { width: 100%; min-width: 0; text-align: left; }
+.catalogTable :is(th, td) { overflow-wrap: anywhere; }
+.catalogTable td[data-label="ID"] { width: 22%; }
+.catalogTable td[data-label="Ações"] { width: 1%; white-space: nowrap; }
+.integrationGrid { display: grid; align-items: start; gap: var(--space-4); min-width: 0; }
+.integrationMain { min-width: 0; }
+.integrationAside { min-width: 0; padding-top: var(--space-4); border-top: 1px solid var(--border); }
+@container settings (min-width: 64rem) {
+  .catalogLayoutManaged { grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem); }
+}
+@container settings (min-width: 52rem) {
+  .integrationGrid { grid-template-columns: minmax(0, 1.5fr) minmax(16rem, 1fr); }
+  .integrationAside { padding-top: 0; padding-left: var(--space-4); border-top: 0; border-left: 1px solid var(--border); }
+}
 .editorPlaceholder { min-height: 16rem; display: grid; place-items: center; text-align: center; color: var(--text-muted); }
 /* R3 (SPEC settings-search): chassi ÚNICO de configuração — um card, o mesmo
    cabeçalho (ícone da biblioteca do handoff num círculo + h2 + sub opcional) e os mesmos
@@ -47,6 +60,9 @@
 .volumeRow { display: flex; align-items: center; gap: var(--space-3); }
 .volumeSlider { width: 100%; min-height: var(--control-height); accent-color: var(--primary); }
 .volumeValue { min-width: 3ch; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--text-meta); text-align: end; }
+@media (max-width: 900px) {
+  .catalogTable td[data-label="ID"], .catalogTable td[data-label="Ações"] { width: auto; white-space: normal; }
+}
 @media (max-width: 48rem) {
   .tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: var(--space-1); }
   .tab { flex: 0 0 auto; min-height: var(--control-height-touch); }

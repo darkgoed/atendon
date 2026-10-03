@@ -298,7 +298,8 @@ export function GoogleCalendarSettings({ canManage }: { canManage: boolean }) {
                       ) : null}
                     </div>
                     {canManage ? (
-                      <label className="field mt-3">
+                      <div className={`${styles.fieldGrid} mt-3`}>
+                      <label className="field">
                         <span className="label">Agenda do atendente</span>
                         <select
                           className="input"
@@ -323,9 +324,7 @@ export function GoogleCalendarSettings({ canManage }: { canManage: boolean }) {
                           {loadingCalendarsId === connection.id ? "Carregando agendas…" : "Somente agendas em que a conta pode escrever. A escolha habilita a sincronização."}
                         </small>
                       </label>
-                    ) : null}
-                    {canManage ? (
-                      <label className="field mt-3">
+                      <label className="field">
                         <span className="label">Intervalo entre eventos (minutos)</span>
                         <input
                           className="input"
@@ -344,6 +343,7 @@ export function GoogleCalendarSettings({ canManage }: { canManage: boolean }) {
                           Minutos bloqueados antes e depois de cada evento na agenda deste atendente (0 a 240). Enter ou Tab salva.
                         </small>
                       </label>
+                      </div>
                     ) : null}
                   </li>
                 );
